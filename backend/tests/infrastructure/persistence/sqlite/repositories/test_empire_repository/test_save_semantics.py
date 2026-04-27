@@ -65,26 +65,26 @@ class TestSaveDeleteThenInsert:
 class TestRoundTripStructuralEquality:
     """TC-IT-EMR-007 + TC-UT-EMR-003: save → find_by_id round-trip preserves equality.
 
-    Note (BUG-EMR-001): :meth:`SqliteEmpireRepository.find_by_id` does
-    not issue ``ORDER BY`` when SELECTing the side tables, so the
-    rooms / agents lists come back in whatever order SQLite happens
-    to scan. The Empire VO carries lists (ordered), but the design
-    docs do not freeze a list-order semantic for ``rooms`` /
-    ``agents`` and there is no insertion-order guarantee at the SQL
-    layer. The tests below therefore compare the **set** of rooms /
-    agents — which captures the design intent ("the same membership
-    survives the round-trip") without locking in an undocumented
-    list-order contract. The bug report recommends adding an
-    ``ORDER BY`` to ``find_by_id`` *only if* the design wants list
-    semantics; otherwise the Empire VO should be updated to compare
-    by set / frozenset of refs.
+    BUG-EMR-001 closure: :meth:`SqliteEmpireRepository.find_by_id` now
+    issues ``ORDER BY room_id`` / ``ORDER BY agent_id`` per
+    ``basic-design.md`` L127-128 and ``detailed-design.md`` §クラス設計.
+    The hydrated lists are deterministic, so the previous set-based
+    workaround is removed and replaced with the contracted list-order
+    comparison.
+
+    Test contract (ORDER BY 物理保証): the Repository's
+    ``ORDER BY room_id`` / ``ORDER BY agent_id`` design contract is
+    asserted by sorting the input Empire's collections by the same
+    key and demanding list equality. Failing this assertion means
+    the SQL contract regressed (either the ``ORDER BY`` was dropped
+    or the column changed).
     """
 
     async def test_populated_empire_round_trip(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-EMR-007: round-trip preserves Empire identity + membership."""
+        """TC-IT-EMR-007: round-trip preserves Empire identity + membership in ORDER BY order."""
         empire = make_populated_empire(n_rooms=2, n_agents=3)
         async with session_factory() as session, session.begin():
             await SqliteEmpireRepository(session).save(empire)
@@ -94,11 +94,12 @@ class TestRoundTripStructuralEquality:
         assert restored is not None
         assert restored.id == empire.id
         assert restored.name == empire.name
-        # Set-based comparison (BUG-EMR-001 workaround): the Repository
-        # does not emit ORDER BY, so list order is undefined. Membership
-        # equality is the design intent we care about.
-        assert set(restored.rooms) == set(empire.rooms)
-        assert set(restored.agents) == set(empire.agents)
+        # ORDER BY room_id / agent_id 物理保証: restored side-table
+        # lists are deterministic, so list-order equality is the
+        # contract. The expected lists are sorted by the same key
+        # the Repository used in its ``ORDER BY``.
+        assert restored.rooms == sorted(empire.rooms, key=lambda r: r.room_id)
+        assert restored.agents == sorted(empire.agents, key=lambda a: a.agent_id)
 
     async def test_empty_empire_round_trip(
         self,
@@ -119,7 +120,7 @@ class TestRoundTripStructuralEquality:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-UT-EMR-003: ``_to_row`` → save + find_by_id (≡ ``_from_row``) preserves membership."""
+        """TC-UT-EMR-003: ``_to_row`` → save + find_by_id (≡ ``_from_row``) preserves equality."""
         empire = make_populated_empire(n_rooms=2, n_agents=3)
         async with session_factory() as session, session.begin():
             await SqliteEmpireRepository(session).save(empire)
@@ -127,12 +128,13 @@ class TestRoundTripStructuralEquality:
         async with session_factory() as session:
             restored = await SqliteEmpireRepository(session).find_by_id(empire.id)
         assert restored is not None
-        # Same set-based comparison as test_populated_empire_round_trip
-        # — see BUG-EMR-001 in the class docstring.
         assert restored.id == empire.id
         assert restored.name == empire.name
-        assert set(restored.rooms) == set(empire.rooms)
-        assert set(restored.agents) == set(empire.agents)
+        # Same ORDER BY-aware list comparison as
+        # test_populated_empire_round_trip — see class docstring for
+        # the BUG-EMR-001 closure rationale.
+        assert restored.rooms == sorted(empire.rooms, key=lambda r: r.room_id)
+        assert restored.agents == sorted(empire.agents, key=lambda a: a.agent_id)
 
 
 # ---------------------------------------------------------------------------

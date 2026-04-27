@@ -64,10 +64,26 @@ class SqliteEmpireRepository:
         if empire_row is None:
             return None
 
-        room_stmt = select(EmpireRoomRefRow).where(EmpireRoomRefRow.empire_id == empire_id)
+        # BUG-EMR-001 fix: ORDER BY room_id / agent_id makes the
+        # hydrated list deterministic. Without it SQLite returns rows
+        # in internal-scan order, which broke ``Empire == Empire``
+        # round-trip equality (the Aggregate VO compares list-by-list).
+        # See docs/features/empire-repository/detailed-design.md
+        # §Known Issues for the design resolution; basic-design.md
+        # L127-128 froze ``ORDER BY room_id`` / ``ORDER BY agent_id``
+        # as the design contract.
+        room_stmt = (
+            select(EmpireRoomRefRow)
+            .where(EmpireRoomRefRow.empire_id == empire_id)
+            .order_by(EmpireRoomRefRow.room_id)
+        )
         room_rows = list((await self._session.execute(room_stmt)).scalars().all())
 
-        agent_stmt = select(EmpireAgentRefRow).where(EmpireAgentRefRow.empire_id == empire_id)
+        agent_stmt = (
+            select(EmpireAgentRefRow)
+            .where(EmpireAgentRefRow.empire_id == empire_id)
+            .order_by(EmpireAgentRefRow.agent_id)
+        )
         agent_rows = list((await self._session.execute(agent_stmt)).scalars().all())
 
         return self._from_row(empire_row, room_rows, agent_rows)
