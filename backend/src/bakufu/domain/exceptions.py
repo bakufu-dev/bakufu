@@ -74,6 +74,7 @@ type WorkflowViolationKind = Literal[
     "entry_not_in_stages",
     "transition_ref_invalid",
     "transition_duplicate",
+    "transition_id_duplicate",
     "unreachable_stage",
     "no_sink_stage",
     "capacity_exceeded",
@@ -85,8 +86,12 @@ type WorkflowViolationKind = Literal[
     "from_dict_invalid",
 ]
 """Discriminator for :class:`WorkflowInvariantViolation` matching workflow
-detailed-design §Exception. ``name_range`` / ``stage_duplicate`` extend the
-list to cover MSG-WF-001 / MSG-WF-008 which have explicit error contracts."""
+detailed-design §Exception. The list extends the design's 11 canonical kinds
+with three operational discriminators that surface in MSG-WF-001 / MSG-WF-008
+(``name_range`` / ``stage_duplicate``) and the symmetric ``transition_id_duplicate``
+that mirrors ``stage_duplicate`` for the Transition collection contract
+(detailed-design §Aggregate Root: Workflow row ``transitions: 0〜60 件、
+transition_id の重複なし``)."""
 
 
 type StageViolationKind = Literal[
