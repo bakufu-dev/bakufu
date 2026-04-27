@@ -90,8 +90,7 @@ class UTCDateTime(TypeDecorator[datetime]):
             return None
         if value.tzinfo is None:
             raise ValueError(
-                "UTCDateTime requires a timezone-aware datetime "
-                "(received a naive value)"
+                "UTCDateTime requires a timezone-aware datetime (received a naive value)"
             )
         return value.isoformat()
 

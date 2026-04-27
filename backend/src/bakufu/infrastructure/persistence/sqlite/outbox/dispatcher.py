@@ -53,9 +53,7 @@ class OutboxDispatcher:
         *,
         batch_size: int = DEFAULT_BATCH_SIZE,
         poll_interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
-        dispatching_recovery_minutes: int = (
-            DEFAULT_DISPATCHING_RECOVERY_MINUTES
-        ),
+        dispatching_recovery_minutes: int = (DEFAULT_DISPATCHING_RECOVERY_MINUTES),
         max_attempts: int = DEFAULT_MAX_ATTEMPTS,
     ) -> None:
         self._session_factory = session_factory
@@ -86,8 +84,7 @@ class OutboxDispatcher:
                 # The dispatcher must never die in the body of a poll.
                 # Log and continue; the next cycle retries.
                 logger.exception(
-                    "[ERROR] Outbox dispatcher poll cycle raised; "
-                    "continuing to next cycle"
+                    "[ERROR] Outbox dispatcher poll cycle raised; continuing to next cycle"
                 )
             try:
                 await asyncio.wait_for(
@@ -121,8 +118,7 @@ class OutboxDispatcher:
         if pending_count > 0 and registry_size == 0:
             if not self._empty_registry_warned:
                 logger.warning(
-                    "[WARN] Outbox has %d pending events but "
-                    "handler_registry is empty.",
+                    "[WARN] Outbox has %d pending events but handler_registry is empty.",
                     pending_count,
                 )
                 self._empty_registry_warned = True
@@ -137,8 +133,7 @@ class OutboxDispatcher:
             five_minutes_seconds = 300.0
             if now - self._backlog_last_warn_monotonic > five_minutes_seconds:
                 logger.warning(
-                    "[WARN] Outbox PENDING count=%d > %d. Inspect with "
-                    "bakufu admin list-pending.",
+                    "[WARN] Outbox PENDING count=%d > %d. Inspect with bakufu admin list-pending.",
                     pending_count,
                     BACKLOG_WARN_THRESHOLD,
                 )

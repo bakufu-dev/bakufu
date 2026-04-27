@@ -22,7 +22,6 @@ from logging.config import fileConfig
 from pathlib import Path
 
 from alembic import context
-
 from bakufu.infrastructure.persistence.sqlite.base import Base
 
 # Importing the table modules registers the ORM mappings + listeners

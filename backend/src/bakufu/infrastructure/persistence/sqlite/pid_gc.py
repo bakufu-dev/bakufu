@@ -70,8 +70,7 @@ async def run_startup_gc(
             classification = _classify_row(row.pid, row.started_at)
         except psutil.AccessDenied:
             logger.warning(
-                "[WARN] pid_registry GC: psutil.AccessDenied for "
-                "pid=%d, retry next cycle",
+                "[WARN] pid_registry GC: psutil.AccessDenied for pid=%d, retry next cycle",
                 row.pid,
             )
             counts["access_denied"] += 1

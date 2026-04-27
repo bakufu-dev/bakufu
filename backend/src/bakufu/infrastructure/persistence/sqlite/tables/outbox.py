@@ -53,22 +53,14 @@ class OutboxRow(Base):
     payload_json: Mapped[Any] = mapped_column(JSONEncoded, nullable=False)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
-    attempt_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0
-    )
-    next_attempt_at: Mapped[datetime] = mapped_column(
-        UTCDateTime, nullable=False
-    )
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    next_attempt_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
-    dispatched_at: Mapped[datetime | None] = mapped_column(
-        UTCDateTime, nullable=True
-    )
+    dispatched_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
     # Polling SQL filter: `WHERE status = ? AND next_attempt_at <= ?`.
-    __table_args__ = (
-        Index("ix_outbox_status_next_attempt", "status", "next_attempt_at"),
-    )
+    __table_args__ = (Index("ix_outbox_status_next_attempt", "status", "next_attempt_at"),)
 
 
 def _apply_masking(target: OutboxRow) -> None:

@@ -184,8 +184,7 @@ class Bootstrap:
             raise BakufuConfigError(
                 msg_id="MSG-PF-002",
                 message=(
-                    "[FAIL] Bootstrap stage 2/8: data_dir not resolved "
-                    "(stage 1 must run first)"
+                    "[FAIL] Bootstrap stage 2/8: data_dir not resolved (stage 1 must run first)"
                 ),
             )
         # Initialize the masking gateway *before* the engine because
@@ -205,8 +204,7 @@ class Bootstrap:
             raise BakufuConfigError(
                 msg_id="MSG-PF-002",
                 message=(
-                    f"[FAIL] Bootstrap stage 2/8: SQLite engine "
-                    f"initialization failed: {exc!r}"
+                    f"[FAIL] Bootstrap stage 2/8: SQLite engine initialization failed: {exc!r}"
                 ),
             ) from exc
         logger.info(
@@ -239,9 +237,7 @@ class Bootstrap:
                 msg_id="MSG-PF-004",
                 message=f"[FAIL] Alembic migration failed: {exc!r}",
             ) from exc
-        logger.info(
-            "[INFO] Bootstrap stage 3/8: schema at head %s", head
-        )
+        logger.info("[INFO] Bootstrap stage 3/8: schema at head %s", head)
 
     # ------------------------------------------------------------------
     # Stage 4: pid_registry orphan GC (non-fatal).
@@ -264,8 +260,7 @@ class Bootstrap:
             # Confirmation E + G: stage 4 is non-fatal. The unaffected
             # rows survive to the next GC and the Backend continues.
             logger.warning(
-                "[WARN] Bootstrap stage 4/8: pid_registry GC raised "
-                "(%r); continuing startup",
+                "[WARN] Bootstrap stage 4/8: pid_registry GC raised (%r); continuing startup",
                 exc,
             )
 
@@ -281,8 +276,7 @@ class Bootstrap:
             )
         root = attachment_root.ensure_root(self._data_dir)
         logger.info(
-            "[INFO] Bootstrap stage 5/8: attachments root at %s "
-            "(mode=0o%03o)",
+            "[INFO] Bootstrap stage 5/8: attachments root at %s (mode=0o%03o)",
             root,
             attachment_root.ATTACHMENTS_MODE,
         )
@@ -306,8 +300,7 @@ class Bootstrap:
         self._dispatcher_task = asyncio.create_task(self._dispatcher.run())
         size = handler_registry.size()
         logger.info(
-            "[INFO] Bootstrap stage 6/8: dispatcher running "
-            "(handler_registry size=%d)",
+            "[INFO] Bootstrap stage 6/8: dispatcher running (handler_registry size=%d)",
             size,
         )
         # Confirmation K row 1: empty registry WARN at startup.
@@ -324,8 +317,7 @@ class Bootstrap:
     # ------------------------------------------------------------------
     def _stage_7_orphan_scheduler(self) -> None:
         logger.info(
-            "[INFO] Bootstrap stage 7/8: starting attachment orphan GC "
-            "scheduler (interval=24h)..."
+            "[INFO] Bootstrap stage 7/8: starting attachment orphan GC scheduler (interval=24h)..."
         )
         self._attachments_task = attachment_root.start_orphan_gc_scheduler()
         logger.info("[INFO] Bootstrap stage 7/8: scheduler running")
@@ -340,10 +332,7 @@ class Bootstrap:
                 "skipping HTTP bind (skeleton mode)."
             )
             return
-        logger.info(
-            "[INFO] Bootstrap stage 8/8: binding FastAPI listener "
-            "(delegated)..."
-        )
+        logger.info("[INFO] Bootstrap stage 8/8: binding FastAPI listener (delegated)...")
         try:
             await self._listener_starter()
         except Exception as exc:

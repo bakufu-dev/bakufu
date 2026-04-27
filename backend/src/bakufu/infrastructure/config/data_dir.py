@@ -88,10 +88,7 @@ def _validate_absolute(value: str) -> Path:
     if not path.is_absolute():
         raise BakufuConfigError(
             msg_id="MSG-PF-001",
-            message=(
-                f"[FAIL] BAKUFU_DATA_DIR must be an absolute path "
-                f"(got: {home_safe_value})"
-            ),
+            message=(f"[FAIL] BAKUFU_DATA_DIR must be an absolute path (got: {home_safe_value})"),
         )
     return path
 

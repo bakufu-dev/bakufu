@@ -49,8 +49,7 @@ def _apply_masking(target: PidRegistryRow) -> None:
         target.cmd = mask(target.cmd)
     except Exception as exc:  # pragma: no cover — Fail-Secure
         logger.error(
-            "[ERROR] bakufu_pid_registry masking listener failed: %r — "
-            "replacing cmd with %s",
+            "[ERROR] bakufu_pid_registry masking listener failed: %r — replacing cmd with %s",
             exc,
             REDACT_LISTENER_ERROR,
         )

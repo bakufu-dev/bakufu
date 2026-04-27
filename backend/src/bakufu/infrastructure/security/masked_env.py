@@ -123,8 +123,7 @@ def load_env_patterns() -> list[tuple[str, re.Pattern[str]]]:
         )
     if skipped_short:
         logger.info(
-            "[INFO] Masking layer 1 (env): skipped %d env vars below "
-            "length floor %d: %s",
+            "[INFO] Masking layer 1 (env): skipped %d env vars below length floor %d: %s",
             len(skipped_short),
             MIN_ENV_VALUE_LENGTH,
             ", ".join(sorted(skipped_short)),

@@ -204,8 +204,7 @@ def mask_in(value: object) -> object:
         return mask(str(value))
     except Exception:
         logger.warning(
-            "[WARN] Masking gateway fallback applied: kind=mask_error "
-            "(stringification failed)"
+            "[WARN] Masking gateway fallback applied: kind=mask_error (stringification failed)"
         )
         return REDACT_MASK_ERROR
 

@@ -44,6 +44,7 @@ async def run_upgrade_head(app_engine: AsyncEngine) -> str:
     migration_engine = create_migration_engine(url)
     try:
         async with migration_engine.connect() as connection:
+
             def _do_upgrade(sync_connection: object) -> None:
                 from alembic import command
 

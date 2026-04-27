@@ -46,10 +46,7 @@ def ensure_root(data_dir: Path) -> Path:
     except OSError as exc:
         raise BakufuConfigError(
             msg_id="MSG-PF-003",
-            message=(
-                f"[FAIL] Attachment FS root initialization failed at "
-                f"{root}: {exc!r}"
-            ),
+            message=(f"[FAIL] Attachment FS root initialization failed at {root}: {exc!r}"),
         ) from exc
 
     if platform.system() != "Windows":
@@ -90,9 +87,7 @@ async def _run_loop() -> None:
         try:
             await asyncio.sleep(ORPHAN_GC_INTERVAL_SECONDS)
         except asyncio.CancelledError:
-            logger.info(
-                "[INFO] Attachment orphan GC scheduler cancelled."
-            )
+            logger.info("[INFO] Attachment orphan GC scheduler cancelled.")
             raise
 
 
