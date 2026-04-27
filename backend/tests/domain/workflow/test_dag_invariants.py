@@ -221,6 +221,65 @@ class TestRequiredRoleNonEmpty:
         assert excinfo.value.kind == "empty_required_role_aggregate"
 
 
+class TestTransitionIdUnique:
+    """REQ-WF-005-② sibling — symmetric transition_id duplicate guard.
+
+    Steve's PR #16 review caught the asymmetry where ``_validate_stage_id_unique``
+    rejected duplicate stage ids but transition ids slipped through. Linus
+    added :func:`_validate_transition_id_unique`; these tests lock the
+    aggregate-side behavior so the gap cannot reopen.
+    """
+
+    def test_duplicate_transition_id_raises_through_aggregate(self) -> None:
+        """Aggregate path: two edges sharing a transition.id raise transition_id_duplicate.
+
+        Pre-state: 3-stage chain s0→s1→s2 with one APPROVED edge. Add a second
+        edge that shares the first's id but has different (from, to,
+        condition). The aggregate-level helper must reject this even though
+        the determinism check (which keys on (from, condition)) would let it
+        through.
+        """
+        s0 = make_stage()
+        s1 = make_stage()
+        s2 = make_stage()
+        e0 = make_transition(
+            from_stage_id=s0.id, to_stage_id=s1.id, condition=TransitionCondition.APPROVED
+        )
+        e_dup = make_transition(
+            transition_id=e0.id,  # collide on transition.id deliberately
+            from_stage_id=s1.id,
+            to_stage_id=s2.id,
+            condition=TransitionCondition.APPROVED,
+        )
+        with pytest.raises(WorkflowInvariantViolation) as excinfo:
+            make_workflow(
+                stages=[s0, s1, s2],
+                transitions=[e0, e_dup],
+                entry_stage_id=s0.id,
+            )
+        assert excinfo.value.kind == "transition_id_duplicate"
+
+    def test_msg_for_duplicate_transition_id_includes_id(self) -> None:
+        """Message wording: '[FAIL] Transition id duplicate: <transition_id>'."""
+        s0 = make_stage()
+        s1 = make_stage()
+        s2 = make_stage()
+        e0 = make_transition(from_stage_id=s0.id, to_stage_id=s1.id)
+        e_dup = make_transition(
+            transition_id=e0.id,
+            from_stage_id=s1.id,
+            to_stage_id=s2.id,
+            condition=TransitionCondition.REJECTED,
+        )
+        with pytest.raises(WorkflowInvariantViolation) as excinfo:
+            make_workflow(
+                stages=[s0, s1, s2],
+                transitions=[e0, e_dup],
+                entry_stage_id=s0.id,
+            )
+        assert excinfo.value.message == f"[FAIL] Transition id duplicate: {e0.id}"
+
+
 class TestTransitionRefIntegrity:
     """REQ-WF-005-② / TC-UT-WF-022 / 045 — Transition refs must point at known Stages."""
 

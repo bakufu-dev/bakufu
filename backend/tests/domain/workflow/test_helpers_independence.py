@@ -26,6 +26,7 @@ _validate_dag_sink_exists = _workflow_module._validate_dag_sink_exists  # pyrigh
 _validate_entry_in_stages = _workflow_module._validate_entry_in_stages  # pyright: ignore[reportPrivateUsage]
 _validate_stage_id_unique = _workflow_module._validate_stage_id_unique  # pyright: ignore[reportPrivateUsage]
 _validate_transition_determinism = _workflow_module._validate_transition_determinism  # pyright: ignore[reportPrivateUsage]
+_validate_transition_id_unique = _workflow_module._validate_transition_id_unique  # pyright: ignore[reportPrivateUsage]
 _validate_transition_refs = _workflow_module._validate_transition_refs  # pyright: ignore[reportPrivateUsage]
 
 
@@ -46,6 +47,25 @@ class TestHelperIndependence:
         with pytest.raises(WorkflowInvariantViolation) as excinfo:
             _validate_stage_id_unique([s0, dup])
         assert excinfo.value.kind == "stage_duplicate"
+
+    def test_transition_id_unique_helper_raises_directly(self) -> None:
+        """`_validate_transition_id_unique` raises transition_id_duplicate on collisions.
+
+        Symmetric to ``_validate_stage_id_unique``. Two Transitions with the
+        same id but different (from, to, condition) tuples — the determinism
+        check would let this slip, so the dedicated helper is required.
+        """
+        s0 = make_stage()
+        s1 = make_stage()
+        e0 = make_transition(from_stage_id=s0.id, to_stage_id=s1.id)
+        e_dup = make_transition(
+            transition_id=e0.id,  # share the same id deliberately
+            from_stage_id=s1.id,
+            to_stage_id=s0.id,
+        )
+        with pytest.raises(WorkflowInvariantViolation) as excinfo:
+            _validate_transition_id_unique([e0, e_dup])
+        assert excinfo.value.kind == "transition_id_duplicate"
 
     def test_entry_in_stages_helper_raises_directly(self) -> None:
         """`_validate_entry_in_stages` raises when entry not in stages."""
