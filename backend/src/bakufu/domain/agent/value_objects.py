@@ -23,7 +23,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from bakufu.domain.agent.path_validators import validate_skill_path
+from bakufu.domain.agent.path_validators import _validate_skill_path
 from bakufu.domain.exceptions import AgentInvariantViolation
 from bakufu.domain.value_objects import ProviderKind, SkillId, nfc_strip
 
@@ -150,7 +150,7 @@ class SkillRef(BaseModel):
     """Reference to a Skill markdown file inside ``BAKUFU_DATA_DIR/skills/``.
 
     The path validation contract is comprehensive (10 separate checks); see
-    :func:`bakufu.domain.agent.path_validators.validate_skill_path` for the
+    :func:`bakufu.domain.agent.path_validators._validate_skill_path` for the
     full ordered policy.
     """
 
@@ -174,7 +174,7 @@ class SkillRef(BaseModel):
     def _validate_path(cls, value: str) -> str:
         # H1〜H10 in one shot. Returns the NFC-normalized form so the stored
         # value is canonical (no later code paths see an un-normalized string).
-        return validate_skill_path(value)
+        return _validate_skill_path(value)
 
 
 __all__ = [

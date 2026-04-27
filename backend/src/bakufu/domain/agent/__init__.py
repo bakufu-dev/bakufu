@@ -52,7 +52,7 @@ from bakufu.domain.agent.path_validators import (
     _h8_recheck_parts,
     _h9_check_windows_reserved,
     _h10_check_base_escape,
-    validate_skill_path,
+    _validate_skill_path,
 )
 from bakufu.domain.agent.value_objects import (
     ARCHETYPE_MAX,
@@ -105,5 +105,5 @@ __all__ = [
     "_validate_provider_kind_unique",
     "_validate_skill_capacity",
     "_validate_skill_id_unique",
-    "validate_skill_path",
+    "_validate_skill_path",
 ]

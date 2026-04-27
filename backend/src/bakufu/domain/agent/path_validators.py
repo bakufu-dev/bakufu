@@ -5,7 +5,7 @@ Each Hx check is a **module-level pure function** so:
 1. Tests can ``import`` them and invoke directly to prove each rule works
    independently — same testability pattern as Workflow's
    :mod:`bakufu.domain.workflow.dag_validators` (Confirmation F).
-2. :func:`validate_skill_path` stays a thin sequencer over the ten checks,
+2. :func:`_validate_skill_path` stays a thin sequencer over the ten checks,
    with order locked by the design document.
 3. Future ``feature/skill-loader`` Phase-2 work that adds a runtime I/O
    recheck can re-use the exact same helpers — single source of truth for
@@ -226,7 +226,7 @@ def _h10_check_base_escape(path: str) -> None:
 # ---------------------------------------------------------------------------
 # Orchestrator (used by SkillRef.field_validator)
 # ---------------------------------------------------------------------------
-def validate_skill_path(raw_path: str) -> str:
+def _validate_skill_path(raw_path: str) -> str:
     """Run H1〜H10 in the design's locked order and return the NFC-normalized form.
 
     The returned value is what :class:`SkillRef` stores as ``path`` — callers
@@ -267,5 +267,5 @@ __all__ = [
     "_h8_recheck_parts",
     "_h9_check_windows_reserved",
     "_h10_check_base_escape",
-    "validate_skill_path",
+    "_validate_skill_path",
 ]
