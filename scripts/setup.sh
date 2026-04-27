@@ -390,7 +390,20 @@ install_node_tools() {
     fi
 }
 
-# Step 13. lefthook install（--tools-only でなければ）
+# Step 13. リポジトリ依存の解決（uv sync + pnpm install）
+# pyproject.toml / package.json があれば lockfile から復元する。
+# clone 直後の初回 setup でも CI のフレッシュ環境でも同一経路で動かすため、
+# scripts/setup.sh 自身が依存解決を担う。
+install_repo_deps() {
+    if [[ -f "pyproject.toml" ]]; then
+        uv sync
+    fi
+    if [[ -f "package.json" ]]; then
+        pnpm install --frozen-lockfile
+    fi
+}
+
+# Step 14. lefthook install（--tools-only でなければ）
 finalize_lefthook() {
     if [[ "$TOOLS_ONLY" == true ]]; then
         return 0
@@ -404,9 +417,10 @@ finalize_lefthook() {
 
 install_python_tools
 install_node_tools
+install_repo_deps
 finalize_lefthook
 
 # ───────────────────────────────────────────────────────────────
-# Step 14. 完了ログ
+# Step 15. 完了ログ
 # ───────────────────────────────────────────────────────────────
 echo "[OK] Setup complete. Git フックが有効化されました。"

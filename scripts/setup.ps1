@@ -321,7 +321,17 @@ function Install-NodeTools {
     }
 }
 
-# Step 13. lefthook install（--ToolsOnly でなければ）
+# Step 13. リポジトリ依存の解決（uv sync + pnpm install）
+function Install-RepoDeps {
+    if (Test-Path 'pyproject.toml') {
+        & uv sync
+    }
+    if (Test-Path 'package.json') {
+        & pnpm install --frozen-lockfile
+    }
+}
+
+# Step 14. lefthook install（--ToolsOnly でなければ）
 function Invoke-LefthookInstall {
     if ($ToolsOnly) { return }
     if (-not (Get-Command lefthook -ErrorAction SilentlyContinue)) {
@@ -333,6 +343,7 @@ function Invoke-LefthookInstall {
 
 Install-PythonTools
 Install-NodeTools
+Install-RepoDeps
 Invoke-LefthookInstall
 
 # ───────────────────────────────────────────────────────────────
