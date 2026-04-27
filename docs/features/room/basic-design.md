@@ -237,6 +237,6 @@ erDiagram
 
 | 例外種別 | 処理方針 | ユーザーへの通知 |
 |---------|---------|----------------|
-| `RoomInvariantViolation` | application 層で catch、HTTP API 層で 400 / 422 にマッピング（別 feature） | MSG-RM-001 〜 007 |
-| `pydantic.ValidationError` | 構築時の型違反。application 層で catch | MSG-RM-001（汎用） |
+| `RoomInvariantViolation` | application 層で catch、HTTP API 層で 400 / 422 にマッピング（別 feature） | MSG-RM-001 〜 006（kind: `name_range` / `description_too_long` / `member_duplicate` / `capacity_exceeded` / `member_not_found` / `room_archived`） |
+| `pydantic.ValidationError` | 構築時の型違反 + PromptKit VO 経由の長さ違反。application 層で catch（[detailed-design.md](detailed-design.md) §確定 I 2 段階 catch） | MSG-RM-007（PromptKit.prefix_markdown 長さ違反） |
 | その他 | 握り潰さない、application 層へ伝播 | 汎用エラーメッセージ |
