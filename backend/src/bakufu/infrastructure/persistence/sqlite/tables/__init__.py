@@ -12,6 +12,17 @@ Empire Aggregate (PR #25):
 * :mod:`...tables.empire_room_refs` — RoomRef collection.
 * :mod:`...tables.empire_agent_refs` — AgentRef collection.
 
+Workflow Aggregate (PR #31):
+
+* :mod:`...tables.workflows` — Workflow root row (entry_stage_id has
+  no DB-level FK; the Aggregate invariant guards it instead).
+* :mod:`...tables.workflow_stages` — Stage child rows. The
+  ``notify_channels_json`` column is the **first** ``MaskedJSONEncoded``
+  column outside ``audit_log`` / ``domain_event_outbox`` and is
+  registered with the CI three-layer defense's *positive* contract.
+* :mod:`...tables.workflow_transitions` — Transition child rows
+  (no-mask).
+
 Secret-bearing tables declare their columns with
 :class:`MaskedJSONEncoded` / :class:`MaskedText` TypeDecorators
 (defined in :mod:`bakufu.infrastructure.persistence.sqlite.base`) that
@@ -28,7 +39,10 @@ PR #23 BUG-PF-001 proved that listeners do not fire for Core
 Empire tables carry **no** secret-bearing columns; the explicit
 absence is registered with the CI three-layer defense
 (grep guard + arch test + storage.md §逆引き表) so a future PR cannot
-silently swap a column to a secret-bearing semantic.
+silently swap a column to a secret-bearing semantic. The Workflow
+``workflows`` / ``workflow_transitions`` tables follow the same
+no-mask pattern; only ``workflow_stages.notify_channels_json`` is
+secret-bearing on the Workflow side.
 """
 
 from __future__ import annotations
@@ -40,6 +54,9 @@ from bakufu.infrastructure.persistence.sqlite.tables import (
     empires,
     outbox,
     pid_registry,
+    workflow_stages,
+    workflow_transitions,
+    workflows,
 )
 
 __all__ = [
@@ -49,4 +66,7 @@ __all__ = [
     "empires",
     "outbox",
     "pid_registry",
+    "workflow_stages",
+    "workflow_transitions",
+    "workflows",
 ]
