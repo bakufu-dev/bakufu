@@ -3,7 +3,9 @@ name = "bakufu-backend"
 version = "0.0.0"
 description = "bakufu backend: FastAPI + SQLAlchemy + SQLite"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pydantic>=2.9",
+]
 
 [build-system]
 requires = ["hatchling"]
