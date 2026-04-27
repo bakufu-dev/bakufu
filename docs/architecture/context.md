@@ -2,7 +2,7 @@
 
 > **本書の位置づけ**: bakufu の **システムコンテキスト概観**。「何を作ろうとしているか」をプロダクト全体・アクター・主要ユースケース・スコープ・外部連携の観点で凍結する。実装担当（ai-team 開発室）が個別 feature の Vモデル設計書を起こす際の前提となる真実源。
 >
-> ドメインモデル（Aggregate / Entity / VO）は [`domain-model.md`](domain-model.md)、技術スタックは [`tech-stack.md`](tech-stack.md)、MVP の機能境界は [`mvp-scope.md`](mvp-scope.md) を参照。
+> ドメインモデル（Aggregate / Entity / VO）は [`domain-model.md`](domain-model.md)、技術スタックは [`tech-stack.md`](tech-stack.md)、MVP の機能境界は [`mvp-scope.md`](mvp-scope.md)、信頼境界 / 攻撃面 / OWASP Top 10 対応は [`threat-model.md`](threat-model.md) を参照。
 
 ## 1. プロダクト概要
 
