@@ -12,7 +12,7 @@
 | 入力 | `id: RoomId` / `name: str` / `description: str` / `workflow_id: WorkflowId` / `members: list[AgentMembership]` / `prompt_kit: PromptKit` / `archived: bool`（既定 False） |
 | 処理 | Pydantic 型バリデーション → `model_validator(mode='after')` で不変条件検査（`name` 1〜80 文字 / `description` 0〜500 文字 / `(agent_id, role)` 重複なし / `len(members) <= 50`）。すべて NFC + strip 適用後の長さで判定 |
 | 出力 | valid な `Room` インスタンス（frozen） |
-| エラー時 | `RoomInvariantViolation` を raise。`message` は MSG-RM-001/002/004/006、`kind` は `name_range` / `description_too_long` / `member_duplicate` / `capacity_exceeded` のいずれか |
+| エラー時 | `RoomInvariantViolation` を raise。`message` は MSG-RM-001/002/003/004（2 行構造 — `[FAIL] ...` + `Next: ...`、§確定 I）、`kind` は `name_range` / `description_too_long` / `member_duplicate` / `capacity_exceeded` のいずれか。`prompt_kit` 引数の長さ違反は **VO 構築段階で `pydantic.ValidationError`**（MSG-RM-007）として Room 構築前に raise 済み |
 
 ### REQ-RM-002: メンバー追加
 
@@ -105,15 +105,22 @@
 
 ## ユーザー向けメッセージ一覧
 
-| ID | 種別 | メッセージ（要旨） | 表示条件 |
-|----|------|----------------|---------|
-| MSG-RM-001 | エラー | Room name の長さ違反 | name の NFC + strip 後の length が 0 または 81 以上 |
-| MSG-RM-002 | エラー | Room description の長さ超過 | description の NFC + strip 後の length が 501 以上 |
-| MSG-RM-003 | エラー | members の `(agent_id, role)` 重複 | members 内に同一ペアが 2 件以上 |
-| MSG-RM-004 | エラー | members 件数が capacity 超過 | `len(members) > 50` |
-| MSG-RM-005 | エラー | members 内に対象 `(agent_id, role)` が見つからない | `remove_member` で不在のペアを指定 |
-| MSG-RM-006 | エラー | archived Room への変更操作 | `archived == True` の Room に `add_member` / `remove_member` / `update_prompt_kit` を実行 |
-| MSG-RM-007 | エラー | PromptKit.prefix_markdown の長さ超過 | NFC 後の length が 10001 以上 |
+全 MSG は **2 行構造**を採用する（§確定 I「フィードバック原則」、確定文言は detailed-design.md §MSG 確定文言表 で凍結）:
+
+- 1 行目: `[FAIL] <failure summary>` — 何が失敗したか
+- 2 行目: `Next: <action>` — 次に何をすべきか
+
+「Next:」必須は test-design.md の TC-UT-RM-NNN で `assert "Next:" in str(exc)` により CI 物理保証する。
+
+| ID | 種別 | 例外型 | kind | 表示条件 |
+|----|------|------|------|---------|
+| MSG-RM-001 | エラー | `RoomInvariantViolation` | `name_range` | name の NFC + strip 後の length が 0 または 81 以上 |
+| MSG-RM-002 | エラー | `RoomInvariantViolation` | `description_too_long` | description の NFC + strip 後の length が 501 以上 |
+| MSG-RM-003 | エラー | `RoomInvariantViolation` | `member_duplicate` | members 内に同一 `(agent_id, role)` ペアが 2 件以上 |
+| MSG-RM-004 | エラー | `RoomInvariantViolation` | `capacity_exceeded` | `len(members) > 50` |
+| MSG-RM-005 | エラー | `RoomInvariantViolation` | `member_not_found` | `remove_member` で不在のペアを指定 |
+| MSG-RM-006 | エラー | `RoomInvariantViolation` | `room_archived` | `archived == True` の Room に `add_member` / `remove_member` / `update_prompt_kit` を実行 |
+| MSG-RM-007 | エラー | `pydantic.ValidationError`（`PromptKit` VO 経由） | — | NFC 後の length が 10001 以上（VO 構築時に raise、Room ふるまい呼び出し前） |
 
 ## 依存関係
 

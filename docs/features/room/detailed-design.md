@@ -98,7 +98,7 @@ classDiagram
 |----|----|----|
 | `message` | `str` | MSG-RM-NNN 由来の文言（webhook URL は `<REDACTED:DISCORD_WEBHOOK>` 化済み） |
 | `detail` | `dict[str, object]` | 違反の文脈（webhook URL は `mask_discord_webhook_in` で再帰的に伏字化済み） |
-| `kind` | `Literal['name_range', 'description_too_long', 'member_duplicate', 'capacity_exceeded', 'member_not_found', 'room_archived', 'prompt_kit_too_long']` | 違反種別 |
+| `kind` | `Literal['name_range', 'description_too_long', 'member_duplicate', 'capacity_exceeded', 'member_not_found', 'room_archived']` | 違反種別。**`prompt_kit_too_long` は意図的に含めない** — PromptKit 長さ違反は §確定 I により `pydantic.ValidationError`（MSG-RM-007）として VO 構築段階で raise されるため、`RoomInvariantViolation.kind` に到達するパスが構造的に存在しない（デッドコード排除） |
 
 `Exception` 継承。`domain/exceptions.py` の他の例外（empire / workflow / agent）と統一フォーマット。**`super().__init__` 前に `message` を `mask_discord_webhook` で、`detail` を `mask_discord_webhook_in` で伏字化する**（agent / workflow と同パターン、多層防御）。
 
