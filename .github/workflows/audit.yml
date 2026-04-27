@@ -22,7 +22,7 @@ jobs:
       - name: Setup tools (no lefthook install)
         run: bash scripts/setup.sh --tools-only
 
-      - name: just audit (pip-audit + osv-scanner)
+      - name: just audit (pip-audit + pnpm audit)
         run: just audit
 
       - name: just audit-secrets (gitleaks on history)

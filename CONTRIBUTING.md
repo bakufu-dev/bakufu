@@ -191,7 +191,7 @@ pwsh scripts/setup.ps1
 | `just test` | backend (pytest) + frontend (vitest) を順次実行 |
 | `just test-backend` | backend のみ（pytest） |
 | `just test-frontend` | frontend のみ（vitest） |
-| `just audit` | 依存脆弱性監査（pip-audit + osv-scanner） |
+| `just audit` | 依存脆弱性監査（pip-audit + pnpm audit） |
 | `just audit-secrets` | staged 差分の secret 検査（gitleaks） |
 | `just audit-pin-sync` | setup.sh / setup.ps1 のピン定数同期検査 |
 | `just check-all` | 全品質ゲートを順次実行（最終確認用） |

@@ -41,10 +41,10 @@ test-backend:
 test-frontend:
     pnpm --dir frontend vitest run
 
-# Audit dependencies (pip-audit + osv-scanner)
+# Audit dependencies (pip-audit for Python, pnpm audit for Node)
 audit:
     uv run pip-audit
-    pnpm dlx osv-scanner --recursive .
+    pnpm audit
 
 # Scan staged changes for secrets (gitleaks)
 audit-secrets:
