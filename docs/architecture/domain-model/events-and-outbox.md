@@ -44,12 +44,12 @@
 | `event_id` | UUID（PK） | イベント一意識別。Handler 側冪等性キー |
 | `event_kind` | enum（`DirectiveIssued` / `TaskAssigned` / ...） | ディスパッチ先 Handler の決定 |
 | `aggregate_id` | UUID | 発火元 Aggregate（debug / 順序付け用） |
-| `payload_json` | JSON | イベント本体（VO のシリアライズ）。永続化前に [`storage.md`](storage.md) §シークレットマスキング規則 を適用 |
+| `payload_json` | JSON | イベント本体（VO のシリアライズ）。永続化前に [`storage.md`](storage.md) §シークレットマスキング規則 を適用。マスキング配線は SQLAlchemy `before_insert` / `before_update` event listener で**強制ゲートウェイ化**する（[`feature/persistence-foundation`](../../features/persistence-foundation/detailed-design.md) §確定 B / F）— 直 INSERT / raw SQL 経路でも listener が走るため呼び忘れ経路ゼロ |
 | `created_at` | datetime（UTC） | 発火時刻 |
 | `status` | `OutboxStatus` | `PENDING` / `DISPATCHING` / `DISPATCHED` / `DEAD_LETTER` |
 | `attempt_count` | int | リトライ回数 |
 | `next_attempt_at` | datetime（UTC） | 次回試行時刻（backoff 計算結果） |
-| `last_error` | str（NULL 可） | 直近失敗の例外メッセージ。永続化前にマスキング適用 |
+| `last_error` | str（NULL 可） | 直近失敗の例外メッセージ。永続化前にマスキング適用（同上、event listener 強制ゲートウェイ） |
 | `updated_at` | datetime（UTC） | 行更新時刻（再起動時のリカバリ判定に使用） |
 | `dispatched_at` | datetime（UTC, NULL 可） | `DISPATCHED` 遷移時刻 |
 
