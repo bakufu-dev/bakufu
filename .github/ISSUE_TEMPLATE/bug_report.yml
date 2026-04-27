@@ -1,0 +1,67 @@
+name: バグ報告
+description: 動作しない・クラッシュする等の不具合を報告する
+title: "fix: [バグの概要を簡潔に記述]"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        セキュリティ脆弱性の報告は **このフォームを使わず** [SECURITY.md](../SECURITY.md) の手順に従ってください。
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: 対象コンポーネント
+      options:
+        - backend (FastAPI)
+        - frontend (React UI)
+        - dev-workflow (lefthook / justfile / CI)
+        - ドキュメント
+        - その他
+    validations:
+      required: true
+
+  - type: dropdown
+    id: env
+    attributes:
+      label: 動作環境
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Docker
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: bakufu バージョン
+      placeholder: "例: v0.1.0 / commit hash"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 不具合の内容
+      description: 何が起きているか、何が期待されるかを説明してください
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順
+      placeholder: |
+        1. `just dev` で起動
+        2. UI で Room を作成
+        3. エラー発生
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: エラーログ・スタックトレース
+      render: text

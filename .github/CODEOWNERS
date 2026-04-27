@@ -1,0 +1,34 @@
+# CODEOWNERS — bakufu
+#
+# 各パスの変更には対応するオーナーのレビューが必須です。
+# フォーマット: <pattern> <owner> [<owner> ...]
+# 詳細: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# デフォルト: 全ファイルはリポジトリオーナーが管轄
+*                               @kkm-horikawa
+
+# ルート直下のガバナンスファイル
+/README.md                      @kkm-horikawa
+/LICENSE                        @kkm-horikawa
+/CONTRIBUTING.md                @kkm-horikawa
+/SECURITY.md                    @kkm-horikawa
+
+# GitHub 設定・CI ワークフロー
+/.github/                       @kkm-horikawa
+
+# アーキテクチャ設計書（設計責任者）
+/docs/architecture/             @kkm-horikawa
+
+# feature 単位の V モデル設計書
+/docs/features/                 @kkm-horikawa
+
+# 開発フロー（lefthook / justfile / setup スクリプト）
+/lefthook.yml                   @kkm-horikawa
+/justfile                       @kkm-horikawa
+/scripts/                       @kkm-horikawa
+
+# バックエンド（FastAPI + SQLAlchemy）
+/backend/                       @kkm-horikawa
+
+# フロントエンド（React + Vite + PixiJS）
+/frontend/                      @kkm-horikawa

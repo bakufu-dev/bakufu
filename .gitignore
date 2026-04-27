@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.python-version
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Node / TypeScript
+node_modules/
+.vite/
+.turbo/
+*.tsbuildinfo
+
+# Tooling
+.cargo/config.toml
+
+# bakufu local data
+*.sqlite
+*.sqlite-journal
+*.db
+/data/
+
+# Secrets / env
+.env
+.env.local
+.env.*.local
+/secrets/
+
+# IDE / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.DS_Store
+Thumbs.db
