@@ -58,6 +58,9 @@ type StageId = UUID
 type TransitionId = UUID
 """Transition entity identifier (within Workflow aggregate)."""
 
+type SkillId = UUID
+"""Skill identifier (referenced by :class:`SkillRef` inside Agent aggregate)."""
+
 
 # ---------------------------------------------------------------------------
 # Role enum
@@ -97,6 +100,23 @@ class TransitionCondition(StrEnum):
     REJECTED = "REJECTED"
     CONDITIONAL = "CONDITIONAL"
     TIMEOUT = "TIMEOUT"
+
+
+class ProviderKind(StrEnum):
+    """LLM provider per ``domain-model/value-objects.md`` §列挙型一覧.
+
+    All six values are defined upfront so adding a new provider in Phase 2
+    requires only an Adapter implementation + a ``BAKUFU_IMPLEMENTED_PROVIDERS``
+    update — never an enum migration that would force every persisted Agent
+    to be rebuilt (Agent feature §確定 I).
+    """
+
+    CLAUDE_CODE = "CLAUDE_CODE"
+    CODEX = "CODEX"
+    GEMINI = "GEMINI"
+    OPENCODE = "OPENCODE"
+    KIMI = "KIMI"
+    COPILOT = "COPILOT"
 
 
 # ---------------------------------------------------------------------------
@@ -339,9 +359,11 @@ __all__ = [
     "NormalizedShortName",
     "NotifyChannel",
     "NotifyChannelKind",
+    "ProviderKind",
     "Role",
     "RoomId",
     "RoomRef",
+    "SkillId",
     "StageId",
     "StageKind",
     "TransitionCondition",
