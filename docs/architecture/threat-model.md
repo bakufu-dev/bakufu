@@ -107,8 +107,16 @@ flowchart LR
 | 攻撃面 | 対策 | 配置先 |
 |----|----|----|
 | Admin CLI の不正実行 | Unix domain socket 経由で Backend に要求。SQLite 直接編集経路は持たない（Backend が落ちていれば操作不能） | [`tech-stack.md`](tech-stack.md) §Admin CLI 運用方針 |
-| 監査ログの改ざん | `audit_log` は追記のみ。DELETE / UPDATE（`result` 以外）を SQLite トリガで拒否 | [`domain-model/value-objects.md`](domain-model/value-objects.md) §audit_log |
-| ファイル権限 | `bakufu.db` 0600 / `BAKUFU_DATA_DIR` 0700 / `~/.config/bakufu/secrets.toml` 0600。起動時に確認、緩い場合は警告ログ + 起動中止 | feature `docs/features/persistence/` で詳細 |
+| 監査ログの改ざん（DELETE） | `audit_log` は追記のみ。SQLite トリガ `audit_log_no_delete`（BEFORE DELETE → RAISE ABORT）で拒否 | [`feature/persistence-foundation/detailed-design.md`](../features/persistence-foundation/detailed-design.md) §確定 C |
+| 監査ログの改ざん（UPDATE） | `result` / `error_text` の null → 値 遷移のみ許可。SQLite トリガ `audit_log_update_restricted` で `OLD.result IS NOT NULL` の UPDATE を拒否 | 同上 |
+| **トリガ自身の DROP / `sqlite_master` 改ざん**（Schneier 重大 2 対応の信頼境界） | application 接続で **PRAGMA `defensive=ON` / `writable_schema=OFF` / `trusted_schema=OFF`** を SET し runtime DDL を制限。Alembic migration 接続のみ `defensive=OFF` を許容し、Bootstrap stage 3 終了時に `dispose()` で破棄。技術的に困難な場合は **OS ユーザー隔離 + DB ファイル 0600 で DDL 経路を物理的に塞ぐ**（信頼境界の transparency） | [`feature/persistence-foundation/detailed-design.md`](../features/persistence-foundation/detailed-design.md) §確定 D |
+| **DB ファイル権限の異常検出** | 起動時に `bakufu.db` / `bakufu.db-wal` / `bakufu.db-shm` の mode を `os.stat` で検査。0o600 でなければ WARN ログ（過去の無断アクセス可能性を運用者に通知） + 修復後起動。サイレント chmod を**廃止**（Forensic 観点） | [`feature/persistence-foundation/requirements.md`](../features/persistence-foundation/requirements.md) §REQ-PF-002-A |
+| **WAL / SHM ファイルの権限漏洩** | Bootstrap 入口で `os.umask(0o077)` を SET。SQLite 自動生成の WAL / SHM ファイルが 0o644 で作られる経路を塞ぐ | [`feature/persistence-foundation/detailed-design.md`](../features/persistence-foundation/detailed-design.md) §確定 L |
+| **マスキングの fail-open 経路** | `MaskingGateway` は **Fail-Secure 契約**（生データを書く経路ゼロ、`<REDACTED:MASK_ERROR>` / `<REDACTED:LISTENER_ERROR>` / `<REDACTED:MASK_OVERFLOW>` で完全置換）。環境変数辞書ロード失敗は Fail Fast | [`feature/persistence-foundation/detailed-design.md`](../features/persistence-foundation/detailed-design.md) §確定 F |
+| **`BAKUFU_DB_PATH` 任意パス書き込み** | 環境変数を**廃止**（YAGNI）。DB ファイルパスは `<DATA_DIR>/bakufu.db` 固定で `BAKUFU_DATA_DIR` 検証ですべての書き込み先が守られる | [`feature/persistence-foundation/requirements.md`](../features/persistence-foundation/requirements.md) §REQ-PF-002 入力 |
+| ファイル権限 | `bakufu.db` 0600 / `BAKUFU_DATA_DIR` 0700 / `~/.config/bakufu/secrets.toml` 0600。起動時に検出 + 警告 + 修復、Forensic 観点でサイレント変更を避ける | feature `docs/features/persistence-foundation/` で詳細 |
+| **at-rest 暗号化なし**（信頼境界の透明性） | MVP では SQLCipher 等を採用しない。漏洩時の対策は **OS file mode 0600 + OS ユーザー隔離** に依存。Phase 2 で SQLCipher 導入（[`mvp-scope.md`](mvp-scope.md) §含めない機能） | [`feature/persistence-foundation/detailed-design.md`](../features/persistence-foundation/detailed-design.md) §確定 A 注 |
+| **pid_registry GC TOCTOU**（Schneier 軽微） | `psutil.create_time()` を `started_at` と比較し PID 衝突対策。`recursive=True` で子孫追跡、SIGTERM 5s grace → SIGKILL の順序固定。`AccessDenied` は WARN + 行残しで次回 GC 再試行（運用通知の Phase 2 拡張余地） | [`feature/persistence-foundation/detailed-design.md`](../features/persistence-foundation/detailed-design.md) §確定 E |
 
 ### A5. サプライチェーン（T5 対策）
 

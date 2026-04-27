@@ -115,19 +115,52 @@
 
 `Persona.prompt_body` / `PromptKit.prefix_markdown` / `Conversation.body_markdown` / `Deliverable.body_markdown` / `domain_event_outbox.payload_json` / `domain_event_outbox.last_error` / `audit_log.args_json` / `audit_log.error_text` / `Task.last_error` の 9 経路すべてを listener 配線で物理保証する（後続 Repository PR で table 定義と同時に listener 登録）。
 
-#### 確定 R1-E: 起動時 PRAGMA 強制方法
+#### 確定 R1-E: 起動時 PRAGMA 強制方法（Schneier 重大 2 対応で 8 件に拡張）
 
 SQLAlchemy の `event.listens_for(engine, 'connect')` で **毎接続時に PRAGMA を SET**する。
 
-| PRAGMA | 値 | 根拠 |
-|----|----|----|
-| `journal_mode` | `WAL` | 同時読み書き性能、再起動時の WAL 自動チェックポイント |
-| `foreign_keys` | `ON` | SQLite 既定 OFF。Aggregate 間の参照整合性を物理保証 |
-| `busy_timeout` | `5000`（ms） | 同時アクセス時のロック待ち上限 |
-| `synchronous` | `NORMAL`（WAL モードで安全） | 完全 fsync より高速、WAL の crash safety を維持 |
-| `temp_store` | `MEMORY` | 一時テーブル / インデックスをメモリで保持 |
+| # | PRAGMA | 値 | 根拠 |
+|---|----|----|----|
+| 1 | `journal_mode` | `WAL` | 同時読み書き性能、再起動時の WAL 自動チェックポイント |
+| 2 | `foreign_keys` | `ON` | SQLite 既定 OFF。Aggregate 間の参照整合性を物理保証 |
+| 3 | `busy_timeout` | `5000`（ms） | 同時アクセス時のロック待ち上限 |
+| 4 | `synchronous` | `NORMAL`（WAL モードで安全） | 完全 fsync より高速、WAL の crash safety を維持 |
+| 5 | `temp_store` | `MEMORY` | 一時テーブル / インデックスをメモリで保持 |
+| 6 | `defensive` | `ON`（SQLite 3.31+） | runtime DDL（CREATE / DROP TRIGGER 等）を制限し、`audit_log` トリガを DROP できない経路に置く |
+| 7 | `writable_schema` | `OFF` | runtime 中の `sqlite_master` 直接 UPDATE を阻止 |
+| 8 | `trusted_schema` | `OFF` | スキーマ内の関数・VIEW などへの信頼を最小化 |
 
-`engine.begin()` で接続を取得した時点で全 PRAGMA が設定済みであることを保証。Alembic も同じ engine を使うため migration 中も適用される。
+application 接続では上記 8 件すべてを SET。**Alembic migration 接続のみ別経路（`defensive=OFF`）で生成し、Bootstrap stage 3 終了時に `dispose()` で破棄**する（dual connection、詳細設計書 §確定 D-2）。これにより Backend ランタイム中は DDL 制限された接続しか存在せず、攻撃者が runtime DDL でトリガを DROP する経路を物理的に塞ぐ。
+
+`defensive=ON` が技術的に困難な場合は **OS ユーザー隔離 + DB ファイル 0600 で DDL 経路を物理的に塞ぐ** フォールバックを採用（threat-model.md §A4 で信頼境界を明記）。
+
+#### 確定 R1-F: DB ファイル権限の検出 + 警告（Schneier 重大 3 対応）
+
+`os.chmod` のサイレント修正を**廃止**。Forensic 観点で異常状態の検出可能性を残す。詳細は requirements.md §REQ-PF-002-A。
+
+#### 確定 R1-G: `BAKUFU_DB_PATH` 環境変数の廃止（Schneier 重大 4 対応）
+
+DB ファイルパスは `<DATA_DIR>/bakufu.db` 固定。`BAKUFU_DATA_DIR` だけ守って `BAKUFU_DB_PATH` がノーガードで存在する状態は防衛として整合性がない。YAGNI で攻撃面を減らす。
+
+#### 確定 R1-H: マスキング Fail-Secure 契約（Schneier 重大 1 対応）
+
+`MaskingGateway` は **生データを書く経路ゼロ**を絶対不変条件とする。例外時は `<REDACTED:MASK_ERROR>` / `<REDACTED:LISTENER_ERROR>` / `<REDACTED:MASK_OVERFLOW>` で完全置換。環境変数辞書ロード失敗は Fail Fast。詳細は detailed-design.md §確定 F。
+
+#### 確定 R1-I: Bootstrap 入口の `os.umask(0o077)`（Schneier 中等 1 対応）
+
+WAL / SHM ファイルが SQLite 自動生成時に umask 0o022 で 0o644 に作られる経路を塞ぐ。`Bootstrap.run()` の最初の文で `os.umask(0o077)` を SET。POSIX 限定。詳細は detailed-design.md §確定 L。
+
+#### 確定 R1-J: `BAKUFU_DB_KEY` の削除（Schneier 中等 2 対応、YAGNI）
+
+MVP では SQLCipher 等の at-rest 暗号化を採用しない方針（[`mvp-scope.md`](../../architecture/mvp-scope.md) §含めない機能）。`BAKUFU_DB_KEY` を masking 対象 env から削除し、代わりに `BAKUFU_DISCORD_BOT_TOKEN`（threat-model.md §資産 で「高」機密性が明記）を追加。Phase 2 で SQLCipher 導入時に再度 masking 対象に追加。
+
+#### 確定 R1-K: 空 handler レジストリ稼働時の WARN（Schneier 中等 3 対応）
+
+dispatcher は本 PR で起動するが、handler レジストリが空の場合は WARN ログで運用者に Fail Loud で通知する。Outbox 滞留閾値（PENDING > 100 件）でも WARN 出力。詳細は detailed-design.md §確定 K。
+
+#### 確定 R1-L: Bootstrap 起動失敗時の cleanup（Schneier 中等 4 対応）
+
+Bootstrap は `try / finally` 構造で stage 6 / 7 で起動した task を **後に起動したものから先に cancel**（LIFO）し、engine `dispose()` を呼んでから exit する。Phase 2 のグレースフルシャットダウン拡張への伸び代を残す設計。詳細は detailed-design.md §確定 J。
 
 ## ペルソナ
 

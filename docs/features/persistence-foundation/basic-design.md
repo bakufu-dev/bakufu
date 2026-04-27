@@ -172,16 +172,17 @@ classDiagram
 ### ユースケース 1: Backend 起動
 
 1. `python -m bakufu` でプロセス起動
-2. `Bootstrap.run()` が起動シーケンス 8 段階を順次実行
-3. (1) `DataDirResolver.resolve()` で DATA_DIR を絶対パス確定 → singleton 保持
-4. (2) `SqliteEngine.create_engine()` で async engine 生成 + PRAGMA listener 登録
-5. (3) Alembic `upgrade head` で初回 revision 適用（3 テーブル + 2 トリガ）
-6. (4) `PidRegistryGC.run_startup_gc()` で前回プロセス孤児 kill + テーブル整理
-7. (5) `AttachmentRootInitializer.ensure_root()` で `<DATA_DIR>/attachments/` を 0700 で作成
-8. (6) `OutboxDispatcher.start()` で 1 秒間隔の polling task を asyncio.create_task で起動
-9. (7) `AttachmentRootInitializer.start_orphan_gc_scheduler()` で 24h 周期の GC タスク起動
-10. (8) FastAPI / WebSocket リスナを `127.0.0.1:8000` で開始
-11. 各段階で例外発生 → 即時 exit 非 0（後続段階に進まない）
+2. `Bootstrap.run()` が以下を実行
+3. **(stage 0、stage 1 より前)** `os.umask(0o077)` を SET（Schneier 中等 1 対応、WAL / SHM ファイル 0o600 確保）
+4. (1) `DataDirResolver.resolve()` で DATA_DIR を絶対パス確定 → singleton 保持。INFO ログ「stage 1/8 started/completed」
+5. (2) `SqliteEngine.create_engine()` で application 用 async engine を生成 + PRAGMA 8 件 listener 登録（`defensive=ON` / `writable_schema=OFF` / `trusted_schema=OFF` を含む）。DB ファイル権限の検出 + 警告 + 修復（Schneier 重大 3 対応）。INFO ログ「stage 2/8」
+6. (3) **migration 専用 engine を `defensive=OFF` で生成** → Alembic `upgrade head` で初回 revision 適用（3 テーブル + 2 トリガ）→ migration engine `dispose()`（dual connection、Schneier 重大 2 対応）。INFO ログ「stage 3/8」
+7. (4) `PidRegistryGC.run_startup_gc()` で前回プロセス孤児 kill + テーブル整理。`psutil.AccessDenied` は WARN（致命的でない）。INFO ログ「stage 4/8」
+8. (5) `AttachmentRootInitializer.ensure_root()` で `<DATA_DIR>/attachments/` を 0700 で作成。INFO ログ「stage 5/8」
+9. (6) `OutboxDispatcher.start()` で 1 秒間隔の polling task を asyncio.create_task で起動。**handler レジストリが空なら WARN ログ**（Schneier 中等 3 対応）。INFO ログ「stage 6/8」
+10. (7) `AttachmentRootInitializer.start_orphan_gc_scheduler()` で 24h 周期の GC タスク起動。INFO ログ「stage 7/8」
+11. (8) FastAPI / WebSocket リスナを `127.0.0.1:8000` で開始。INFO ログ「stage 8/8 ... bakufu Backend ready」
+12. 各段階で例外発生 → `try / finally` で **段階 6 / 7 の task を LIFO で cancel** + engine `dispose()` + 構造化ログ flush → exit 非 0（Schneier 中等 4 対応）
 
 ### ユースケース 2: Aggregate 永続化（後続 Repository PR が利用）
 
@@ -309,7 +310,7 @@ sequenceDiagram
 
 ### 脅威モデル
 
-詳細な信頼境界は [`docs/architecture/threat-model.md`](../../architecture/threat-model.md)。本 feature 範囲では以下の 5 件。
+詳細な信頼境界は [`docs/architecture/threat-model.md`](../../architecture/threat-model.md)。本 feature 範囲では以下の **9 件**（Schneier 重大 4 + 中等 4 + 軽微 1 を脅威モデルに昇格）:
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|
@@ -317,22 +318,30 @@ sequenceDiagram
 | **T2: `audit_log` の改ざん / 削除** | DB ファイルに直接 SQL を流して DELETE / UPDATE | 監査証跡 | SQLite トリガで `BEFORE DELETE → RAISE(ABORT)`、UPDATE は `result` / `error_text` の null 埋めのみ許可（OWASP A08） |
 | **T3: 相対 `BAKUFU_DATA_DIR` による cwd 依存攻撃** | 攻撃者が cwd を制御してデータを別ディレクトリに置かせる | DB ファイル / アタッチメント | 起動時に絶対パス強制 + Fail Fast（OWASP A05） |
 | **T4: subprocess 孤児 kill の他プロジェクト誤射** | 同一 OS ユーザーが別プロジェクトで起動した CLI を bakufu の起動時 GC が誤って kill | 他プロジェクトの動作 | `psutil.Process.create_time()` を `started_at` と比較し、不一致なら保護（テーブルから DELETE のみ、kill しない）。`recursive=True` で子孫追跡 |
-| **T5: SQLite ファイルの権限不足による secret 流出** | 他 OS ユーザー / プログラムが `bakufu.db` を読み取り | 全 Aggregate / audit_log | 起動時に DB ファイル / WAL ファイル / `attachments/` ディレクトリを `0600` / `0700` 強制（POSIX）。Windows は `%LOCALAPPDATA%` のホーム配下を信頼（OWASP A05） |
+| **T5: SQLite ファイルの権限不足による secret 流出** | 他 OS ユーザー / プログラムが `bakufu.db` を読み取り | 全 Aggregate / audit_log | DB ファイル権限の **検出 + 警告 + 修復**（サイレント chmod を廃止、Forensic 観点）。Bootstrap 入口で `os.umask(0o077)` SET により WAL / SHM が 0o600 で作られることを保証。Windows は `%LOCALAPPDATA%` のホーム配下を信頼（OWASP A05） |
+| **T6: マスキングの fail-open 経路**（Schneier 重大 1） | listener 内例外 / 環境変数辞書ロード失敗で生 secret が永続化される | OAuth トークン / API key | `MaskingGateway` を **Fail-Secure 契約**（生データを書く経路ゼロ、`<REDACTED:MASK_ERROR>` 等で完全置換）。env 辞書ロード失敗は Fail Fast（OWASP A02） |
+| **T7: SQLite トリガの DROP / `sqlite_master` 改ざん**（Schneier 重大 2） | application 接続から `DROP TRIGGER` / `UPDATE sqlite_master` を発行してトリガ削除 | `audit_log` 不変性 | application 接続で **PRAGMA `defensive=ON` / `writable_schema=OFF` / `trusted_schema=OFF`** を SET し runtime DDL を制限。Alembic migration 接続のみ別経路（dual connection）。技術的に困難な場合は OS ユーザー隔離 + DB 0600 で物理封鎖（OWASP A08） |
+| **T8: `BAKUFU_DB_PATH` 任意パス書き込み**（Schneier 重大 4） | 環境変数で `/etc/passwd` / `../../sensitive/...` 等を指定 | 任意の filesystem | `BAKUFU_DB_PATH` 環境変数を**廃止**。DB パスは `<DATA_DIR>/bakufu.db` 固定（YAGNI、OWASP A04） |
+| **T9: 空 handler レジストリ下の Outbox 滞留**（Schneier 中等 3） | dispatcher が起動するが handler 未登録で行が累積し気付かない | Outbox 健全性 / 運用者の状況把握 | 起動時に空レジストリ検出で WARN ログ、polling サイクルで PENDING 行検出時 WARN（重複抑止 1 サイクル 1 回）、PENDING > 100 件で滞留 WARN（OWASP A09） |
 
 ### OWASP Top 10 対応
 
 | # | カテゴリ | 対応状況 |
 |---|---------|---------|
 | A01 | Broken Access Control | 該当なし（infrastructure 層、認可は別 feature） |
-| A02 | Cryptographic Failures | **適用**: マスキングゲートウェイで API key / OAuth トークンを永続化前に伏字化 |
+| A02 | Cryptographic Failures | **適用**: マスキングゲートウェイで API key / OAuth トークンを永続化前に伏字化、**Fail-Secure 契約**で生データを書く経路ゼロ |
 | A03 | Injection | **適用**: SQLAlchemy ORM 経由で SQL injection 防御。raw SQL は使わない |
-| A04 | Insecure Design | **適用**: pre-validate / Fail Fast（DATA_DIR / engine / migration の各段階） |
-| A05 | Security Misconfiguration | **適用**: PRAGMA 強制 / file mode 0600 / 0700 / Alembic 適用必須 |
+| A04 | Insecure Design | **適用**: pre-validate / Fail Fast（DATA_DIR / engine / migration の各段階）。`BAKUFU_DB_PATH` を廃止して攻撃面を減らす |
+| A05 | Security Misconfiguration | **適用**: PRAGMA 8 件強制（`defensive=ON` / `writable_schema=OFF` 含む）/ file mode 0600 / 0700 / Alembic 適用必須 / `os.umask(0o077)` |
 | A06 | Vulnerable Components | SQLAlchemy 2.x / Alembic / aiosqlite / psutil（pip-audit で監視） |
 | A07 | Auth Failures | 該当なし |
-| A08 | Data Integrity Failures | **適用**: `audit_log` 追記 only + DELETE 拒否トリガ |
-| A09 | Logging Failures | **適用**: マスキング適用ログ、Outbox `last_error` masking |
+| A08 | Data Integrity Failures | **適用**: `audit_log` 追記 only + DELETE / UPDATE 拒否トリガ + dual connection で runtime DDL 制限 |
+| A09 | Logging Failures | **適用**: マスキング適用ログ / Outbox `last_error` masking / 起動 8 段階 INFO ログ / 空 handler / 滞留 WARN |
 | A10 | SSRF | 該当なし（外部 URL fetch なし） |
+
+##### マスキング適用先 → 配線箇所の逆引き
+
+[`storage.md`](../../architecture/domain-model/storage.md) §適用先 → 配線箇所の逆引き表 を参照。新規 Aggregate Repository PR は本表に行を追加する責務（masking 対象カラムが listener 未登録の状態で永続化される PR はレビュー却下）。
 
 ## ER 図
 

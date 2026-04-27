@@ -18,10 +18,36 @@
 
 | 項目 | 内容 |
 |------|------|
-| 入力 | REQ-PF-001 で解決した DATA_DIR、`BAKUFU_DB_PATH` 環境変数（既定: `<DATA_DIR>/bakufu.db`） |
-| 処理 | (a) `sqlalchemy.ext.asyncio.create_async_engine(url, future=True, echo=BAKUFU_DEBUG)` で async engine を生成。URL: `sqlite+aiosqlite:///<absolute path>`。(b) `event.listens_for(engine.sync_engine, 'connect')` で接続時 PRAGMA を SET（`journal_mode=WAL` / `foreign_keys=ON` / `busy_timeout=5000` / `synchronous=NORMAL` / `temp_store=MEMORY`）。(c) DB ファイルが POSIX で `0600` でなければ `os.chmod` で強制（Windows は ACL 適用なしで pass） |
+| 入力 | REQ-PF-001 で解決した DATA_DIR。**DB ファイルパスは `<DATA_DIR>/bakufu.db` 固定**（Schneier 重大 4 対応で `BAKUFU_DB_PATH` 環境変数は廃止 — YAGNI、攻撃面を減らす） |
+| 処理 | (a) `sqlalchemy.ext.asyncio.create_async_engine(url, future=True, echo=BAKUFU_DEBUG)` で application 用 async engine を生成。URL: `sqlite+aiosqlite:///<absolute path>`。(b) `event.listens_for(engine.sync_engine, 'connect')` で接続時 PRAGMA を SET（**詳細設計 §確定 D-1 の 8 件**: `journal_mode=WAL` / `foreign_keys=ON` / `busy_timeout=5000` / `synchronous=NORMAL` / `temp_store=MEMORY` / `defensive=ON` / `writable_schema=OFF` / `trusted_schema=OFF`）。(c) **DB ファイル権限の検出 + 警告**（Schneier 重大 3 対応、§REQ-PF-002-A 参照） |
 | 出力 | `AsyncEngine` インスタンス（モジュールスコープ singleton） |
-| エラー時 | engine 生成失敗 → 例外を raise してプロセス終了。PRAGMA SET 失敗（SQLite version 古い等）→ Fail Fast、`BakufuConfigError(MSG-PF-002)` |
+| エラー時 | engine 生成失敗 → 例外を raise してプロセス終了。PRAGMA SET 失敗（SQLite version 古い等）→ Fail Fast、`BakufuConfigError(MSG-PF-002)`。DB ファイル権限が想定外 → §REQ-PF-002-A の動作 |
+
+#### REQ-PF-002-A: DB ファイル権限の検出 + 警告（Schneier 重大 3 対応、Forensic 観点）
+
+`os.chmod` でサイレントに修正する設計を**廃止**。過去に発生した権限変更の痕跡を消さず、運用者に通知する設計に変更。
+
+| ケース | 検出ロジック | 動作 |
+|---|---|---|
+| **新規 DB ファイル**（path が存在しない） | `Path.exists() == False` | engine 経由で SQLite が DB ファイルを新規作成。**作成直後に `os.stat` でモード確認**し `0o600` でなければ `os.chmod(path, 0o600)` で強制。**INFO ログ**「Created new DB file at {path} (mode=0o600)」 |
+| **既存 DB ファイル、権限正常**（POSIX、mode == 0o600） | `os.stat(path).st_mode & 0o777 == 0o600` | INFO ログ「DB file at {path} has expected permission 0o600」のみで通常起動 |
+| **既存 DB ファイル、権限異常**（POSIX、mode != 0o600） | 同上の不一致 | **WARN ログ + 修復 + 続行**: `[WARN] DB file at {path} has unexpected permission 0o{mode}, expected 0o600. This may indicate prior unauthorized access. Manual investigation recommended (compare with audit_log of last access). Auto-fixing to 0o600 to prevent further exposure.` を ERROR ログにも複製、`os.chmod(path, 0o600)` で修復、起動続行 |
+| **WAL / SHM ファイル**（`bakufu.db-wal` / `bakufu.db-shm`） | 同上の検査を WAL / SHM ファイルにも適用 | 同上 |
+| **Windows** | `platform.system() == 'Windows'` | `os.stat` のモードビットは意味を持たないため検査スキップ。`%LOCALAPPDATA%` のホーム配下を信頼（threat-model.md §T5 で明記） |
+
+##### Forensic 観点の論拠
+
+- 「サイレントに直す」は**異常状態の検出可能性を消す**アンチパターン
+- 「Fail Fast で起動拒否」は安全だが、運用上の自動復旧ができない（CEO 個人運用なので可、ただし最低でも WARN による検出可能性を残せば十分）
+- WARN + 修復 + 続行が運用バランスとして妥当
+
+##### test-design.md でのカバレッジ
+
+| TC | 検証内容 |
+|----|----|
+| TC-IT-PF-002-A | 新規 DB ファイル作成時 0o600 で作成される（POSIX）|
+| TC-IT-PF-002-B | 既存 DB ファイルが 0o644 だった場合に WARN ログ + 修復後起動する |
+| TC-IT-PF-002-C | WAL / SHM ファイルにも同じ検出ロジックが適用される |
 
 ### REQ-PF-003: AsyncSession factory
 
@@ -46,7 +72,7 @@
 | 項目 | 内容 |
 |------|------|
 | 入力 | 任意の文字列 / dict / list（再帰的に走査される） |
-| 処理 | 適用順序を厳守（[`storage.md`](../../architecture/domain-model/storage.md) §適用順序）: (1) 起動時に `os.environ` から `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` / `GH_TOKEN` / `GITHUB_TOKEN` / `OAUTH_CLIENT_SECRET` / `BAKUFU_DB_KEY` の値（長さ 8 以上）をパターン辞書化 → 完全一致を `<REDACTED:ENV:<KEY>>` 化、(2) 9 種正規表現（Anthropic / OpenAI / GitHub PAT / GitHub fine-grained PAT / AWS Access / AWS Secret / Slack / Discord bot / Bearer）を順次適用、(3) `$HOME` 絶対パスを `<HOME>` 置換 |
+| 処理 | 適用順序を厳守（[`storage.md`](../../architecture/domain-model/storage.md) §適用順序）: (1) 起動時に `os.environ` から `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` / `GH_TOKEN` / `GITHUB_TOKEN` / `OAUTH_CLIENT_SECRET` / `BAKUFU_DISCORD_BOT_TOKEN` の値（長さ 8 以上）をパターン辞書化 → 完全一致を `<REDACTED:ENV:<KEY>>` 化、(2) 9 種正規表現（Anthropic / OpenAI / GitHub PAT / GitHub fine-grained PAT / AWS Access / AWS Secret / Slack / Discord bot / Bearer）を順次適用、(3) `$HOME` 絶対パスを `<HOME>` 置換。**注**: `BAKUFU_DB_KEY` は MVP では SQLCipher 等の at-rest 暗号化を採用しないため削除（Schneier 中等 2 対応、YAGNI / 不要な攻撃面の事前排除）。代わりに `BAKUFU_DISCORD_BOT_TOKEN` を masking 対象に追加（threat-model.md §資産 で明記済みの高機密 token） |
 | 出力 | masking 適用済みの文字列（または再帰的に適用済みの dict / list） |
 | エラー時 | 該当なし — masking は失敗しない（regex compile は起動時に完了済み）。万一の例外は上位に伝播せず、masking 後 `<REDACTED:UNKNOWN>` でフォールバック |
 
