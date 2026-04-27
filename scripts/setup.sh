@@ -183,39 +183,211 @@ verify_sha256() {
 }
 
 # ───────────────────────────────────────────────────────────────
-# 各ツールの GitHub Releases からの導入は Sub-issue C で実装する。
-# 本スケルトンでは、ピン定数の確定後に以下を実装する想定:
-#
-#   install_uv()       - astral-sh/uv の OS/arch に対応した tar.gz/zip を取得
-#   install_just()     - casey/just
-#   install_convco()   - convco/convco
-#   install_lefthook() - evilmartians/lefthook
-#   install_gitleaks() - gitleaks/gitleaks
-#
-# 各関数は以下を共通実装:
-#   1. command -v で既存検査 → あれば MSG-DW-006 を表示してスキップ
-#   2. プラットフォームに対応した URL を合成
-#   3. curl -sSfL でダウンロード
-#   4. verify_sha256 でピン値と照合
-#   5. tar/unzip で展開し、$BIN_DIR に配置
-#   6. chmod +x
+# GitHub Releases からのバイナリ取得（共通ヘルパ）
 # ───────────────────────────────────────────────────────────────
+download_to_tmp() {
+    # $1=URL, prints tmpfile path on stdout
+    local url=$1 tmpfile
+    tmpfile=$(mktemp)
+    if ! curl -sSfL "$url" -o "$tmpfile"; then
+        rm -f "$tmpfile"
+        echo "[FAIL] ダウンロード失敗: $url" >&2
+        exit 1
+    fi
+    echo "$tmpfile"
+}
 
-# Step 11. Python ツール導入（uv tool install）
+# ───────────────────────────────────────────────────────────────
+# Step 6. uv 導入
+# ───────────────────────────────────────────────────────────────
+install_uv() {
+    if command -v uv >/dev/null 2>&1; then
+        echo "[SKIP] uv は既にインストール済みです。"
+        echo "バージョン: $(uv --version 2>&1 | head -1)"
+        return 0
+    fi
+    local platform asset sha url tmpfile tmpdir
+    platform=$(detect_platform)
+    case "$platform" in
+        LINUX_X86_64)   asset="uv-x86_64-unknown-linux-gnu.tar.gz";   sha=$UV_SHA256_LINUX_X86_64 ;;
+        LINUX_ARM64)    asset="uv-aarch64-unknown-linux-gnu.tar.gz";  sha=$UV_SHA256_LINUX_ARM64 ;;
+        DARWIN_X86_64)  asset="uv-x86_64-apple-darwin.tar.gz";        sha=$UV_SHA256_DARWIN_X86_64 ;;
+        DARWIN_ARM64)   asset="uv-aarch64-apple-darwin.tar.gz";       sha=$UV_SHA256_DARWIN_ARM64 ;;
+    esac
+    url="https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/${asset}"
+    tmpfile=$(download_to_tmp "$url")
+    verify_sha256 "$tmpfile" "$sha"
+    tmpdir=$(mktemp -d)
+    tar -xzf "$tmpfile" -C "$tmpdir"
+    # tar.gz は uv-{platform}/uv の構造
+    find "$tmpdir" -name 'uv' -type f -exec mv {} "$BIN_DIR/uv" \;
+    chmod +x "$BIN_DIR/uv"
+    rm -rf "$tmpdir" "$tmpfile"
+    echo "[OK] uv ${UV_VERSION} を $BIN_DIR/uv に配置しました。"
+}
+
+# ───────────────────────────────────────────────────────────────
+# Step 7. just 導入
+# ───────────────────────────────────────────────────────────────
+install_just() {
+    if command -v just >/dev/null 2>&1; then
+        echo "[SKIP] just は既にインストール済みです。"
+        echo "バージョン: $(just --version 2>&1)"
+        return 0
+    fi
+    local platform asset sha url tmpfile tmpdir
+    platform=$(detect_platform)
+    case "$platform" in
+        LINUX_X86_64)   asset="just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz";   sha=$JUST_SHA256_LINUX_X86_64 ;;
+        LINUX_ARM64)    asset="just-${JUST_VERSION}-aarch64-unknown-linux-musl.tar.gz";  sha=$JUST_SHA256_LINUX_ARM64 ;;
+        DARWIN_X86_64)  asset="just-${JUST_VERSION}-x86_64-apple-darwin.tar.gz";         sha=$JUST_SHA256_DARWIN_X86_64 ;;
+        DARWIN_ARM64)   asset="just-${JUST_VERSION}-aarch64-apple-darwin.tar.gz";        sha=$JUST_SHA256_DARWIN_ARM64 ;;
+    esac
+    url="https://github.com/casey/just/releases/download/${JUST_VERSION}/${asset}"
+    tmpfile=$(download_to_tmp "$url")
+    verify_sha256 "$tmpfile" "$sha"
+    tmpdir=$(mktemp -d)
+    tar -xzf "$tmpfile" -C "$tmpdir"
+    # just の tar.gz は root 直下に just バイナリ
+    mv "$tmpdir/just" "$BIN_DIR/just"
+    chmod +x "$BIN_DIR/just"
+    rm -rf "$tmpdir" "$tmpfile"
+    echo "[OK] just ${JUST_VERSION} を $BIN_DIR/just に配置しました。"
+}
+
+# ───────────────────────────────────────────────────────────────
+# Step 8. convco 導入
+# ───────────────────────────────────────────────────────────────
+install_convco() {
+    if command -v convco >/dev/null 2>&1; then
+        echo "[SKIP] convco は既にインストール済みです。"
+        echo "バージョン: $(convco --version 2>&1)"
+        return 0
+    fi
+    local platform asset sha url tmpfile tmpdir
+    platform=$(detect_platform)
+    case "$platform" in
+        LINUX_X86_64)   asset="convco-ubuntu.zip";          sha=$CONVCO_SHA256_LINUX_X86_64 ;;
+        LINUX_ARM64)    asset="convco-ubuntu-aarch64.zip";  sha=$CONVCO_SHA256_LINUX_ARM64 ;;
+        DARWIN_X86_64)  asset="convco-macos.zip";           sha=$CONVCO_SHA256_DARWIN_X86_64 ;;
+        DARWIN_ARM64)   asset="convco-macos.zip";           sha=$CONVCO_SHA256_DARWIN_ARM64 ;;
+    esac
+    url="https://github.com/convco/convco/releases/download/v${CONVCO_VERSION}/${asset}"
+    tmpfile=$(download_to_tmp "$url")
+    verify_sha256 "$tmpfile" "$sha"
+    tmpdir=$(mktemp -d)
+    unzip -q "$tmpfile" -d "$tmpdir"
+    mv "$tmpdir/convco" "$BIN_DIR/convco"
+    chmod +x "$BIN_DIR/convco"
+    rm -rf "$tmpdir" "$tmpfile"
+    echo "[OK] convco ${CONVCO_VERSION} を $BIN_DIR/convco に配置しました。"
+}
+
+# ───────────────────────────────────────────────────────────────
+# Step 9. lefthook 導入
+# ───────────────────────────────────────────────────────────────
+install_lefthook() {
+    if command -v lefthook >/dev/null 2>&1; then
+        echo "[SKIP] lefthook は既にインストール済みです。"
+        echo "バージョン: $(lefthook version 2>&1)"
+        return 0
+    fi
+    local platform asset sha url tmpfile
+    platform=$(detect_platform)
+    case "$platform" in
+        LINUX_X86_64)   asset="lefthook_${LEFTHOOK_VERSION}_Linux_x86_64.gz";   sha=$LEFTHOOK_SHA256_LINUX_X86_64 ;;
+        LINUX_ARM64)    asset="lefthook_${LEFTHOOK_VERSION}_Linux_arm64.gz";    sha=$LEFTHOOK_SHA256_LINUX_ARM64 ;;
+        DARWIN_X86_64)  asset="lefthook_${LEFTHOOK_VERSION}_MacOS_x86_64.gz";   sha=$LEFTHOOK_SHA256_DARWIN_X86_64 ;;
+        DARWIN_ARM64)   asset="lefthook_${LEFTHOOK_VERSION}_MacOS_arm64.gz";    sha=$LEFTHOOK_SHA256_DARWIN_ARM64 ;;
+    esac
+    url="https://github.com/evilmartians/lefthook/releases/download/v${LEFTHOOK_VERSION}/${asset}"
+    tmpfile=$(download_to_tmp "$url")
+    verify_sha256 "$tmpfile" "$sha"
+    # .gz は単一バイナリの圧縮
+    gunzip -c "$tmpfile" > "$BIN_DIR/lefthook"
+    chmod +x "$BIN_DIR/lefthook"
+    rm -f "$tmpfile"
+    echo "[OK] lefthook ${LEFTHOOK_VERSION} を $BIN_DIR/lefthook に配置しました。"
+}
+
+# ───────────────────────────────────────────────────────────────
+# Step 10. gitleaks 導入
+# ───────────────────────────────────────────────────────────────
+install_gitleaks() {
+    if command -v gitleaks >/dev/null 2>&1; then
+        echo "[SKIP] gitleaks は既にインストール済みです。"
+        echo "バージョン: $(gitleaks version 2>&1)"
+        return 0
+    fi
+    local platform asset sha url tmpfile tmpdir
+    platform=$(detect_platform)
+    case "$platform" in
+        LINUX_X86_64)   asset="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz";    sha=$GITLEAKS_SHA256_LINUX_X86_64 ;;
+        LINUX_ARM64)    asset="gitleaks_${GITLEAKS_VERSION}_linux_arm64.tar.gz";  sha=$GITLEAKS_SHA256_LINUX_ARM64 ;;
+        DARWIN_X86_64)  asset="gitleaks_${GITLEAKS_VERSION}_darwin_x64.tar.gz";   sha=$GITLEAKS_SHA256_DARWIN_X86_64 ;;
+        DARWIN_ARM64)   asset="gitleaks_${GITLEAKS_VERSION}_darwin_arm64.tar.gz"; sha=$GITLEAKS_SHA256_DARWIN_ARM64 ;;
+    esac
+    url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${asset}"
+    tmpfile=$(download_to_tmp "$url")
+    verify_sha256 "$tmpfile" "$sha"
+    tmpdir=$(mktemp -d)
+    tar -xzf "$tmpfile" -C "$tmpdir"
+    mv "$tmpdir/gitleaks" "$BIN_DIR/gitleaks"
+    chmod +x "$BIN_DIR/gitleaks"
+    rm -rf "$tmpdir" "$tmpfile"
+    echo "[OK] gitleaks ${GITLEAKS_VERSION} を $BIN_DIR/gitleaks に配置しました。"
+}
+
+# ───────────────────────────────────────────────────────────────
+# PATH 拡張（GitHub Actions 互換 + ローカル）
+# ───────────────────────────────────────────────────────────────
+export PATH="$BIN_DIR:$PATH"
+if [[ -n "${GITHUB_PATH:-}" ]]; then
+    echo "$BIN_DIR" >> "$GITHUB_PATH"
+fi
+
+# Step 6-10. GitHub Releases から 5 ツール導入
+install_uv
+install_just
+install_convco
+install_lefthook
+install_gitleaks
+
+# Step 11. Python ツール導入（uv tool install、冪等）
+# 別経路（apt/pip 等）でも導入済みなら uv tool は走らせない。bakufu は
+# 既存 ruff/pyright/pip-audit を尊重する方針（PATH に居れば OK）。
 install_python_tools() {
     if ! command -v uv >/dev/null 2>&1; then
         echo "[FAIL] uv の導入後に再実行してください。" >&2
         exit 1
     fi
-    uv tool install ruff
-    uv tool install pyright
-    uv tool install pip-audit
+    for tool in ruff pyright pip-audit; do
+        if command -v "$tool" >/dev/null 2>&1; then
+            echo "[SKIP] $tool は既にインストール済みです。"
+        else
+            uv tool install "$tool"
+        fi
+    done
 }
 
 # Step 12. Node ツール導入
+# pnpm の global bin を PNPM_HOME に固定（未設定なら ~/.local/share/pnpm）。
 install_node_tools() {
     corepack enable
-    pnpm install -g @biomejs/biome osv-scanner
+    if [[ -z "${PNPM_HOME:-}" ]]; then
+        export PNPM_HOME="${HOME}/.local/share/pnpm"
+    fi
+    mkdir -p "$PNPM_HOME"
+    export PATH="${PNPM_HOME}:$PATH"
+    if [[ -n "${GITHUB_PATH:-}" ]]; then
+        echo "$PNPM_HOME" >> "$GITHUB_PATH"
+    fi
+
+    if command -v biome >/dev/null 2>&1; then
+        echo "[SKIP] biome は既にインストール済みです。"
+    else
+        pnpm install -g @biomejs/biome
+    fi
 }
 
 # Step 13. lefthook install（--tools-only でなければ）
@@ -230,8 +402,6 @@ finalize_lefthook() {
     lefthook install
 }
 
-# 実装の本体（ピン値が空の場合は上記 check_pins で既に exit 済み）
-# 5 ツールのインストール本体は Sub-issue C で実装。本スケルトンではピン未確定により到達しない。
 install_python_tools
 install_node_tools
 finalize_lefthook
