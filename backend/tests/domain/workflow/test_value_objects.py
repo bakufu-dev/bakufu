@@ -1,8 +1,8 @@
-"""Unit tests for workflow VOs (CompletionPolicy / NotifyChannel / Transition).
+"""Workflow VOs (CompletionPolicy / NotifyChannel happy path / Transition equality).
 
-Covers TC-UT-VO-WF-001〜004 from ``docs/features/workflow/test-design.md``.
-Tests are grouped into ``Test*`` classes by VO surface so failures cluster by
-contract.
+Covers TC-UT-VO-WF-001〜004. SSRF and masking specifics live in
+``test_notify_channel_ssrf.py`` / ``test_notify_channel_masking.py`` so this
+file stays focused on positive-shape contracts and structural equality.
 """
 
 from __future__ import annotations
