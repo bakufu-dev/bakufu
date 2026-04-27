@@ -188,6 +188,7 @@ LLM subprocess の stdout / stderr、Outbox の `payload_json` / `last_error`、
 | `PromptKit.prefix_markdown` | `rooms` | `tables/rooms.py` | `MaskedText` | `feature/room-repository`（後続） |
 | `bakufu_pid_registry.cmd` | `bakufu_pid_registry` | `tables/pid_registry.py` | `MaskedText` | **本 PR** |
 | 構造化ログ | （ファイル） | `infrastructure/logging/structured.py` | log filter（TypeDecorator 対象外、ログ層で `MaskingGateway.mask()` 呼び出し） | `feature/logging` |
+| **Empire 関連カラム（`empires` / `empire_room_refs` / `empire_agent_refs`）** | 同左 3 テーブル | `infrastructure/persistence/sqlite/repositories/empire_repository.py` + `tables/empires.py` 等 | **masking 対象なし**（`String` / `UUIDStr` / `Boolean` のみ。後続 Repository PR が誤って `MaskedText` を追加しないテンプレート、CI 三層防衛 Layer 1+2 で物理保証） | `feature/empire-repository`（PR #25） |
 
 ##### 逆引き表の運用ルール
 
