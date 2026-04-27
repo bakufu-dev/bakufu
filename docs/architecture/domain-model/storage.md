@@ -135,6 +135,8 @@ LLM subprocess の stdout / stderr、Outbox の `payload_json` / `last_error`、
 | `domain_event_outbox.last_error` | ✓ |
 | `audit_log.args_json` / `audit_log.error_text` | ✓ |
 | `Task.last_error`（BLOCKED 時の保存欄） | ✓ |
+| `Persona.prompt_body`（Agent VO の一部、Repository 永続化前に適用） | ✓ |
+| `PromptKit.prefix_markdown`（Room VO の一部、Repository 永続化前に適用 — [`feature/room`](../../features/room/detailed-design.md) §確定 G） | ✓ |
 | 構造化ログ（ファイル / stdout） | ✓ |
 
 ### マスキング対象パターン
