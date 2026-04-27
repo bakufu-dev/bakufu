@@ -90,7 +90,7 @@ classDiagram
 1. application 層が `Workflow.from_dict(preset_payload)` を呼び出す
 2. payload 内の Stage 配列を Pydantic で個別構築 — Stage 自身の不変条件（`required_role` 非空 / `EXTERNAL_REVIEW` の `notify_channels`）が走る
 3. payload 内の Transition 配列を Pydantic で個別構築
-4. Workflow を `model_validate(payload_with_built_entities)` で構築 — Workflow の DAG 不変条件 5 種が集約検査される
+4. Workflow を `model_validate(payload_with_built_entities)` で構築 — Workflow の DAG 不変条件 7 種が集約検査される（①entry_stage_id 存在 ②Transition 参照整合 ③同一 from×condition 重複なし ④BFS 到達可能性 ⑤終端 Stage 1 件以上 ⑥全 EXTERNAL_REVIEW Stage の notify_channels 非空（集約再確認）⑦全 Stage の required_role 非空（集約再確認））
 5. valid なら Workflow を返す
 
 ### ユースケース 2: Stage 追加（add_stage）
@@ -138,8 +138,11 @@ sequenceDiagram
 ## アーキテクチャへの影響
 
 - `docs/architecture/domain-model.md` への変更: なし（凍結済み設計に従う実装のみ）
+- `docs/architecture/domain-model/value-objects.md` §Stage 属性表 L50 で `notify_channels` の説明に「Discord / Slack / Email 等」とあるが、本 feature の MVP では `kind='discord'` のみコンストラクタ受理（[detailed-design.md](detailed-design.md) §確定 G）。`'slack'` / `'email'` の解禁は **Phase 2 でメッセンジャー多対応を検討する際に、kind ごとの URL / target 規則を凍結した上で**実施する。本 PR ではアーキ側の文言は触らず、feature レイヤで MVP 制約を凍結する責務分離を選択
+- `docs/architecture/domain-model/storage.md` §シークレットマスキング規則 への追補: Discord webhook URL の token 部マスキング規則（正規表現 `https://discord\.com/api/webhooks/([0-9]+)/([A-Za-z0-9_\-]+)` → `https://discord.com/api/webhooks/\1/<REDACTED:DISCORD_WEBHOOK>`）は本 feature の domain 層では VO 内 `field_serializer` として実装する。`feature/persistence` で Repository 実装時に `infrastructure/security/masking.py` 単一ゲートウェイにも追加する（本 PR スコープ外、`feature/persistence` で `storage.md` を更新する PR を立てる）
 - `docs/architecture/tech-stack.md` への変更: なし
 - 既存 feature への波及: なし。後続 `feature/task` が Workflow 内 Stage を `current_stage_id` で参照する設計だが、本 feature 範囲では参照されないので波及なし
+- 後続 `feature/discord-notifier` への申し送り: 実 webhook 送信時に DNS rebinding / IPv4-mapped IPv6 / リダイレクト追跡時の再検査を `basic-design.md` に必ず凍結する（本 feature 範囲では VO レベルで対処不能）
 
 ## 外部連携
 
@@ -169,7 +172,7 @@ sequenceDiagram
 |-----------|---------|---------|------|
 | **T1: 不正な JSON ペイロードによる Aggregate 破壊** | `from_dict()` 経路で UI / API から渡される dict | Workflow 整合性、Task 遷移の信頼性 | Pydantic 型強制で `Role` 名 / UUID 形式 / enum 値を Fail Fast で拒否。最終 validate で DAG 不変条件を二重検査 |
 | **T2: 巨大 / 循環 Workflow による DoS** | 数千 Stage / Transition を含むペイロード | メモリ・検査時間 | MVP で `len(stages) <= 30` / `len(transitions) <= 60` のソフト上限を不変条件として追加（Phase 2 で運用調整） |
-| **T3: Stage の `notify_channels` 経由の URL 注入** | webhook URL を悪意のある第三者 URL に向ける application バグ / 不正 payload | 通知経路 | `NotifyChannel` VO 内で URL スキーム allow list（`https://discord.com/api/webhooks/...` 等）を Pydantic validator で強制 |
+| **T3: Stage の `notify_channels` 経由の URL 注入 / SSRF / webhook secret 漏洩** | webhook URL を悪意のある第三者 URL（または内部サービス）に向ける application バグ / 不正 payload。token 部の偶発露出による第三者なりすまし送信 | 通知経路 / webhook secret | `NotifyChannel` VO で **10 項目の allow list（G1〜G10）** を `field_validator` で強制（[detailed-design.md](detailed-design.md) §確定 G）。`urlparse` 経由・scheme=https 完全一致・hostname=discord.com 完全一致・port∈{None,443}・userinfo 拒否・path 正規表現完全一致・query/fragment 空 / 500 文字上限。**`kind='slack'` / `'email'` は MVP コンストラクタ拒否**。`target` の token 部は `<REDACTED:DISCORD_WEBHOOK>` でマスキングを永続化前単一ゲートウェイで強制 |
 
 ### OWASP Top 10 対応
 

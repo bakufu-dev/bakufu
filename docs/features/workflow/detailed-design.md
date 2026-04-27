@@ -69,7 +69,7 @@ classDiagram
 **ふるまい**:
 - `add_stage(stage: Stage) -> Workflow`: pre-validate で stages に追加した新 Workflow を返す
 - `add_transition(transition: Transition) -> Workflow`: pre-validate で transitions に追加した新 Workflow を返す
-- `remove_stage(stage_id: StageId) -> Workflow`: 関連 Transition も連鎖削除した新 Workflow を返す。`entry_stage_id` を指す Stage は削除不可（即 raise）
+- `remove_stage(stage_id: StageId) -> Workflow`: 関連 Transition も連鎖削除した新 Workflow を返す。事前検査で `stage_id` が `stages` 内に存在しなければ `WorkflowInvariantViolation(kind='stage_not_found')` を raise（MSG-WF-012）。`entry_stage_id` を指す Stage は削除不可、`WorkflowInvariantViolation(kind='cannot_remove_entry')` を raise（MSG-WF-010）
 - `Workflow.from_dict(payload: dict) -> Workflow`（classmethod）: bulk-import ファクトリ。最終状態のみ validate
 
 ### Entity within Aggregate: Stage
@@ -111,8 +111,60 @@ Transition 単体では参照整合性を検査しない（Workflow 集約検査
 
 | 属性 | 型 | 制約 |
 |----|----|----|
-| `kind` | `Literal['discord', 'slack', 'email']` | MVP は `discord` のみ実用、他はプレースホルダ |
-| `target` | `str` | URL またはチャネル ID。`kind=='discord'` なら `https://discord.com/api/webhooks/...` 形式に限定（URL allow list） |
+| `kind` | `Literal['discord']` | **MVP は `discord` のみ。`'slack'` / `'email'` は MVP では受け付けず、コンストラクタで `pydantic.ValidationError` を raise**（Phase 2 で kind ごとの target 規則を凍結後に解禁）|
+| `target` | `str` | 1〜500 文字。`kind=='discord'` なら下記 URL allow list を完全充足する Discord webhook URL のみ。違反時は `pydantic.ValidationError` を raise |
+
+**`kind` の MVP 制約理由**: `'slack'` / `'email'` は target の正規化規則・SSRF 対策・secret マスキング規則がそれぞれ異なる。`Phase 2` でメッセンジャー多対応を検討する際に、kind ごとに本書 §確定 G と同等の凍結を行ってから解禁する。MVP で「プレースホルダとして許容」すると未検証のまま運用ルートが開く危険があるため、コンストラクタレベルで物理的に拒否する。
+
+`model_config.frozen = True`。
+
+### 確定 G: NotifyChannel URL allow list の完全凍結（SSRF / A10 対策）
+
+`NotifyChannel.target` は外部 webhook URL を保持し、bakufu Backend が後段（`feature/discord-notifier`）で **HTTPS POST 送信先**として利用する。攻撃者が任意 URL を埋め込めば、Backend が任意の第三者サーバーへ通知を送る経路が成立する（SSRF / [`docs/architecture/threat-model.md`](../../architecture/threat-model.md) §A10）。VO レベルで以下を**全て充足**する URL のみを受理し、1 つでも違反すれば即 `pydantic.ValidationError` を Fail Fast で raise する。
+
+#### 検査仕様（kind='discord' の場合）
+
+| # | 検査項目 | 規則 | 違反時の Fail Fast 理由 |
+|---|----|----|----|
+| G1 | 文字数 | `1 <= len(target) <= 500` | DoS / メモリ攻撃防御 |
+| G2 | パーサー | `urllib.parse.urlparse(target)` で **必ず**正規化を経由（生文字列での部分一致禁止） | `startswith` / 正規表現単独はクエリ・断片・userinfo の解釈を誤りバイパス可能 |
+| G3 | スキーム | `parsed.scheme == 'https'`（小文字化済みの完全一致） | HTTP は中間者攻撃 / 平文盗聴を許容 |
+| G4 | ホスト | `parsed.hostname == 'discord.com'`（urlparse は hostname を小文字化済み）。**完全一致**必須 | `discord.com.evil.example` / `evil-discord.com` / `*.discord.com` を物理層で拒否（部分一致は SSRF の温床） |
+| G5 | ポート | `parsed.port in (None, 443)` のみ | 非標準ポートで内部サービスへの接続を試みる経路を塞ぐ |
+| G6 | ユーザー情報 | `parsed.username is None` かつ `parsed.password is None`（`@` を含む URL を実質拒否） | `https://attacker@discord.com/...` 経路で Basic 認証情報を埋め込み正規ドメインに偽装する攻撃を塞ぐ（RFC 3986 userinfo セクション悪用） |
+| G7 | パス形式 | `parsed.path` が `^/api/webhooks/(?P<id>[0-9]+)/(?P<token>[A-Za-z0-9_\-]+)$` に正規表現完全一致。`{id}` は 1〜30 桁の数字（Discord snowflake 想定）、`{token}` は 1〜100 文字の URL-safe Base64 互換文字 | パス偽装 / 開いた API への迂回を塞ぐ |
+| G8 | クエリ | `parsed.query == ''`（空文字列） | `?override=...` 等での挙動変更経路を塞ぐ |
+| G9 | フラグメント | `parsed.fragment == ''`（空文字列） | クライアント側でしか解釈されない部分の混入を防ぎ、ログ・監査での扱いを単純化 |
+| G10 | 大文字小文字 | scheme / hostname は urlparse の正規化で小文字化、path は **大文字小文字を区別**（`/api/webhooks/...` 固定、`/API/WEBHOOKS/...` は拒否） | Discord 公式 webhook URL のパス部は小文字固定。揺れを許すと比較・マスキングの基準が壊れる |
+
+すべての検査は `pydantic.field_validator('target', mode='after')` で実行し、エラー時は `pydantic.ValidationError` を Workflow 経由で `WorkflowInvariantViolation(kind='from_dict_invalid')` または直接 `pydantic.ValidationError` として application 層に伝播する。違反種別は `detail` に項目番号（G1〜G10）を含める。
+
+#### `target` のシークレット扱い
+
+`NotifyChannel.target` の path 部 `{token}`（G7）は **Discord webhook の認証 secret** に相当する。これを露出した場合、第三者が任意のメッセージを当該 webhook 経由で送信できる。以下のマスキング規則を**強制**する：
+
+| 永続化先 | 適用 |
+|---|---|
+| Outbox `payload_json`（`ExternalReviewRequested` 等のイベント本体） | ✓ |
+| `audit_log.args_json` / `error_text` | ✓ |
+| Conversation の system message（subprocess stderr 含む） | ✓ |
+| 構造化ログ（stdout / file） | ✓ |
+| 例外 `message` / `detail`（`WorkflowInvariantViolation` / `pydantic.ValidationError`） | ✓ |
+| `Workflow.model_dump()` / `Stage.model_dump()` の出力 | ✓（`mode='json'` 時に自動置換、後述）|
+
+**マスキング規則**: 正規表現 `https://discord\.com/api/webhooks/([0-9]+)/([A-Za-z0-9_\-]+)` にマッチする箇所を `https://discord.com/api/webhooks/\1/<REDACTED:DISCORD_WEBHOOK>` に置換（id 部は識別性のため残す、token 部のみ伏字）。これは [`docs/architecture/domain-model/storage.md`](../../architecture/domain-model/storage.md) §シークレットマスキング規則 への追補として `feature/persistence` で `storage.md` を更新する PR を起こす（横断的変更、本 feature の `アーキテクチャへの影響` で明示）。
+
+**VO 自体のシリアライズ時挙動**: `NotifyChannel.model_dump(mode='json')` の `target` 値は、**カスタム `field_serializer` でマスキング後の文字列に変換**して返す。デフォルトの `model_dump()` は内部処理（同じ Workflow 内での参照取り回し）用に raw target を返してよいが、`mode='json'` および `model_dump_json()` では必ずマスキング済み文字列を出力する。実装観点で「永続化用 JSON は token を含まない」を VO レベルで保証する。
+
+#### Phase 2 で再検証が必要な項目（本 feature 範囲外、申し送り）
+
+以下は本 feature の VO レベルでは対処不能で、`feature/discord-notifier` の `basic-design.md` に必ず凍結する：
+
+- **DNS rebinding**: hostname == 'discord.com' を解決した IP がプライベートレンジ（10/8、172.16/12、192.168/16、127/8、169.254/16、IPv6 link-local 等）でないことを送信時に再検証
+- **HTTP リダイレクト追跡**: webhook POST レスポンスで 3xx を受けた場合、リダイレクト先を再度 G3〜G6 で検査するか、リダイレクト追跡を無効化する（`requests.post(..., allow_redirects=False)` 等）
+- **IPv4-mapped IPv6**: `::ffff:127.0.0.1` のような形式での内部接続を物理層で拒否（送信時に getaddrinfo 結果を検査）
+
+これらはネットワーク I/O 発生レイヤで対処すべき項目で、ドメイン層 VO の責務外。本 feature では `NotifyChannel` の構造的妥当性のみを保証する。
 
 ### Exception: WorkflowInvariantViolation
 
@@ -120,7 +172,7 @@ Transition 単体では参照整合性を検査しない（Workflow 集約検査
 |----|----|----|
 | `message` | `str` | MSG-WF-NNN 由来 |
 | `detail` | `dict[str, object]` | 違反の文脈 |
-| `kind` | `Literal['entry_not_in_stages', 'transition_ref_invalid', 'transition_duplicate', 'unreachable_stage', 'no_sink_stage', 'capacity_exceeded']` | Workflow レベルの違反種別 |
+| `kind` | `Literal['entry_not_in_stages', 'transition_ref_invalid', 'transition_duplicate', 'unreachable_stage', 'no_sink_stage', 'capacity_exceeded', 'cannot_remove_entry', 'stage_not_found', 'missing_notify_aggregate', 'empty_required_role_aggregate', 'from_dict_invalid']` | Workflow レベルの違反種別。`*_aggregate` は集約検査経路で発生する種別（Stage 自身の検査経路は `StageInvariantViolation` のサブクラスで分離） |
 
 ### Exception: StageInvariantViolation
 
@@ -179,6 +231,31 @@ Stage を 1 件ずつ走査し、`from_stage_id == stage.id` の Transition が 
 
 `len(stages) <= 30` / `len(transitions) <= 60`。MVP の実用範囲（V モデル開発室のレンダリング例で stages=13、transitions=15 程度）の 2 倍を上限に設定。Phase 2 で運用実績を見て調整。
 
+### 確定 F: 集約検査 helper の独立性（二重防護のテスタビリティ）
+
+Workflow の `model_validator(mode='after')` 内で行う集約検査は、それぞれ独立した module-level private helper 関数として実装する。Workflow クラスのメソッドではない（純粋関数として、Stage 自身の `model_validator` と**コードを共有しない**ことを物理的に保証）：
+
+| helper 関数 | 入力 | 検査内容 | 違反時 raise する例外 |
+|----|----|----|----|
+| `_validate_dag_reachability(stages, transitions, entry_stage_id)` | 全 Stage / Transition / entry | BFS で entry から全 Stage が到達可能か | `WorkflowInvariantViolation(kind='unreachable_stage')`、MSG-WF-003 |
+| `_validate_dag_sink_exists(stages, transitions)` | 全 Stage / Transition | 終端 Stage（外向き Transition なし）が 1 件以上存在 | `WorkflowInvariantViolation(kind='no_sink_stage')`、MSG-WF-004 |
+| `_validate_transition_determinism(transitions)` | 全 Transition | 同一 `(from_stage_id, condition)` の Transition 重複なし | `WorkflowInvariantViolation(kind='transition_duplicate')`、MSG-WF-005 |
+| `_validate_transition_refs(stages, transitions)` | 全 Stage / Transition | 全 Transition の from / to が stages 内に存在 | `WorkflowInvariantViolation(kind='transition_ref_invalid')`、MSG-WF-009 |
+| `_validate_external_review_notify(stages)` | 全 Stage | `kind=EXTERNAL_REVIEW` の Stage が `notify_channels` 非空 | `WorkflowInvariantViolation(kind='missing_notify_aggregate')`、MSG-WF-006 |
+| `_validate_required_role_non_empty(stages)` | 全 Stage | 全 Stage の `required_role` が非空 | `WorkflowInvariantViolation(kind='empty_required_role_aggregate')`、MSG-WF-007 |
+| `_validate_capacity(stages, transitions)` | 全 Stage / Transition | 容量上限（30 / 60） | `WorkflowInvariantViolation(kind='capacity_exceeded')` |
+
+Workflow 本体の `model_validator(mode='after')` は、これら helper を順次呼び出すディスパッチに専念する。
+
+**この分離が必要な理由**:
+
+1. **テスタビリティ**: 各 helper を直接呼び出すユニットテスト（TC-UT-WF-006b 等）が可能。Workflow 本体を構築せず、helper のロジックを単独で検査できる
+2. **二重防護の独立性証明**: Stage 自身の `model_validator` がバグで通った場合の最後の砦として、Workflow 集約検査が独立に raise することを物理層で保証。両者がコードを共有していないため「同じバグで両方止まる」リスクが排除される
+3. **可読性**: `model_validator` 本体は 7 種の検査の順序と責務を一望できる薄いディスパッチコードに保たれる
+4. **仕様変更の局所化**: 検査ロジックの変更は該当 helper のみで完結、`model_validator` 本体や他の検査ロジックを触らない
+
+**配置**: `backend/src/bakufu/domain/workflow.py` のモジュールレベル private 関数（先頭アンダースコア）として置き、`Workflow.model_validator` から呼び出す。テストは `from bakufu.domain.workflow import _validate_external_review_notify` 等で直接 import 可能（module-private は Python 慣習で外部利用は警告だが、テストレイヤからは許容、`pyright` 設定で `tests/` のみ private import を許す）。
+
 ## 設計判断の補足
 
 ### なぜ Stage / Transition を Workflow 内部 Entity にするか
@@ -221,6 +298,7 @@ Stage 自身の不変条件（`required_role` 非空 / `EXTERNAL_REVIEW` の `no
 | MSG-WF-009 | 例外 message | `[FAIL] Transition references unknown stage: from={from_id}, to={to_id}` |
 | MSG-WF-010 | 例外 message | `[FAIL] Cannot remove entry stage: {stage_id}` |
 | MSG-WF-011 | 例外 message | `[FAIL] from_dict payload invalid: {detail}` |
+| MSG-WF-012 | 例外 message | `[FAIL] Stage not found in workflow: stage_id={stage_id}` |
 
 メッセージ文字列は ASCII 範囲。日本語化は UI 側 i18n リソース（Phase 2）。
 

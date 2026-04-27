@@ -10,7 +10,7 @@
 | 項目 | 内容 |
 |------|------|
 | 入力 | `id: WorkflowId`、`name: str`（1〜80）、`stages: list[Stage]`（1 件以上）、`transitions: list[Transition]`（0 件以上）、`entry_stage_id: StageId` |
-| 処理 | Pydantic 型バリデーション → `model_validator(mode='after')` で DAG 不変条件 5 種を集約検査 → 通過時のみ Workflow を返す |
+| 処理 | Pydantic 型バリデーション → `model_validator(mode='after')` で DAG 不変条件 7 種を集約検査（①entry 存在 ②Transition 参照整合 ③決定論性 ④BFS 到達可能性 ⑤終端 Stage ⑥EXTERNAL_REVIEW notify_channels 集約 ⑦required_role 非空 集約） → 通過時のみ Workflow を返す |
 | 出力 | `Workflow` インスタンス（frozen） |
 | エラー時 | `WorkflowInvariantViolation` を raise。MSG-WF-001〜007 のいずれかを格納 |
 
@@ -109,6 +109,8 @@
 | Transition | `to_stage_id` | `StageId` | `stages` 内に存在 | Stage |
 | Transition | `condition` | `TransitionCondition` | enum | — |
 | Transition | `label` | `str` | 0〜80 文字 | — |
+| NotifyChannel（VO） | `kind` | `Literal['discord']` | **MVP は discord のみ**。slack/email は `pydantic.ValidationError` 拒否 | — |
+| NotifyChannel | `target` | `str` | 1〜500 文字、Discord webhook URL allow list G1〜G10（[detailed-design.md](detailed-design.md) §確定 G）を完全充足。token 部はシリアライズ時 `<REDACTED:DISCORD_WEBHOOK>` でマスキング | — |
 
 `StageKind` / `Role` / `TransitionCondition` の値域は [`value-objects.md`](../../architecture/domain-model/value-objects.md) §列挙型一覧 を参照。
 
@@ -127,6 +129,7 @@
 | MSG-WF-009 | エラー（参照不整合） | Transition の from / to が stages に存在しない | `add_transition` |
 | MSG-WF-010 | エラー（削除拒否） | entry_stage_id を指す Stage は削除不可 | `remove_stage` |
 | MSG-WF-011 | エラー（bulk import） | from_dict ペイロードの形式違反: {detail} | `from_dict` |
+| MSG-WF-012 | エラー（参照不整合） | Stage not found in workflow: stage_id={stage_id} | `remove_stage` で未登録 stage_id |
 
 ## 依存関係
 
