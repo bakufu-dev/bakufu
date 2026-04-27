@@ -25,7 +25,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, func, insert, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -79,10 +79,17 @@ class SqliteEmpireRepository:
         singleton invariant (§確定 D); the Repository itself is silent
         about whether ``count != 0`` is an error — that decision is
         the application service's.
+
+        Implementation detail: SQLAlchemy's ``func.count()`` issues a
+        proper ``SELECT COUNT(*)`` so SQLite returns one scalar row
+        instead of streaming every PK back to Python. This matters as
+        a **template responsibility** for the six follow-up Repository
+        PRs (workflow / agent / room / directive / task /
+        external-review-gate) — Stage / Task tables can hold hundreds
+        of rows, so the pattern emitted here propagates downstream.
         """
-        stmt = select(EmpireRow.id)
-        result = await self._session.execute(stmt)
-        return len(list(result.scalars().all()))
+        stmt = select(func.count()).select_from(EmpireRow)
+        return (await self._session.execute(stmt)).scalar_one()
 
     async def save(self, empire: Empire) -> None:
         """Persist ``empire`` via the §確定 B five-step delete-then-insert.
