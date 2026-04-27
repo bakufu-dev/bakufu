@@ -1,13 +1,14 @@
-"""Masking listener integration tests
-(TC-IT-PF-007 / 020 / 021 / 022).
+"""Masking gateway integration tests (TC-IT-PF-007 / 020 / 021 / 022).
 
-The **core** of Schneier 申し送り #6 + Confirmation R1-D — the masking
-listener must fire even when callers bypass the ORM mapper and use a
-raw ``insert(table).values(...)`` statement. This is what justifies
-choosing ``before_insert`` / ``before_update`` event listeners over a
-``TypeDecorator``: the listener catches the *table* operation, not the
-ORM type binding, so a future Repository that goes raw-SQL still gets
-masked.
+The **core** of Schneier 申し送り #6 + Confirmation R1-D (post-flip) — the
+masking gateway must fire even when callers bypass the ORM mapper and use a
+raw ``insert(table).values(...)`` statement. The original design specified
+``event.listens_for(target, 'before_insert/before_update')`` mapper
+events, but BUG-PF-001 surfaced that those listeners do **not** fire on
+the Core ``insert(table).values(...)`` path. R1-D was reverted to
+``MaskedJSONEncoded`` / ``MaskedText`` :class:`~sqlalchemy.types.TypeDecorator`
+columns whose ``process_bind_param`` hook fires on **both** ORM and Core
+paths — the very property R1-D originally tried to buy with listeners.
 """
 
 from __future__ import annotations
@@ -86,19 +87,15 @@ class TestOutboxMaskingViaOrm:
 
 
 class TestOutboxMaskingViaRawSql:
-    """TC-IT-PF-020: raw ``insert(table).values(...)`` still triggers the listener.
+    """TC-IT-PF-020: raw ``insert(table).values(...)`` still triggers the masking gateway.
 
-    This is **the** test that justifies the event-listener approach
-    over TypeDecorator (Confirmation R1-D). A future Repository PR that
-    bypasses the ORM mapper for performance must not bypass masking.
-
-    BUG-PF-001 fix: the masking listener moved from the per-mapper
-    ``before_insert`` / ``before_update`` events to the engine-level
-    ``before_execute`` event (see
-    :mod:`bakufu.infrastructure.persistence.sqlite.masking_listener`).
-    The new wiring fires for both ORM flushes and Core
-    ``insert(table).values(...)`` calls, so "raw SQL paths are masked
-    too" is now an end-to-end property rather than aspirational.
+    Post-R1-D-flip contract — the masking gateway is wired via the
+    column TypeDecorators :class:`~bakufu.infrastructure.persistence.sqlite.base.MaskedJSONEncoded`
+    and :class:`~bakufu.infrastructure.persistence.sqlite.base.MaskedText`.
+    Their ``process_bind_param`` runs on every bind-parameter
+    resolution, so both ORM flushes and Core
+    ``insert(table).values(...)`` invocations are masked. A future
+    Repository PR cannot bypass redaction by reaching for raw SQL.
     """
 
     async def test_raw_sql_path_redacts_payload(
