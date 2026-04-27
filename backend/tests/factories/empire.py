@@ -122,9 +122,42 @@ def make_empire(
     return empire
 
 
+def make_populated_empire(
+    *,
+    empire_id: UUID | None = None,
+    name: str = "テスト幕府",
+    n_rooms: int = 2,
+    n_agents: int = 3,
+) -> Empire:
+    """Build an Empire with N rooms + M agents for Repository round-trip tests.
+
+    The Empire-Repository PR (#25) needs this factory to exercise the
+    §確定 B delete-then-insert flow — empty Empires touch only the
+    ``empires`` table while a populated Empire writes all three tables
+    (empires + empire_room_refs + empire_agent_refs) so the test can
+    assert that the side tables actually receive their bulk INSERTs.
+
+    Roles cycle through DEVELOPER / TESTER / REVIEWER so a 3-agent
+    Empire spans three distinct Role enum values.
+    """
+    rooms = [make_room_ref(name=f"ルーム{i + 1}") for i in range(n_rooms)]
+    role_cycle = [Role.DEVELOPER, Role.TESTER, Role.REVIEWER]
+    agents = [
+        make_agent_ref(name=f"エージェント{i + 1}", role=role_cycle[i % len(role_cycle)])
+        for i in range(n_agents)
+    ]
+    return make_empire(
+        empire_id=empire_id,
+        name=name,
+        rooms=rooms,
+        agents=agents,
+    )
+
+
 __all__ = [
     "is_synthetic",
     "make_agent_ref",
     "make_empire",
+    "make_populated_empire",
     "make_room_ref",
 ]
