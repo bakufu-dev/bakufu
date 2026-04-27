@@ -68,7 +68,7 @@ Workflow: V モデル開発フロー
 ├── Stage: 基本設計       (WORK, required_role={DEVELOPER, UX})
 ├── Stage: 基本設計レビュー (EXTERNAL_REVIEW, required_role={REVIEWER}, notify=[Discord])
 ├── Stage: 詳細設計       (WORK, required_role={DEVELOPER})
-├── Stage: 詳細設計レビュー (EXTERNAL_REVIEW, required_role={REVIEWER})
+├── Stage: 詳細設計レビュー (EXTERNAL_REVIEW, required_role={REVIEWER}, notify=[Discord])
 ├── Stage: 実装           (WORK, required_role={DEVELOPER})
 ├── Stage: ユニットテスト  (WORK, required_role={TESTER})
 ├── Stage: 結合テスト      (WORK, required_role={TESTER})
