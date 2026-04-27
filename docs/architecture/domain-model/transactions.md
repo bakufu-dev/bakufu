@@ -61,19 +61,19 @@
 
 ```
 Workflow: V モデル開発フロー
-├── Stage: 要求分析 (WORK, REQUIRED_ROLE=LEADER)
-├── Stage: 要求分析レビュー (EXTERNAL_REVIEW, notify=[Discord])
-├── Stage: 要件定義 (WORK, REQUIRED_ROLE=LEADER+UX)
-├── Stage: 要件定義レビュー (EXTERNAL_REVIEW, notify=[Discord])
-├── Stage: 基本設計 (WORK, REQUIRED_ROLE=DEVELOPER+UX)
-├── Stage: 基本設計レビュー (EXTERNAL_REVIEW, notify=[Discord])
-├── Stage: 詳細設計 (WORK, REQUIRED_ROLE=DEVELOPER)
-├── Stage: 詳細設計レビュー (EXTERNAL_REVIEW)
-├── Stage: 実装 (WORK, REQUIRED_ROLE=DEVELOPER)
-├── Stage: ユニットテスト (WORK, REQUIRED_ROLE=TESTER)
-├── Stage: 結合テスト (WORK, REQUIRED_ROLE=TESTER)
-├── Stage: E2E テスト (WORK, REQUIRED_ROLE=TESTER)
-└── Stage: 完了レビュー (EXTERNAL_REVIEW, notify=[Discord])
+├── Stage: 要求分析       (WORK, required_role={LEADER})
+├── Stage: 要求分析レビュー (EXTERNAL_REVIEW, required_role={REVIEWER}, notify=[Discord])
+├── Stage: 要件定義       (WORK, required_role={LEADER, UX})
+├── Stage: 要件定義レビュー (EXTERNAL_REVIEW, required_role={REVIEWER}, notify=[Discord])
+├── Stage: 基本設計       (WORK, required_role={DEVELOPER, UX})
+├── Stage: 基本設計レビュー (EXTERNAL_REVIEW, required_role={REVIEWER}, notify=[Discord])
+├── Stage: 詳細設計       (WORK, required_role={DEVELOPER})
+├── Stage: 詳細設計レビュー (EXTERNAL_REVIEW, required_role={REVIEWER}, notify=[Discord])
+├── Stage: 実装           (WORK, required_role={DEVELOPER})
+├── Stage: ユニットテスト  (WORK, required_role={TESTER})
+├── Stage: 結合テスト      (WORK, required_role={TESTER})
+├── Stage: E2E テスト     (WORK, required_role={TESTER})
+└── Stage: 完了レビュー    (EXTERNAL_REVIEW, required_role={REVIEWER}, notify=[Discord])
 
 Transitions:
 - 要求分析 ─APPROVED→ 要件定義

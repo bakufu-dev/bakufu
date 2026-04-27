@@ -61,6 +61,7 @@
 - 終端 Stage（外向き Transition なし）が 1 件以上存在
 - `EXTERNAL_REVIEW` Stage は `notify_channels` を持つ
 - 同じ `from_stage_id` × `condition` の Transition は重複しない（決定論的）
+- 各 Stage の `required_role` は空集合でない（最低 1 件の Role を持つ）— Stage 自身の不変条件だが、Workflow.validate() でも全 Stage を走査して集約検査する
 
 **ふるまい**:
 - `add_stage(stage_data) -> StageId`
