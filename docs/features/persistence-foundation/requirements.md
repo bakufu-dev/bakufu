@@ -74,7 +74,7 @@
 | 入力 | 任意の文字列 / dict / list（再帰的に走査される） |
 | 処理 | 適用順序を厳守（[`storage.md`](../../architecture/domain-model/storage.md) §適用順序）: (1) 起動時に `os.environ` から `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` / `GH_TOKEN` / `GITHUB_TOKEN` / `OAUTH_CLIENT_SECRET` / `BAKUFU_DISCORD_BOT_TOKEN` の値（長さ 8 以上）をパターン辞書化 → 完全一致を `<REDACTED:ENV:<KEY>>` 化、(2) 9 種正規表現（Anthropic / OpenAI / GitHub PAT / GitHub fine-grained PAT / AWS Access / AWS Secret / Slack / Discord bot / Bearer）を順次適用、(3) `$HOME` 絶対パスを `<HOME>` 置換。**注**: `BAKUFU_DB_KEY` は MVP では SQLCipher 等の at-rest 暗号化を採用しないため削除（Schneier 中等 2 対応、YAGNI / 不要な攻撃面の事前排除）。代わりに `BAKUFU_DISCORD_BOT_TOKEN` を masking 対象に追加（threat-model.md §資産 で明記済みの高機密 token） |
 | 出力 | masking 適用済みの文字列（または再帰的に適用済みの dict / list） |
-| エラー時 | 該当なし — masking は失敗しない（regex compile は起動時に完了済み）。万一の例外は上位に伝播せず、masking 後 `<REDACTED:UNKNOWN>` でフォールバック |
+| エラー時 | **Fail-Secure 契約**（detailed-design §確定 F）: 内部例外発生時も**生データを返す経路はゼロ**。`mask` の予期せぬ例外 → `<REDACTED:MASK_ERROR>` で完全置換、`mask_in` の容量超過 → `<REDACTED:MASK_OVERFLOW>` で完全置換、想定外型 → `str()` 化後 `mask` 適用。環境変数辞書ロード失敗時は **Fail Fast**（`BakufuConfigError(MSG-PF-008)`、起動拒否）|
 
 ### REQ-PF-006: SQLAlchemy event listener 配線（Outbox）
 
@@ -83,7 +83,7 @@
 | 入力 | `domain_event_outbox` テーブルへの `before_insert` / `before_update` event |
 | 処理 | (a) listener 内で row の `payload_json` / `last_error` フィールドを取得、(b) REQ-PF-005 の masking ゲートウェイを呼び出し、(c) row の値を masking 後の値で**上書き**してから INSERT / UPDATE を実行させる |
 | 出力 | masking 後の値が永続化される |
-| エラー時 | masking 失敗（前述の通り発生しない想定）→ row 上書きをスキップして INSERT / UPDATE はそのまま走る（fallback、ログに WARN 出力） |
+| エラー時 | **Fail-Secure 契約**（detailed-design §確定 F）: listener 内で masking 例外が発生した場合、対象フィールドを `<REDACTED:LISTENER_ERROR>` / `<REDACTED:MASK_ERROR>` / `<REDACTED:MASK_OVERFLOW>` で**完全置換**してから INSERT / UPDATE を継続。**生データを書く経路はゼロ**。「row 上書きをスキップして INSERT / UPDATE をそのまま走らせる」旧 fail-open 経路は**廃止**。詳細は detailed-design.md §確定 F の Fail-Secure フォールバック表 |
 
 ### REQ-PF-007: Outbox Dispatcher 骨格
 
@@ -190,8 +190,9 @@
 | MSG-PF-003 | エラー（startup） | アタッチメント FS ルート作成失敗 | mkdir 失敗 / chmod 失敗 |
 | MSG-PF-004 | エラー（startup） | Alembic migration 失敗 | upgrade head 中の例外 |
 | MSG-PF-005 | エラー（runtime） | audit_log への DELETE 拒否 | SQLite トリガで `RAISE(ABORT)` 発火 |
-| MSG-PF-006 | エラー（runtime） | masking 適用エラー（fallback） | 通常発生しない（fallback 時のみ WARN） |
+| MSG-PF-006 | 警告（runtime） | masking Fail-Secure フォールバック適用 | listener / mask 内で例外発生 → `mask_error` / `listener_error` / `mask_overflow` のいずれかで完全置換（`<REDACTED:*>`）。確定 F の 3 種に同期 |
 | MSG-PF-007 | 警告（runtime） | pid_registry GC で `psutil.AccessDenied` | OS が PID 操作を拒否（次回 GC で再試行） |
+| MSG-PF-008 | エラー（startup） | masking 環境変数辞書ロード失敗（Fail Fast） | `os.environ` から既知 env キー取得時の OS 例外 / regex compile 失敗。masking layer 1 が無効化された状態での起動を**許容しない**（信頼境界の前提が崩れるため） |
 
 ## 依存関係
 
