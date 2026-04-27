@@ -35,6 +35,10 @@ readonly EXPECTED_TYPES=(
     "payload_json:MaskedJSONEncoded"
     "last_error:MaskedText"
     "cmd:MaskedText"
+    # Workflow Repository (PR #31): notify_channels_json holds
+    # Discord webhook URLs that include the secret token segment.
+    # docs/features/workflow-repository/detailed-design.md §確定 H.
+    "notify_channels_json:MaskedJSONEncoded"
     # 後続 Repository PR が追加するカラム（テーブルファイル未存在の間は no-op）
     "prompt_body:MaskedText"
     "prefix_markdown:MaskedText"
@@ -75,6 +79,11 @@ readonly NO_MASK_FILES=(
     "${TABLES_DIR}/empires.py"
     "${TABLES_DIR}/empire_room_refs.py"
     "${TABLES_DIR}/empire_agent_refs.py"
+    # Workflow Repository (PR #31): only workflow_stages.notify_channels_json
+    # is masked; the root + transitions tables carry no Schneier #6
+    # secret categories.
+    "${TABLES_DIR}/workflows.py"
+    "${TABLES_DIR}/workflow_transitions.py"
 )
 
 for file in "${NO_MASK_FILES[@]}"; do
@@ -93,9 +102,67 @@ for file in "${NO_MASK_FILES[@]}"; do
     fi
 done
 
+# Layer 1-C: 過剰マスキング防止 ─ partially-masked テーブルで指定の
+# カラム以外に Masked* が混入していないこと。
+# Workflow Repository (PR #31, detailed-design.md §確定 E):
+#   workflow_stages.notify_channels_json だけが MaskedJSONEncoded、
+#   他カラムは JSONEncoded / String / Text に閉じる。
+#
+# フォーマット: "<file>:<allowed_column>"
+readonly PARTIAL_MASK_FILES=(
+    "${TABLES_DIR}/workflow_stages.py:notify_channels_json"
+)
+
+for entry in "${PARTIAL_MASK_FILES[@]}"; do
+    file="${entry%%:*}"
+    allowed="${entry##*:}"
+
+    if [[ ! -f "$file" ]]; then
+        continue
+    fi
+
+    # MaskedText must be zero everywhere on this file.
+    text_leaks=$(grep -nE "MaskedText" "$file" || true)
+    if [[ -n "$text_leaks" ]]; then
+        echo "[FAIL] partial-mask table file declares MaskedText (over-masking): $file" >&2
+        echo "$text_leaks" >&2
+        echo "       Next: this table is registered with a single allowed" >&2
+        echo "       MaskedJSONEncoded column ('${allowed}') in" >&2
+        echo "       docs/architecture/domain-model/storage.md §逆引き表;" >&2
+        echo "       remove the MaskedText usage or update the §逆引き表 entry." >&2
+        violations=$((violations + 1))
+    fi
+
+    # MaskedJSONEncoded usages: only declarations / re-exports outside
+    # the allowed column trip the over-masking guard.
+    json_decls=$(grep -nE "^\s*[A-Za-z_][A-Za-z0-9_]*\s*:\s*Mapped.*MaskedJSONEncoded" \
+        "$file" || true)
+    if [[ -z "$json_decls" ]]; then
+        echo "[FAIL] partial-mask table file is missing the expected" >&2
+        echo "       MaskedJSONEncoded column declaration: $file" >&2
+        echo "       Next: declare ${allowed} with MaskedJSONEncoded per" >&2
+        echo "       docs/architecture/domain-model/storage.md §逆引き表." >&2
+        violations=$((violations + 1))
+    else
+        while IFS= read -r line; do
+            [[ -z "$line" ]] && continue
+            if [[ "$line" == *"${allowed}"* ]]; then
+                continue
+            fi
+            echo "[FAIL] partial-mask table file declares MaskedJSONEncoded on a" >&2
+            echo "       column other than '${allowed}': $file" >&2
+            echo "       ${line}" >&2
+            echo "       Next: only '${allowed}' is registered as MaskedJSONEncoded" >&2
+            echo "       in docs/architecture/domain-model/storage.md §逆引き表;" >&2
+            echo "       move the masking to the correct column or update §逆引き表." >&2
+            violations=$((violations + 1))
+        done <<< "$json_decls"
+    fi
+done
+
 if [[ "$violations" -gt 0 ]]; then
     echo "[FAIL] check_masking_columns: ${violations} violation(s) detected" >&2
     exit 1
 fi
 
-echo "[OK] check_masking_columns: positive (Masked* required) + negative (no-mask) checks passed"
+echo "[OK] check_masking_columns: positive (Masked* required) + negative (no-mask) + partial-mask over-masking checks passed"

@@ -42,6 +42,9 @@ from bakufu.infrastructure.persistence.sqlite.tables import (
     empires,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     outbox,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     pid_registry,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    workflow_stages,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    workflow_transitions,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    workflows,  # noqa: F401  # pyright: ignore[reportUnusedImport]
 )
 
 # Positive contract: §逆引き表「masking 対象あり」.
@@ -53,15 +56,33 @@ _MASKING_CONTRACT: list[tuple[str, str, type]] = [
     ("bakufu_pid_registry", "cmd", MaskedText),
     ("domain_event_outbox", "payload_json", MaskedJSONEncoded),
     ("domain_event_outbox", "last_error", MaskedText),
+    # Workflow Repository (PR #31, detailed-design.md §確定 H).
+    ("workflow_stages", "notify_channels_json", MaskedJSONEncoded),
 ]
 
-# No-mask contract: §逆引き表「Empire 関連カラム: masking 対象なし」.
+# No-mask contract: §逆引き表「Empire 関連カラム: masking 対象なし」 +
+# Workflow root + Workflow transitions.
 # Each subsequent Aggregate Repository PR extends this list with the
 # tables it adds when those tables are designated "no masking".
 _NO_MASK_TABLES: list[str] = [
     "empires",
     "empire_room_refs",
     "empire_agent_refs",
+    # Workflow Repository (PR #31, detailed-design.md §確定 E):
+    # workflows / workflow_transitions register zero masking targets;
+    # only workflow_stages.notify_channels_json is secret-bearing.
+    "workflows",
+    "workflow_transitions",
+]
+
+# Partial-mask contract: tables that have **exactly one** masked
+# column. Used to catch over-masking — a future PR that switches
+# another column on the same table to a Masked* TypeDecorator must
+# update §逆引き表 first; otherwise this assertion fires.
+#
+# Format: ``(table_name, allowed_column_name)``.
+_PARTIAL_MASK_TABLES: list[tuple[str, str]] = [
+    ("workflow_stages", "notify_channels_json"),
 ]
 
 
@@ -134,4 +155,46 @@ class TestNoMaskContract:
             f"Next: this table is registered as 'masking 対象なし' in "
             f"docs/architecture/domain-model/storage.md §逆引き表; either "
             f"remove the Masked* type or update the §逆引き表 entry first."
+        )
+
+
+class TestPartialMaskContract:
+    """Tables registered as 'partial mask' must mask exactly one named column.
+
+    Workflow Repository (PR #31) introduces the 'partial mask'
+    pattern: ``workflow_stages.notify_channels_json`` is the *only*
+    masked column on the table; every other column must stay un-masked
+    so we don't bleed over-masking into ``deliverable_template`` /
+    ``completion_policy_json`` / etc. A future PR that masks an
+    additional column must update §逆引き表 first; otherwise this
+    assertion fires.
+    """
+
+    @pytest.mark.parametrize(
+        ("table_name", "allowed_column"),
+        _PARTIAL_MASK_TABLES,
+        ids=[f"{tbl}.{col}" for tbl, col in _PARTIAL_MASK_TABLES],
+    )
+    def test_table_has_only_allowed_masked_column(
+        self,
+        table_name: str,
+        allowed_column: str,
+    ) -> None:
+        """Assert exactly one masked column, and that it's the allowed one."""
+        table = Base.metadata.tables.get(table_name)
+        assert table is not None, (
+            f"table {table_name!r} missing from Base.metadata; "
+            f"check that tables/{table_name}.py is imported in tables/__init__.py"
+        )
+        masked_columns = sorted(
+            col.name
+            for col in table.columns
+            if isinstance(col.type, MaskedJSONEncoded | MaskedText)
+        )
+        assert masked_columns == [allowed_column], (
+            f"[FAIL] {table_name} masking surface should be exactly "
+            f"['{allowed_column}'], got {masked_columns}.\n"
+            f"Next: only '{allowed_column}' is registered as masked in "
+            f"docs/architecture/domain-model/storage.md §逆引き表; either "
+            f"revert the extra Masked* type or update the §逆引き表 entry first."
         )

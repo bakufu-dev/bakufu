@@ -84,3 +84,55 @@ class TestBackIndexHasEmpireRow:
             "same line — split rows would force an operator to cross-"
             "reference across the doc."
         )
+
+
+class TestBackIndexHasWorkflowRows:
+    """TC-DOC-WFR-001: §逆引き表 includes the Workflow partial-mask + no-mask entries.
+
+    The Workflow PR (#41) introduces the *partial-mask* template
+    alongside the empire-repo no-mask template: ``workflow_stages.notify_channels_json``
+    is the **only** masked column on the Workflow surface, and
+    ``workflows`` / ``workflow_transitions`` / the rest of
+    ``workflow_stages`` are explicitly registered as no-mask. We
+    assert both halves of that contract live on operator-readable
+    lines in ``storage.md``.
+    """
+
+    def test_workflow_stages_notify_channels_row_present(self, storage_md_text: str) -> None:
+        """TC-DOC-WFR-001a: §逆引き表 declares ``MaskedJSONEncoded`` on the notify column.
+
+        The line must co-locate ``workflow_stages.notify_channels_json``
+        and ``MaskedJSONEncoded`` so an operator scrolling to the
+        Workflow row sees the redaction policy directly.
+        """
+        co_located_lines = [
+            line
+            for line in storage_md_text.splitlines()
+            if "workflow_stages.notify_channels_json" in line and "MaskedJSONEncoded" in line
+        ]
+        assert co_located_lines, (
+            "storage.md §逆引き表 must contain at least one line that "
+            "co-locates 'workflow_stages.notify_channels_json' and "
+            "'MaskedJSONEncoded' per workflow-repository §確定 H "
+            "(Schneier 申し送り #6 Repository 実適用)."
+        )
+
+    def test_workflow_no_mask_row_present(self, storage_md_text: str) -> None:
+        """TC-DOC-WFR-001b: §逆引き表 declares the Workflow remaining columns no-mask.
+
+        The contract phrase is "masking 対象なし" co-located with
+        ``Workflow`` (so the partial-mask Aggregate's *non*-masked
+        columns are still operator-readable from the Workflow row).
+        """
+        co_located_lines = [
+            line
+            for line in storage_md_text.splitlines()
+            if "Workflow" in line and "masking 対象なし" in line
+        ]
+        assert co_located_lines, (
+            "storage.md §逆引き表 must contain at least one line that "
+            "co-locates 'Workflow' and 'masking 対象なし' so the partial-"
+            "mask Aggregate's non-masked columns are operator-readable "
+            "from the Workflow row directly. Required by workflow-"
+            "repository §確定 H (partial-mask テンプレート)."
+        )
