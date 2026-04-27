@@ -275,9 +275,7 @@ class SqliteWorkflowRepository:
             "list[dict[str, Any]]",
             row.notify_channels_json or [],
         )
-        notify_channels = [
-            NotifyChannel.model_validate(payload) for payload in notify_payloads
-        ]
+        notify_channels = [NotifyChannel.model_validate(payload) for payload in notify_payloads]
         return Stage(
             id=_uuid(row.stage_id),
             name=row.name,
