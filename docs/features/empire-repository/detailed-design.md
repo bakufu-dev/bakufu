@@ -48,8 +48,8 @@ classDiagram
 | 関数 | 引数 | 戻り値 | 制約 |
 |----|----|----|----|
 | `__init__(session: AsyncSession)` | session | None | session を保持するだけ、Tx は開かない |
-| `find_by_id(empire_id)` | EmpireId | `Empire \| None` | empires SELECT → 不在なら None。存在すれば empire_room_refs / empire_agent_refs を SELECT → `_from_row` で構築 |
-| `count()` | なし | int | `SELECT COUNT(*) FROM empires` の結果 |
+| `find_by_id(empire_id)` | EmpireId | `Empire \| None` | empires SELECT → 不在なら None。存在すれば empire_room_refs を `ORDER BY room_id` / empire_agent_refs を `ORDER BY agent_id` で SELECT（[basic-design.md](basic-design.md) §ユースケース 2 L127-128 が真実源、SQLite 内部スキャン順依存を排除して **list 順序を決定論的に再現**）→ `_from_row` で構築 |
+| `count()` | なし | int | `SELECT count() FROM empires`（SQLAlchemy `func.count()` 経由）の結果。**全行ロード+ Python `len()` パターンは禁止**（後続 Repository PR が真似する場合に N+1 / メモリ無駄ロードを量産するため、§確定 D 補強で凍結） |
 | `save(empire)` | Empire | None | §確定 R1-B の delete-then-insert |
 | `_to_row(empire)` | Empire | `tuple[dict, list[dict], list[dict]]` | (empires_row, room_refs, agent_refs) に分離（§確定 R1-C） |
 | `_from_row(empire_row, room_refs, agent_refs)` | dict, list[dict], list[dict] | Empire | VO 構造で復元（§確定 R1-C） |
@@ -162,6 +162,16 @@ Empire のシングルトン制約（bakufu インスタンスにつき 1 件）
 
 「2 件以上」の検出は本 PR の `count()` で可能だが、検査ロジックは application 層に閉じる。
 
+##### `count()` の実装契約（テンプレート責務、後続 6 件 Repository PR の真実源）
+
+`count()` は **SQL レベルで `COUNT(*)` を発行する**実装に限定する。Python 側で全行ロードしてから `len()` を取る実装は**禁止**。
+
+| 採用 | 不採用 | 理由 |
+|---|---|---|
+| `select(func.count()).select_from(EmpireRow)` で SQL `COUNT(*)` を発行、`scalar_one()` で int を取得 | `select(EmpireRow.id)` で全行を取得して Python `len(list(result.scalars().all()))` | 後続 Repository PR（workflow / agent / room / directive / task / external-review-gate）が `count()` を実装する際、本 PR の実装パターンを真似する。Workflow stages や Task deliverables は 100+ 件になり得るため、**全行ロード+ Python `len()` パターンが伝播すると N+1 / メモリ無駄ロードが量産される** |
+
+**テンプレート PR の責務**: 本 PR の `count()` 1 行が将来の 6 件を決める。SQL レベル `COUNT(*)` を凍結することで、後続 Repository PR が機械的に同パターンを採用できる。
+
 ### 確定 E: CI 三層防衛の Empire 拡張
 
 ##### Layer 1: grep guard（`scripts/ci/check_masking_columns.sh`）
@@ -226,6 +236,61 @@ Empire のシングルトン制約（bakufu インスタンスにつき 1 件）
 | `0008_external_review_gate_aggregate.py` | ExternalReviewGate + AuditEntry テーブル | `feature/external-review-gate-repository`（後続） |
 
 各 revision は前 revision に対する down_revision を明示し、Alembic head が一直線になるよう順序管理する（CI で head が分岐していないか検査）。
+
+## Known Issues（既知の問題と決議）
+
+実装段階・テスト段階で発見されたが本 PR スコープ内では完全解消しない問題を凍結する。各項目は Issue 起票 / 別 PR で完了させる。
+
+### BUG-EMR-001 [LOW]: `find_by_id` の `ORDER BY` 欠落と `_from_row` 経路の list 順序非決定性
+
+##### 観察された挙動（PR #29 ジェフレポート）
+
+`SqliteEmpireRepository.find_by_id(empire_id)` の現実装（commit `5827c28`）が、`empire_room_refs` / `empire_agent_refs` の SELECT で `ORDER BY` 句を発行していない。SQLite 内部スキャン順依存のため、`Empire.rooms` / `Empire.agents` の list 順序が**保存時の順序と一致する保証がない**。
+
+| 経路 | 順序の保証 |
+|---|---|
+| `save(empire)` → `find_by_id(empire.id)` → 復元 Empire | **list 順序が異なる可能性**（SQLite 内部スキャン順依存） |
+| `Empire.rooms == [...]` 等価判定 | list の順序差で `==` が False になり得る |
+
+##### 原因と設計書の片肺状態
+
+| 文書 | 記述 | 状態 |
+|---|---|---|
+| [`basic-design.md`](basic-design.md) §ユースケース 2 L127-128 | `ORDER BY room_id` / `ORDER BY agent_id` を**設計上の正解**として明示 | ✓ 既凍結 |
+| `detailed-design.md` §クラス設計 `find_by_id` 制約（本コミット前） | `ORDER BY` 言及なし | ✗ 片肺 |
+| 実装 `empire_repository.py` find_by_id | `ORDER BY` を発行しない | ✗ 違反 |
+| `test_empire_repository/` | set 比較 / membership 検証で workaround、list 順序差を隠蔽 | ✗ 物理保証なし |
+
+basic-design.md は既に正解を凍結していたが、detailed-design.md と実装が追従しなかった。本コミットで detailed-design.md §クラス設計 `find_by_id` 制約に `ORDER BY room_id` / `ORDER BY agent_id` 言及を追加し、basic-design.md と再同期した。
+
+##### 決議: 修正方針 (a) 採用 — Repository に `ORDER BY` を追加
+
+| 候補 | 採否 | 理由 |
+|---|---|---|
+| **(a) Repository の `find_by_id` に `ORDER BY room_id` / `ORDER BY agent_id` を追加** | ✓ **採用** | basic-design.md L127-128 が既に「設計上の正解」として凍結済み、detailed-design.md と実装が追従するだけで整合性が回復。後続 Repository PR が同パターンを継承できるテンプレート責務 |
+| (b) Empire VO の `rooms` / `agents` を `frozenset[RoomRef]` / `frozenset[AgentRef]` に変更 | ✗ 不採用 | empire feature #8 で `list[RoomRef]` / `list[AgentRef]` を凍結済み（順序を持つ）。VO レベルの破壊的変更で、empire 設計書 / 実装 / テストも追従修正が必要、影響範囲大。本問題は Repository 層の SQL 発行で解決可能 |
+| (c) test 側の set 比較 workaround を恒久化 | ✗ 不採用 | 「list 順序が決定論的」という basic-design.md の凍結意図を放棄することになり、後続 Repository PR が「順序保証は test workaround で隠蔽してよい」という間違ったテンプレートを継承する |
+
+##### 修正タスク（別 PR で完了）
+
+本 PR ではドキュメント側の整合性回復（basic-design.md と detailed-design.md の再同期）のみ実施。コード側の修正は別 PR で行う:
+
+| タスク | 担当 PR | 内容 |
+|---|---|---|
+| Repository 修正 | `feature/empire-repository-order-by`（別 PR） | `find_by_id` の SELECT 文に `ORDER BY room_id` / `ORDER BY agent_id` を追加 |
+| テスト修正 | 同上 | `test_empire_repository/test_save_semantics.py` の set 比較 workaround を **list 順序比較**に戻す（保存順 == 復元順を物理保証） |
+| 申し送りクローズ | 同上 | 本 §Known Issues §BUG-EMR-001 を「Resolved in PR #XX」に更新 |
+
+##### 緊急度: LOW
+
+- 機能影響なし（Empire VO の構造的等価性は維持される、list 内容の集合は同一）
+- セキュリティ影響なし（順序非決定性で漏洩する情報なし）
+- パフォーマンス影響なし（`ORDER BY` 追加のコストは無視できる）
+- **後続 Repository PR が真似する経路として残ると有害**（テンプレート責務違反）→ 別 PR で確実にクローズする責務
+
+##### 後続 Repository PR への申し送り
+
+本 BUG-EMR-001 修正後、後続 6 件 Repository PR（workflow / agent / room / directive / task / external-review-gate）は **`find_by_id` の子テーブル SELECT 文に必ず `ORDER BY` を発行する**規約を遵守する。本 §Known Issues §BUG-EMR-001 のリストを真実源として参照。
 
 ## 設計判断の補足
 

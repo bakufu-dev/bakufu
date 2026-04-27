@@ -136,10 +136,18 @@ class TestDualConnectionLifecycle:
     async def test_migration_runner_disposes_its_own_engine(
         self, fresh_app_engine: AsyncEngine
     ) -> None:
-        """TC-IT-PF-003-D: ``run_upgrade_head`` returns after dispose; app engine still alive."""
+        """TC-IT-PF-003-D: ``run_upgrade_head`` returns after dispose; app engine still alive.
+
+        The exact head id advances every Aggregate Repository PR
+        (PR #19 → ``0001_init`` → PR #25 → ``0002_empire_aggregate`` →
+        future PRs append further revisions). The test only cares that
+        ``run_upgrade_head`` reports a non-empty revision id and that
+        the M2 cross-cutting tables are present after the upgrade.
+        """
         head = await run_upgrade_head(fresh_app_engine)
-        # Head should be the documented revision id from versions/0001.
-        assert head == "0001_init"
+        assert head, (
+            "run_upgrade_head should return the latest Alembic revision id, not an empty string"
+        )
         # Application engine remains usable.
         async with fresh_app_engine.connect() as conn:
             result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
