@@ -84,6 +84,11 @@ readonly NO_MASK_FILES=(
     # secret categories.
     "${TABLES_DIR}/workflows.py"
     "${TABLES_DIR}/workflow_transitions.py"
+    # Agent Repository (PR #32): only agents.prompt_body is masked
+    # (Schneier 申し送り #3 实適用); the side tables carry no secret
+    # semantics.
+    "${TABLES_DIR}/agent_providers.py"
+    "${TABLES_DIR}/agent_skills.py"
 )
 
 for file in "${NO_MASK_FILES[@]}"; do
@@ -103,61 +108,71 @@ for file in "${NO_MASK_FILES[@]}"; do
 done
 
 # Layer 1-C: 過剰マスキング防止 ─ partially-masked テーブルで指定の
-# カラム以外に Masked* が混入していないこと。
-# Workflow Repository (PR #31, detailed-design.md §確定 E):
-#   workflow_stages.notify_channels_json だけが MaskedJSONEncoded、
-#   他カラムは JSONEncoded / String / Text に閉じる。
+# カラム以外に Masked* が混入していないこと。各ファイルに対し
+# 「許可カラムが期待型で 1 つ宣言されている」+「他カラムに Masked* が
+# 一切登場しない」の両方を assert する。
 #
-# フォーマット: "<file>:<allowed_column>"
+# 登録されている partial-mask テーブル:
+#   * Workflow Repository (PR #31, detailed-design.md §確定 E):
+#     workflow_stages.notify_channels_json だけが MaskedJSONEncoded、
+#     他カラムは JSONEncoded / String / Text に閉じる。
+#   * Agent Repository (PR #32, detailed-design.md §確定 E):
+#     agents.prompt_body だけが MaskedText、他カラムは String / Boolean
+#     に閉じる。Schneier 申し送り #3 实適用の grep 物理保証層。
+#
+# フォーマット: "<file>:<allowed_column>:<expected_type>"
 readonly PARTIAL_MASK_FILES=(
-    "${TABLES_DIR}/workflow_stages.py:notify_channels_json"
+    "${TABLES_DIR}/workflow_stages.py:notify_channels_json:MaskedJSONEncoded"
+    "${TABLES_DIR}/agents.py:prompt_body:MaskedText"
 )
 
 for entry in "${PARTIAL_MASK_FILES[@]}"; do
-    file="${entry%%:*}"
-    allowed="${entry##*:}"
+    IFS=':' read -r file allowed expected_type <<< "$entry"
 
     if [[ ! -f "$file" ]]; then
         continue
     fi
 
-    # MaskedText must be zero everywhere on this file.
-    text_leaks=$(grep -nE "MaskedText" "$file" || true)
-    if [[ -n "$text_leaks" ]]; then
-        echo "[FAIL] partial-mask table file declares MaskedText (over-masking): $file" >&2
-        echo "$text_leaks" >&2
-        echo "       Next: this table is registered with a single allowed" >&2
-        echo "       MaskedJSONEncoded column ('${allowed}') in" >&2
-        echo "       docs/architecture/domain-model/storage.md §逆引き表;" >&2
-        echo "       remove the MaskedText usage or update the §逆引き表 entry." >&2
-        violations=$((violations + 1))
-    fi
-
-    # MaskedJSONEncoded usages: only declarations / re-exports outside
-    # the allowed column trip the over-masking guard.
-    json_decls=$(grep -nE "^\s*[A-Za-z_][A-Za-z0-9_]*\s*:\s*Mapped.*MaskedJSONEncoded" \
+    # All Masked* column declarations on this file. The allowed
+    # column must appear exactly once with the expected type and
+    # nothing else may carry a Masked* TypeDecorator.
+    masked_decls=$(grep -nE "^\s*[A-Za-z_][A-Za-z0-9_]*\s*:\s*Mapped.*Masked(JSONEncoded|Text)" \
         "$file" || true)
-    if [[ -z "$json_decls" ]]; then
+
+    if [[ -z "$masked_decls" ]]; then
         echo "[FAIL] partial-mask table file is missing the expected" >&2
-        echo "       MaskedJSONEncoded column declaration: $file" >&2
-        echo "       Next: declare ${allowed} with MaskedJSONEncoded per" >&2
+        echo "       ${expected_type} column declaration: $file" >&2
+        echo "       Next: declare ${allowed} with ${expected_type} per" >&2
         echo "       docs/architecture/domain-model/storage.md §逆引き表." >&2
         violations=$((violations + 1))
-    else
-        while IFS= read -r line; do
-            [[ -z "$line" ]] && continue
-            if [[ "$line" == *"${allowed}"* ]]; then
-                continue
-            fi
-            echo "[FAIL] partial-mask table file declares MaskedJSONEncoded on a" >&2
+        continue
+    fi
+
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+
+        # Reject masking on a column other than the allowed one.
+        if [[ "$line" != *"${allowed}"* ]]; then
+            echo "[FAIL] partial-mask table file declares Masked* on a" >&2
             echo "       column other than '${allowed}': $file" >&2
             echo "       ${line}" >&2
-            echo "       Next: only '${allowed}' is registered as MaskedJSONEncoded" >&2
-            echo "       in docs/architecture/domain-model/storage.md §逆引き表;" >&2
+            echo "       Next: only '${allowed}' is registered as masked in" >&2
+            echo "       docs/architecture/domain-model/storage.md §逆引き表;" >&2
             echo "       move the masking to the correct column or update §逆引き表." >&2
             violations=$((violations + 1))
-        done <<< "$json_decls"
-    fi
+            continue
+        fi
+
+        # Allowed column must use the expected TypeDecorator.
+        if [[ "$line" != *"$expected_type"* ]]; then
+            echo "[FAIL] partial-mask column '${allowed}' uses the wrong Masked*" >&2
+            echo "       TypeDecorator (expected ${expected_type}): $file" >&2
+            echo "       ${line}" >&2
+            echo "       Next: switch ${allowed} to mapped_column(${expected_type}, ...) per" >&2
+            echo "       docs/architecture/domain-model/storage.md §逆引き表." >&2
+            violations=$((violations + 1))
+        fi
+    done <<< "$masked_decls"
 done
 
 if [[ "$violations" -gt 0 ]]; then
