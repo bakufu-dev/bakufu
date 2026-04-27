@@ -268,9 +268,58 @@ class RoomInvariantViolation(Exception):  # noqa: N818
         self.detail: dict[str, object] = masked_detail
 
 
+type DirectiveViolationKind = Literal[
+    "text_range",
+    "task_already_linked",
+]
+"""Discriminator for :class:`DirectiveInvariantViolation` per Directive
+detailed-design §確定 F.
+
+The set is **closed at two kinds**. Type / required-field violations
+surface as :class:`pydantic.ValidationError` (MSG-DR-003) and the
+``$``-prefix normalization is an application-layer responsibility
+(``DirectiveService.issue()``), so neither leaks into the aggregate's
+discriminator namespace.
+"""
+
+
+# DDD: "Violation" describes an invariant breach, not a programming bug, so
+# the N818 "Error suffix" rule does not apply here.
+class DirectiveInvariantViolation(Exception):  # noqa: N818
+    """Raised when a :class:`Directive` aggregate invariant is violated.
+
+    Mirrors :class:`RoomInvariantViolation` / :class:`AgentInvariantViolation`
+    in shape (``kind`` + ``message`` + ``detail`` + immutable copy of
+    detail) and applies the same Discord webhook secret masking.
+    ``Directive.text`` is user-pasted CEO directive content that may
+    embed a webhook URL, so masking ``message`` / ``detail`` at
+    construction time means callers cannot leak a token by serializing
+    the exception (multi-layer defense, see Directive detailed-design
+    §確定 E).
+    """
+
+    def __init__(
+        self,
+        *,
+        kind: DirectiveViolationKind,
+        message: str,
+        detail: Mapping[str, object] | None = None,
+    ) -> None:
+        masked_message = mask_discord_webhook(message)
+        masked_detail: dict[str, object] = (
+            {key: mask_discord_webhook_in(value) for key, value in detail.items()} if detail else {}
+        )
+        super().__init__(masked_message)
+        self.kind: DirectiveViolationKind = kind
+        self.message: str = masked_message
+        self.detail: dict[str, object] = masked_detail
+
+
 __all__ = [
     "AgentInvariantViolation",
     "AgentViolationKind",
+    "DirectiveInvariantViolation",
+    "DirectiveViolationKind",
     "EmpireInvariantViolation",
     "EmpireViolationKind",
     "RoomInvariantViolation",
