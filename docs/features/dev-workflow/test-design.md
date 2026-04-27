@@ -65,7 +65,7 @@
 | TC-E2E-005 | 春日 結衣（レビュワー） | `--no-verify` バイパスを CI 側再実行で検知（受入基準 8） | 1. format 違反を `--no-verify` でコミット 2. `git push --no-verify` 3. GitHub Actions の `lint.yml` 結果を確認 | `lint.yml` job が `just fmt-check` ステップで exit 非 0 になり PR チェックが赤 |
 | TC-E2E-006 | 鎌田 大樹 | `setup.sh` の 2 回連続実行で差分が発生しない（受入基準 6） | 1 回目 setup → 2 回目 setup を連続実行 | 2 回目も exit 0、`[SKIP] <tool> は既にインストール済みです` を 5 ツール（uv / just / convco / lefthook / gitleaks）で表示 |
 | TC-E2E-007 | Windows 開発者（非 PowerShell 7） | PowerShell 5.1 起動で即 Fail Fast（受入基準 13） | Windows 10 21H2 既定 `powershell.exe` で `.\scripts\setup.ps1` | exit 非 0、MSG-DW-011 表示、`winget install Microsoft.PowerShell` 案内 |
-| TC-E2E-008 | 鎌田 大樹 | secret 混入コミットを pre-commit が遮断（受入基準 12） | `AKIAZ5KQ3ZXNGR4T4BXK` 相当の実在パターン + 40 桁 secret を staged → `git commit` | exit 非 0、MSG-DW-010 表示、gitleaks 側 stdout に file:line 出力 |
+| TC-E2E-008 | 鎌田 大樹 | secret 混入コミットを pre-commit が遮断（受入基準 12） | AWS access key 形式（`AKIA` + 16 文字 + 40 桁 secret）の擬似値（AWS 公式 example: `AKIAIOSFODNN7EXAMPLE` を踏襲）を staged → `git commit` | exit 非 0、MSG-DW-010 表示、gitleaks 側 stdout に file:line 出力 |
 | TC-E2E-009 | 鎌田 大樹 | SHA256 改ざんバイナリを setup が拒否（受入基準 14） | setup.sh 冒頭のピン定数を意図的に 1 文字ズラして再実行（対象ツール未導入状態で） | exit 非 0、MSG-DW-012 表示、一時ファイル削除 |
 | TC-E2E-010 | Agent-C（Claude Code） | AI 生成フッター付きコミットを commit-msg が遮断（受入基準 17、3 パターン） | 3 ケース個別: (a) `🤖 Generated with [Claude Code](...)` (b) `Co-Authored-By: Claude <noreply@anthropic.com>` (c) `Co-Authored-By: Claude Opus 4.7 <...>` | 3 ケースとも exit 非 0、MSG-DW-013 stderr 表示 |
 | TC-E2E-011 | Agent-C 境界（body 位置の Claude 言及） | `Claude Shannon` を body 位置で引用した正規コミット | `feat(x): cite Claude Shannon in info theory` | exit 0 でコミット成功（P3 の `Co-Authored-By:` 接頭辞必須契約） |
