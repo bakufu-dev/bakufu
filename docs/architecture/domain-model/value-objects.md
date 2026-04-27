@@ -44,10 +44,16 @@
 | `id` | `StageId` | 不変 |
 | `name` | `str` | 1〜80 文字（例: "要求分析"、"基本設計"、"実装"、"外部レビュー"） |
 | `kind` | `StageKind` | `WORK` / `INTERNAL_REVIEW` / `EXTERNAL_REVIEW` |
-| `required_role` | `Role` | この Stage を担当する Role |
+| `required_role` | `frozenset[Role]` | この Stage を担当する Role の集合。**空集合は不可（最低 1 件）**。複数役割の協業を表現できる（例: `{LEADER, UX}`） |
 | `deliverable_template` | `str` | Markdown テンプレ（成果物の形式） |
 | `completion_policy` | `CompletionPolicy`（VO） | 完了判定ロジック（例: "approved by reviewer" / "all checklist items checked"） |
 | `notify_channels` | `List[NotifyChannel]` | `EXTERNAL_REVIEW` のときのみ必須。Discord / Slack / Email 等の通知先 |
+
+**`required_role` を集合型にした理由**:
+- 業務工程は単一役割で完結しないことが多い（例: 要件定義は LEADER + UX、基本設計は DEVELOPER + UX）
+- 単一 `Role` から複数を表現するために合成 enum 値（`LEADER_AND_UX` 等）を増やすと組合せ爆発する
+- `frozenset[Role]` は不変・順序非依存・集合演算（`is_subset_of` 等）が標準で使える
+- Stage 担当割当時に「Agent の `role` が `required_role` に含まれるか」を `agent.role in stage.required_role` で素直に判定できる
 
 ### Transition（Entity within Workflow Aggregate）
 

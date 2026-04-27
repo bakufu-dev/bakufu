@@ -58,7 +58,7 @@ classDiagram
         +id: StageId
         +name: str
         +kind: StageKind
-        +required_role: Role
+        +required_role: frozenset~Role~
         +deliverable_template: str
         +completion_policy: CompletionPolicy
     }
