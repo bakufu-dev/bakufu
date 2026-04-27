@@ -23,7 +23,7 @@
 - 後続 `feature/{aggregate}-repository` PR が SQLAlchemy engine / session / マスキングゲートウェイ / マイグレーション head を共有資産として参照できる
 - Schneier 申し送り 6 項目のうち本 Issue で配線できる 4 項目（#1 / #4 / #5 / #6）が **1 PR で凍結**され、他項目（#2 / #3）も hook 構造を提供する
 - M3 HTTP API / M5 LLM Adapter / M6 ExternalReviewGate UI が「永続化が動いている前提」で開発を進められる
-- domain → infrastructure の依存方向（domain は外側を知らない）が SQLAlchemy event listener / TypeDecorator パターンで物理保証される（後続 Repository が崩しにくい）
+- domain → infrastructure の依存方向（domain は外側を知らない）が SQLAlchemy TypeDecorator (`MaskedJSONEncoded` / `MaskedText`) で物理保証される（後続 Repository が崩しにくい、§確定 R1-D / I）
 
 ### ビジネス価値
 
@@ -39,7 +39,7 @@
 - マイグレーションは **Alembic**（同上）。初回 revision は共通基盤テーブル 3 種（`audit_log` / `bakufu_pid_registry` / `domain_event_outbox`）のみ。Aggregate 別テーブルは後続 PR で別 revision を積む
 - SQLite は **WAL モード + foreign_keys ON + busy_timeout 5000ms** を engine 生成時に PRAGMA で強制する（接続イベントで毎接続適用）
 - `BAKUFU_DATA_DIR` は **起動時に絶対パスで解決**し以後保持する（Schneier 申し送り #1）。相対パスは Fail Fast
-- マスキングは **永続化前の単一ゲートウェイ** `infrastructure/security/masking.py` に集約し、SQLAlchemy event listener（`before_insert` / `before_update`）で**強制ゲートウェイ化**する。「呼ぶのを忘れる」経路を物理的に塞ぐ
+- マスキングは **永続化前の単一ゲートウェイ** `infrastructure/security/masking.py` に集約し、SQLAlchemy **TypeDecorator**（`MaskedJSONEncoded` / `MaskedText` の `process_bind_param`）で**強制ゲートウェイ化**する。Core / ORM 両経路（`session.add()` 経由と `session.execute(insert(...).values(...))` 経由）で確実に発火し、「呼ぶのを忘れる」経路を物理的に塞ぐ（§確定 R1-D で技術検証結果を凍結）
 - `audit_log` は **追記のみ**。DELETE は SQLite トリガーで `RAISE(ABORT)`、UPDATE も `result` / `error_text` の null 埋めのみ許可（Schneier 申し送り #4）
 - Outbox Dispatcher は **骨格のみ**実装（polling SQL / 状態マーキング / 5 分リカバリ条件 / 5 回 dead-letter）。Handler 実装は後続 PR で event 種別ごとに積む
 - `bakufu_pid_registry` テーブルと起動時 GC スケルトン（`psutil.create_time()` で PID 衝突対策、`recursive=True` で子孫追跡）を本 Issue で確定（Schneier 申し送り #5）
@@ -52,10 +52,10 @@
 | Repository 本体まで本 Issue で実装する | 巨大 PR 化（4 Aggregate × Repository でファイル数 50+、レビュー帯域を圧迫）。基盤と Repository を分離して後続 PR で積み増す方が安全 |
 | Outbox Dispatcher の Handler 実装まで本 Issue に含める | Handler は event 種別ごとに副作用（Notifier / WebSocket / 次 Aggregate 更新）が異なり、配線が複雑。骨格のみで止め、Handler は `feature/outbox-handlers` 系の小粒 PR で積む |
 | Synchronous SQLAlchemy（v1.4 sync 互換）を採用 | FastAPI + uvicorn の async runtime と相性が悪く、connection pool / session 管理が複雑化する。`tech-stack.md` の async 確定方針と矛盾 |
-| マスキングを application 層 service の責務（メソッド呼び出し）にする | 「呼び忘れ」経路が生まれる（OWASP A02 / A09 リスク）。SQLAlchemy event listener で強制ゲートウェイ化することで「直接 INSERT する経路」も masking を経由する物理保証を得る |
+| マスキングを application 層 service の責務（メソッド呼び出し）にする | 「呼び忘れ」経路が生まれる（OWASP A02 / A09 リスク）。SQLAlchemy TypeDecorator `process_bind_param` で強制ゲートウェイ化することで「直接 INSERT する経路」も masking を経由する物理保証を得る |
 | Alembic を後段で導入し本 Issue は SQLAlchemy `metadata.create_all()` で済ませる | Phase 2 でスキーマ変更が必要になった瞬間に migration が要るが、その時点でのデータ移行スクリプトを後付けで書くのは負債。最初から Alembic を入れる |
 | WAL 以外（ROLLBACK ジャーナル）を採用 | 同時読み書き性能が劣る。WAL は SQLite の標準推奨で MVP 想定の単一プロセス + WebSocket リアルタイム配信に必須 |
-| TypeDecorator ベースのマスキング配線（`MaskedString` 型） | 個別カラムごとに型を差し替える必要があり、属性追加時の漏れが生まれやすい。**`event.listens_for(target, 'before_insert/before_update')` の表テーブル横断で配線**する方が漏れにくい |
+| **`event.listens_for(target, 'before_insert/before_update')` のイベントリスナー配線**（旧採用案、§確定 R1-D で BUG-PF-001 の技術検証により反転却下） | 当初は「raw SQL 経路でも listener が走る」想定で採用していたが、**SQLAlchemy 2.x の Core `insert(table).values({...})` の inline values は ORM mapper を経由しないため `before_insert` listener が発火しない**ことを実装段階のテストで確認（PR #23 BUG-PF-001、TC-IT-PF-020 が xfail strict=True で凍結）。raw SQL 経路で生 secret が永続化される脱出経路が残るため、TypeDecorator `process_bind_param` 方式に反転（§確定 R1-D）。「属性追加時の漏れ」リスクは CI grep + アーキテクチャテスト + 逆引き表で物理保証する |
 
 ### 重要な選定確定（レビュー指摘 R1 応答）
 
@@ -68,7 +68,7 @@
 | 3 | `Persona.prompt_body` Repository マスキング | △ hook 構造のみ確定（実適用は `feature/agent-repository`） | Aggregate 別 Repository が乗るため hook 提供で十分 |
 | 4 | `audit_log` DELETE 拒否 SQLite トリガー | ✓ Alembic 初回 revision で `CREATE TRIGGER` | テーブル定義と物理保証を 1 PR で凍結 |
 | 5 | `bakufu_pid_registry` OS file mode 0600 | ✓ テーブル + 起動時 GC スケルトン | 起動シーケンスに組み込む必要があるため基盤に置く |
-| 6 | Outbox `payload_json` / `last_error` 永続化前マスキング | ✓ SQLAlchemy `before_insert` / `before_update` で強制ゲートウェイ化 | OWASP A02 / A09 の物理保証 |
+| 6 | Outbox `payload_json` / `last_error` 永続化前マスキング | ✓ SQLAlchemy **TypeDecorator** (`MaskedJSONEncoded` / `MaskedText`) の `process_bind_param` で強制ゲートウェイ化（§確定 R1-D で技術検証結果を凍結） | OWASP A02 / A09 の物理保証、Core / ORM 両経路カバー |
 
 #### 確定 R1-B: Repository 実装の境界
 
@@ -99,21 +99,53 @@
 - 4 → 6: 前回プロセスの孤児が現セッションの初回 Outbox を横取りしないため、pid_registry GC を Dispatcher 起動より前に置く
 - 6 → 8: HTTP リスナを開く前に Outbox が動いていないと、初期化中の Aggregate 操作が dead-letter 化する経路ができる
 
-#### 確定 R1-D: SQLAlchemy event listener vs TypeDecorator のマスキング配線方式
+#### 確定 R1-D: マスキング配線方式の決定（TypeDecorator 採用、event listener 反転却下）
 
-採用: **`event.listens_for(target, 'before_insert')` / `'before_update'` の表テーブル横断配線**。
+採用: **SQLAlchemy TypeDecorator (`MaskedJSONEncoded` / `MaskedText`) の `process_bind_param` フック**。
 
-理由:
+##### 反転の経緯（実装段階での技術検証、PR #23 BUG-PF-001）
 
-| 検討事項 | event listener | TypeDecorator |
+旧設計（前バージョン）は `event.listens_for(TableClass, 'before_insert')` / `'before_update'` の表テーブル横断 listener を採用していた。論拠は「raw SQL 経路でも listener が走る」だったが、PR #23 でジェフが TC-IT-PF-020（raw SQL 経路 masking 物理保証）を実装した結果、**実際には Core `insert(table).values({...})` の inline values は ORM mapper を経由しないため `before_insert` listener が発火しない**ことが判明した。これは Schneier 申し送り #6 / 旧確定 R1-D 「raw SQL 経路でも masking 強制」契約の根本破綻であり、後続 Repository PR が Core insert を使うと API key / OAuth token が DB に書かれる脱出経路が残る。
+
+リーナスが BUG-PF-001 修正で `MaskedJSONEncoded` / `MaskedText` TypeDecorator に切替え、`process_bind_param` で **Core insert / ORM Session.add 両経路で確実に発火**することを TC-IT-PF-020 PASSED で物理証明した（commit `4b882bf`）。本確定はその実装決定を設計書に追従反転させる凍結。
+
+##### 採用根拠（実装後の評価）
+
+| 検討事項 | TypeDecorator（採用、現契約） | event listener（不採用、旧契約） |
 |----|----|----|
-| 配線の一元性 | ✓ table 単位で listener を 1 つ登録すれば全カラムを横断検査できる | ✗ カラムごとに型を差し替える必要 |
-| 属性追加時の漏れ | ✓ 新カラム追加時、masking 対象なら listener 内のフィールドリストに 1 行追加するだけ | ✗ カラム定義時に `MaskedString` 型を指定し忘れると検査が抜ける |
-| パフォーマンス | ✓ INSERT / UPDATE 直前の 1 回のみ呼ばれる | △ Type レベルで bind_param に毎回介入する |
-| テスト容易性 | ✓ listener を直接呼んでテストできる | △ 型を介すため mock しにくい |
-| 「呼び忘れ」経路 | ✓ table に直接 INSERT する経路でも listener が走る | ✗ raw SQL 経路は型を経由しない |
+| 「呼び忘れ」経路 | ✓ Core / ORM 両経路で `process_bind_param` 発火、raw SQL `insert(table).values()` でも捕捉される（TC-IT-PF-020 で物理保証） | ✗ Core `insert(table).values()` の inline values は ORM mapper を経由せず `before_insert` 発火しない（BUG-PF-001 で確認） |
+| 配線の一元性 | △ カラムごとに `mapped_column(MaskedJSONEncoded, ...)` 指定が必要だが、§補強条項で物理保証 | ✓ table 単位で listener を 1 つ登録すれば全カラム横断 |
+| 属性追加時の漏れ | △ 型指定忘れリスクは存在するが、§補強条項（CI grep + arch test + 逆引き表）で物理保証 | △ listener 内フィールドリストの更新忘れリスク（同等のレビュー観点で対応）|
+| パフォーマンス | △ Type レベルで bind_param に毎回介入（実測で 1KB 入力 < 1ms、性能要件内） | ✓ INSERT / UPDATE 直前の 1 回のみ |
+| テスト容易性 | ✓ TypeDecorator を直接呼んでテストできる、Core / ORM 両経路の検証が test として独立に書ける | △ listener 単体テストは可能だが Core 経路の網羅が困難 |
+| Schneier #6 / R1-D 「raw SQL 経路でも masking 強制」契約 | ✓ Core / ORM 両経路で物理保証、TC-IT-PF-020 PASSED | ✗ 契約破綻、TC-IT-PF-020 xfail strict=True |
 
-`Persona.prompt_body` / `PromptKit.prefix_markdown` / `Conversation.body_markdown` / `Deliverable.body_markdown` / `domain_event_outbox.payload_json` / `domain_event_outbox.last_error` / `audit_log.args_json` / `audit_log.error_text` / `Task.last_error` の 9 経路すべてを listener 配線で物理保証する（後続 Repository PR で table 定義と同時に listener 登録）。
+##### 採用 TypeDecorator 一覧（`infrastructure/persistence/sqlite/base.py` で定義、本 PR で凍結）
+
+| 型名 | 適用先カラム | base 型 | masking 適用ロジック |
+|----|----|----|----|
+| `MaskedJSONEncoded` | `domain_event_outbox.payload_json` / `audit_log.args_json` / 後続 PR で `Conversation.messages[].body_markdown`（の構造化部分）等 | SQLite `JSON`（実体は `TEXT`） | `process_bind_param`: `MaskingGateway.mask_in()` で再帰走査 → `json.dumps(ensure_ascii=False, sort_keys=True)` |
+| `MaskedText` | `domain_event_outbox.last_error` / `audit_log.error_text` / `bakufu_pid_registry.cmd` / 後続 PR で `Persona.prompt_body` / `PromptKit.prefix_markdown` / `Task.last_error` / `Deliverable.body_markdown` 等 | SQLite `TEXT` | `process_bind_param`: `MaskingGateway.mask()` を文字列に適用 |
+
+`MaskedJSONEncoded` は `JSONEncoded` の masking 版、`MaskedText` は `Text` の masking 版。base.py は `UUIDStr` / `UTCDateTime` / `JSONEncoded` / `MaskedJSONEncoded` / `MaskedText` の 5 TypeDecorator を提供する（[`detailed-design/modules.md`](detailed-design/modules.md) §Module base.py 参照）。
+
+##### 補強条項: 「属性追加時の漏れ」リスクの物理保証（CI 三層防衛）
+
+TypeDecorator 採用の唯一のリスクは「新規カラム追加時に開発者が `Masked*` 型指定を忘れて `JSONEncoded` / `Text` を使ってしまい、masking が静かに抜ける経路」。これを以下 3 層で物理保証する:
+
+1. **CI grep guard** (`scripts/ci/check_masking_columns.sh`): `storage.md` §逆引き表に列挙された masking 対象カラム（`payload_json` / `last_error` / `args_json` / `error_text` / `cmd` / `prompt_body` / `prefix_markdown` / `body_markdown` / 構造化ログ）の **カラム名を grep し、宣言行に `MaskedJSONEncoded` か `MaskedText` が含まれることを strict 検証**。違反したら CI 落下。後続 Repository PR が型指定を忘れた瞬間に検出
+2. **アーキテクチャテスト** (`backend/tests/architecture/test_masking_columns.py`): SQLAlchemy metadata から `storage.md` 逆引き表のカラムを抽出し、`column.type.__class__` が `MaskedJSONEncoded` / `MaskedText` のいずれかであることを assert。grep をすり抜ける動的生成にも対応
+3. **コードレビュー観点** ([`docs/architecture/domain-model/storage.md`](../../architecture/domain-model/storage.md) §逆引き表 §運用ルール): 新規 Aggregate Repository PR は逆引き表に行を追加する責務、masking 対象カラムが `Masked*` 未指定の状態で永続化される PR はレビュー却下
+
+これにより event listener 方式と同等以上の「漏れ防止」を担保しつつ、Core SQL 経路の物理保証（TypeDecorator の本質的優位性）を獲得する。
+
+##### 「listener 採用と書いた前バージョン」の証跡保持
+
+R1-D の旧版（event listener 採用、TypeDecorator 不採用）は本セクションで反転凍結されたが、設計判断の透明性のため**反転理由を本書に永続記録する**:
+
+- 旧採用時点では SQLAlchemy event API の Core/ORM 統合度を過大評価していた
+- 実装段階で TC-IT-PF-020 を書くまで raw SQL 経路の不発火が表面化しなかった（設計書のみで正解を導けなかった事例）
+- 同種の判断は今後 Repository PR でも起こり得るため、「実装段階で設計契約が破綻した場合は設計書を反転凍結する」ワークフロー（本 R1-D 反転）をテンプレート化する
 
 #### 確定 R1-E: 起動時 PRAGMA 強制方法（Schneier 重大 2 対応で 8 件に拡張）
 
@@ -192,7 +224,7 @@ bakufu システム全体のペルソナは [`docs/architecture/context.md`](../
 | REQ-PF-003 | AsyncSession factory | `async with session.begin():` を UoW 境界として提供 | 必須 |
 | REQ-PF-004 | Alembic 初回 migration | `audit_log` / `bakufu_pid_registry` / `domain_event_outbox` の 3 テーブル + `audit_log` DELETE 拒否トリガ | 必須（Schneier #4） |
 | REQ-PF-005 | マスキング単一ゲートウェイ | 環境変数 + 9 種正規表現 + ホームパスの 3 段階適用順序、`infrastructure/security/masking.py` に集約 | 必須（Schneier #6） |
-| REQ-PF-006 | SQLAlchemy event listener 配線（Outbox） | `domain_event_outbox` の `payload_json` / `last_error` を `before_insert` / `before_update` で強制マスキング | 必須（Schneier #6） |
+| REQ-PF-006 | SQLAlchemy TypeDecorator 配線（Outbox / audit_log / pid_registry） | `MaskedJSONEncoded` / `MaskedText` の `process_bind_param` で Core / ORM 両経路の masking を強制ゲートウェイ化（§確定 R1-D） | 必須（Schneier #6） |
 | REQ-PF-007 | Outbox Dispatcher 骨格 | polling SQL（PENDING + DISPATCHING の 5 分リカバリ条件）、5 回 dead-letter、Handler レジストリ（空ハンドラ登録可） | 必須 |
 | REQ-PF-008 | pid_registry 起動時 GC | テーブル + GC スケルトン（`psutil.Process.create_time()` で PID 衝突対策、`recursive=True` で子孫追跡） | 必須（Schneier #5） |
 | REQ-PF-009 | アタッチメント FS ルート初期化 | `BAKUFU_DATA_DIR/attachments/` 作成 + パーミッション 0700 強制（POSIX のみ）+ 孤児 GC スケジューラ枠 | 必須 |

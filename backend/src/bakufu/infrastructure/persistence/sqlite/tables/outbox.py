@@ -6,12 +6,16 @@ The Outbox decouples domain event emission from external side effects
 **must** be redacted before it lands on disk because raw payloads can
 embed webhook URLs, API keys, or filesystem paths.
 
-Secret-column masking is wired at the engine ``before_execute`` level
-in :mod:`bakufu.infrastructure.persistence.sqlite.masking_listener`.
-That listener fires for both ORM ``Session.add()`` flushes and Core
-``session.execute(insert(table).values(...))`` paths, so the
-"raw-SQL path is masked too" promise (Confirmation B / Confirmation
-R1-D / Schneier #6) is now honored end-to-end (BUG-PF-001 fix).
+Secret-column masking is enforced via :class:`MaskedJSONEncoded` /
+:class:`MaskedText` TypeDecorators in
+:mod:`bakufu.infrastructure.persistence.sqlite.base`. Their
+``process_bind_param`` hooks fire for both ORM ``Session.add()``
+flushes and Core ``session.execute(insert(table).values(...))``
+paths, so the "raw-SQL path is masked too" promise (Confirmation B
+/ Confirmation R1-D / Schneier #6) is honored end-to-end (BUG-PF-001
+fix; see ``docs/features/persistence-foundation/requirements-analysis.md``
+§確定 R1-D for the design rationale and TC-IT-PF-020 for the
+physical regression test).
 """
 
 from __future__ import annotations

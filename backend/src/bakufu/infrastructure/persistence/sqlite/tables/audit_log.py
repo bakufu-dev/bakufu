@@ -4,11 +4,13 @@ The DDL-level append-only contract (DELETE rejected, UPDATE limited
 to NULL → value transitions on ``result`` / ``error_text``) is enforced
 by the SQLite triggers from the initial Alembic revision; see
 ``alembic/versions/0001_init_audit_pid_outbox.py``. Secret-column
-masking lives in
-:mod:`bakufu.infrastructure.persistence.sqlite.masking_listener` —
-hooked at the engine ``before_execute`` level so it covers both ORM
-``Session.add`` flushes and Core ``insert(table).values(...)`` paths
-(BUG-PF-001 fix).
+masking is enforced via :class:`MaskedJSONEncoded` /
+:class:`MaskedText` TypeDecorators in
+:mod:`bakufu.infrastructure.persistence.sqlite.base`. Their
+``process_bind_param`` hooks fire for both ORM ``Session.add()`` and
+Core ``insert(table).values(...)`` paths (BUG-PF-001 fix; see
+``docs/features/persistence-foundation/requirements-analysis.md``
+§確定 R1-D for the design rationale).
 """
 
 from __future__ import annotations

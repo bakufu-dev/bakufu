@@ -4,10 +4,14 @@ Bootstrap stage 4 sweeps this table to kill leftover claude/codex/etc.
 subprocesses from a previous run. The ``cmd`` column may carry CLI
 arguments containing secrets (``--api-key=sk-ant-...``) so the masking
 gateway is mandatory — see Schneier 申し送り #5.
-Secret-column masking is wired at the engine ``before_execute`` level
-in :mod:`bakufu.infrastructure.persistence.sqlite.masking_listener`,
-so both ORM and Core SQL paths route through the gateway (BUG-PF-001
-fix).
+Secret-column masking is enforced via the :class:`MaskedText`
+TypeDecorator in
+:mod:`bakufu.infrastructure.persistence.sqlite.base`. Its
+``process_bind_param`` hook fires for both ORM ``Session.add()`` and
+Core ``insert(table).values(...)`` paths so the gateway is honored
+end-to-end (BUG-PF-001 fix; see
+``docs/features/persistence-foundation/requirements-analysis.md``
+§確定 R1-D for the design rationale).
 """
 
 from __future__ import annotations

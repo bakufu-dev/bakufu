@@ -42,7 +42,9 @@
 | `Base` | declarative base | `DeclarativeBase` を継承した bakufu 共通 base |
 | `UUIDStr` | TypeDecorator | UUID を `CHAR(32)` hex 形式で永続化、Python 側は `uuid.UUID` |
 | `UTCDateTime` | TypeDecorator | datetime を UTC で永続化、tz-aware を要求（naive datetime は Fail Fast） |
-| `JSONEncoded` | TypeDecorator | dict / list を JSON 文字列で永続化（`json.dumps(..., ensure_ascii=False, sort_keys=True)`） |
+| `JSONEncoded` | TypeDecorator | dict / list を JSON 文字列で永続化（`json.dumps(..., ensure_ascii=False, sort_keys=True)`、masking なしの中立 type） |
+| `MaskedJSONEncoded` | TypeDecorator | `JSONEncoded` を拡張、`process_bind_param` で `MaskingGateway.mask_in()` 適用後に JSON エンコード（[`triggers.md`](triggers.md) §確定 B、Core / ORM 両経路で発火） |
+| `MaskedText` | TypeDecorator | `Text` を拡張、`process_bind_param` で `MaskingGateway.mask()` 適用後に文字列を返す |
 
 ## Module: `infrastructure/persistence/sqlite/tables/audit_log.py`
 
@@ -51,12 +53,12 @@
 | `id` | `UUIDStr` | PK, NOT NULL | UUIDv4 |
 | `actor` | `String(255)` | NOT NULL | OS ユーザー名 + ホスト名 |
 | `command` | `String(64)` | NOT NULL | enum string（`retry-task` / `cancel-task` / `retry-event` / `list-blocked` / `list-dead-letters`） |
-| `args_json` | `JSONEncoded` | NOT NULL | masking 適用済み |
+| `args_json` | `MaskedJSONEncoded` | NOT NULL | `process_bind_param` で `MaskingGateway.mask_in()` 適用後に JSON エンコード（[`triggers.md`](triggers.md) §確定 B） |
 | `result` | `String(16)` | NULL | NULL → SUCCESS / FAILURE |
-| `error_text` | `Text` | NULL | masking 適用済み |
+| `error_text` | `MaskedText` | NULL | `process_bind_param` で `MaskingGateway.mask()` 適用 |
 | `executed_at` | `UTCDateTime` | NOT NULL | UTC |
 
-**event listener 配線**: `before_insert` / `before_update` で `target.args_json` / `target.error_text` に `MaskingGateway.mask_in()` / `mask()` を適用してから INSERT / UPDATE。
+**masking 配線**: `mapped_column(MaskedJSONEncoded, ...)` / `mapped_column(MaskedText, ...)` で宣言。SQLAlchemy が bind parameter 解決時に `process_bind_param` を発火、Core `insert(table).values({...})` 経路でも捕捉される（旧 event listener 方式は不発火、PR #23 BUG-PF-001 で反転）。
 
 ## Module: `infrastructure/persistence/sqlite/tables/pid_registry.py`
 
@@ -65,11 +67,11 @@
 | `pid` | `Integer` | PK, NOT NULL | OS の PID |
 | `parent_pid` | `Integer` | NOT NULL | bakufu Backend 自身の `os.getpid()` |
 | `started_at` | `UTCDateTime` | NOT NULL | `psutil.Process.create_time()` 値（PID 衝突対策の比較キー） |
-| `cmd` | `Text` | NOT NULL | masking 適用済み |
+| `cmd` | `MaskedText` | NOT NULL | `process_bind_param` で `MaskingGateway.mask()` 適用（CLI flags に env 値が混入し得るため必須） |
 | `task_id` | `UUIDStr` | NULL | task と紐づく場合（後続 PR で FK 追加） |
 | `stage_id` | `UUIDStr` | NULL | stage と紐づく場合 |
 
-**event listener 配線**: `before_insert` / `before_update` で `target.cmd` に `MaskingGateway.mask()` を適用。
+**masking 配線**: `mapped_column(MaskedText, ...)` で宣言（[`triggers.md`](triggers.md) §確定 B）。Core / ORM 両経路で `process_bind_param` 発火。
 
 ## Module: `infrastructure/persistence/sqlite/tables/outbox.py`
 
@@ -78,18 +80,18 @@
 | `event_id` | `UUIDStr` | PK, NOT NULL | UUIDv4、Handler 冪等性キー |
 | `event_kind` | `String(64)` | NOT NULL | `DirectiveIssued` 等の enum string |
 | `aggregate_id` | `UUIDStr` | NOT NULL | 発火元 Aggregate |
-| `payload_json` | `JSONEncoded` | NOT NULL | masking 適用済み |
+| `payload_json` | `MaskedJSONEncoded` | NOT NULL | `process_bind_param` で `MaskingGateway.mask_in()` 適用後に JSON エンコード（[`triggers.md`](triggers.md) §確定 B） |
 | `created_at` | `UTCDateTime` | NOT NULL | UTC |
 | `status` | `String(16)` | NOT NULL | `PENDING` / `DISPATCHING` / `DISPATCHED` / `DEAD_LETTER` |
 | `attempt_count` | `Integer` | NOT NULL DEFAULT 0 | リトライ回数 |
 | `next_attempt_at` | `UTCDateTime` | NOT NULL | UTC |
-| `last_error` | `Text` | NULL | masking 適用済み |
+| `last_error` | `MaskedText` | NULL | `process_bind_param` で `MaskingGateway.mask()` 適用 |
 | `updated_at` | `UTCDateTime` | NOT NULL | UTC、リカバリ判定用 |
 | `dispatched_at` | `UTCDateTime` | NULL | UTC |
 
 **INDEX**: `(status, next_attempt_at)`（polling SQL の最適化）
 
-**event listener 配線**: `before_insert` / `before_update` で `target.payload_json` / `target.last_error` に `MaskingGateway.mask_in()` / `mask()` を適用。
+**masking 配線**: `mapped_column(MaskedJSONEncoded, ...)` / `mapped_column(MaskedText, ...)` で宣言。Schneier 申し送り #6（Outbox `payload_json` / `last_error` 永続化前マスキング）が Core / ORM 両経路で物理保証される（TC-IT-PF-020 PASSED で検証）。
 
 ## Module: `infrastructure/security/masking.py`
 

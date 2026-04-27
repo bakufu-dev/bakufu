@@ -38,7 +38,7 @@
 | `mask` が文字列処理中に予期せぬ例外を raise | catch して **入力 str 全体を `<REDACTED:MASK_ERROR>` に完全置換** + WARN ログ | `<REDACTED:MASK_ERROR>`（生データは絶対に書かない） |
 | 正規表現マッチ中の例外（理論上発生しない） | 同上 | `<REDACTED:MASK_ERROR>` |
 | `mask_in` が再帰中に容量制限超過（10MB 等の異常 dict） | 当該 dict / list 全体を `<REDACTED:MASK_OVERFLOW>` に置換 + WARN ログ | `<REDACTED:MASK_OVERFLOW>` |
-| listener 自体が予期せぬ例外を raise | listener の outer catch で row のすべての masking 対象フィールドを `<REDACTED:LISTENER_ERROR>` に置換 + ERROR ログ + 永続化は続行 | 全 masking 対象フィールドが `<REDACTED:*>` になる |
+| TypeDecorator `process_bind_param` 自体が予期せぬ例外を raise | TypeDecorator outer catch で当該フィールドを `<REDACTED:LISTENER_ERROR>` に置換 + ERROR ログ + 永続化は続行（残りの bind params は通常経路） | 当該 masking 対象フィールドが `<REDACTED:LISTENER_ERROR>` になる（履歴的命名: BUG-PF-001 修正前の listener 方式から継承したトークン文字列を維持し、互換性のため変更しない） |
 
 ### 環境変数辞書ロードは **Fail Fast**（Schneier 重大 1 (B) 対応）
 
@@ -53,15 +53,15 @@ masking の最初の layer（環境変数値の伏字化）が無効化された
 
 「空辞書として継続、WARN ログ」を**削除**する。masking layer 1 が有効でない状態での bakufu 起動は信頼境界の前提を崩す。
 
-### listener の永続化を「止めない」契約は維持、ただし「生データを書かない」を絶対不変条件として上位化
+### TypeDecorator の永続化を「止めない」契約は維持、ただし「生データを書かない」を絶対不変条件として上位化
 
-旧契約: 「Outbox 全体が止まると bakufu 全体が機能停止」を理由に listener の masking スキップを許容していた。
+旧契約: 「Outbox 全体が止まると bakufu 全体が機能停止」を理由に masking スキップを許容していた。
 
-新契約: **listener は常に何らかの masking 後値を書く**（`<REDACTED:MASK_ERROR>` / `<REDACTED:LISTENER_ERROR>` / `<REDACTED:MASK_OVERFLOW>` のいずれかでも、生データは絶対に書かない）。
+新契約: **`process_bind_param` は常に何らかの masking 後値を返す**（`<REDACTED:MASK_ERROR>` / `<REDACTED:LISTENER_ERROR>` / `<REDACTED:MASK_OVERFLOW>` のいずれかでも、生データは絶対に書かない）。
 
 論拠:
 - bakufu は CEO 個人の秘密が永続化される環境であり、business continuity > security の優先順位は逆
-- 「listener が masking スキップ → 生データが書かれる」経路は、攻撃者が ENV ロード失敗 / 型異常を誘発する単一経路で全マスキングを無効化できる単一障害点
+- 「TypeDecorator が masking スキップ → 生データが書かれる」経路は、攻撃者が ENV ロード失敗 / 型異常を誘発する単一経路で全マスキングを無効化できる単一障害点
 - 永続化を「止めない」のではなく「`<REDACTED:*>` で書く」ことで運用継続性も維持される（dead-letter 化経路は masking 後値で動作する）
 
 ### test-design.md でのカバレッジ
@@ -70,5 +70,6 @@ masking の最初の layer（環境変数値の伏字化）が無効化された
 |----|----|
 | TC-UT-PF-006-A | mask が予期せぬ例外 raise 時に `<REDACTED:MASK_ERROR>` が返る |
 | TC-UT-PF-006-B | mask_in が異常 dict（10MB 超）受信時に `<REDACTED:MASK_OVERFLOW>` が返る |
-| TC-UT-PF-006-C | listener 自体が例外時、row の全 masking 対象フィールドが `<REDACTED:LISTENER_ERROR>` になる |
+| TC-UT-PF-006-C | TypeDecorator `process_bind_param` 内例外時、当該フィールドが `<REDACTED:LISTENER_ERROR>` になる |
 | TC-IT-PF-007-D | 環境変数辞書ロード失敗時に Bootstrap が exit 1 する（Fail Fast） |
+| TC-IT-PF-020 | Core `insert(table).values({...})` 経由でも masking 適用される（TypeDecorator 採用の核心、PR #23 BUG-PF-001 で旧 listener 方式が破綻したことを物理証明する回帰テスト） |

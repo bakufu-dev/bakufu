@@ -20,12 +20,12 @@
 | REQ-PF-004 | Alembic 設定 | `backend/alembic/env.py` / `alembic.ini` / `versions/0001_init.py` | 初回 revision: 3 テーブル + 2 トリガ |
 | REQ-PF-005 | `masking` | `backend/src/bakufu/infrastructure/security/masking.py` | 環境変数 + 9 種正規表現 + ホームパスの単一ゲートウェイ |
 | REQ-PF-005 | `masked_env` | `backend/src/bakufu/infrastructure/security/masked_env.py` | 起動時に環境変数値をパターン辞書化 |
-| REQ-PF-006 | `outbox_tables` | `backend/src/bakufu/infrastructure/persistence/sqlite/tables/outbox.py` | `domain_event_outbox` table 定義 + `before_insert` / `before_update` listener 配線 |
+| REQ-PF-006 | `outbox_tables` | `backend/src/bakufu/infrastructure/persistence/sqlite/tables/outbox.py` | `domain_event_outbox` table 定義 + `MaskedJSONEncoded` / `MaskedText` TypeDecorator 宣言（`process_bind_param` で Core / ORM 両経路 masking 強制、[`detailed-design/triggers.md`](detailed-design/triggers.md) §確定 B） |
 | REQ-PF-007 | `dispatcher` | `backend/src/bakufu/infrastructure/persistence/sqlite/outbox/dispatcher.py` | polling / 状態マーキング / リカバリ条件 / dead-letter |
 | REQ-PF-007 | `handler_registry` | `backend/src/bakufu/infrastructure/persistence/sqlite/outbox/handler_registry.py` | event_kind → handler の登録レジストリ（空 OK） |
 | REQ-PF-008 | `pid_registry_tables` | `backend/src/bakufu/infrastructure/persistence/sqlite/tables/pid_registry.py` | `bakufu_pid_registry` table 定義 |
 | REQ-PF-008 | `pid_gc` | `backend/src/bakufu/infrastructure/persistence/sqlite/pid_gc.py` | 起動時 GC スケルトン（`psutil` 連携） |
-| REQ-PF-008 | `audit_log_tables` | `backend/src/bakufu/infrastructure/persistence/sqlite/tables/audit_log.py` | `audit_log` table 定義 + masking listener 配線 |
+| REQ-PF-008 | `audit_log_tables` | `backend/src/bakufu/infrastructure/persistence/sqlite/tables/audit_log.py` | `audit_log` table 定義 + `MaskedJSONEncoded` / `MaskedText` TypeDecorator 宣言（masking 強制ゲートウェイ） |
 | REQ-PF-009 | `attachment_root` | `backend/src/bakufu/infrastructure/storage/attachment_root.py` | アタッチメント FS ルート初期化 + パーミッション強制 + 孤児 GC スケジューラ枠 |
 | REQ-PF-010 | `bootstrap` | `backend/src/bakufu/main.py` | 起動シーケンス 8 段階の順序凍結 |
 | 共通 | 例外 | `backend/src/bakufu/infrastructure/exceptions.py` | `BakufuConfigError` / `BakufuMigrationError` |
@@ -87,7 +87,7 @@
 │           │       ├── test_pid_gc.py
 │           │       └── outbox/
 │           │           ├── test_dispatcher.py
-│           │           └── test_masking_listener.py
+│           │           └── test_masking_typedecorator.py
 │           ├── security/
 │           │   └── test_masking.py
 │           └── test_bootstrap_sequence.py
@@ -162,7 +162,7 @@ classDiagram
 
 **凝集のポイント**:
 - マスキングは `MaskingGateway` 単一ゲートウェイに集約（責務散在防止）
-- SQLAlchemy event listener は table 単位で 1 箇所に登録（`tables/outbox.py` / `tables/audit_log.py`）
+- SQLAlchemy TypeDecorator (`MaskedJSONEncoded` / `MaskedText`) は base.py 1 箇所に定義し、各 table がカラム宣言時に参照（属性追加時の漏れは CI grep + arch test で物理保証、[`detailed-design/triggers.md`](detailed-design/triggers.md) §確定 B）
 - PRAGMA 強制は engine 層のみ（接続 listener で毎接続適用）
 - 起動シーケンスは `Bootstrap` クラス 1 つに閉じ、各段階失敗は Fail Fast で即終了
 - domain 層への侵入なし（infrastructure layer は domain を import するが、domain は infrastructure を知らない）
