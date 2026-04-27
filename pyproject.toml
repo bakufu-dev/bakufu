@@ -1,0 +1,46 @@
+[project]
+name = "bakufu"
+version = "0.0.0"
+description = "AI agent empire orchestrator with external review gate"
+requires-python = ">=3.12"
+dependencies = ["bakufu-backend"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+]
+
+[tool.uv.sources]
+bakufu-backend = { workspace = true }
+
+[tool.uv.workspace]
+members = ["backend"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["frontend"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "A",   # flake8-builtins
+    "C4",  # flake8-comprehensions
+    "PTH", # flake8-use-pathlib
+    "SIM", # flake8-simplify
+    "RUF", # ruff-specific
+]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+include = ["backend/src", "backend/tests"]
+exclude = ["**/node_modules", "**/__pycache__", "frontend"]
+extraPaths = ["backend/src"]

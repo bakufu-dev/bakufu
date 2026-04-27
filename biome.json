@@ -1,0 +1,46 @@
+{
+  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "files": {
+    "include": [
+      "frontend/**/*.ts",
+      "frontend/**/*.tsx",
+      "frontend/**/*.js",
+      "frontend/**/*.jsx",
+      "frontend/**/*.json",
+      "*.json"
+    ],
+    "ignore": [
+      "**/node_modules",
+      "**/dist",
+      "**/build",
+      "**/.vite",
+      "**/.turbo",
+      "**/.venv",
+      "**/.ruff_cache",
+      "**/.pytest_cache",
+      "**/.pyright",
+      "**/.mypy_cache",
+      "**/__pycache__",
+      "pnpm-lock.yaml",
+      "uv.lock"
+    ]
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "always"
+    }
+  }
+}

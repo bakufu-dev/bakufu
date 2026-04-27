@@ -28,7 +28,7 @@ lint:
 # Type-check Python (pyright) and TypeScript (tsc)
 typecheck:
     uv run pyright
-    pnpm tsc --noEmit
+    pnpm --filter @bakufu/frontend exec tsc --noEmit
 
 # Run backend tests then frontend tests sequentially
 test: test-backend test-frontend
@@ -39,12 +39,13 @@ test-backend:
 
 # Run frontend tests (vitest)
 test-frontend:
-    pnpm --dir frontend vitest run
+    pnpm --filter @bakufu/frontend exec vitest run
 
-# Audit dependencies (pip-audit for Python, pnpm audit for Node)
+# Audit dependencies (pip-audit for Python, pnpm audit --prod for Node)
+# pnpm audit は --prod 限定。dev-only 脆弱性（vitest 等）は配布バイナリに含まれないため監査対象外。
 audit:
     uv run pip-audit
-    pnpm audit
+    pnpm audit --prod
 
 # Scan staged changes for secrets (gitleaks)
 audit-secrets:
