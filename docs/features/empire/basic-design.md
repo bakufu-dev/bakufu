@@ -84,10 +84,11 @@ classDiagram
 ### ユースケース 2: Agent 採用（hire_agent）
 
 1. application 層が `empire.hire_agent(agent_ref)` を呼び出す
-2. 現 `agents` リストに `agent_ref` を append した新リストを構築
-3. `empire.model_copy(update={'agents': new_list})` で仮 Empire を生成
-4. 仮 Empire のコンストラクタで `model_validator(mode='after')` が走り、`agent_id` の重複を検査
-5. 通過時のみ仮 Empire を返す。違反なら `EmpireInvariantViolation` を raise（元 Empire は不変なので「ロールバック」不要）
+2. `empire.model_dump(mode='python')` で現状を dict 化
+3. dict 内の `agents` を `agent_ref` を append した新リストに差し替え
+4. `Empire.model_validate(updated_dict)` で仮 Empire を再構築
+5. 再構築過程で `model_validator(mode='after')` が走り、`agent_id` の重複・容量上限を検査
+6. 通過時のみ仮 Empire を返す。違反なら `EmpireInvariantViolation` を raise（元 Empire は不変なので「ロールバック」不要）
 
 ### ユースケース 3: Room 設立（establish_room）
 
@@ -98,9 +99,9 @@ classDiagram
 1. application 層が `empire.archive_room(room_id)` を呼び出す
 2. `rooms` 中で `room_id` 一致する RoomRef を線形探索
 3. 見つからない場合は `EmpireInvariantViolation` を raise（MSG-EM-004）
-4. 見つかった場合は `room_ref.model_copy(update={'archived': True})` で新 RoomRef を生成
+4. 見つかった場合は対象 RoomRef の dict を `model_dump()` で取り出し、`archived=True` に更新して `RoomRef.model_validate(...)` で新 RoomRef を再構築
 5. `rooms` リストの該当要素を新 RoomRef に置換した新リストを構築
-6. `empire.model_copy(update={'rooms': new_list})` で仮 Empire を生成
+6. `empire.model_dump(mode='python')` で現状を dict 化し、`rooms` を新リストに差し替え、`Empire.model_validate(updated_dict)` で仮 Empire を再構築
 7. 仮 Empire の不変条件検査を通過したら返す
 
 ## シーケンス図
@@ -112,9 +113,10 @@ sequenceDiagram
     participant Validator as model_validator
 
     App->>Empire: hire_agent(agent_ref)
-    Empire->>Empire: build new agents list
-    Empire->>Empire: model_copy(update={agents: new_list})
-    Empire->>Validator: __post_init__ via Pydantic
+    Empire->>Empire: model_dump() to get current dict
+    Empire->>Empire: build new agents list (append agent_ref)
+    Empire->>Empire: Empire.model_validate(updated_dict)
+    Empire->>Validator: model_validator(mode='after') runs
     alt 不変条件 OK
         Validator-->>Empire: pass
         Empire-->>App: new Empire instance

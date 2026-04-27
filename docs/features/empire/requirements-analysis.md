@@ -55,10 +55,13 @@
 
 1. 引数バリデーション（型・必須・長さ）を Pydantic v2 で先に通す
 2. 変更後の `agents` / `rooms` リストを **新しいリストとして仮構築**
-3. 仮 Empire を `model_copy(update={...})` で生成
-4. 仮 Empire のコンストラクタで `model_validator(mode='after')` が走り、不変条件を検査
-5. OK なら自身に置換（Pydantic 不変モデルなので新 Empire を返す形）、NG なら raise
-6. 失敗時は元の Empire は変更されていないため「ロールバック」が要らない
+3. `self.model_dump(mode='python')` で現状を dict 化し、該当キーを新リストに差し替え
+4. `Empire.model_validate(updated_dict)` で仮 Empire を再構築
+5. 再構築過程で `model_validator(mode='after')` が走り、不変条件を検査
+6. OK なら新 Empire を返す（Pydantic 不変モデルなので呼び出し側が参照を差し替える）、NG なら raise
+7. 失敗時は元の Empire は変更されていないため「ロールバック」が要らない
+
+`model_copy(update=...)` は `validate=False` 既定（Pydantic v2 の仕様）で `model_validator(mode='after')` を再実行しないため**採用しない**。`model_validate(...)` 経由で再構築する。詳細な根拠は [`detailed-design.md`](detailed-design.md) §確定 A。
 
 #### 確定 R1-B: シングルトン強制の application 層実装
 

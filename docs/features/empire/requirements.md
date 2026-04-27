@@ -19,7 +19,7 @@
 | 項目 | 内容 |
 |------|------|
 | 入力 | `agent_ref: AgentRef`（`agent_id`, `name`, `role` を含む VO） |
-| 処理 | 1) 現 `agents` リストに `agent_ref` を追加した新リストを構築 2) 仮 Empire を `model_copy(update={'agents': new_list})` で生成（仮構築段階で不変条件検査） 3) OK なら新 Empire を返す（Pydantic frozen のため自身を変更せず新インスタンスで応答） |
+| 処理 | 1) 現 `agents` リストに `agent_ref` を追加した新リストを構築 2) `self.model_dump(mode='python')` で現状を dict 化し `agents` を新リストに差し替え 3) `Empire.model_validate(updated_dict)` で仮 Empire を再構築（`model_validator(mode='after')` で不変条件検査） 4) OK なら新 Empire を返す（`model_copy` は `validate=False` 既定のため不採用、詳細は [detailed-design.md](detailed-design.md) §確定 A）|
 | 出力 | `agent_ref.agent_id`（追加された Agent の ID） + 更新された Empire（呼び出し側が受け取る） |
 | エラー時 | 同一 `agent_id` が既存なら `EmpireInvariantViolation`（MSG-EM-002）。raise 時、元の Empire は変化していないことを保証 |
 
