@@ -139,11 +139,33 @@ class Task(BaseModel):
 
     @model_validator(mode="after")
     def _check_invariants(self) -> Self:
-        """Run the structural invariants (§確定 J kinds 3〜7)."""
+        """Run the structural invariants (§確定 J kinds 3〜7).
+
+        Validator ordering — BUG-TSK-001 fix:
+
+        ``_validate_blocked_has_last_error`` runs **before**
+        ``_validate_last_error_consistency`` so that the BLOCKED-side
+        violation surfaces with the more specific
+        ``blocked_requires_last_error`` (MSG-TS-006) — the
+        "block() requires non-empty last_error" Next-action hint test
+        designers and operators expect when ``Task.block()`` rejects
+        ``last_error=''`` / ``last_error=None``. Pydantic's
+        ``model_validator(mode='after')`` short-circuits on the first
+        raise, so this ordering is the lever.
+
+        ``_validate_last_error_consistency`` is retained to catch the
+        **opposite** mismatch — ``status != BLOCKED`` paired with a
+        non-None ``last_error`` (e.g. a corrupted Repository row where
+        ``status=DONE`` still carries leftover error text). Its 1〜2
+        positive paths (BLOCKED+None / BLOCKED+'') are now preempted by
+        the BLOCKED helper above, but the validator's own test cases
+        in ``test_invariants.py::TestLastErrorConsistency`` still pin
+        the in-isolation contract.
+        """
         _validate_assigned_agents_unique(self.assigned_agent_ids)
         _validate_assigned_agents_capacity(self.assigned_agent_ids)
-        _validate_last_error_consistency(self.status, self.last_error)
         _validate_blocked_has_last_error(self.status, self.last_error)
+        _validate_last_error_consistency(self.status, self.last_error)
         _validate_timestamp_order(self.created_at, self.updated_at)
         return self
 
