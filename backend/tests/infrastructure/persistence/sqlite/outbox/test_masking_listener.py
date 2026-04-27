@@ -37,7 +37,7 @@ pytestmark = pytest.mark.asyncio
 # Real-shape secrets. Each must end up redacted before SELECT.
 ANTHROPIC_KEY = "sk-ant-api03-" + "A" * 60
 GITHUB_PAT = "ghp_" + "X" * 40
-AWS_KEY = "AKIA1234567890ABCDEF"
+AWS_KEY = "AKIA1234567890ABCDEF"  # gitleaks:allow — synthetic test fixture, not a real key
 SLACK_TOKEN = "xoxb-1234567890-token-data"
 BEARER_PHRASE = "Authorization: Bearer eyJ.tokenpart.signature"
 
