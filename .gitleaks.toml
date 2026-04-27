@@ -6,8 +6,10 @@ useDefault = true
 
 [allowlist]
 description = """
-docs/features/dev-workflow/test-design.md は gitleaks の検出対象パターンを「テストケースの説明」として
-散文中に列挙する。同ファイル内の AKIA-prefix 文字列等は実在キーではなく、テスト工程の説明用の擬似値であり、
+docs/features/<feature>/test-design.md は gitleaks の検出対象パターンを「テストケースの説明」として
+散文中に列挙する。同ファイル内の AKIA-prefix / xoxb- / sk-ant- / ghp_ / Bearer 文字列等は実在キーではなく、
+テスト工程の説明用の擬似値（e.g. `'A' * 50`, `xoxb-1234567890-...`）であり、
 gitleaks のフィンガープリント走査の対象外として扱う。
+本 allowlist は test-design.md に限定し、実装ファイル・他の設計書には適用されない。
 """
-paths = ['''docs/features/dev-workflow/test-design\.md''']
+paths = ['''docs/features/[^/]+/test-design\.md''']
