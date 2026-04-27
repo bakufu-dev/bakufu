@@ -91,6 +91,16 @@
 | `role` | `Role` | leader / developer / tester / reviewer / ux / security / discussant / writer 等 |
 | `joined_at` | `datetime` | UTC |
 
+## Room 構成要素
+
+### PromptKit（Value Object、Room に従属）
+
+| 属性 | 型 | 制約 |
+|----|----|----|
+| `prefix_markdown` | `str` | 0〜10000 文字（NFC 正規化のみ、strip しない — Markdown の前後改行を保持）。永続化前に [`storage.md`](storage.md) §シークレットマスキング規則 を適用（[`feature/room`](../../features/room/detailed-design.md) §確定 B / G で凍結） |
+
+`Persona.prompt_body` と同じ規約（NFC のみ、strip しない）。Phase 2 で `variables: dict[str, str]` / `role_specific_prefix: dict[Role, str]` / `sections: list[Section]` の追加余地を残すため VO 化を維持する。詳細は [`feature/room/detailed-design.md`](../../features/room/detailed-design.md) §確定 G。
+
 ## Conversation 構成要素
 
 ### Message（Value Object）
