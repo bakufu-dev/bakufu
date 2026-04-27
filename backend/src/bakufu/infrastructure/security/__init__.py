@@ -11,6 +11,12 @@ Two consumer surfaces:
 
 Wiring contracts (Confirmation B) live in the table modules under
 ``infrastructure/persistence/sqlite/tables/``: each table that holds
-secret-bearing columns registers ``before_insert`` / ``before_update``
-listeners that route the column values through this gateway.
+secret-bearing columns declares its columns with the
+:class:`MaskedJSONEncoded` / :class:`MaskedText` TypeDecorators
+(defined in :mod:`bakufu.infrastructure.persistence.sqlite.base`) so
+that ``process_bind_param`` routes the values through this gateway
+on every Core / ORM bind. See
+``docs/features/persistence-foundation/requirements-analysis.md``
+§確定 R1-D for why event listeners were reverse-rejected
+(BUG-PF-001).
 """

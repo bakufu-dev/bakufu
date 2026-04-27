@@ -4,12 +4,18 @@
 * :mod:`...tables.pid_registry` — bakufu_pid_registry (orphan-process GC).
 * :mod:`...tables.outbox` — domain_event_outbox (Outbox pattern).
 
-Each module declares its ORM mapping **and** registers the
-``before_insert`` / ``before_update`` listeners that route
-secret-bearing columns through the masking gateway. The listeners are
-module-level so they activate at import time — the package
-``__init__`` imports each table module to ensure no consumer can
-forget to wire them up.
+Each module declares its ORM mapping with :class:`MaskedJSONEncoded`
+/ :class:`MaskedText` TypeDecorators (defined in
+:mod:`bakufu.infrastructure.persistence.sqlite.base`) that route
+secret-bearing columns through the masking gateway via
+``process_bind_param``. The TypeDecorators activate on bind-parameter
+resolution so Core ``insert(table).values(...)`` and ORM
+``Session.add()`` both fire — see
+``docs/features/persistence-foundation/requirements-analysis.md``
+§確定 R1-D for the technical rationale (旧 ``before_insert`` /
+``before_update`` event-listener approach was reverse-rejected after
+PR #23 BUG-PF-001 proved that listeners do not fire for Core
+``insert(table).values({...})``).
 """
 
 from __future__ import annotations
