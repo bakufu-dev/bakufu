@@ -241,7 +241,14 @@ Empire のシングルトン制約（bakufu インスタンスにつき 1 件）
 
 実装段階・テスト段階で発見されたが本 PR スコープ内では完全解消しない問題を凍結する。各項目は Issue 起票 / 別 PR で完了させる。
 
-### BUG-EMR-001 [LOW]: `find_by_id` の `ORDER BY` 欠落と `_from_row` 経路の list 順序非決定性
+### BUG-EMR-001 [LOW] [**RESOLVED in `feature/empire-repository-order-by`**]: `find_by_id` の `ORDER BY` 欠落と `_from_row` 経路の list 順序非決定性
+
+> **Status: Resolved.** `SqliteEmpireRepository.find_by_id` が
+> `ORDER BY room_id` / `ORDER BY agent_id` を発行するように修正された
+> (basic-design.md L127-128 の凍結に追従)。test 側は
+> `sorted(empire.rooms, key=lambda r: r.room_id)` で「ORDER BY 契約物理保証」
+> を assert する。本節の歴史的経緯は、設計契約の整合性回復ワークフローの
+> 監査証跡として保存する。
 
 ##### 観察された挙動（PR #29 ジェフレポート）
 
@@ -275,11 +282,11 @@ basic-design.md は既に正解を凍結していたが、detailed-design.md と
 
 本 PR ではドキュメント側の整合性回復（basic-design.md と detailed-design.md の再同期）のみ実施。コード側の修正は別 PR で行う:
 
-| タスク | 担当 PR | 内容 |
+| タスク | 担当 PR | 状態 |
 |---|---|---|
-| Repository 修正 | `feature/empire-repository-order-by`（別 PR） | `find_by_id` の SELECT 文に `ORDER BY room_id` / `ORDER BY agent_id` を追加 |
-| テスト修正 | 同上 | `test_empire_repository/test_save_semantics.py` の set 比較 workaround を **list 順序比較**に戻す（保存順 == 復元順を物理保証） |
-| 申し送りクローズ | 同上 | 本 §Known Issues §BUG-EMR-001 を「Resolved in PR #XX」に更新 |
+| Repository 修正 | `feature/empire-repository-order-by` | ✓ 完了 — `find_by_id` の SELECT 文に `ORDER BY room_id` / `ORDER BY agent_id` を追加（commit 上記） |
+| テスト修正 | 同上 | ✓ 完了 — `test_empire_repository/test_save_semantics.py` の set 比較 workaround を **`sorted(..., key=lambda r: r.room_id)` でソートした list 比較**に戻し、ORDER BY 契約を物理保証 |
+| 申し送りクローズ | 同上 | ✓ 完了 — 本 §Known Issues §BUG-EMR-001 を「RESOLVED」に更新 |
 
 ##### 緊急度: LOW
 
