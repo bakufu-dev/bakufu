@@ -61,6 +61,13 @@ type TransitionId = UUID
 type SkillId = UUID
 """Skill identifier (referenced by :class:`SkillRef` inside Agent aggregate)."""
 
+type DirectiveId = UUID
+"""Directive aggregate identifier (UUIDv4)."""
+
+type TaskId = UUID
+"""Task aggregate identifier (UUIDv4). Referenced by :class:`Directive`
+via ``task_id``; the Task aggregate itself ships in a later feature."""
+
 
 # ---------------------------------------------------------------------------
 # Role enum
@@ -354,6 +361,7 @@ __all__ = [
     "AgentRef",
     "CompletionPolicy",
     "CompletionPolicyKind",
+    "DirectiveId",
     "EmpireId",
     "NormalizedAgentName",
     "NormalizedShortName",
@@ -366,6 +374,7 @@ __all__ = [
     "SkillId",
     "StageId",
     "StageKind",
+    "TaskId",
     "TransitionCondition",
     "TransitionId",
     "WorkflowId",
