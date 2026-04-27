@@ -1,0 +1,19 @@
+[project]
+name = "bakufu-backend"
+version = "0.0.0"
+description = "bakufu backend: FastAPI + SQLAlchemy + SQLite"
+requires-python = ">=3.12"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bakufu"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+]

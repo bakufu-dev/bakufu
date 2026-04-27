@@ -1,0 +1,13 @@
+# gitleaks 設定: bakufu リポジトリ固有の allowlist
+# 詳細設計: docs/features/dev-workflow/detailed-design.md §gitleaks 設定（基本デフォルト + リポ固有除外）
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = """
+docs/features/dev-workflow/test-design.md は gitleaks の検出対象パターンを「テストケースの説明」として
+散文中に列挙する。同ファイル内の AKIA-prefix 文字列等は実在キーではなく、テスト工程の説明用の擬似値であり、
+gitleaks のフィンガープリント走査の対象外として扱う。
+"""
+paths = ['''docs/features/dev-workflow/test-design\.md''']

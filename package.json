@@ -1,0 +1,14 @@
+{
+  "name": "bakufu",
+  "private": true,
+  "version": "0.0.0",
+  "description": "AI agent empire orchestrator (workspace root)",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "typescript": "^5.7.0"
+  }
+}
