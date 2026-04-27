@@ -54,6 +54,8 @@ flowchart LR
 | Discord Bot Token | **高** | 高 | 中 | 環境変数 `BAKUFU_DISCORD_BOT_TOKEN`、または `~/.config/bakufu/secrets.toml`（OS ユーザーのみ可読）|
 | Conversation 本文 | **中** | 高 | 中 | SQLite。マスキング後保存 |
 | Deliverable 本文 | **中** | 高 | 中 | SQLite。マスキング後保存 |
+| `Persona.prompt_body`（Agent システムプロンプト） | **中** | 高 | 中 | SQLite（Agent VO の一部として永続化）。LLM システムプロンプトに展開される自然言語のため、API key / GitHub PAT 等の secret が混入する可能性あり。Repository 永続化前にシークレットマスキング規則（[`domain-model/storage.md`](domain-model/storage.md) §シークレットマスキング規則）の適用必須。Phase 2 で prompt injection 検知（[`feature/llm-adapter`](../features/) 責務）を追加予定 |
+| Discord webhook URL token（`NotifyChannel.target` の token 部） | **高** | 高 | 中 | SQLite（NotifyChannel VO の一部）。token を持つ第三者は当該 webhook 経由で任意送信可能。VO の `field_serializer` で `mode='json'` 出力時に `<REDACTED:DISCORD_WEBHOOK>` 化、Repository 層でも追補マスキング（[`feature/workflow`](../features/workflow/detailed-design.md) §確定 G） |
 | 添付ファイル | **中** | 高 | 中 | filesystem `BAKUFU_DATA_DIR/attachments/<sha256>/`、`0600` mode |
 | audit_log | 低 | **最高**（改ざん不可） | 中 | SQLite、追記のみ |
 | domain_event_outbox | 中 | **最高**（at-least-once 保証の基盤） | 高 | SQLite |

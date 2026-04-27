@@ -112,6 +112,10 @@
 | MSG-AG-006 | エラー（参照不整合） | provider_kind {kind} は登録されていない | `set_default_provider` |
 | MSG-AG-007 | エラー（重複） | skill_id {id} はすでに追加済み | `add_skill` |
 | MSG-AG-008 | エラー（参照不整合） | skill_id {id} は Agent に登録されていない | `remove_skill` |
+| MSG-AG-009 | エラー（path traversal） | SkillRef.path 検証失敗（H1〜H10 のいずれか） | `SkillRef` 構築時、§確定 H |
+| MSG-AG-010 | エラー（境界値） | Persona.archetype は 0〜80 文字 | archetype 長違反 |
+| MSG-AG-011 | エラー（境界値） | Persona.display_name は 1〜40 文字 | display_name 長違反 |
+| MSG-AG-012 | エラー（未実装プロバイダ） | provider_kind が MVP で未実装 | `AgentService.hire()` で `BAKUFU_IMPLEMENTED_PROVIDERS` に含まれない provider_kind、§確定 I |
 
 ## 依存関係
 

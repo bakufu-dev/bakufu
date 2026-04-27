@@ -112,8 +112,11 @@ classDiagram
 ### ユースケース 4: アーカイブ（archive）
 
 1. application 層が `agent.archive()` を呼び出す
-2. 現 Agent の `archived == True` ならそのまま返す（冪等）
-3. それ以外は `archived=True` に更新した仮 Agent を返す
+2. 状態に依らず `self.model_dump(mode='python')` で現状を dict 化し `archived=True` に差し替え
+3. `Agent.model_validate(updated_dict)` で**新インスタンス**を再構築（既に `archived=True` の Agent に対しても同手順を踏む、冪等）
+4. 不変条件検査（`model_validator(mode='after')`）が走り、通過時のみ新 Agent を返す
+
+**返り値は常に新 `Agent` インスタンス**（同状態でも別オブジェクト）。Pydantic v2 frozen + `model_validate` 経路の必然で、呼び出し側は `agent = agent.archive()` のように参照を差し替える。冪等性は「結果状態の同値性」として担保する（オブジェクト同一性ではない）。詳細は [detailed-design.md](detailed-design.md) §確定 D。
 
 ## シーケンス図
 
