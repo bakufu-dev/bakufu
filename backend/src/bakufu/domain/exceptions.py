@@ -160,7 +160,61 @@ class StageInvariantViolation(WorkflowInvariantViolation):
         self.kind: StageViolationKind = kind  # type: ignore[assignment]
 
 
+type AgentViolationKind = Literal[
+    "name_range",
+    "no_provider",
+    "default_not_unique",
+    "provider_duplicate",
+    "persona_too_long",
+    "provider_not_found",
+    "skill_duplicate",
+    "skill_not_found",
+    "skill_path_invalid",
+    "archetype_too_long",
+    "display_name_range",
+    "provider_not_implemented",
+    "skill_capacity_exceeded",
+    "provider_capacity_exceeded",
+]
+"""Discriminator for :class:`AgentInvariantViolation` per Agent detailed-design
+§Exception. Extends the design's 12 documented kinds with two operational
+``*_capacity_exceeded`` discriminators that surface the §確定 C bounds
+(providers ≤ 10, skills ≤ 20) — without them the same MSG would have to
+double up an existing kind and lose discrimination at the HTTP API layer."""
+
+
+# DDD: "Violation" describes an invariant breach, not a programming bug, so
+# the N818 "Error suffix" rule does not apply here.
+class AgentInvariantViolation(Exception):  # noqa: N818
+    """Raised when an :class:`Agent` aggregate invariant is violated.
+
+    Mirrors :class:`EmpireInvariantViolation` in shape (``kind`` + ``message``
+    + ``detail`` + immutable copy of detail) and applies the same Discord
+    webhook secret masking that :class:`WorkflowInvariantViolation` uses, so
+    if a SkillRef.path or Persona.prompt_body ever happens to contain a
+    Discord webhook URL fragment it cannot leak through exception text.
+    """
+
+    def __init__(
+        self,
+        *,
+        kind: AgentViolationKind,
+        message: str,
+        detail: Mapping[str, object] | None = None,
+    ) -> None:
+        masked_message = mask_discord_webhook(message)
+        masked_detail: dict[str, object] = (
+            {key: mask_discord_webhook_in(value) for key, value in detail.items()} if detail else {}
+        )
+        super().__init__(masked_message)
+        self.kind: AgentViolationKind = kind
+        self.message: str = masked_message
+        self.detail: dict[str, object] = masked_detail
+
+
 __all__ = [
+    "AgentInvariantViolation",
+    "AgentViolationKind",
     "EmpireInvariantViolation",
     "EmpireViolationKind",
     "StageInvariantViolation",
