@@ -147,18 +147,12 @@ class TestEmptyRegistryWarnRefiresAfterRegistration:
 class TestBacklogWarnThreshold:
     """TC-IT-PF-008-D: pending rows above BACKLOG_WARN_THRESHOLD raises a separate WARN.
 
-    Note (BUG-PF-003): the dispatcher's backlog throttle uses
-    ``asyncio.get_running_loop().time()`` (an OS-monotonic clock, NOT a
-    loop-relative counter) and compares against an initial
-    ``_backlog_last_warn_monotonic = 0.0``. On a freshly booted CI
-    runner the OS monotonic clock can read below 300 seconds, in
-    which case the first poll's `now - 0 > 300` predicate is False
-    and the WARN never fires. The fix is to initialize the timestamp
-    to ``-float('inf')`` (or use a separate "first call" flag).
-
-    Test workaround: we explicitly back-date the throttle so the test
-    measures the *threshold* logic, not the boot-time race. Once the
-    dispatcher is fixed, this setup line can be removed.
+    BUG-PF-003 fix: ``OutboxDispatcher._backlog_last_warn_monotonic``
+    now defaults to ``None`` and the throttle treats "never warned"
+    as "warn immediately". The previous boot-time race (where a
+    freshly booted CI clock under 300s would suppress the very first
+    backlog WARN) is gone, so this test runs the threshold logic
+    without needing to back-date the throttle.
     """
 
     async def test_backlog_above_threshold_warns(
@@ -169,9 +163,6 @@ class TestBacklogWarnThreshold:
         """TC-IT-PF-008-D: > 100 PENDING rows triggers backlog WARN."""
         await _insert_pending_rows(session_factory, count=BACKLOG_WARN_THRESHOLD + 1)
         dispatcher = OutboxDispatcher(session_factory)
-        # BUG-PF-003 workaround: ensure throttle is past the 5-min cooldown
-        # regardless of CI OS-monotonic-clock state.
-        dispatcher._backlog_last_warn_monotonic = -1e9  # pyright: ignore[reportPrivateUsage]
 
         caplog.clear()
         with caplog.at_level("WARNING"):

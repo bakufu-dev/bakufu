@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-from logging.config import fileConfig
 from pathlib import Path
 
 from alembic import context
@@ -34,9 +33,17 @@ from bakufu.infrastructure.persistence.sqlite.tables import (  # noqa: F401
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncEngine, async_engine_from_config
 
+# BUG-PF-002 fix: do **not** invoke ``logging.config.fileConfig`` here.
+# Alembic's default ``env.py`` template loads logger configuration
+# from ``alembic.ini``, which (a) silences every previously-configured
+# bakufu logger via ``disable_existing_loggers=True`` and (b) raises
+# the root logger to ``WARN``. Either side effect makes the Bootstrap
+# stages 4〜8 INFO/WARN telemetry disappear from production logs once
+# stage 3 completes. Bakufu configures logging up-front via
+# ``logging.basicConfig`` (production) or pytest's caplog (tests);
+# Alembic's own ``alembic.runtime.migration`` logger inherits from
+# root, so migrations still emit their progress lines.
 config = context.config
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
 

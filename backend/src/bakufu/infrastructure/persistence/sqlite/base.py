@@ -12,9 +12,12 @@ for any table that holds the corresponding semantic value:
   every "is this UTC or local?" bug in downstream code.
 * :class:`JSONEncoded` — ``dict`` / ``list`` → ``json.dumps`` with
   ``sort_keys=True`` so logical equality is byte-equal in the row.
-
-The masking listeners live in the table modules, not here, because
-the responsibility (which columns are secret-bearing) is per-table.
+* :class:`MaskedJSONEncoded` / :class:`MaskedText` — variants of the
+  above that route every bound value through the masking gateway
+  *before* JSON-encoding / persisting (BUG-PF-001 fix). The
+  ``process_bind_param`` hook fires for both ORM ``Session.add()``
+  flushes and Core ``insert(table).values(...)`` paths, so masking
+  is enforced regardless of how the row reaches the engine.
 """
 
 from __future__ import annotations
@@ -26,6 +29,12 @@ from uuid import UUID
 
 from sqlalchemy import CHAR, Dialect, Text, TypeDecorator
 from sqlalchemy.orm import DeclarativeBase
+
+from bakufu.infrastructure.security.masking import (
+    REDACT_LISTENER_ERROR,
+    mask,
+    mask_in,
+)
 
 
 class Base(DeclarativeBase):
@@ -138,9 +147,87 @@ class JSONEncoded(TypeDecorator[Any]):
         return json.loads(value)
 
 
+class MaskedJSONEncoded(TypeDecorator[Any]):
+    """``dict`` / ``list`` ↔ JSON text column with secret masking.
+
+    Routes the bound value through :func:`mask_in` before
+    ``json.dumps``. ``process_bind_param`` is invoked for **both**
+    ORM-flushed inserts and Core ``insert(table).values(...)`` calls
+    (BUG-PF-001 fix), making this a true gateway: there is no syntax
+    a caller can choose that bypasses the redaction step.
+
+    Confirmation F (Fail-Secure): if :func:`mask_in` itself raises,
+    we replace the entire payload with the listener-error sentinel
+    rather than letting raw bytes hit the disk.
+    """
+
+    impl = Text()
+    cache_ok = True
+
+    def process_bind_param(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self,
+        value: object,
+        dialect: Dialect,
+    ) -> str | None:
+        del dialect
+        if value is None:
+            return None
+        try:
+            masked = mask_in(value)
+        except Exception:  # pragma: no cover — Fail-Secure
+            return json.dumps(REDACT_LISTENER_ERROR)
+        return json.dumps(masked, ensure_ascii=False, sort_keys=True)
+
+    def process_result_value(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self,
+        value: str | None,
+        dialect: Dialect,
+    ) -> object:
+        del dialect
+        if value is None:
+            return None
+        return json.loads(value)
+
+
+class MaskedText(TypeDecorator[str]):
+    """``str`` text column with secret masking via :func:`mask`.
+
+    Same gateway guarantee as :class:`MaskedJSONEncoded`: every bound
+    value (ORM or Core) is masked before persistence, and a failing
+    masker yields :data:`REDACT_LISTENER_ERROR` instead of the raw
+    string.
+    """
+
+    impl = Text()
+    cache_ok = True
+
+    def process_bind_param(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self,
+        value: object,
+        dialect: Dialect,
+    ) -> str | None:
+        del dialect
+        if value is None:
+            return None
+        try:
+            return mask(value)
+        except Exception:  # pragma: no cover — Fail-Secure
+            return REDACT_LISTENER_ERROR
+
+    def process_result_value(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self,
+        value: str | None,
+        dialect: Dialect,
+    ) -> str | None:
+        del dialect
+        return value
+
+
 __all__ = [
     "Base",
     "JSONEncoded",
+    "MaskedJSONEncoded",
+    "MaskedText",
     "UTCDateTime",
     "UUIDStr",
 ]

@@ -66,8 +66,15 @@ class OutboxDispatcher:
         # registry encountering pending rows; avoid spamming the log on
         # every poll cycle (Confirmation K row 2).
         self._empty_registry_warned: bool = False
-        # Backlog WARN throttling: emit at most once every 5 minutes.
-        self._backlog_last_warn_monotonic: float = 0.0
+        # Backlog WARN throttling. ``None`` means "never warned yet";
+        # the first triggering cycle warns immediately and stamps a
+        # real ``loop.time()`` value. The previous default of ``0.0``
+        # (BUG-PF-003) collided with the OS-monotonic clock at process
+        # start: ``loop.time() - 0.0`` was always huge, but on a fresh
+        # process re-entering the loop after restart the clock could
+        # roll under 300s and silently swallow the first 5 minutes of
+        # warnings.
+        self._backlog_last_warn_monotonic: float | None = None
 
     async def run(self) -> None:
         """Polling loop. Call from ``asyncio.create_task`` in Bootstrap.
@@ -131,7 +138,11 @@ class OutboxDispatcher:
         if pending_count > BACKLOG_WARN_THRESHOLD:
             now = asyncio.get_running_loop().time()
             five_minutes_seconds = 300.0
-            if now - self._backlog_last_warn_monotonic > five_minutes_seconds:
+            should_warn = (
+                self._backlog_last_warn_monotonic is None
+                or now - self._backlog_last_warn_monotonic > five_minutes_seconds
+            )
+            if should_warn:
                 logger.warning(
                     "[WARN] Outbox PENDING count=%d > %d. Inspect with bakufu admin list-pending.",
                     pending_count,

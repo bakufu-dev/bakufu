@@ -92,29 +92,15 @@ class TestOutboxMaskingViaRawSql:
     over TypeDecorator (Confirmation R1-D). A future Repository PR that
     bypasses the ORM mapper for performance must not bypass masking.
 
-    **Bug discovered while implementing this test (BUG-PF-001)**:
-    ``event.listen(OutboxRow, 'before_insert', ...)`` is a *mapper-level*
-    event that fires on ORM ``Session.flush()`` only. It does NOT fire
-    for Core ``session.execute(insert(table).values(...))`` — those go
-    through SQLAlchemy's Core path which has separate ``before_execute``
-    / ``do_orm_execute`` events. Confirmation R1-D's "raw SQL path is
-    masked too" claim is **factually false** with the current wiring.
-
-    The xfail tag below preserves the *design contract* assertion so
-    CI can detect the day the bug is fixed (``strict=True`` → fix
-    without removing the marker fails CI). The bug report is appended
-    to the test execution summary.
+    BUG-PF-001 fix: the masking listener moved from the per-mapper
+    ``before_insert`` / ``before_update`` events to the engine-level
+    ``before_execute`` event (see
+    :mod:`bakufu.infrastructure.persistence.sqlite.masking_listener`).
+    The new wiring fires for both ORM flushes and Core
+    ``insert(table).values(...)`` calls, so "raw SQL paths are masked
+    too" is now an end-to-end property rather than aspirational.
     """
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "BUG-PF-001: ORM-level before_insert listener does not fire for "
-            "Core insert(table).values(...) path. Schneier #6 / Confirmation "
-            "R1-D claim broken. Remove this xfail once Linus rewires masking "
-            "via Engine-level do_execute / before_execute events."
-        ),
-    )
     async def test_raw_sql_path_redacts_payload(
         self,
         session_factory: async_sessionmaker[AsyncSession],

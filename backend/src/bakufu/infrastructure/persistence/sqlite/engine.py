@@ -61,6 +61,14 @@ def create_engine(url: str, *, debug: bool = False) -> AsyncEngine:
         url: SQLAlchemy URL (e.g. ``sqlite+aiosqlite:///<path>``).
         debug: Forwarded to ``create_async_engine(echo=...)`` for
             verbose SQL logging during development.
+
+    Wires the eight PRAGMA listener (Confirmation D-1) on connect.
+    Secret masking is enforced via the ``Masked*`` column
+    :class:`TypeDecorator` adapters in
+    :mod:`bakufu.infrastructure.persistence.sqlite.base`; that layer
+    fires in ``process_bind_param`` for both ORM flushes and Core
+    ``insert(table).values(...)`` calls (BUG-PF-001 fix), so no
+    additional engine-level listener is needed for masking.
     """
     engine = create_async_engine(url, echo=debug, future=True)
     event.listen(engine.sync_engine, "connect", _set_app_pragmas)
