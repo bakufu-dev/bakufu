@@ -5,9 +5,11 @@ violated, mirroring the workflow ``test_notify_channel_ssrf.py`` structure
 that Norman / Schneier approved for SSRF G1〜G10.
 
 The aggregate-side path goes through ``SkillRef.field_validator`` which
-delegates to :func:`validate_skill_path`. We exercise the public surface
+delegates to :func:`_validate_skill_path`. We exercise the public surface
 (constructor + ``model_validate``) so future refactors of the orchestrator
-internals do not silently drop coverage.
+internals do not silently drop coverage. The orchestrator function carries a
+leading underscore (Steve PR #17 naming-symmetry rule): all path / aggregate
+helpers are module-private until a real cross-feature consumer arrives.
 """
 
 from __future__ import annotations
