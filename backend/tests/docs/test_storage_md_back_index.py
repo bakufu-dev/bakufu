@@ -136,3 +136,59 @@ class TestBackIndexHasWorkflowRows:
             "from the Workflow row directly. Required by workflow-"
             "repository §確定 H (partial-mask テンプレート)."
         )
+
+
+class TestBackIndexHasAgentRows:
+    """TC-DOC-AGR-001: §逆引き表 includes the Agent partial-mask + no-mask entries.
+
+    The Agent Repository PR (#45) is the second partial-mask
+    Aggregate (after Workflow): ``agents.prompt_body`` is the
+    **only** masked column on the Agent surface, with
+    ``agent_providers`` / ``agent_skills`` and the rest of
+    ``agents`` registered as no-mask. **Schneier 申し送り #3 实適用
+    クローズ** is documented through this line.
+    """
+
+    def test_agents_prompt_body_row_present(self, storage_md_text: str) -> None:
+        """§逆引き表 declares ``MaskedText`` on ``agents.prompt_body``.
+
+        The line must co-locate ``Persona.prompt_body`` (or
+        ``agents.prompt_body``) and ``MaskedText`` so an operator
+        scrolling to the Agent row sees the redaction policy
+        directly.
+        """
+        co_located_lines = [
+            line
+            for line in storage_md_text.splitlines()
+            if (
+                "prompt_body" in line
+                and "MaskedText" in line
+                and ("agents" in line or "Persona" in line)
+            )
+        ]
+        assert co_located_lines, (
+            "storage.md §逆引き表 must contain at least one line that "
+            "co-locates 'prompt_body' and 'MaskedText' on an Agent-"
+            "owned row per agent-repository §確定 H (Schneier 申し送り "
+            "#3 实適用)."
+        )
+
+    def test_agent_no_mask_row_present(self, storage_md_text: str) -> None:
+        """§逆引き表 declares the Agent remaining columns no-mask.
+
+        agent_providers / agent_skills and other agents columns are
+        registered as "masking 対象なし" so the partial-mask intent
+        is visible from the Agent row directly.
+        """
+        co_located_lines = [
+            line
+            for line in storage_md_text.splitlines()
+            if "Agent" in line and "masking 対象なし" in line
+        ]
+        assert co_located_lines, (
+            "storage.md §逆引き表 must contain at least one line that "
+            "co-locates 'Agent' and 'masking 対象なし' so the partial-"
+            "mask Aggregate's non-masked columns are operator-readable "
+            "from the Agent row directly. Required by agent-repository "
+            "§確定 H (partial-mask テンプレート)."
+        )
