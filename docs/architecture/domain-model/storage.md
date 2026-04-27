@@ -163,6 +163,35 @@ LLM subprocess の stdout / stderr、Outbox の `payload_json` / `last_error`、
 
 マスキング処理は `infrastructure/security/masking.py` に集約し、**永続化前の単一ゲートウェイ**として呼び出す（責務散在防止）。
 
+### 配線方式（強制ゲートウェイ化）
+
+`feature/persistence-foundation` の §確定 D（基本設計）/ §確定 B（詳細設計）で凍結したとおり、配線は **SQLAlchemy `before_insert` / `before_update` event listener** で行う。raw SQL 経路（`session.execute(insert(...))` 等）でも listener が走るため、**呼び忘れ経路ゼロ**の物理保証になる。TypeDecorator 方式は属性追加時の漏れリスクが高いため不採用（[`feature/persistence-foundation/requirements-analysis.md`](../../features/persistence-foundation/requirements-analysis.md) §確定 R1-D 参照）。
+
+### 適用先 → 配線箇所の逆引き表（Norman 指摘 R6 対応）
+
+後続実装者がカラム名から listener 配線箇所を素早く辿れるようにする逆引き表。**新規 Aggregate Repository PR は本表に行を追加する責務**（テンプレートとしての真実源）。
+
+| カラム / フィールド | テーブル | 配線モジュール（後続 PR） | listener 種別 | 担当 PR |
+|---|---|---|---|---|
+| `Conversation.messages[].body_markdown` | `conversation_messages` | `infrastructure/persistence/sqlite/tables/conversation_messages.py` | `before_insert` | `feature/conversation-repository`（後続） |
+| `Deliverable.body_markdown` | `deliverables` | `tables/deliverables.py` | `before_insert` / `before_update` | `feature/task-repository`（後続） |
+| `domain_event_outbox.payload_json` | `domain_event_outbox` | `tables/outbox.py` | `before_insert` / `before_update` | **本 PR（`feature/persistence-foundation`）** |
+| `domain_event_outbox.last_error` | `domain_event_outbox` | `tables/outbox.py` | `before_insert` / `before_update` | **本 PR** |
+| `audit_log.args_json` | `audit_log` | `tables/audit_log.py` | `before_insert` | **本 PR** |
+| `audit_log.error_text` | `audit_log` | `tables/audit_log.py` | `before_update` | **本 PR** |
+| `Task.last_error` | `tasks` | `tables/tasks.py` | `before_insert` / `before_update` | `feature/task-repository`（後続） |
+| `Persona.prompt_body` | `agents` | `tables/agents.py` | `before_insert` / `before_update` | `feature/agent-repository`（後続、Schneier 申し送り #3） |
+| `PromptKit.prefix_markdown` | `rooms` | `tables/rooms.py` | `before_insert` / `before_update` | `feature/room-repository`（後続） |
+| `bakufu_pid_registry.cmd` | `bakufu_pid_registry` | `tables/pid_registry.py` | `before_insert` / `before_update` | **本 PR** |
+| 構造化ログ | （ファイル） | `infrastructure/logging/structured.py` | log filter | `feature/logging` |
+
+##### 逆引き表の運用ルール
+
+1. **新規カラムの追加**: 該当 Aggregate Repository PR が本表に 1 行追加する責務
+2. **削除**: 該当カラムを Aggregate から削除する PR が本表からも削除する責務
+3. **listener 種別の意味**: `before_insert` のみ → 一度書かれたら変更されないカラム（audit_log.args_json 等）。`before_insert` + `before_update` → 値が更新され得るカラム（last_error 等）
+4. **未配線カラムの追加禁止**: マスキング対象として本表に載っているカラムが listener 未登録の状態で永続化される PR はレビューで却下
+
 ### 漏洩したらどうするか
 
 万が一マスキングを抜けて secret が DB に保存された場合の手順は [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md) §Secret 混入時の緊急対応 と同じだが、追加で以下を行う:
