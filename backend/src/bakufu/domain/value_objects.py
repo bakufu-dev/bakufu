@@ -8,7 +8,7 @@ minimal and Pydantic serialization unambiguous. Future features may refine
 them via ``NewType`` without changing field shapes.
 
 The name normalization pipeline (NFC → strip → length) is centralized in
-:func:`_nfc_strip` and applied to every VO/Aggregate that exposes a ``name``
+:func:`nfc_strip` and applied to every VO/Aggregate that exposes a ``name``
 field, fulfilling detailed-design §Confirmation B's "common policy across
 Empire / Room / Agent names".
 """
@@ -61,10 +61,12 @@ class Role(StrEnum):
 # ---------------------------------------------------------------------------
 # Name normalization (Confirmation B)
 # ---------------------------------------------------------------------------
-def _nfc_strip(value: object) -> object:
+def nfc_strip(value: object) -> object:
     """Apply NFC normalization and ``strip`` per detailed-design §Confirmation B.
 
-    Operates only on ``str`` inputs; non-string values are passed through so
+    Public so sibling Aggregates (Empire / Workflow / Agent / ...) can share
+    the **single** implementation of the normalization pipeline. Operates only
+    on ``str`` inputs; non-string values are passed through unchanged so
     Pydantic's downstream type validation reports them with its standard error
     shape rather than silently coercing.
     """
@@ -76,7 +78,7 @@ def _nfc_strip(value: object) -> object:
 # Public alias used by sibling VOs/Aggregates that adopt the same pipeline.
 type NormalizedShortName = Annotated[
     str,
-    BeforeValidator(_nfc_strip),
+    BeforeValidator(nfc_strip),
     Field(min_length=1, max_length=80),
 ]
 """``str`` annotated with NFC+strip BeforeValidator and 1〜80-char Field bounds.
@@ -86,7 +88,7 @@ Used by :class:`RoomRef` and any future VO with the 80-char short-name contract.
 
 type NormalizedAgentName = Annotated[
     str,
-    BeforeValidator(_nfc_strip),
+    BeforeValidator(nfc_strip),
     Field(min_length=1, max_length=40),
 ]
 """1〜40-char variant for :class:`AgentRef` (Agent.name regulation)."""
@@ -138,4 +140,5 @@ __all__ = [
     "Role",
     "RoomId",
     "RoomRef",
+    "nfc_strip",
 ]

@@ -22,13 +22,18 @@ Design contract (do not break without re-running design review):
 
 from __future__ import annotations
 
-import unicodedata
 from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from bakufu.domain.exceptions import EmpireInvariantViolation
-from bakufu.domain.value_objects import AgentRef, EmpireId, RoomId, RoomRef
+from bakufu.domain.value_objects import (
+    AgentRef,
+    EmpireId,
+    RoomId,
+    RoomRef,
+    nfc_strip,
+)
 
 # Capacity ceiling per detailed-design §Confirmation C. Module-level constant
 # so test/factory code can import the same source of truth.
@@ -71,13 +76,13 @@ class Empire(BaseModel):
     def _normalize_name(cls, value: object) -> object:
         """Apply the Confirmation B pipeline up to (but not including) ``len``.
 
-        We delegate length / range judgment to :meth:`_check_invariants` so
-        the resulting :class:`EmpireInvariantViolation` carries the structured
+        Delegates to :func:`nfc_strip` so Empire / Room / Agent / Workflow share
+        the **single** NFC+strip implementation (DRY). Length / range judgment
+        is intentionally kept in :meth:`_check_invariants` so the resulting
+        :class:`EmpireInvariantViolation` carries the structured
         ``kind='name_range'`` rather than a generic Pydantic ``ValidationError``.
         """
-        if isinstance(value, str):
-            return unicodedata.normalize("NFC", value).strip()
-        return value
+        return nfc_strip(value)
 
     @model_validator(mode="after")
     def _check_invariants(self) -> Self:
