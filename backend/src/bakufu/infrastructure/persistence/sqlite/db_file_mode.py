@@ -93,8 +93,13 @@ def _check_one(path: Path) -> FileModeStatus:
     logger.warning(
         "[WARN] DB file mode anomaly: %s has mode 0o%03o "
         "(expected 0o%03o); possible historical exposure prior to "
-        "umask 0o077 enforcement. Repairing to 0o%03o; investigate "
-        "audit trail for the originating run.",
+        "umask 0o077 enforcement. Repairing to 0o%03o.\n"
+        "Next: Inspect the audit_log + structured logs from the "
+        "originating run for evidence of read access by other OS "
+        "users; rotate any secrets that may have leaked while the "
+        "file was world-readable; confirm the umask 0o077 enforcement "
+        "is in effect for all bakufu launchers (systemd unit / "
+        "launchd plist / docker entrypoint).",
         path,
         current,
         SECURE_FILE_MODE,
@@ -105,9 +110,13 @@ def _check_one(path: Path) -> FileModeStatus:
     except OSError as exc:
         logger.error(
             "[ERROR] DB file mode repair failed for %s: %r — "
-            "continuing without fatal exit per REQ-PF-002-A",
+            "continuing without fatal exit per REQ-PF-002-A.\n"
+            "Next: Manually run `chmod 0600 %s` after stopping "
+            "bakufu; verify the OS user owns the file (otherwise "
+            "container / sudo state mismatch is the root cause).",
             path,
             exc,
+            path,
         )
         return "repair_failed"
     return "repaired"

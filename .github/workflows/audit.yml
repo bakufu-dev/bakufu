@@ -30,3 +30,6 @@ jobs:
 
       - name: just audit-pin-sync
         run: just audit-pin-sync
+
+      - name: just audit-masking-columns (CI defense layer 1/3 — R1-D)
+        run: just audit-masking-columns
