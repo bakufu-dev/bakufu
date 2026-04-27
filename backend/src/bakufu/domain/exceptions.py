@@ -11,11 +11,17 @@ human-readable ``message`` and a ``detail`` dict for programmatic introspection
 * :class:`StageInvariantViolation` — workflow Stage entity-level violation,
   inherits from :class:`WorkflowInvariantViolation` so callers can ``except``
   the parent and still receive the more-specific subclass.
+* :class:`AgentInvariantViolation` — agent feature, see
+  ``docs/features/agent/detailed-design.md`` §Exception.
+* :class:`RoomInvariantViolation` — room feature, see
+  ``docs/features/room/detailed-design.md`` §Exception.
 
-Workflow violations automatically apply :func:`mask_discord_webhook_in` to
-both ``message`` and ``detail`` so a webhook secret can never leak through
-exception text or its diagnostic payload (Workflow §Confirmation G "target の
-シークレット扱い" 例外 message / detail 行).
+Workflow / Agent / Room violations automatically apply
+:func:`mask_discord_webhook_in` to both ``message`` and ``detail`` so a
+webhook secret can never leak through exception text or its diagnostic
+payload — multi-layer defense covering webhook URLs that may slip into
+``NotifyChannel.target`` / ``Persona.prompt_body`` / ``SkillRef.path`` /
+``PromptKit.prefix_markdown`` / ``Room.{name,description}``.
 """
 
 from __future__ import annotations
@@ -212,11 +218,63 @@ class AgentInvariantViolation(Exception):  # noqa: N818
         self.detail: dict[str, object] = masked_detail
 
 
+type RoomViolationKind = Literal[
+    "name_range",
+    "description_too_long",
+    "member_duplicate",
+    "capacity_exceeded",
+    "member_not_found",
+    "room_archived",
+]
+"""Discriminator for :class:`RoomInvariantViolation` per Room detailed-design
+§Exception (§確定 I 例外型統一規約).
+
+The set is **closed at six kinds**: ``prompt_kit_too_long`` is *intentionally
+omitted* because the PromptKit VO raises :class:`pydantic.ValidationError`
+on its own ``model_validator`` before any Room invariant check fires. Adding
+it here would create a dead-code path that ``RoomInvariantViolation`` cannot
+reach by construction — see Room detailed-design §確定 I 2 段階 catch.
+"""
+
+
+# DDD: "Violation" describes an invariant breach, not a programming bug, so
+# the N818 "Error suffix" rule does not apply here.
+class RoomInvariantViolation(Exception):  # noqa: N818
+    """Raised when a :class:`Room` aggregate invariant is violated.
+
+    Mirrors :class:`AgentInvariantViolation` / :class:`WorkflowInvariantViolation`
+    in shape (``kind`` + ``message`` + ``detail`` + immutable copy of detail) and
+    applies the same Discord webhook secret masking. ``Room.name`` /
+    ``Room.description`` / ``PromptKit.prefix_markdown`` may all carry user-pasted
+    text that contains a webhook URL, so masking ``message`` / ``detail`` at
+    construction time means callers cannot leak a token by serializing the
+    exception (multi-layer defense, see Room detailed-design §確定 H).
+    """
+
+    def __init__(
+        self,
+        *,
+        kind: RoomViolationKind,
+        message: str,
+        detail: Mapping[str, object] | None = None,
+    ) -> None:
+        masked_message = mask_discord_webhook(message)
+        masked_detail: dict[str, object] = (
+            {key: mask_discord_webhook_in(value) for key, value in detail.items()} if detail else {}
+        )
+        super().__init__(masked_message)
+        self.kind: RoomViolationKind = kind
+        self.message: str = masked_message
+        self.detail: dict[str, object] = masked_detail
+
+
 __all__ = [
     "AgentInvariantViolation",
     "AgentViolationKind",
     "EmpireInvariantViolation",
     "EmpireViolationKind",
+    "RoomInvariantViolation",
+    "RoomViolationKind",
     "StageInvariantViolation",
     "StageViolationKind",
     "WorkflowInvariantViolation",
