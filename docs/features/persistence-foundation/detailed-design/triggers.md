@@ -1,18 +1,48 @@
-# 詳細設計補章: SQLAlchemy event listener + SQLite トリガ
+# 詳細設計補章: TypeDecorator 配線 + SQLite トリガ
 
-> 親: [`../detailed-design.md`](../detailed-design.md)。本書は永続化前マスキングの強制ゲートウェイ化（確定 B）と `audit_log` 不変性の物理保証（確定 C）を凍結する。
+> 親: [`../detailed-design.md`](../detailed-design.md)。本書は永続化前マスキングの強制ゲートウェイ化（確定 B、TypeDecorator `process_bind_param`）と `audit_log` 不変性の物理保証（確定 C、SQLite トリガ）を凍結する。
 
-## 確定 B: SQLAlchemy event listener の登録方式
+## 確定 B: SQLAlchemy TypeDecorator の登録方式（[`../requirements-analysis.md`](../requirements-analysis.md) §確定 R1-D で event listener から反転却下）
 
-table モジュール内で `event.listens_for(TableClass, 'before_insert')` / `'before_update'` をデコレータとして登録する。listener 関数は table モジュールの module-level に定義し、外部から差し替え不可（テスト時は `event.remove()` で削除可）。
+`infrastructure/persistence/sqlite/base.py` に **`MaskedJSONEncoded`** / **`MaskedText`** の 2 TypeDecorator を定義し、各 table の masking 対象カラムで `mapped_column(MaskedJSONEncoded, ...)` / `mapped_column(MaskedText, ...)` として宣言する。SQLAlchemy が bind parameter 解決時に内部の `process_bind_param` フックを発火し、`MaskingGateway.mask_in()` / `mask()` を呼び出して masking 後の値を返す。
 
-理由:
+### 採用根拠（実装段階の技術検証で反転）
 
-- table 定義と listener が同一ファイルにあり、属性追加時に listener 内のフィールドリストを更新する責務が明確
-- SQLAlchemy の event API は import 時に listener が登録される（lazy import を避ける）
-- pyright strict で listener の引数型（`Mapper`, `Connection`, `Target`）を明示
+旧設計の `event.listens_for(TableClass, 'before_insert')` / `'before_update'` 方式は「raw SQL 経路でも listener が走る」想定だったが、PR #23 BUG-PF-001 で**SQLAlchemy 2.x の Core `insert(table).values({...})` の inline values は ORM mapper を経由しないため `before_insert` listener が発火しない**ことが判明（TC-IT-PF-020 旧 xfail strict=True）。raw SQL 経路で生 secret が永続化される脱出経路が残るため、TypeDecorator `process_bind_param` 方式に反転（リーナス commit `4b882bf`、TC-IT-PF-020 PASSED）。詳細経緯は [`../requirements-analysis.md`](../requirements-analysis.md) §確定 R1-D。
 
-raw SQL 経路（`session.execute(insert(table).values(...))` 等）でも listener は走るため、ORM mapper を経由しない経路でも masking が適用される（多層防御）。これが TypeDecorator 方式に対する優位性で、属性追加時の漏れを物理排除する（[`../requirements-analysis.md`](../requirements-analysis.md) §確定 R1-D 参照）。
+### `process_bind_param` の発火経路（Core / ORM 両対応）
+
+| 永続化経路 | 発火 |
+|----|----|
+| ORM `session.add(row)` → flush | ✓ `process_bind_param` 発火 |
+| ORM `session.execute(insert(model).values(model_obj))` | ✓ |
+| Core `session.execute(insert(table).values({"col": value}))` | ✓ — 旧 listener 方式は不発火、本方式は捕捉 |
+| Core `session.execute(text("INSERT ..."))` + bind params | ✓ |
+
+raw SQL（plain `text()` クエリ）でも bind parameter 経由なら `process_bind_param` が発火する。bind を経由しない手書き SQL リテラル（`text("INSERT INTO ... VALUES ('secret')")` 等）は対象外だが、これは SQL injection 脆弱性そのものとして別途禁止される（[`../../../architecture/tech-stack.md`](../../../architecture/tech-stack.md) §ORM 確定方針: raw SQL 禁止、SQLAlchemy 経由のみ）。
+
+### 「属性追加時の漏れ」物理保証（CI 三層防衛）
+
+TypeDecorator 採用の唯一のリスク（カラム宣言時に `Masked*` 型指定忘れ）を以下 3 層で物理保証:
+
+1. **CI grep guard** (`scripts/ci/check_masking_columns.sh`): [`../../../architecture/domain-model/storage.md`](../../../architecture/domain-model/storage.md) §逆引き表 のカラム名を grep し、宣言行に `MaskedJSONEncoded` か `MaskedText` が含まれることを strict 検証
+2. **アーキテクチャテスト** (`backend/tests/architecture/test_masking_columns.py`): SQLAlchemy metadata から逆引き表のカラムを抽出し、`column.type.__class__` が `MaskedJSONEncoded` / `MaskedText` であることを assert
+3. **コードレビュー観点**: 新規 Aggregate Repository PR は逆引き表に行を追加 + masking 対象カラムの `Masked*` 指定を必須とするレビュー観点（[`../../../architecture/domain-model/storage.md`](../../../architecture/domain-model/storage.md) §逆引き表 §運用ルール）
+
+これにより event listener 方式と同等以上の漏れ防止を担保しつつ、Core SQL 経路の物理保証を獲得する。
+
+### TypeDecorator 配置と pyright strict 整合
+
+| 名前 | 配置 | base 型 | 適用先（本 PR） |
+|----|----|----|----|
+| `MaskedJSONEncoded` | `infrastructure/persistence/sqlite/base.py` | `JSONEncoded` を拡張 | `domain_event_outbox.payload_json` / `audit_log.args_json` |
+| `MaskedText` | 同上 | `Text` を拡張 | `domain_event_outbox.last_error` / `audit_log.error_text` / `bakufu_pid_registry.cmd` |
+
+`process_bind_param` の override は `# pyright: ignore[reportIncompatibleMethodOverride]` を付与（SQLAlchemy `TypeDecorator` の type stub が広めに型付けされているため、bakufu 側で str / dict 限定にする）。
+
+### テスト容易性
+
+`MaskedJSONEncoded.process_bind_param(value, dialect)` を単独テストできる（SQLAlchemy session を介さず、直接呼んで masking 適用結果を検証可能）。Core / ORM 両経路の発火検証は `TC-IT-PF-020`（実 SQLite）で物理証明される。
 
 ## 確定 C: SQLite トリガ（`audit_log` 不変性）
 

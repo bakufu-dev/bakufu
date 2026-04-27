@@ -9,10 +9,10 @@
 **本 feature のテストの主役は結合（integration）**である。理由は以下:
 
 1. 永続化基盤の真価は **「呼び忘れ経路でもマスキングが効く」「DB 直 SQL でも `audit_log` DELETE が拒否される」「PRAGMA が毎接続適用される」「起動シーケンス 8 段階の順序が保証される」**といった**物理保証**にあり、unit でモックして検証すると本物の挙動を見失う
-2. SQLite / Alembic / SQLAlchemy event listener / psutil / ファイルシステムは**本物を使えるなら本物を使う**（戦略ガイド §結合テスト方針: DB は実接続）
+2. SQLite / Alembic / SQLAlchemy TypeDecorator (`MaskedJSONEncoded` / `MaskedText`、§確定 R1-D で旧 event listener 案から反転) / psutil / ファイルシステムは**本物を使えるなら本物を使う**（戦略ガイド §結合テスト方針: DB は実接続）
 3. unit でモックするのは**単体ロジック**（regex 適用順序 / DataDirResolver の OS 別既定 / pid_gc の判定ロジック）に絞る
 
-イーロン指示の **「Schneier 申し送り 4 項目（#1 / #4 / #5 / #6）の結合テスト + masking listener が raw SQL 経路でも回避不能であることのテスト」** は本 feature の中核として **integration（実 SQLite + 実ファイルシステム）** で網羅する。
+イーロン指示の **「Schneier 申し送り 4 項目（#1 / #4 / #5 / #6）の結合テスト + TypeDecorator `process_bind_param` が raw SQL 経路でも回避不能であることのテスト」**（旧表現「masking listener」は §確定 R1-D の反転で「TypeDecorator」に書き換え、内容は同一）は本 feature の中核として **integration（実 SQLite + 実ファイルシステム）** で網羅する。
 
 ## テストマトリクス
 
@@ -39,13 +39,13 @@
 | REQ-PF-005（環境変数長さ） | 長さ 8 未満の env 値はパターン化しない | TC-UT-PF-017 | ユニット | 境界値 | 6 |
 | REQ-PF-005（**Fail-Secure 契約、確定 F**、Schneier 重大 1） | mask が予期せぬ例外 raise 時、入力 str 全体が `<REDACTED:MASK_ERROR>` で完全置換される（生データは絶対に永続化されない） | TC-UT-PF-006-A | ユニット | 異常系 | 6 |
 | REQ-PF-005（**Fail-Secure 契約、確定 F**、Schneier 重大 1） | mask_in が異常 dict（10MB 超）を受信時、当該 dict / list 全体が `<REDACTED:MASK_OVERFLOW>` で置換される | TC-UT-PF-006-B | ユニット | 異常系 | 6 |
-| REQ-PF-006（**Fail-Secure 契約、確定 F**、Schneier 重大 1 中核） | listener 自体が予期せぬ例外を raise 時、row の **すべての masking 対象フィールド**が `<REDACTED:LISTENER_ERROR>` で完全置換される（生データを書く経路ゼロ） | TC-UT-PF-006-C | ユニット | 異常系 | 7 |
+| REQ-PF-006（**Fail-Secure 契約、確定 F**、Schneier 重大 1 中核） | TypeDecorator `process_bind_param` 自体が予期せぬ例外を raise 時、当該 masking 対象フィールドが `<REDACTED:LISTENER_ERROR>` で完全置換される（生データを書く経路ゼロ、トークン名 `LISTENER_ERROR` は履歴的命名で BUG-PF-001 修正前の listener 方式から継承） | TC-UT-PF-006-C | ユニット | 異常系 | 7 |
 | REQ-PF-005（環境変数辞書ロード Fail Fast、確定 F） | 起動時に `os.environ` から既知 env キーの取得が失敗した場合、`BakufuConfigError(MSG-PF-008)` で Bootstrap exit 1（**部分マスキングで起動しない**） | TC-IT-PF-007-D | 結合 | 異常系 | （Schneier 重大 1） |
 | REQ-PF-005（再帰走査） | dict / list の再帰 masking | TC-UT-PF-019 | ユニット | 正常系 | 6 |
 | REQ-PF-006（Schneier #6） | `domain_event_outbox` への ORM 経由 INSERT で payload_json / last_error がマスキング後値に上書き | TC-IT-PF-007 | 結合 | 正常系 | 7 |
-| REQ-PF-006（Schneier #6 / R1-D 中核） | **raw SQL 経路（`session.execute(insert(table).values(...))`）でも listener が走り masking 後値で永続化される** | TC-IT-PF-020 | 結合 | 正常系 | 7 |
-| REQ-PF-006（Schneier #6） | `before_update` でも payload_json / last_error が再マスキングされる（dispatcher の dead-letter 化経路） | TC-IT-PF-021 | 結合 | 正常系 | 7 |
-| REQ-PF-006（Schneier #6） | `audit_log.args_json` / `error_text` / `bakufu_pid_registry.cmd` のマスキング配線（hook 動作確認） | TC-IT-PF-022 | 結合 | 正常系 | 7 |
+| REQ-PF-006（Schneier #6 / R1-D 中核） | **raw SQL 経路（`session.execute(insert(table).values(...))`）でも TypeDecorator `process_bind_param` が走り masking 後値で永続化される**（旧 event listener 方式が破綻したことを物理証明する回帰テスト） | TC-IT-PF-020 | 結合 | 正常系 | 7 |
+| REQ-PF-006（Schneier #6） | UPDATE 経路（`update(table).values(last_error=...)`）でも payload_json / last_error が `process_bind_param` で再マスキングされる（dispatcher の dead-letter 化経路） | TC-IT-PF-021 | 結合 | 正常系 | 7 |
+| REQ-PF-006（Schneier #6） | `audit_log.args_json` / `error_text` / `bakufu_pid_registry.cmd` の TypeDecorator 配線動作確認 | TC-IT-PF-022 | 結合 | 正常系 | 7 |
 | REQ-PF-007 | Outbox Dispatcher polling SQL の取得条件 | TC-IT-PF-008 | 結合 | 正常系 | 8 |
 | REQ-PF-007（DISPATCHING リカバリ） | `(DISPATCHING AND updated_at < now - 5min)` 行が再取得される | TC-IT-PF-023 | 結合 | 正常系 | 8 |
 | REQ-PF-007（dead-letter 化） | 5 回失敗で `status=DEAD_LETTER` + `OutboxDeadLettered` event 別行追記 | TC-IT-PF-009 | 結合 | 異常系 | 9 |
@@ -91,9 +91,9 @@
   - #1: `BAKUFU_DATA_DIR` 絶対パス強制 → TC-UT-PF-002 + TC-IT-PF-001
   - #4: `audit_log` DELETE 拒否トリガ + UPDATE 制限トリガ → TC-IT-PF-005 + TC-IT-PF-015
   - #5: `bakufu_pid_registry` GC + 0700 file mode → TC-UT-PF-010, 026, 027, 028 + TC-IT-PF-011
-  - #6: Outbox masking listener → TC-IT-PF-007 + **TC-IT-PF-020（raw SQL 経路）** + TC-IT-PF-021 (before_update) + TC-IT-PF-022（audit_log / pid_registry 配線）
+  - #6: Outbox masking via TypeDecorator `process_bind_param` → TC-IT-PF-007 + **TC-IT-PF-020（raw SQL 経路、§確定 R1-D 中核）** + TC-IT-PF-021 (UPDATE 経路) + TC-IT-PF-022（audit_log / pid_registry 配線）
 - **Schneier 重大 4 件**すべてに検出力テスト（Schneier 再レビュー指摘 13 件超 = 計 20 件追加）:
-  - 重大 1（Fail-Secure 契約、確定 F）: TC-UT-PF-006-A（mask 例外 → MASK_ERROR）/ TC-UT-PF-006-B（10MB 超 → MASK_OVERFLOW）/ **TC-UT-PF-006-C（listener 例外 → 全フィールド LISTENER_ERROR、本契約の中核）** / TC-IT-PF-007-D（env 辞書ロード Fail Fast、MSG-PF-008）
+  - 重大 1（Fail-Secure 契約、確定 F）: TC-UT-PF-006-A（mask 例外 → MASK_ERROR）/ TC-UT-PF-006-B（10MB 超 → MASK_OVERFLOW）/ **TC-UT-PF-006-C（`process_bind_param` 例外 → フィールド LISTENER_ERROR、本契約の中核、トークン名 `LISTENER_ERROR` は履歴的命名）** / TC-IT-PF-007-D（env 辞書ロード Fail Fast、MSG-PF-008）
   - 重大 2（PRAGMA defensive、確定 D-1〜D-4）: TC-IT-PF-003-A（defensive=ON / writable_schema=OFF / trusted_schema=OFF SET）/ **TC-IT-PF-003-B（DROP TRIGGER 拒否、トリガ DDL 改ざん防御の物理保証）** / TC-IT-PF-003-C（sqlite_master UPDATE 拒否）/ TC-IT-PF-003-D（dual connection、migration engine の dispose 確認）
   - 重大 3（DB 権限検出 Forensic、REQ-PF-002-A）: TC-IT-PF-002-A（新規 0o600）/ TC-IT-PF-002-B（既存 0o644 → WARN + 修復）/ TC-IT-PF-002-C（WAL/SHM）
   - 重大 4（`BAKUFU_DB_PATH` 廃止）: 環境変数自体を撤去したため攻撃面の物理排除（追加 TC 不要、TC-UT-PF-001 系で「`BAKUFU_DATA_DIR` のみ受け付けて `BAKUFU_DB_PATH` は無視される」契約を担保）
@@ -102,7 +102,7 @@
   - 中等 2（`BAKUFU_DB_KEY` 削除）: REQ-PF-005 の env キーリストに登場しないことを TC-UT-PF-006 のパラメタライズで確認（masking 対象は `BAKUFU_DISCORD_BOT_TOKEN` に置換、攻撃面の物理排除）
   - 中等 3（空 handler Fail Loud、確定 K）: TC-IT-PF-008-A（起動完了直後 WARN）/ TC-IT-PF-008-B（polling サイクル WARN）/ **TC-IT-PF-008-C（重複抑止）** / TC-IT-PF-008-D（滞留 100 件超 WARN）
   - 中等 4（Bootstrap cleanup LIFO、確定 J）: TC-IT-PF-012-A（dispatcher_task cancel 単独）/ **TC-IT-PF-012-B（dispatcher + scheduler の LIFO cancel）** / TC-IT-PF-012-C（engine.dispose() 保証）
-- **イーロン指示の中核「raw SQL 経路でも masking listener が回避不能」**を TC-IT-PF-020 で物理確認（確定 R1-D の根拠を test で凍結）
+- **イーロン指示の中核「raw SQL 経路でも masking が回避不能」**を TC-IT-PF-020 で物理確認（TypeDecorator `process_bind_param` の Core / ORM 両経路発火 = 確定 R1-D の根拠を test で凍結。旧 listener 案を反転却下した PR #23 BUG-PF-001 の回帰テスト）
 - **PRAGMA 強制（確定 D-1）**: **8 件全 PRAGMA**（WAL / foreign_keys / busy_timeout / synchronous / temp_store / **defensive=ON** / **writable_schema=OFF** / **trusted_schema=OFF**）+ 順序（WAL 先頭）+ 毎接続適用を TC-IT-PF-003 + TC-IT-PF-013 + TC-IT-PF-003-A で確認
 - **起動シーケンス凍結（確定 G）**: 順序実行（INFO 構造化ログ込み）+ Fail Fast + 段階 4 のみ非 fatal + LIFO cleanup（確定 J）を TC-IT-PF-012 / 012-A / 012-B / 012-C / 031 / 032 で確認
 - **masking 適用順序（確定 A）**: Anthropic 先 → OpenAI 後の順序維持を TC-UT-PF-016 で確認、長さ 8 未満は除外を TC-UT-PF-017 で確認
@@ -110,7 +110,7 @@
 - **MSG-PF-001〜008 すべて**に静的文字列照合（MSG-PF-008 は Schneier 重大 1 対応で新規追加、TC-IT-PF-007-D で照合）
 - 受入基準 1〜13 すべてに unit/integration ケース（14/15 は CI ジョブ）
 - **T1〜T9** すべてに有効性確認ケース（T1〜T5 既存 + T6 マスキング fail-open / T7 トリガ DDL 改ざん / T8 DB 権限異常 / T9 空 handler 起動の 4 件は threat-model.md §A4 への昇格に同期）
-- 確定 A（masking 9 種 + env + home）/ B（listener 登録方式）/ C（SQLite トリガ）/ **D-1〜D-4（PRAGMA 8 件 + dual connection）** / E（pid_gc 順序）/ **F（Fail-Secure 3 種）** / G（起動シーケンス + INFO ログ）/ H（Schneier 申し送りステータス）/ I（依存方向 CI 検査）/ **J（Bootstrap cleanup LIFO）** / **K（空 handler Fail Loud）** / **L（umask 0o077）**すべてに証拠ケース
+- 確定 A（masking 9 種 + env + home）/ B（**TypeDecorator `process_bind_param` 配線**、§確定 R1-D で event listener 案から反転）/ C（SQLite トリガ）/ **D-1〜D-4（PRAGMA 8 件 + dual connection）** / E（pid_gc 順序）/ **F（Fail-Secure 3 種）** / G（起動シーケンス + INFO ログ）/ H（Schneier 申し送りステータス）/ I（依存方向 CI 検査）/ **J（Bootstrap cleanup LIFO）** / **K（空 handler Fail Loud）** / **L（umask 0o077）**すべてに証拠ケース
 - 孤児要件ゼロ
 
 ## 外部 I/O 依存マップ
@@ -191,13 +191,13 @@
 
 ### マスキング配線（Schneier #6、T1、受入基準 7）
 
-**本 feature の中核。raw SQL 経路でも listener が走ることを物理保証する**（イーロン指示の核心）。
+**本 feature の中核。raw SQL 経路でも TypeDecorator `process_bind_param` が走ることを物理保証する**（イーロン指示の核心、§確定 R1-D 反転後の表現）。
 
 | テストID | 対象モジュール連携 | 使用 fixture | 前提条件 | 操作 | 期待結果 |
 |---------|------------------|--------------|---------|------|---------|
-| TC-IT-PF-007 | Outbox listener + ORM 経路 | tmp_path + Alembic 適用済み | engine + session 構築済み | `MaskingPayloadFactory` で生成した `payload_json={'key': 'sk-ant-api03-' + 'A' * 50, 'github_pat': 'ghp_' + 'X' * 40, 'description': 'see /home/myuser/secret'}` を含む `domain_event_outbox` 行を `session.add()` で INSERT | `SELECT payload_json, last_error FROM domain_event_outbox` で取得した値で `sk-ant-api03-...` が `<REDACTED:ANTHROPIC_KEY>` に、`ghp_...` が `<REDACTED:GITHUB_PAT>` に、`/home/myuser/...` が `<HOME>/...` に置換されている（受入基準 7） |
-| TC-IT-PF-020 | Outbox listener + **raw SQL 経路（R1-D 中核）** | tmp_path + Alembic 適用済み | engine + session 構築済み | **ORM mapper を経由しない経路** `session.execute(sqlalchemy.insert(outbox_table).values(payload_json='sk-ant-api03-' + 'A' * 50, last_error='ghp_' + 'X' * 40, ...))` で raw SQL 風に INSERT | listener が走り、SELECT で取得した値で `sk-ant-api03-...` が `<REDACTED:ANTHROPIC_KEY>` に、`ghp_...` が `<REDACTED:GITHUB_PAT>` に置換されている。**「呼び忘れ経路でもマスキングが効く」物理保証**（OWASP A02 / 確定 R1-D / event listener vs TypeDecorator の決定根拠を test で凍結） |
-| TC-IT-PF-021 | Outbox listener + before_update | tmp_path + Outbox 行 1 件（PENDING） | dispatcher が dead-letter 化する経路をシミュレート | `UPDATE domain_event_outbox SET status='DEAD_LETTER', last_error='AKIA' + '1234567890ABCDEF1' WHERE event_id=:id` を実行 | `before_update` listener が走り、`last_error` が `<REDACTED:AWS_ACCESS_KEY>` で永続化される。`payload_json` も同じ行で再マスキング適用される（idempotent: 既マスキング済み値は再適用しても変化しない） |
+| TC-IT-PF-007 | Outbox masking（TypeDecorator）+ ORM 経路 | tmp_path + Alembic 適用済み | engine + session 構築済み | `MaskingPayloadFactory` で生成した `payload_json={'key': 'sk-ant-api03-' + 'A' * 50, 'github_pat': 'ghp_' + 'X' * 40, 'description': 'see /home/myuser/secret'}` を含む `domain_event_outbox` 行を `session.add()` で INSERT | `SELECT payload_json, last_error FROM domain_event_outbox` で取得した値で `sk-ant-api03-...` が `<REDACTED:ANTHROPIC_KEY>` に、`ghp_...` が `<REDACTED:GITHUB_PAT>` に、`/home/myuser/...` が `<HOME>/...` に置換されている（受入基準 7） |
+| TC-IT-PF-020 | Outbox masking（TypeDecorator）+ **raw SQL 経路（R1-D 中核）** | tmp_path + Alembic 適用済み | engine + session 構築済み | **ORM mapper を経由しない経路** `session.execute(sqlalchemy.insert(outbox_table).values(payload_json='sk-ant-api03-' + 'A' * 50, last_error='ghp_' + 'X' * 40, ...))` で raw SQL 風に INSERT | TypeDecorator `process_bind_param` が走り、SELECT で取得した値で `sk-ant-api03-...` が `<REDACTED:ANTHROPIC_KEY>` に、`ghp_...` が `<REDACTED:GITHUB_PAT>` に置換されている。**「呼び忘れ経路でもマスキングが効く」物理保証**（OWASP A02 / 確定 R1-D / 旧 event listener 案が反転却下された決定根拠を test で凍結。退行検出: 将来誰かが TypeDecorator → listener 方式に戻そうとすると本テストが赤くなる） |
+| TC-IT-PF-021 | Outbox masking（TypeDecorator）+ UPDATE 経路 | tmp_path + Outbox 行 1 件（PENDING） | dispatcher が dead-letter 化する経路をシミュレート | `UPDATE domain_event_outbox SET status='DEAD_LETTER', last_error='AKIA' + '1234567890ABCDEF1' WHERE event_id=:id` を実行 | `MaskedText.process_bind_param` が UPDATE bind でも発火し、`last_error` が `<REDACTED:AWS_ACCESS_KEY>` で永続化される。`payload_json` も同じ行で再マスキング適用される（idempotent: 既マスキング済み値は再適用しても変化しない） |
 | TC-IT-PF-022 | audit_log + pid_registry の masking 配線（hook 動作確認） | tmp_path + Alembic 適用済み | engine + session 構築済み | `audit_log.args_json={'token': 'xoxb-1234567890-...'}` / `error_text='Bearer eyJ...token...'` および `bakufu_pid_registry.cmd='claude --api-key=sk-ant-api03-...'` を INSERT | `SELECT` で取得した各値が `<REDACTED:SLACK_TOKEN>` / `<REDACTED:BEARER>` / `<REDACTED:ANTHROPIC_KEY>` に置換されている（Schneier #6 の hook 構造が 3 テーブル全てに動作することを物理確認） |
 | TC-IT-PF-007-D | **環境変数辞書ロード Fail Fast**（確定 F、Schneier 重大 1） | tmp_path + 故意に `os.environ.get` を例外 raise させる mock | Bootstrap 起動時 | `Bootstrap.run()` を呼ぶ | (1) Bootstrap が exit 1 でプロセス終了（`SystemExit.code == 1`）、(2) stderr に MSG-PF-008 完全一致: `[FAIL] Masking environment dictionary load failed: {reason}. Cannot start with partial masking layer. Investigate env access permissions.`、(3) stage 2 以降に進まない（Fail Fast）、(4) 部分マスキングで起動しないことを物理確認（**部分マスキング起動経路の根絶**） |
 
@@ -289,7 +289,7 @@
 | TC-UT-PF-018 | フォールバック（確定 F、互換性維持） | 異常系 | 想定外の型（`bytes` / `datetime`）を `mask_in()` に渡す | str に変換してから `mask()` 適用。`<REDACTED:UNKNOWN>` 経路は採用しない（確定 F で 3 種に統一） |
 | TC-UT-PF-006-A | **mask 例外時の MASK_ERROR 完全置換**（確定 F、Schneier 重大 1） | 異常系 | regex マッチ中に例外を発生させる mock（理論上発生しないが防衛のため） | (1) `mask(input_str)` の戻り値が `<REDACTED:MASK_ERROR>` 完全一致（**入力 str 全体を完全置換、生データ部分残しなし**）、(2) WARN ログに MSG-PF-006 形式で `kind=mask_error` を含む |
 | TC-UT-PF-006-B | **mask_in 異常 dict での MASK_OVERFLOW 置換**（確定 F、Schneier 重大 1） | 異常系 | 10MB 超の dict（再帰深度 100 超 or サイズ閾値超過）を `mask_in()` に渡す | (1) 当該 dict / list 全体が `<REDACTED:MASK_OVERFLOW>` で置換される、(2) 部分的な mask 適用は行わず**全体を捨てる**（Fail-Secure）、(3) WARN ログ MSG-PF-006 で `kind=mask_overflow`（または `mask_oversize_dict`）を含む |
-| TC-UT-PF-006-C | **listener 例外時の LISTENER_ERROR 全フィールド置換**（確定 F 中核、Schneier 重大 1） | 異常系 | listener の outer catch を発火させる mock（masking gateway 内部で予期せぬ例外を strategically raise） | (1) row の **すべての masking 対象フィールド**（`payload_json` / `last_error` / `args_json` / `error_text` / `cmd` / `prompt_body` 等）が `<REDACTED:LISTENER_ERROR>` で置換される、(2) 1 つのフィールドだけ生データが残る経路がないことを assert（**生データを書く経路ゼロの物理保証**）、(3) ERROR ログ出力（WARN ではなく ERROR）、(4) INSERT / UPDATE は continued（永続化を止めない） |
+| TC-UT-PF-006-C | **`process_bind_param` 例外時の LISTENER_ERROR 置換**（確定 F 中核、Schneier 重大 1） | 異常系 | TypeDecorator の outer catch を発火させる mock（masking gateway 内部で予期せぬ例外を strategically raise） | (1) 当該 masking 対象フィールド（`payload_json` / `last_error` / `args_json` / `error_text` / `cmd` / `prompt_body` 等）が `<REDACTED:LISTENER_ERROR>` で置換される（トークン名は履歴的命名、BUG-PF-001 修正前の listener 方式から継承）、(2) 生データが残る経路がないことを assert（**生データを書く経路ゼロの物理保証**）、(3) ERROR ログ出力（WARN ではなく ERROR）、(4) INSERT / UPDATE は continued（永続化を止めない） |
 | TC-UT-PF-019 | 再帰走査 | 正常系 | `mask_in({'key': 'sk-ant-...', 'nested': {'pat': 'ghp_...', 'list': ['Bearer eyJ...', 'AKIA...']}, 'normal': 'no secret'})` | dict / list を再帰走査、全 str に masking 適用、非 str は素通り（int / None / bool） |
 | TC-UT-PF-041 | ホームパス置換 | 正常系 | `mask('error at /home/myuser/.local/share/bakufu/db.sqlite')` (HOME=/home/myuser) | `/home/myuser` が `<HOME>` に置換 |
 | TC-UT-PF-042 | 9 種 regex 各単独テスト | 正常系 | Anthropic / OpenAI / GitHub PAT / GitHub fine-grained / AWS Access / AWS Secret / Slack / Discord bot / Bearer の各形式 1 件ずつ | 各 regex に対応する `<REDACTED:{KIND}>` に置換（パラメタライズドテスト、9 ケース） |
@@ -326,7 +326,7 @@
   - #1: TC-UT-PF-002 + TC-IT-PF-001 + TC-UT-PF-033 / 038 / 039 / 040
   - #4: TC-IT-PF-005（DELETE 拒否）+ TC-IT-PF-015（UPDATE 制限）
   - #5: TC-UT-PF-010, 026, 027, 028 + TC-IT-PF-011 (file mode) + **TC-IT-PF-001-A**（umask 経由 WAL/SHM 0o600 の物理保証）
-  - #6: TC-IT-PF-007（ORM）+ **TC-IT-PF-020（raw SQL 経路、R1-D 中核）** + TC-IT-PF-021 (before_update) + TC-IT-PF-022（audit_log / pid_registry 配線）+ **TC-UT-PF-006-A / B / C**（Fail-Secure 3 種）+ **TC-IT-PF-007-D**（env 辞書ロード Fail Fast）
+  - #6: TC-IT-PF-007（ORM）+ **TC-IT-PF-020（raw SQL 経路、R1-D 中核）** + TC-IT-PF-021 (UPDATE 経路) + TC-IT-PF-022（audit_log / pid_registry 配線）+ **TC-UT-PF-006-A / B / C**（Fail-Secure 3 種）+ **TC-IT-PF-007-D**（env 辞書ロード Fail Fast）
 - **Schneier 再レビュー指摘の検出力テスト 20 件**（重大 4 + 中等 4 + Forensic 観点）:
   - 重大 1（Fail-Secure 契約、確定 F）: TC-UT-PF-006-A / B / C + TC-IT-PF-007-D（**生データを書く経路ゼロの物理保証**、本 PR の中核セキュリティ契約）
   - 重大 2（PRAGMA defensive、確定 D-1〜D-4）: TC-IT-PF-003-A / B / C / D（**DROP TRIGGER / sqlite_master UPDATE が application engine 経由で拒否される、dual connection で migration engine が runtime に生存しない**）
@@ -336,7 +336,7 @@
   - 中等 2（`BAKUFU_DB_KEY` 削除）: 攻撃面の物理排除（masking 対象 env キーから除外）
   - 中等 3（空 handler Fail Loud、確定 K）: TC-IT-PF-008-A / B / C / D
   - 中等 4（Bootstrap cleanup LIFO、確定 J）: TC-IT-PF-012-A / B / C
-- **イーロン指示の中核「raw SQL 経路でも masking listener が回避不能」を TC-IT-PF-020 で物理確認**（確定 R1-D の根拠を test で凍結し、将来 TypeDecorator 方式に変更しようとする退行を検出）
+- **イーロン指示の中核「raw SQL 経路でも masking が回避不能」を TC-IT-PF-020 で物理確認**（TypeDecorator `process_bind_param` の Core / ORM 両経路発火 = §確定 R1-D の根拠を test で凍結。将来誰かが TypeDecorator → event listener 方式に戻そうとすると本テストが赤くなる退行検出）
 - **PRAGMA 強制（確定 D-1）**: **8 件 PRAGMA**（WAL / foreign_keys / busy_timeout / synchronous / temp_store / **defensive=ON** / **writable_schema=OFF** / **trusted_schema=OFF**）+ 順序（WAL 先頭）+ 毎接続適用を TC-IT-PF-003 + TC-IT-PF-013 + TC-IT-PF-003-A で確認
 - **起動シーケンス凍結（確定 G + J + L）**: 順序実行 + INFO 構造化ログ + Fail Fast + 段階 4 のみ非 fatal + LIFO cleanup + umask SET を TC-IT-PF-012 / 012-A / 012-B / 012-C / 031 / 032 / 001-A / TC-UT-PF-001-A で確認
 - **masking 適用順序（確定 A）**: Anthropic → OpenAI 順序を TC-UT-PF-016 で、長さ 8 未満除外を TC-UT-PF-017 で、Fail-Secure フォールバック（確定 F の 3 種）を TC-UT-PF-006-A / B / C で確認（masking が**生データを永続化させない**物理保証）
@@ -362,7 +362,7 @@
   - `sqlite3 <DATA_DIR>/bakufu.db "DELETE FROM audit_log;"` が `Runtime error: audit_log is append-only` で拒否されることを目視（Schneier #4 物理確認）
   - `BAKUFU_DATA_DIR=./relative` で起動 → 即時 exit 1 + stderr に MSG-PF-001（Schneier #1 物理確認）
 - カバレッジ確認: `cd backend && uv run pytest --cov=bakufu.infrastructure --cov-report=term-missing` → 90% 以上
-- masking 配線の実観測（手動試験）: 直接 `sqlite3` で `INSERT INTO domain_event_outbox(payload_json, ...) VALUES('sk-ant-api03-...')` を実行 → SELECT で `<REDACTED:ANTHROPIC_KEY>` に置換されていることを目視（**ただし `sqlite3` CLI は SQLAlchemy event listener を経由しないため masking が走らない**経路があり、これは ORM 経由の信頼境界外。bakufu アプリ経由の INSERT のみが masking ゲートウェイを保証する。本観測の意図は「DB 直挿しは listener を回避できる経路」を**運用者が認識する**ためで、防衛策としては OS file mode 0600 で他ユーザーからの DB アクセスを物理的に塞ぐ）
+- masking 配線の実観測（手動試験）: 直接 `sqlite3` で `INSERT INTO domain_event_outbox(payload_json, ...) VALUES('sk-ant-api03-...')` を実行 → SELECT で生データのまま（**`sqlite3` CLI は SQLAlchemy TypeDecorator `process_bind_param` を経由しないため masking が走らない**）。これは bakufu アプリの信頼境界外で、**bakufu アプリ経由の INSERT のみが masking ゲートウェイを保証する**。本観測の意図は「DB 直挿しは TypeDecorator 配線を回避できる経路」を**運用者が認識する**ためで、防衛策としては OS file mode 0600 で他ユーザーからの DB アクセスを物理的に塞ぐ（threat-model.md §A4 / §T7）
 
 後段で `feature/admin-cli`（`bakufu admin retry-event` 等）/ `feature/http-api`（Aggregate CRUD）が完成したら、本 feature の永続化基盤を経由して `curl` 経由の手動シナリオで E2E 観測可能になる。
 
@@ -412,7 +412,7 @@ backend/
           outbox/
             test_dispatcher.py                 # TC-IT-PF-008, 023, 009, 024, 025
             test_dispatcher_fail_loud.py       # TC-IT-PF-008-A, 008-B, 008-C, 008-D (Schneier 中等 3, 確定 K)
-            test_masking_listener.py           # TC-IT-PF-007, 020, 021, 022 (Schneier #6 / R1-D 中核)
+            test_masking_typedecorator.py      # TC-IT-PF-007, 020, 021, 022 (Schneier #6 / R1-D 中核、TypeDecorator process_bind_param 配線、旧 listener 方式は BUG-PF-001 で反転却下)
             test_masking_env_fail_fast.py      # TC-IT-PF-007-D (Schneier 重大 1, MSG-PF-008)
       test_bootstrap_sequence.py               # TC-IT-PF-012, 031, 032, 034, TC-IT-PF-036, 037
       test_bootstrap_cleanup.py                # TC-IT-PF-012-A, 012-B, 012-C (Schneier 中等 4, 確定 J)
@@ -424,7 +424,7 @@ backend/
 - characterization は本流 CI から除外（`RUN_CHARACTERIZATION=1` 環境変数で明示有効化）
 - factory は schema を参照して生成、raw fixture は integration test 専用（unit でも factory を介して同 schema から派生）
 - architecture/test_dependency_direction.py は確定 I の物理保証（domain → infrastructure 参照ゼロ）
-- masking_listener.py を**独立ファイル**にするのはイーロン指示の核心テスト群（raw SQL 経路含む）を 1 ファイルに集約し、レビュー時の確認帯域を最小化するため
+- `test_masking_typedecorator.py` を**独立ファイル**にするのはイーロン指示の核心テスト群（raw SQL 経路含む）を 1 ファイルに集約し、レビュー時の確認帯域を最小化するため。TypeDecorator 配線採用は §確定 R1-D（旧 listener 案を BUG-PF-001 で反転却下）
 
 ## 未決課題・要起票 characterization task
 

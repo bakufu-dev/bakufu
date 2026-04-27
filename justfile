@@ -55,8 +55,13 @@ audit-secrets:
 audit-pin-sync:
     bash scripts/ci/audit-pin-sync.sh
 
+# CI 三層防衛 (1/3): masking 対象カラムが Masked* TypeDecorator で
+# 宣言されていることを strict 検証する (R1-D 補強条項 / storage.md §逆引き表).
+audit-masking-columns:
+    bash scripts/ci/check_masking_columns.sh
+
 # Run all quality gates sequentially (final check)
-check-all: fmt-check lint typecheck test audit audit-secrets audit-pin-sync
+check-all: fmt-check lint typecheck test audit audit-secrets audit-pin-sync audit-masking-columns
 
 # Validate commit message via convco (Conventional Commits 1.0)
 [script("bash")]

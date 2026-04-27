@@ -8,10 +8,10 @@
 |---|---|---|---|
 | 1 | `BAKUFU_DATA_DIR` 絶対パス | ✓ `data_dir.py` で実装 + 結合テスト | — |
 | 2 | H10 TOCTOU | ✗ | `feature/skill-loader` で skill 読み込み直前再検証 |
-| 3 | `Persona.prompt_body` Repository マスキング | △ event listener hook 構造のみ提供 | `feature/agent-repository` で `agents` テーブルに対し listener 登録 |
+| 3 | `Persona.prompt_body` Repository マスキング | △ TypeDecorator (`MaskedText`) hook 構造のみ提供 | `feature/agent-repository` で `agents.prompt_body` カラムに `mapped_column(MaskedText, ...)` で宣言 |
 | 4 | `audit_log` DELETE 拒否 | ✓ Alembic 初回 revision でトリガ作成 + 結合テスト（[`triggers.md`](triggers.md) §確定 C） | — |
 | 5 | `bakufu_pid_registry` 0600 | ✓ テーブル + GC スケルトン + パーミッション強制（[`bootstrap.md`](bootstrap.md) §確定 E） | LLM Adapter 側で実 spawn / kill 配線（`feature/llm-adapter`） |
-| 6 | Outbox `payload_json` / `last_error` マスキング | ✓ event listener で強制ゲートウェイ化 + 結合テスト（[`triggers.md`](triggers.md) §確定 B + [`masking.md`](masking.md) §確定 F） | — |
+| 6 | Outbox `payload_json` / `last_error` マスキング | ✓ TypeDecorator (`MaskedJSONEncoded` / `MaskedText`) の `process_bind_param` で Core / ORM 両経路強制ゲートウェイ化 + 結合テスト TC-IT-PF-020 PASSED（[`triggers.md`](triggers.md) §確定 B + [`masking.md`](masking.md) §確定 F） | — |
 
 「△」項目は hook を提供するに留まり、実適用は対応 Aggregate Repository PR の責務。本 Issue の設計書に「申し送りを継承」と明記する。
 

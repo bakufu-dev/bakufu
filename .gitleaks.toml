@@ -6,10 +6,24 @@ useDefault = true
 
 [allowlist]
 description = """
-docs/features/<feature>/test-design.md は gitleaks の検出対象パターンを「テストケースの説明」として
-散文中に列挙する。同ファイル内の AKIA-prefix / xoxb- / sk-ant- / ghp_ / Bearer 文字列等は実在キーではなく、
-テスト工程の説明用の擬似値（e.g. `'A' * 50`, `xoxb-1234567890-...`）であり、
-gitleaks のフィンガープリント走査の対象外として扱う。
-本 allowlist は test-design.md に限定し、実装ファイル・他の設計書には適用されない。
+擬似シークレットを含む 2 経路を検出対象から除外する:
+
+1. docs/features/<feature>/test-design.md — gitleaks の検出対象パターンを
+   「テストケースの説明」として散文中に列挙する。AKIA-prefix / xoxb- / sk-ant-
+   / ghp_ / Bearer 文字列等は実在キーではなくテスト工程の擬似値（例:
+   `'A' * 50` / `xoxb-1234567890-...`）。
+2. backend/tests/ 配下のマスキング検証コード — TC-IT-PF-007 / 020 / 021 / 022
+   等の masking 配線テストで、実形式の擬似シークレット文字列（``AKIA...`` /
+   ``sk-ant-...`` / ``ghp_...`` / ``xoxb-...`` 等）をリテラルで埋め込んで
+   「マスキング配線が動くか」を物理確認する。これらは定義上テスト fixture
+   であり、漏れたとして悪用される実値ではない。インライン
+   ``# gitleaks:allow`` annotation も併用するが、Git history 走査で過去
+   コミットに対応するため allowlist でも経路を許可する。
+
+本 allowlist は上記 2 経路に限定し、実装ファイル（backend/src/）や他の設計書
+には適用されない。
 """
-paths = ['''docs/features/[^/]+/test-design\.md''']
+paths = [
+    '''docs/features/[^/]+/test-design\.md''',
+    '''backend/tests/.*\.py''',
+]

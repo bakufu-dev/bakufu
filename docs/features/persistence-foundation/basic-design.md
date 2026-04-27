@@ -20,12 +20,12 @@
 | REQ-PF-004 | Alembic 設定 | `backend/alembic/env.py` / `alembic.ini` / `versions/0001_init.py` | 初回 revision: 3 テーブル + 2 トリガ |
 | REQ-PF-005 | `masking` | `backend/src/bakufu/infrastructure/security/masking.py` | 環境変数 + 9 種正規表現 + ホームパスの単一ゲートウェイ |
 | REQ-PF-005 | `masked_env` | `backend/src/bakufu/infrastructure/security/masked_env.py` | 起動時に環境変数値をパターン辞書化 |
-| REQ-PF-006 | `outbox_tables` | `backend/src/bakufu/infrastructure/persistence/sqlite/tables/outbox.py` | `domain_event_outbox` table 定義 + `before_insert` / `before_update` listener 配線 |
+| REQ-PF-006 | `outbox_tables` | `backend/src/bakufu/infrastructure/persistence/sqlite/tables/outbox.py` | `domain_event_outbox` table 定義 + `MaskedJSONEncoded` / `MaskedText` TypeDecorator 宣言（`process_bind_param` で Core / ORM 両経路 masking 強制、[`detailed-design/triggers.md`](detailed-design/triggers.md) §確定 B） |
 | REQ-PF-007 | `dispatcher` | `backend/src/bakufu/infrastructure/persistence/sqlite/outbox/dispatcher.py` | polling / 状態マーキング / リカバリ条件 / dead-letter |
 | REQ-PF-007 | `handler_registry` | `backend/src/bakufu/infrastructure/persistence/sqlite/outbox/handler_registry.py` | event_kind → handler の登録レジストリ（空 OK） |
 | REQ-PF-008 | `pid_registry_tables` | `backend/src/bakufu/infrastructure/persistence/sqlite/tables/pid_registry.py` | `bakufu_pid_registry` table 定義 |
 | REQ-PF-008 | `pid_gc` | `backend/src/bakufu/infrastructure/persistence/sqlite/pid_gc.py` | 起動時 GC スケルトン（`psutil` 連携） |
-| REQ-PF-008 | `audit_log_tables` | `backend/src/bakufu/infrastructure/persistence/sqlite/tables/audit_log.py` | `audit_log` table 定義 + masking listener 配線 |
+| REQ-PF-008 | `audit_log_tables` | `backend/src/bakufu/infrastructure/persistence/sqlite/tables/audit_log.py` | `audit_log` table 定義 + `MaskedJSONEncoded` / `MaskedText` TypeDecorator 宣言（masking 強制ゲートウェイ） |
 | REQ-PF-009 | `attachment_root` | `backend/src/bakufu/infrastructure/storage/attachment_root.py` | アタッチメント FS ルート初期化 + パーミッション強制 + 孤児 GC スケジューラ枠 |
 | REQ-PF-010 | `bootstrap` | `backend/src/bakufu/main.py` | 起動シーケンス 8 段階の順序凍結 |
 | 共通 | 例外 | `backend/src/bakufu/infrastructure/exceptions.py` | `BakufuConfigError` / `BakufuMigrationError` |
@@ -87,7 +87,7 @@
 │           │       ├── test_pid_gc.py
 │           │       └── outbox/
 │           │           ├── test_dispatcher.py
-│           │           └── test_masking_listener.py
+│           │           └── test_masking_typedecorator.py
 │           ├── security/
 │           │   └── test_masking.py
 │           └── test_bootstrap_sequence.py
@@ -162,7 +162,7 @@ classDiagram
 
 **凝集のポイント**:
 - マスキングは `MaskingGateway` 単一ゲートウェイに集約（責務散在防止）
-- SQLAlchemy event listener は table 単位で 1 箇所に登録（`tables/outbox.py` / `tables/audit_log.py`）
+- SQLAlchemy TypeDecorator (`MaskedJSONEncoded` / `MaskedText`) は base.py 1 箇所に定義し、各 table がカラム宣言時に参照（属性追加時の漏れは CI grep + arch test で物理保証、[`detailed-design/triggers.md`](detailed-design/triggers.md) §確定 B）
 - PRAGMA 強制は engine 層のみ（接続 listener で毎接続適用）
 - 起動シーケンスは `Bootstrap` クラス 1 つに閉じ、各段階失敗は Fail Fast で即終了
 - domain 層への侵入なし（infrastructure layer は domain を import するが、domain は infrastructure を知らない）
@@ -187,10 +187,10 @@ classDiagram
 ### ユースケース 2: Aggregate 永続化（後続 Repository PR が利用）
 
 1. application 層が `async with session_factory() as session, session.begin():` で UoW 境界を開く
-2. Aggregate の Repository が `session.add(row)` または `session.execute(stmt)` で書き込み
-3. `session.flush()` のタイミングで SQLAlchemy event listener が走る
-4. `before_insert` / `before_update` listener が masking ゲートウェイを呼び出し対象フィールドを上書き
-5. 実 INSERT / UPDATE が DB に発行される（masking 後の値）
+2. Aggregate の Repository が `session.add(row)` または `session.execute(stmt)` で書き込み（Core / ORM どちらの経路でも可）
+3. SQLAlchemy が bind parameter を解決する直前で `MaskedJSONEncoded` / `MaskedText` TypeDecorator の `process_bind_param` を発火
+4. TypeDecorator が masking ゲートウェイ（`MaskingGateway.mask_in()` / `mask()`）を呼び出し、masking 後の値を bind value として返す
+5. 実 INSERT / UPDATE が DB に発行される（masking 後の値、生 secret は到達しない）
 6. session.begin() ブロック退出で commit、例外なら rollback
 
 ### ユースケース 3: Outbox イベント配送
@@ -210,15 +210,15 @@ classDiagram
 3. (4) `PidRegistryGC` が `psutil.create_time()` と `started_at` を比較し、一致なら子孫を SIGTERM → SIGKILL → DELETE
 4. (6) `OutboxDispatcher` 起動後、polling SQL の `(DISPATCHING AND updated_at < now() - 5min)` 条件で **`DISPATCHING` のまま放置された行を強制再取得**（[`events-and-outbox.md`](../../architecture/domain-model/events-and-outbox.md) §Dispatcher の動作）
 
-### ユースケース 5: マスキングの永続化前適用
+### ユースケース 5: マスキングの永続化前適用（TypeDecorator `process_bind_param` 経路）
 
-1. application 層が `Outbox` 行を作る（直接 INSERT または ORM 経由）
-2. SQLAlchemy が `before_insert` event を listener に通知
-3. listener は `target.payload_json` / `target.last_error` を取得
-4. `MaskingGateway.mask_in(payload_json)` で再帰的に masking 適用
-5. `MaskingGateway.mask(last_error)` で文字列に masking 適用
-6. listener が target の値を masking 後の値で上書き
-7. SQLAlchemy が masking 後の値で実 INSERT を発行
+1. application 層が `Outbox` 行を作る（Core `insert(table).values({...})` / ORM `session.add()` どちらの経路でも可）
+2. SQLAlchemy が bind parameter を解決する直前で `MaskedJSONEncoded`（`payload_json`）と `MaskedText`（`last_error`）の `process_bind_param` フックを発火
+3. `MaskedJSONEncoded.process_bind_param(payload_json, dialect)` が `MaskingGateway.mask_in(payload_json)` で再帰的に masking 適用 → JSON エンコードして bind value として返す
+4. `MaskedText.process_bind_param(last_error, dialect)` が `MaskingGateway.mask(last_error)` で文字列に masking 適用 → bind value として返す
+5. SQLAlchemy が masking 後の値で実 INSERT を発行（生 secret は DB 行に到達しない）
+
+**配線方式の決定経緯**: 旧設計（`event.listens_for(target, 'before_insert')`）は PR #23 BUG-PF-001 で反転却下。Core `insert(table).values({...})` の inline values は ORM mapper を経由しないため `before_insert` listener が発火せず、raw SQL 経路で生 secret が永続化される脱出経路が残ることを TC-IT-PF-020（旧 xfail strict=True）で確認。リーナス commit `4b882bf` で TypeDecorator に切替え、TC-IT-PF-020 PASSED で物理保証。詳細は [`detailed-design/triggers.md`](detailed-design/triggers.md) §確定 B / [`requirements-analysis.md`](requirements-analysis.md) §確定 R1-D。
 
 ## シーケンス図
 
@@ -257,25 +257,28 @@ sequenceDiagram
     Boot-->>OS: ready
 ```
 
-### マスキング配線
+### マスキング配線（TypeDecorator `process_bind_param` 経路）
 
 ```mermaid
 sequenceDiagram
     participant App as Application
     participant Sess as AsyncSession
-    participant Listener as before_insert listener
+    participant Bind as SQLAlchemy bind resolver
+    participant TD as MaskedJSONEncoded / MaskedText
     participant Mask as MaskingGateway
     participant DB as SQLite
 
-    App->>Sess: session.add(outbox_row)
-    Sess->>Listener: emit('before_insert', row)
-    Listener->>Mask: mask_in(row.payload_json)
-    Mask-->>Listener: masked dict
-    Listener->>Listener: row.payload_json = masked
-    Listener->>Mask: mask(row.last_error)
-    Mask-->>Listener: masked str
-    Listener->>Listener: row.last_error = masked
-    Listener-->>Sess: ok
+    App->>Sess: session.add(outbox_row) または session.execute(insert(table).values({...}))
+    Sess->>Bind: prepare bind parameters
+    Bind->>TD: process_bind_param(payload_json)
+    TD->>Mask: mask_in(payload_json)
+    Mask-->>TD: masked dict
+    TD-->>Bind: json.dumps(masked) の文字列
+    Bind->>TD: process_bind_param(last_error)
+    TD->>Mask: mask(last_error)
+    Mask-->>TD: masked str
+    TD-->>Bind: masked str
+    Bind-->>Sess: ok
     Sess->>DB: INSERT INTO domain_event_outbox(...)
     DB-->>Sess: ok
 ```
@@ -285,7 +288,7 @@ sequenceDiagram
 - `docs/architecture/domain-model.md` への変更: モジュール配置案の `infrastructure/persistence/sqlite/` 配下が本 Issue で実体化される（モジュール配置案そのものは凍結済みで変更不要）
 - `docs/architecture/tech-stack.md` への変更: なし（SQLAlchemy 2.x / Alembic は既存確定）
 - `docs/architecture/domain-model/storage.md` への変更: なし（マスキング規則は既存確定で本 Issue は配線実装のみ）
-- `docs/architecture/domain-model/events-and-outbox.md` への変更: §`domain_event_outbox` の `payload_json` / `last_error` マスキングが SQLAlchemy event listener で**強制ゲートウェイ化**される旨を本 PR で 1 行追記
+- `docs/architecture/domain-model/events-and-outbox.md` への変更: §`domain_event_outbox` の `payload_json` / `last_error` マスキングが SQLAlchemy TypeDecorator (`MaskedJSONEncoded` / `MaskedText`) の `process_bind_param` で **Core / ORM 両経路で強制ゲートウェイ化**される旨を反映（旧 listener 案は PR #23 BUG-PF-001 で反転却下）
 - 既存 feature への波及: なし。empire / workflow / agent / room の domain 層は本 Issue を import しない（依存方向: domain ← infrastructure）
 
 ## 外部連携
@@ -314,7 +317,7 @@ sequenceDiagram
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|
-| **T1: 永続化前マスキングの呼び忘れ** | application 層 / Repository が直 INSERT してマスキングゲートウェイを経由しない | OAuth トークン / API key | SQLAlchemy `before_insert` / `before_update` event listener で**強制ゲートウェイ化**（OWASP A02）。raw SQL 経路でも listener が走る |
+| **T1: 永続化前マスキングの呼び忘れ** | application 層 / Repository が直 INSERT してマスキングゲートウェイを経由しない | OAuth トークン / API key | SQLAlchemy **TypeDecorator** (`MaskedJSONEncoded` / `MaskedText`) の `process_bind_param` で**強制ゲートウェイ化**（OWASP A02）。Core `insert(table).values(...)` / ORM `session.add()` 両経路で発火（PR #23 BUG-PF-001 で旧 event listener 案を反転却下、TC-IT-PF-020 PASSED で物理保証）。属性追加時の漏れは CI 三層防衛（grep guard + arch test + 逆引き表運用ルール）で物理保証 |
 | **T2: `audit_log` の改ざん / 削除** | DB ファイルに直接 SQL を流して DELETE / UPDATE | 監査証跡 | SQLite トリガで `BEFORE DELETE → RAISE(ABORT)`、UPDATE は `result` / `error_text` の null 埋めのみ許可（OWASP A08） |
 | **T3: 相対 `BAKUFU_DATA_DIR` による cwd 依存攻撃** | 攻撃者が cwd を制御してデータを別ディレクトリに置かせる | DB ファイル / アタッチメント | 起動時に絶対パス強制 + Fail Fast（OWASP A05） |
 | **T4: subprocess 孤児 kill の他プロジェクト誤射** | 同一 OS ユーザーが別プロジェクトで起動した CLI を bakufu の起動時 GC が誤って kill | 他プロジェクトの動作 | `psutil.Process.create_time()` を `started_at` と比較し、不一致なら保護（テーブルから DELETE のみ、kill しない）。`recursive=True` で子孫追跡 |
@@ -341,7 +344,7 @@ sequenceDiagram
 
 ##### マスキング適用先 → 配線箇所の逆引き
 
-[`storage.md`](../../architecture/domain-model/storage.md) §適用先 → 配線箇所の逆引き表 を参照。新規 Aggregate Repository PR は本表に行を追加する責務（masking 対象カラムが listener 未登録の状態で永続化される PR はレビュー却下）。
+[`storage.md`](../../architecture/domain-model/storage.md) §適用先 → 配線箇所の逆引き表 を参照。新規 Aggregate Repository PR は本表に行を追加する責務（masking 対象カラムが `MaskedJSONEncoded` / `MaskedText` 以外の型で永続化される PR は CI grep guard で自動却下 + コードレビューでも却下）。
 
 ## ER 図
 

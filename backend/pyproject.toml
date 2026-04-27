@@ -5,6 +5,11 @@ description = "bakufu backend: FastAPI + SQLAlchemy + SQLite"
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.9",
+    "sqlalchemy[asyncio]>=2.0",
+    "aiosqlite>=0.20",
+    "alembic>=1.13",
+    "psutil>=6.0",
+    "greenlet>=3.0",
 ]
 
 [build-system]

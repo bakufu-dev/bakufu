@@ -76,14 +76,16 @@
 | 出力 | masking 適用済みの文字列（または再帰的に適用済みの dict / list） |
 | エラー時 | **Fail-Secure 契約**（detailed-design §確定 F）: 内部例外発生時も**生データを返す経路はゼロ**。`mask` の予期せぬ例外 → `<REDACTED:MASK_ERROR>` で完全置換、`mask_in` の容量超過 → `<REDACTED:MASK_OVERFLOW>` で完全置換、想定外型 → `str()` 化後 `mask` 適用。環境変数辞書ロード失敗時は **Fail Fast**（`BakufuConfigError(MSG-PF-008)`、起動拒否）|
 
-### REQ-PF-006: SQLAlchemy event listener 配線（Outbox）
+### REQ-PF-006: SQLAlchemy TypeDecorator 配線（Core / ORM 両経路で masking 強制ゲートウェイ化）
 
 | 項目 | 内容 |
 |------|------|
-| 入力 | `domain_event_outbox` テーブルへの `before_insert` / `before_update` event |
-| 処理 | (a) listener 内で row の `payload_json` / `last_error` フィールドを取得、(b) REQ-PF-005 の masking ゲートウェイを呼び出し、(c) row の値を masking 後の値で**上書き**してから INSERT / UPDATE を実行させる |
-| 出力 | masking 後の値が永続化される |
-| エラー時 | **Fail-Secure 契約**（detailed-design §確定 F）: listener 内で masking 例外が発生した場合、対象フィールドを `<REDACTED:LISTENER_ERROR>` / `<REDACTED:MASK_ERROR>` / `<REDACTED:MASK_OVERFLOW>` で**完全置換**してから INSERT / UPDATE を継続。**生データを書く経路はゼロ**。「row 上書きをスキップして INSERT / UPDATE をそのまま走らせる」旧 fail-open 経路は**廃止**。詳細は detailed-design.md §確定 F の Fail-Secure フォールバック表 |
+| 入力 | `domain_event_outbox` テーブル + `audit_log` テーブル + `bakufu_pid_registry` テーブルの masking 対象カラムへの bind parameter（INSERT / UPDATE 両経路、Core `insert(table).values(...)` / ORM `Session.add()` 両経路）|
+| 処理 | (a) `infrastructure/persistence/sqlite/base.py` で **`MaskedJSONEncoded`**（`payload_json` / `args_json` 等の JSON カラム）と **`MaskedText`**（`last_error` / `error_text` / `cmd` 等の Text カラム）の 2 TypeDecorator を定義、(b) 各 table 定義で `mapped_column(MaskedJSONEncoded, ...)` / `mapped_column(MaskedText, ...)` で宣言、(c) SQLAlchemy が bind parameter 解決時に `process_bind_param` フックを発火、内部で REQ-PF-005 の `MaskingGateway.mask_in()` / `mask()` を呼び出し masking 後の値を返す、(d) **Core / ORM 両経路で確実に発火**するため raw SQL `insert(table).values()` でも捕捉される（PR #23 BUG-PF-001 で技術検証済み、TC-IT-PF-020 PASSED） |
+| 出力 | masking 後の値が永続化される（生 secret が DB 行に到達する経路ゼロ） |
+| エラー時 | **Fail-Secure 契約**（detailed-design §確定 F）: `process_bind_param` 内で masking 例外が発生した場合、対象フィールドを `<REDACTED:MASK_ERROR>` / `<REDACTED:MASK_OVERFLOW>` で**完全置換**してから返す。**生データを返す経路はゼロ**。「上書きをスキップして INSERT / UPDATE をそのまま走らせる」旧 fail-open 経路は**廃止**。詳細は [`detailed-design/masking.md`](detailed-design/masking.md) §確定 F の Fail-Secure フォールバック表 |
+| 配線方式の決定経緯 | 旧設計（event listener 採用）は §確定 R1-D で**反転却下**。SQLAlchemy 2.x の Core `insert(table).values({...})` の inline values は ORM mapper を経由しないため `before_insert` listener が発火せず、raw SQL 経路で生 secret が永続化される脱出経路が残ることを TC-IT-PF-020（旧 xfail strict=True）で確認。リーナス commit `4b882bf` で TypeDecorator に切替え、TC-IT-PF-020 PASSED で物理保証 |
+| 「属性追加時の漏れ」物理保証 | (1) CI grep guard（masking 対象カラム名の宣言行に `Masked*` 型必須）、(2) アーキテクチャテスト（SQLAlchemy metadata からカラム型を検証）、(3) [`storage.md`](../../architecture/domain-model/storage.md) §逆引き表の運用ルール — の 3 層で物理保証（§確定 R1-D 補強条項） |
 
 ### REQ-PF-007: Outbox Dispatcher 骨格
 
