@@ -1,0 +1,25 @@
+name: Lint
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup tools (no lefthook install)
+        run: bash scripts/setup.sh --tools-only
+
+      - name: just fmt-check
+        run: just fmt-check
+
+      - name: just lint
+        run: just lint

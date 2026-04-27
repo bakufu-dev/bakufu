@@ -1,0 +1,22 @@
+name: Test Frontend
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-frontend:
+    name: test-frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup tools (no lefthook install)
+        run: bash scripts/setup.sh --tools-only
+
+      - name: just test-frontend
+        run: just test-frontend

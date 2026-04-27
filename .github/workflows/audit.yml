@@ -1,0 +1,32 @@
+name: Audit
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  schedule:
+    - cron: '0 0 * * *'  # UTC 00:00 = JST 09:00
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # gitleaks に履歴全体を渡すため
+
+      - name: Setup tools (no lefthook install)
+        run: bash scripts/setup.sh --tools-only
+
+      - name: just audit (pip-audit + osv-scanner)
+        run: just audit
+
+      - name: just audit-secrets (gitleaks on history)
+        run: gitleaks detect --no-banner
+
+      - name: just audit-pin-sync
+        run: just audit-pin-sync

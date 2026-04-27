@@ -8,7 +8,9 @@
 4. [マージ戦略](#マージ戦略)
 5. [PR 規約](#pr-規約)
 6. [開発環境セットアップ](#開発環境セットアップ)
-7. [コーディング規約](#コーディング規約)
+7. [AI 生成フッターの禁止](#ai-生成フッターの禁止)
+8. [Secret 混入時の緊急対応](#secret-混入時の緊急対応)
+9. [コーディング規約](#コーディング規約)
 
 ---
 
@@ -177,19 +179,70 @@ pwsh scripts/setup.ps1
 
 このスクリプトは冪等です。2 回目以降は既存ツールをスキップします。
 
-### 主要レシピ
+### `just` レシピ一覧
 
-```bash
-just --list           # 全レシピ一覧
+| レシピ | 用途 |
+|------|------|
+| `just` | レシピ一覧表示（`just --list` を実行） |
+| `just fmt-check` | Python (ruff) + TypeScript (biome) の format 検査 |
+| `just fmt` | format 自動修正 |
+| `just lint` | Python (ruff) + TypeScript (biome) の lint |
+| `just typecheck` | Python (pyright) + TypeScript (tsc --noEmit) |
+| `just test` | backend (pytest) + frontend (vitest) を順次実行 |
+| `just test-backend` | backend のみ（pytest） |
+| `just test-frontend` | frontend のみ（vitest） |
+| `just audit` | 依存脆弱性監査（pip-audit + osv-scanner） |
+| `just audit-secrets` | staged 差分の secret 検査（gitleaks） |
+| `just audit-pin-sync` | setup.sh / setup.ps1 のピン定数同期検査 |
+| `just check-all` | 全品質ゲートを順次実行（最終確認用） |
+| `just commit-msg-check FILE` | コミットメッセージ検証（convco） |
+| `just commit-msg-no-ai-footer FILE` | AI 生成フッター検出 |
 
-just lint             # ruff (Python) + biome (TS)
-just typecheck        # pyright (Python) + tsc --noEmit (TS)
-just test             # pytest + vitest
-just audit            # pip-audit + osv-scanner
-just check-all        # 全部
-```
+> **`--no-verify` の使用禁止**: pre-commit / pre-push / commit-msg フックを `--no-verify` で意図的にバイパスする運用は規約で原則禁止です。やむを得ない場合は PR 本文に理由を明記してください。CI の同等ジョブで再検査され、PR チェックが赤になります。
 
-> **`--no-verify` の使用禁止**: pre-commit / pre-push / commit-msg フックを `--no-verify` で意図的にバイパスする運用は禁止します。CI の同等ジョブで再検査され、PR チェックが赤になります。
+---
+
+## AI 生成フッターの禁止
+
+bakufu のコミットメッセージに、AI エージェント（Claude Code 等）が自動挿入する**生成元識別フッター（trailer）を含めることを禁止**します。理由:
+
+- コミット履歴はプロジェクトの真実源であり、著者情報は Git の `author` / `committer` フィールドで表現される。trailer による生成元識別は重複・冗長
+- 将来的な企業利用におけるコード所有権明確化要求と相容れない
+- 同一 OSS（shikomi 等）と方針を統一
+
+### commit-msg フックで遮断する 3 パターン（case-insensitive）
+
+| # | パターン（拡張正規表現） | 検出対象例 |
+|---|---------------------|----------|
+| P1 | `🤖.*Generated with.*Claude` | `🤖 Generated with [Claude Code](https://claude.com/claude-code)` |
+| P2 | `Co-Authored-By:.*@anthropic\.com` | `Co-Authored-By: Claude <noreply@anthropic.com>` |
+| P3 | `Co-Authored-By:.*\bClaude\b` | `Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>` |
+
+これら 3 パターンのいずれかを検出すると、commit-msg フックが exit 非 0 でコミットを中止します。`Claude Shannon` 等を本文（body 位置）で引用する正規のコミットメッセージは、P3 の `Co-Authored-By:` 接頭辞必須制約により誤検知しません。
+
+### Agent-C ペルソナ向け指示
+
+Claude Code 等のエージェントは既定で当該 trailer を自動挿入する実装になっています。**bakufu リポへのコミット時は明示的に当該 trailer を抑止する設定で動作させてください**。`--no-verify` でローカルフックをバイパスした場合は、PR レビュー時に人間レビュワーまたは `@kkm-horikawa` が目視検知して差し戻します。
+
+---
+
+## Secret 混入時の緊急対応
+
+push 済みコミットに secret（API キー / OAuth トークン / 秘密鍵等）の混入が判明した場合、以下の手順を**この順序**で実行してください。
+
+### 手順
+
+1. **(a) 該当キーを発行元で即 revoke** — GitHub PAT・AWS アクセスキー・OAuth Client Secret 等は発行元のコンソールで即座に失効させる。GitHub 側 secret scanning が検知している場合はそちらの alert からも revoke 可能
+2. **(b) 履歴書換えと force-push** — `git filter-repo --path <secret-file> --invert-paths` で該当ファイルを履歴から完全除去し、対象 feature ブランチにのみ force-push する
+   - **`main` / `develop` への force-push は禁止です**（GitFlow 規律）。release 前の feature ブランチ限定で実施
+   - `git filter-branch` は非推奨（`git filter-repo` を使用）
+3. **(c) GitHub 側の事後対応** — GitHub Support に cache purge を依頼（force-push 後も CDN にキャッシュが残る可能性があるため）し、secret scanning alert を `revoked` または `false_positive` で resolve する
+
+### 補足
+
+- 上記手順を踏んでも、push 済み履歴は他のクローン側に残留している可能性がある（GitHub 公式の説明: 完全除去は困難）。**revoke が最優先**
+- 混入経路が pre-commit フックの bypass（`--no-verify`）であった場合、当該開発者にレビューでフィードバックする
+- secret を含むファイルが復活しないよう、`.gitignore` の追加と CI の `audit-secrets` ジョブ強化で再発防止する
 
 ---
 
@@ -201,6 +254,6 @@ just check-all        # 全部
 - **型は明示**: Python は `pyright` で strict、TypeScript は `tsc --noEmit` で strict。`any` / `Any` / 型アサーションは設計の敗北
 - **エラーハンドリング**: 境界（ユーザー入力・外部 API）にのみ。内部コードのエラーは例外を伝播させる
 - **コメント**: 「なぜそうするか」だけ書く。「何をするか」はコードが語る
-- **AI 生成フッター禁止**: コミットメッセージに `Co-Authored-By: Claude` / `Generated with Claude Code` 等のフッターを含めない（commit-msg フックで検証）
+- **AI 生成フッター禁止**: §AI 生成フッターの禁止 を参照
 
 詳細は [`docs/architecture/`](docs/architecture/) および各 feature の設計書（[`docs/features/`](docs/features/)）を参照してください。

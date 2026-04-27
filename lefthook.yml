@@ -1,0 +1,49 @@
+# bakufu lefthook configuration
+# pre-commit / pre-push / commit-msg の Git フック定義。
+# 詳細設計: docs/features/dev-workflow/detailed-design.md §lefthook.yml キー構造
+
+pre-commit:
+  parallel: true
+  commands:
+    fmt-check:
+      run: just fmt-check
+      fail_text: |
+        [FAIL] ruff / biome の format 違反を検出しました。
+        次のコマンド: just fmt
+    lint:
+      run: just lint
+      fail_text: |
+        [FAIL] ruff / biome の lint 違反を検出しました。
+        次のコマンド: just lint
+    typecheck:
+      run: just typecheck
+      fail_text: |
+        [FAIL] pyright / tsc の型エラーを検出しました。
+        次のコマンド: just typecheck
+    audit-secrets:
+      run: just audit-secrets
+      fail_text: |
+        [FAIL] secret の混入が検出されました。該当行を除去後、git add を再実行してください。
+        既に push 済みの場合: CONTRIBUTING.md §Secret 混入時の緊急対応
+
+pre-push:
+  commands:
+    test:
+      run: just test
+      fail_text: |
+        [FAIL] pytest / vitest に失敗しました。
+        次のコマンド: just test
+
+commit-msg:
+  parallel: true
+  commands:
+    convco:
+      run: just commit-msg-check {1}
+      fail_text: |
+        [FAIL] コミットメッセージが Conventional Commits 1.0 に準拠していません。
+        規約: CONTRIBUTING.md §コミット規約 または https://www.conventionalcommits.org/ja/v1.0.0/
+    no-ai-footer:
+      run: just commit-msg-no-ai-footer {1}
+      fail_text: |
+        [FAIL] コミットメッセージに AI 生成フッターが含まれています（🤖 Generated with Claude Code / Co-Authored-By: Claude 等）。
+        次のコマンド: 該当行を削除して再コミット。許可されない trailer のポリシーは CONTRIBUTING.md §AI 生成フッターの禁止 を参照。
