@@ -111,6 +111,7 @@ def make_skill_ref(
 def make_agent(
     *,
     agent_id: UUID | None = None,
+    empire_id: UUID | None = None,
     name: str = "テストエージェント",
     persona: Persona | None = None,
     role: Role = Role.DEVELOPER,
@@ -120,8 +121,11 @@ def make_agent(
 ) -> Agent:
     """Build a valid :class:`Agent`.
 
-    With no overrides yields the simplest valid Agent: 1 ProviderConfig with
-    ``is_default=True``, no skills, ``archived=False``.
+    With no overrides yields the simplest valid Agent: a fresh ``empire_id``,
+    1 ProviderConfig with ``is_default=True``, no skills, ``archived=False``.
+    Tests that exercise the agent-repository ``find_by_name`` scope or any
+    Empire-level membership invariant should override ``empire_id`` so the
+    factory's freshly-generated default does not collide with their setup.
     """
     if persona is None:
         persona = make_persona()
@@ -131,6 +135,7 @@ def make_agent(
         skills = []
     agent = Agent(
         id=agent_id if agent_id is not None else uuid4(),
+        empire_id=empire_id if empire_id is not None else uuid4(),
         name=name,
         persona=persona,
         role=role,

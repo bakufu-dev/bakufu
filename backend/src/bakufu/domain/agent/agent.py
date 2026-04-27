@@ -51,6 +51,7 @@ from bakufu.domain.agent.value_objects import (
 from bakufu.domain.exceptions import AgentInvariantViolation
 from bakufu.domain.value_objects import (
     AgentId,
+    EmpireId,
     ProviderKind,
     Role,
     SkillId,
@@ -72,6 +73,14 @@ class Agent(BaseModel):
     )
 
     id: AgentId
+    # ``empire_id`` is the back-reference required by
+    # ``feature/agent-repository`` (Issue #32). The Repository
+    # persists Agents under an Empire so the table-level FK
+    # ``agents.empire_id REFERENCES empires.id ON DELETE CASCADE``
+    # has somewhere to source its value, and ``find_by_name`` can
+    # scope its lookup with ``WHERE empire_id = :empire_id`` —
+    # detailed-design §確定 F.
+    empire_id: EmpireId
     name: str
     persona: Persona
     role: Role

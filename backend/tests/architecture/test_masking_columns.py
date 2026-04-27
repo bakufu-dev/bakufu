@@ -36,6 +36,9 @@ from bakufu.infrastructure.persistence.sqlite.base import (
 # tables that production / Alembic see. The imported names are
 # intentionally unused — only the import side effect matters.
 from bakufu.infrastructure.persistence.sqlite.tables import (
+    agent_providers,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    agent_skills,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    agents,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     audit_log,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     empire_agent_refs,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     empire_room_refs,  # noqa: F401  # pyright: ignore[reportUnusedImport]
@@ -58,6 +61,9 @@ _MASKING_CONTRACT: list[tuple[str, str, type]] = [
     ("domain_event_outbox", "last_error", MaskedText),
     # Workflow Repository (PR #31, detailed-design.md §確定 H).
     ("workflow_stages", "notify_channels_json", MaskedJSONEncoded),
+    # Agent Repository (PR #32, detailed-design.md §確定 H + Schneier
+    # 申し送り #3 实適用).
+    ("agents", "prompt_body", MaskedText),
 ]
 
 # No-mask contract: §逆引き表「Empire 関連カラム: masking 対象なし」 +
@@ -73,6 +79,11 @@ _NO_MASK_TABLES: list[str] = [
     # only workflow_stages.notify_channels_json is secret-bearing.
     "workflows",
     "workflow_transitions",
+    # Agent Repository (PR #32, detailed-design.md §確定 E):
+    # agent_providers / agent_skills carry no Schneier #6 secret
+    # categories; only agents.prompt_body is masked.
+    "agent_providers",
+    "agent_skills",
 ]
 
 # Partial-mask contract: tables that have **exactly one** masked
@@ -83,6 +94,10 @@ _NO_MASK_TABLES: list[str] = [
 # Format: ``(table_name, allowed_column_name)``.
 _PARTIAL_MASK_TABLES: list[tuple[str, str]] = [
     ("workflow_stages", "notify_channels_json"),
+    # Agent Repository (PR #32, detailed-design.md §確定 E):
+    # agents.prompt_body is the only masked column; persona-adjacent
+    # scalar fields stay un-masked.
+    ("agents", "prompt_body"),
 ]
 
 

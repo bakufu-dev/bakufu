@@ -23,6 +23,18 @@ Workflow Aggregate (PR #31):
 * :mod:`...tables.workflow_transitions` — Transition child rows
   (no-mask).
 
+Agent Aggregate (PR #32):
+
+* :mod:`...tables.agents` — Agent root row. The ``prompt_body``
+  column is the **first** ``MaskedText`` Repository application of
+  Schneier 申し送り #3 (PR #23 hook → PR #32 wire-up); the table is
+  registered with the CI three-layer defense's *partial-mask*
+  contract pinning exactly one masked column.
+* :mod:`...tables.agent_providers` — ProviderConfig child rows.
+  Carries a partial unique index ``WHERE is_default = 1`` for the
+  Defense-in-Depth "exactly one default provider per Agent" floor.
+* :mod:`...tables.agent_skills` — SkillRef child rows (no-mask).
+
 Secret-bearing tables declare their columns with
 :class:`MaskedJSONEncoded` / :class:`MaskedText` TypeDecorators
 (defined in :mod:`bakufu.infrastructure.persistence.sqlite.base`) that
@@ -48,6 +60,9 @@ secret-bearing on the Workflow side.
 from __future__ import annotations
 
 from bakufu.infrastructure.persistence.sqlite.tables import (
+    agent_providers,
+    agent_skills,
+    agents,
     audit_log,
     empire_agent_refs,
     empire_room_refs,
@@ -60,6 +75,9 @@ from bakufu.infrastructure.persistence.sqlite.tables import (
 )
 
 __all__ = [
+    "agent_providers",
+    "agent_skills",
+    "agents",
     "audit_log",
     "empire_agent_refs",
     "empire_room_refs",
