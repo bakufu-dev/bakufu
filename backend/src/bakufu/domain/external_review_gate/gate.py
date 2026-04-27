@@ -59,7 +59,7 @@ from __future__ import annotations
 import unicodedata
 from datetime import datetime
 from typing import Any, Self
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from pydantic import (
     BaseModel,
@@ -73,6 +73,7 @@ from bakufu.domain.external_review_gate.aggregate_validators import (
     _validate_audit_trail_append_only,
     _validate_decided_at_consistency,
     _validate_feedback_text_range,
+    _validate_snapshot_immutable,
 )
 from bakufu.domain.external_review_gate.state_machine import (
     GateAction,
@@ -370,12 +371,16 @@ class ExternalReviewGate(BaseModel):
         # ``model_validate`` byte-for-byte: the snapshot pinned at
         # construction time is what the rebuilt Gate sees too
         # (§確定 D §不変条件).
-        return ExternalReviewGate.model_validate(state)
-
-
-# Re-export so the aggregate package can import :class:`UUID` without
-# pyright complaining about an unused symbol pulled in for typing.
-_ = UUID
+        rebuilt = ExternalReviewGate.model_validate(state)
+        # §確定 D 3 重防衛 safety net: the keyword-only signature above
+        # is the *structural* guarantee (no rebuild path can pass a new
+        # snapshot), but Steve R-S1 requires the validator be **active**
+        # so a future refactor that breaks the structural guarantee is
+        # caught here too. With the structural guarantee in place this
+        # call is a no-op on the happy path and Fail-Fast otherwise —
+        # exactly what a defense-in-depth safety net should be.
+        _validate_snapshot_immutable(self.deliverable_snapshot, rebuilt.deliverable_snapshot)
+        return rebuilt
 
 
 __all__ = ["ExternalReviewGate"]
