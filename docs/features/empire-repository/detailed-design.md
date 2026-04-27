@@ -241,13 +241,24 @@ Empire のシングルトン制約（bakufu インスタンスにつき 1 件）
 
 実装段階・テスト段階で発見されたが本 PR スコープ内では完全解消しない問題を凍結する。各項目は Issue 起票 / 別 PR で完了させる。
 
-### BUG-EMR-001 [LOW] [**RESOLVED in `feature/empire-repository-order-by`**]: `find_by_id` の `ORDER BY` 欠落と `_from_row` 経路の list 順序非決定性
+### BUG-EMR-001 [LOW] [**RESOLVED in `feature/empire-repository-order-by`**] [**FK closure also RESOLVED in `feature/33-room-repository` Alembic 0005**]: `find_by_id` の `ORDER BY` 欠落と `_from_row` 経路の list 順序非決定性 + `empire_room_refs.room_id` FK 未配線
 
-> **Status: Resolved.** `SqliteEmpireRepository.find_by_id` が
+> **Status: Resolved (multi-stage).**
+>
+> **Stage 1**: `SqliteEmpireRepository.find_by_id` が
 > `ORDER BY room_id` / `ORDER BY agent_id` を発行するように修正された
 > (basic-design.md L127-128 の凍結に追従)。test 側は
 > `sorted(empire.rooms, key=lambda r: r.room_id)` で「ORDER BY 契約物理保証」
-> を assert する。本節の歴史的経緯は、設計契約の整合性回復ワークフローの
+> を assert する。
+>
+> **Stage 2 (FK closure)**: `empire_room_refs.room_id → rooms.id` の FK が
+> `feature/33-room-repository` の Alembic 0005_room_aggregate revision で
+> `op.batch_alter_table` 経由で物理追加された（room-repository §確定 R1-C / §確定 K）。
+> これで `rooms` テーブル不在ゆえ FK を張らず参照のみ宣言した本 PR の暫定状態が
+> 完全に closure された。
+>
+> 本節の歴史的経緯は、設計契約の整合性回復ワークフロー
+> （Stage 1: ORDER BY 整合性 / Stage 2: 後続 PR 跨ぎの FK closure）の
 > 監査証跡として保存する。
 
 ##### 観察された挙動（PR #29 ジェフレポート）
@@ -366,11 +377,13 @@ Empire は masking 対象カラムを持たないため、**何もしないと C
 | `archived` | `Boolean` | NOT NULL DEFAULT FALSE | RoomRef.archived |
 | UNIQUE | `(empire_id, room_id)` | — | 同一 Empire 内で同 room_id の重複参照を禁止 |
 
-##### Room テーブルへの FK を張らない理由
+##### Room テーブルへの FK を張らない理由（**※ FK closure 完了済み: `feature/33-room-repository` Alembic 0005**）
 
 `empire_room_refs.room_id` を `rooms.id` への FK にすると、本 PR より先に rooms テーブルが存在する必要がある。room-repository は本 PR と並列着手中（room domain は #18 完了済みだが Repository は別 PR `feature/room-repository`）のため、本 PR では FK を張らず参照のみとする。
 
 `feature/room-repository` PR で room テーブル定義時に **migration で FK を追加する**責務分離（後続 PR の Alembic revision で `op.create_foreign_key(...)` を実行）。
+
+**※ FK closure 完了済み（2026-04 時点）**: 本 §に記載した「後続 PR で FK を追加する」責務分離は `feature/33-room-repository` の Alembic 0005_room_aggregate revision で実施完了。SQLite が ALTER TABLE ADD CONSTRAINT を直接サポートしないため、`op.batch_alter_table('empire_room_refs', recreate='always')` 経由で FK 追加（ON DELETE CASCADE）。BUG-EMR-001 Stage 2 として closure 監査証跡を §Known Issues に追記。
 
 ### `empire_agent_refs` テーブル
 
