@@ -41,16 +41,47 @@
 | 出力 | 新 Task。Gate Aggregate の生成は application 層責務（本 Aggregate は state 遷移のみ） |
 | エラー時 | `TaskInvariantViolation(kind='state_transition_invalid')`（IN_PROGRESS 以外） |
 
-### REQ-TS-005: Stage 進行（advance）
+### REQ-TS-005: Stage 進行・レビュー反映系（4 method 専用分離、§確定 R1-A / detailed-design §確定 A-2）
+
+`advance` 単一 method による暗黙 dispatch を不採用とし、**4 method 専用分離**で凍結する（method × current_status → action が 1:1 静的、Steve R2 凍結）。各 method は同一の `_rebuild_with_state` パターンを取り、相違は (1) state machine table の action 名 (= method 名) (2) 遷移後 status (3) `current_stage_id` 更新の有無のみ。
+
+##### REQ-TS-005a: `approve_review`（AWAITING_EXTERNAL_REVIEW → IN_PROGRESS、Gate APPROVED 経路）
 
 | 項目 | 内容 |
 |------|------|
-| 入力 | `transition_id: TransitionId` / `by_owner_id: OwnerId` / `next_stage_id: StageId` / `is_terminal: bool` |
-| 処理 | (1) terminal 検査 → (2) state machine table lookup `(self.status, 'gate_approved' or 'gate_rejected' or 'advance_to_done')` → (3) `is_terminal=True` なら `_rebuild_with_state(status=DONE, current_stage_id=next_stage_id, updated_at=now)`、False なら `_rebuild_with_state(status=IN_PROGRESS, current_stage_id=next_stage_id, updated_at=now)` |
-| 出力 | 新 Task |
+| 入力 | `transition_id: TransitionId` / `by_owner_id: OwnerId` / `next_stage_id: StageId` |
+| 処理 | (1) terminal 検査 → (2) `state_machine.lookup(self.status, 'approve_review')` → AWAITING_EXTERNAL_REVIEW のときのみ IN_PROGRESS 遷移を許可、他は raise → (3) `_rebuild_with_state(status=IN_PROGRESS, current_stage_id=next_stage_id, updated_at=now)` |
+| 出力 | 新 Task（`current_stage_id` は次 Stage） |
 | エラー時 | `TaskInvariantViolation(kind='terminal_violation' / 'state_transition_invalid')` |
 
-`transition_id` の Workflow 内存在検証 / `next_stage_id` の Workflow 内存在検証は **application 層責務**（§確定 R1-A の責務分離）。
+##### REQ-TS-005b: `reject_review`（AWAITING_EXTERNAL_REVIEW → IN_PROGRESS、Gate REJECTED 経路）
+
+| 項目 | 内容 |
+|------|------|
+| 入力 | `transition_id: TransitionId` / `by_owner_id: OwnerId` / `next_stage_id: StageId` |
+| 処理 | (1) terminal 検査 → (2) `state_machine.lookup(self.status, 'reject_review')` → AWAITING_EXTERNAL_REVIEW のときのみ IN_PROGRESS 遷移を許可、他は raise → (3) `_rebuild_with_state(status=IN_PROGRESS, current_stage_id=next_stage_id, updated_at=now)` |
+| 出力 | 新 Task（`current_stage_id` は差し戻し先 Stage） |
+| エラー時 | `TaskInvariantViolation(kind='terminal_violation' / 'state_transition_invalid')` |
+
+##### REQ-TS-005c: `advance_to_next`（IN_PROGRESS → IN_PROGRESS、通常進行）
+
+| 項目 | 内容 |
+|------|------|
+| 入力 | `transition_id: TransitionId` / `by_owner_id: OwnerId` / `next_stage_id: StageId` |
+| 処理 | (1) terminal 検査 → (2) `state_machine.lookup(self.status, 'advance_to_next')` → IN_PROGRESS のときのみ自己遷移を許可（EXTERNAL_REVIEW を経由しない通常 Stage 間遷移） → (3) `_rebuild_with_state(status=IN_PROGRESS, current_stage_id=next_stage_id, updated_at=now)` |
+| 出力 | 新 Task（`current_stage_id` 更新、status 不変） |
+| エラー時 | `TaskInvariantViolation(kind='terminal_violation' / 'state_transition_invalid')` |
+
+##### REQ-TS-005d: `complete`（IN_PROGRESS → DONE、終端到達）
+
+| 項目 | 内容 |
+|------|------|
+| 入力 | `transition_id: TransitionId` / `by_owner_id: OwnerId` |
+| 処理 | (1) terminal 検査 → (2) `state_machine.lookup(self.status, 'complete')` → IN_PROGRESS のときのみ DONE 遷移を許可 → (3) `_rebuild_with_state(status=DONE, updated_at=now)`（`current_stage_id` は終端 Stage のまま不変、`next_stage_id` 引数なし） |
+| 出力 | 新 Task（terminal、以後変更不可） |
+| エラー時 | `TaskInvariantViolation(kind='terminal_violation' / 'state_transition_invalid')` |
+
+`transition_id` / `next_stage_id` の Workflow 内存在検証 / 現 Stage が終端 Stage であることの検証（`complete` 前提）は **すべて application 層責務**（§確定 R1-A の責務分離、detailed-design §確定 K のマトリクス）。
 
 ### REQ-TS-006: 中止（cancel）
 
@@ -171,7 +202,7 @@
 
 | ID | 種別 | 例外型 | kind | 表示条件 |
 |----|------|------|------|---------|
-| MSG-TS-001 | エラー | `TaskInvariantViolation` | `terminal_violation` | DONE / CANCELLED の Task に対する全 7 ふるまい呼び出し |
+| MSG-TS-001 | エラー | `TaskInvariantViolation` | `terminal_violation` | DONE / CANCELLED の Task に対する全 10 ふるまい呼び出し |
 | MSG-TS-002 | エラー | `TaskInvariantViolation` | `state_transition_invalid` | state machine table に存在しない `(current_status, action)` の組み合わせ |
 | MSG-TS-003 | エラー | `TaskInvariantViolation` | `assigned_agents_unique` | `assigned_agent_ids` に重複あり |
 | MSG-TS-004 | エラー | `TaskInvariantViolation` | `assigned_agents_capacity` | `assigned_agent_ids` が 6 件以上 |

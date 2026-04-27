@@ -13,7 +13,7 @@
 
 | 機能 ID | モジュール | ディレクトリ | 責務 |
 |--------|----------|------------|------|
-| REQ-TS-001〜009 | `Task` Aggregate Root | `backend/src/bakufu/domain/task/task.py` | Task の属性・不変条件・ふるまい 7 種 |
+| REQ-TS-001〜009 | `Task` Aggregate Root | `backend/src/bakufu/domain/task/task.py` | Task の属性・不変条件・**ふるまい 10 種**（method 名 = action 名で 1:1 対応、detailed-design §確定 A-2） |
 | REQ-TS-009 | 不変条件 helper | `backend/src/bakufu/domain/task/aggregate_validators.py` | `_validate_assigned_agents_unique` / `_validate_assigned_agents_capacity` / `_validate_last_error_consistency` / `_validate_blocked_has_last_error` / `_validate_timestamp_order` |
 | REQ-TS-002〜008（state machine） | `state_machine.py` | `backend/src/bakufu/domain/task/state_machine.py` | enum-based decision table（§確定 R1-A）+ `lookup(current_status, action) -> next_status` 関数 |
 | REQ-TS-001 | `TaskInvariantViolation` 例外 | `backend/src/bakufu/domain/exceptions.py`（既存ファイル更新） | webhook auto-mask 強制（5 兄弟と同パターン） |
@@ -45,7 +45,7 @@
 │               └── test_task/                  # 新規ディレクトリ（500 行ルール、empire-repo PR #29 Norman 教訓を最初から反映）
 │                   ├── __init__.py
 │                   ├── test_construction.py    # TC-UT-TS-001/002/014/015 + Pydantic 型検査
-│                   ├── test_state_machine.py   # TC-UT-TS-003〜008 + state machine 全 8 遷移網羅
+│                   ├── test_state_machine.py   # TC-UT-TS-003〜008/030〜035 + state machine 全 13 遷移網羅（10 method × current_status の dispatch 表）
 │                   ├── test_invariants.py      # TC-UT-TS-009/010/011 + auto-mask
 │                   └── test_vo.py              # TC-UT-TS-012/013 + Deliverable / Attachment VO
 └── docs/
@@ -71,7 +71,10 @@ classDiagram
         +assign(agent_ids) Task
         +commit_deliverable(stage_id, deliverable, by_agent_id) Task
         +request_external_review() Task
-        +advance(transition_id, by_owner_id, next_stage_id, is_terminal) Task
+        +approve_review(transition_id, by_owner_id, next_stage_id) Task
+        +reject_review(transition_id, by_owner_id, next_stage_id) Task
+        +advance_to_next(transition_id, by_owner_id, next_stage_id) Task
+        +complete(transition_id, by_owner_id) Task
         +cancel(by_owner_id, reason) Task
         +block(reason, last_error) Task
         +unblock_retry() Task
@@ -114,7 +117,7 @@ classDiagram
 **凝集のポイント**:
 
 - Task 自身は frozen（Pydantic v2 `model_config.frozen=True`）
-- 状態変更ふるまい 7 種（`assign` / `commit_deliverable` / `request_external_review` / `advance` / `cancel` / `block` / `unblock_retry`）は **すべて新インスタンスを返す**（pre-validate 方式）
+- 状態変更ふるまい **10 種**（`assign` / `commit_deliverable` / `request_external_review` / `approve_review` / `reject_review` / `advance_to_next` / `complete` / `cancel` / `block` / `unblock_retry`）は **すべて新インスタンスを返す**（pre-validate 方式）。**method 名 = state machine action 名で 1:1 対応**（detailed-design §確定 A-2 dispatch 表で凍結、`advance` 単一 method による暗黙 dispatch は不採用）
 - state machine table（§確定 R1-A）は `state_machine.py` モジュールスコープの Mapping として独立
 - `_validate_*` helper 5 種は `aggregate_validators.py` で module-level 関数として独立（agent / room と同パターン、test 側で経路網羅）
 - `current_stage_id` / `transition_id` の Workflow 内存在検証は **application 層責務**（外部知識を要するため、§確定 R1-A の責務分離）
@@ -155,16 +158,24 @@ classDiagram
    - `_rebuild_with_state(deliverables=updated_dict, updated_at=now)`
 5. valid なら新 Task 返却
 
-### ユースケース 4: External Review 要求 → 承認連鎖
+### ユースケース 4: External Review 要求 → 承認連鎖（**専用 method 分離**、detailed-design §確定 A-2）
 
 1. Agent が Stage の成果物を commit 完了 → `TaskService.request_external_review(task_id)` が呼ばれる
 2. application 層が現 Stage の `kind == EXTERNAL_REVIEW` を検証（外部知識、Aggregate 内では守らない）
 3. `task.request_external_review()` → IN_PROGRESS → AWAITING_EXTERNAL_REVIEW
 4. application 層が `ExternalReviewGate(task_id=task.id, stage_id=task.current_stage_id, deliverable_snapshot=task.deliverables[stage_id], ...)` を構築（別 Aggregate、本 PR スコープ外）
-5. CEO が UI で Gate を APPROVED / REJECTED → application 層が:
-   - APPROVED → `task.advance(transition_id=..., by_owner_id=..., next_stage_id=..., is_terminal=False)` → AWAITING_EXTERNAL_REVIEW → IN_PROGRESS（次 Stage へ）
-   - REJECTED → 同様だが `next_stage_id` は差し戻し先
-6. 終端 Stage + APPROVED の場合 → `is_terminal=True` で advance → IN_PROGRESS → DONE（terminal）
+5. CEO が UI で Gate を APPROVED / REJECTED → application 層 `GateService.approve()` / `reject()` 完了後、**Gate decision → Task method の dispatch を application 層が静的に実行**:
+   - Gate APPROVED → `task.approve_review(transition_id, by_owner_id, next_stage_id)` → AWAITING_EXTERNAL_REVIEW → IN_PROGRESS（`next_stage_id` は次 Stage）
+   - Gate REJECTED → `task.reject_review(transition_id, by_owner_id, next_stage_id)` → AWAITING_EXTERNAL_REVIEW → IN_PROGRESS（`next_stage_id` は差し戻し先）
+6. 終端 Stage + APPROVED の場合 → `task.approve_review(...)` で IN_PROGRESS に戻った後、application 層が次の advance を判定し `task.complete(transition_id, by_owner_id)` → IN_PROGRESS → DONE（terminal）。EXTERNAL_REVIEW を経由しない通常 Stage 進行は `task.advance_to_next(...)`（IN_PROGRESS の自己遷移）
+
+##### Task / Gate Aggregate 境界の凍結
+
+| 責務 | 担当 | 補足 |
+|---|---|---|
+| Gate decision の確定（`approve` / `reject` ふるまい）| `ExternalReviewGate` Aggregate（後続 Issue） | Gate 内で `decision` 値遷移、Task は知らない |
+| Gate decision → Task method の dispatch | `GateService` application 層（後続 Issue） | `if gate.decision == APPROVED: task.approve_review(...)` の静的分岐、Task が `ReviewDecision` を import しないことで Aggregate 境界を保つ |
+| Task の state 遷移 | `Task` Aggregate（本 PR） | method 名 = action 名で 1:1 静的、揺れゼロ |
 
 ### ユースケース 5: BLOCKED 隔離 → 復旧
 
@@ -214,14 +225,17 @@ sequenceDiagram
     TaskSvc->>Gate: ExternalReviewGate(task_id, stage_id, deliverable_snapshot, ...)
     Gate-->>TaskSvc: Gate instance
 
-    Note over CEO,Gate: CEO が UI で Gate を APPROVED にする
+    Note over CEO,Gate: CEO が UI で Gate を APPROVED にする → Gate.decision=APPROVED
 
-    CEO->>TaskSvc: advance(task_id, transition_id, next_stage_id, is_terminal)
-    TaskSvc->>Task: advance(transition_id, by_owner_id, next_stage_id, is_terminal=False)
-    Task->>SM: lookup(AWAITING_EXTERNAL_REVIEW, 'gate_approved')
+    CEO->>TaskSvc: approve_review(task_id, transition_id, next_stage_id)
+    TaskSvc->>Task: approve_review(transition_id, by_owner_id, next_stage_id)
+    Task->>SM: lookup(AWAITING_EXTERNAL_REVIEW, 'approve_review')
     SM-->>Task: IN_PROGRESS
-    Task-->>TaskSvc: 新 Task（current_stage_id 更新）
+    Task-->>TaskSvc: 新 Task（current_stage_id=next_stage_id、status=IN_PROGRESS）
     TaskSvc->>Repo: save(updated_task)
+
+    Note over CEO,Gate: REJECTED の場合は task.reject_review(transition_id, by_owner_id, next_stage_id)、差し戻し先 Stage_id
+    Note over CEO,Gate: 終端 Stage 到達時は task.complete(transition_id, by_owner_id) で IN_PROGRESS → DONE
 ```
 
 ## アーキテクチャへの影響
