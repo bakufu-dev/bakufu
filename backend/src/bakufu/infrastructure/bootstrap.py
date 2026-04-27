@@ -38,8 +38,8 @@ from bakufu.infrastructure.exceptions import (
     BakufuConfigError,
     BakufuMigrationError,
 )
+from bakufu.infrastructure.persistence.sqlite import db_file_mode, pid_gc
 from bakufu.infrastructure.persistence.sqlite import engine as engine_mod
-from bakufu.infrastructure.persistence.sqlite import pid_gc
 from bakufu.infrastructure.persistence.sqlite import session as session_mod
 from bakufu.infrastructure.persistence.sqlite.outbox import (
     dispatcher as dispatcher_mod,
@@ -238,6 +238,20 @@ class Bootstrap:
                 message=f"[FAIL] Alembic migration failed: {exc!r}",
             ) from exc
         logger.info("[INFO] Bootstrap stage 3/8: schema at head %s", head)
+
+        # REQ-PF-002-A (Schneier 致命1): even though stage 0 set
+        # ``umask 0o077`` so newly-created files inherit ``0o600``, a
+        # *previous* bakufu run that started without the umask may
+        # have left these files at ``0o644``. Audit + repair while we
+        # know data_dir is resolved and the DB file definitely exists
+        # (Alembic just wrote to it). Non-fatal: if chmod fails, log
+        # ERROR and continue — refusing to start would block recovery.
+        if self._data_dir is not None:
+            mode_results = db_file_mode.verify_and_repair(self._data_dir)
+            logger.info(
+                "[INFO] Bootstrap stage 3/8: DB file mode audit: %s",
+                mode_results,
+            )
 
     # ------------------------------------------------------------------
     # Stage 4: pid_registry orphan GC (non-fatal).
