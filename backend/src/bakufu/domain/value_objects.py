@@ -78,6 +78,14 @@ Used by Task Aggregate behaviors that record an external-review actor
 ``cancel``). The ``OwnerId`` is treated as opaque from the domain's point of
 view; user-account binding is the application layer's job."""
 
+type GateId = UUID
+"""ExternalReviewGate aggregate identifier (UUIDv4).
+
+The Gate is independent of Task (it has its own lifecycle, Tx
+boundary, and supports multiple review rounds), so it carries its
+own UUID rather than inheriting the parent ``TaskId`` —
+external-review-gate detailed-design §確定 R1-A."""
+
 
 # ---------------------------------------------------------------------------
 # Role enum
@@ -168,6 +176,47 @@ class LLMErrorKind(StrEnum):
     AUTH_EXPIRED = "AUTH_EXPIRED"
     TIMEOUT = "TIMEOUT"
     UNKNOWN = "UNKNOWN"
+
+
+class ReviewDecision(StrEnum):
+    """ExternalReviewGate decision outcome per ``domain-model/value-objects.md``.
+
+    Four values, frozen by
+    ``docs/features/external-review-gate/detailed-design.md`` §確定 A
+    dispatch table. ``PENDING`` → 1 of {``APPROVED`` / ``REJECTED`` /
+    ``CANCELLED``} once-only; the three terminal values may not
+    transition further (the state machine table refuses any
+    ``approve`` / ``reject`` / ``cancel`` action from non-PENDING).
+    ``record_view`` self-loops on every value (audit trail allows
+    reads even after a Gate is decided — §確定 G).
+    """
+
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    CANCELLED = "CANCELLED"
+
+
+class AuditAction(StrEnum):
+    """Audit log action discriminator per ``domain-model/value-objects.md``.
+
+    The MVP needs four values for the ExternalReviewGate aggregate
+    (``VIEWED`` from ``record_view`` plus ``APPROVED`` / ``REJECTED``
+    / ``CANCELLED`` mirroring the decision transitions); the
+    remaining six values frozen in
+    ``docs/architecture/domain-model/value-objects.md`` §列挙型一覧
+    (``RETRIED`` / ``ADMIN_RETRY_TASK`` / ``ADMIN_CANCEL_TASK`` /
+    ``ADMIN_RETRY_EVENT`` / ``ADMIN_LIST_BLOCKED`` /
+    ``ADMIN_LIST_DEAD_LETTERS``) join when the Admin CLI feature
+    lands. Adding them here ahead of time would advertise an enum
+    contract no production code consumes yet — wait until they're
+    needed (YAGNI, agent feature §確定 I 同方針).
+    """
+
+    VIEWED = "VIEWED"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    CANCELLED = "CANCELLED"
 
 
 # ---------------------------------------------------------------------------
@@ -574,15 +623,76 @@ class Deliverable(BaseModel):
         return value
 
 
+# ---------------------------------------------------------------------------
+# AuditEntry VO (ExternalReviewGate feature §確定 K)
+# ---------------------------------------------------------------------------
+_AUDIT_COMMENT_MAX_CHARS: int = 2_000
+
+
+class AuditEntry(BaseModel):
+    """One row of an :class:`ExternalReviewGate.audit_trail`.
+
+    Stored append-only inside a Gate aggregate; see
+    ``docs/features/external-review-gate/detailed-design.md`` §確定 C.
+    The "誰がいつ何度見たか" requirement (§確定 G) means every
+    ``record_view`` call yields a fresh entry — same actor, same
+    moment, same comment is **not** deduplicated. Fields stay narrow:
+
+    * ``id`` — UUIDv4 distinguishes otherwise-equal entries.
+    * ``actor_id`` — :class:`OwnerId` of the human who triggered the
+      action.
+    * ``action`` — :class:`AuditAction` discriminator (VIEWED /
+      APPROVED / REJECTED / CANCELLED at MVP).
+    * ``comment`` — free-form NFC-normalized text, 0〜2000 chars,
+      **strip not applied** (the LLM stack-trace precedent carried
+      through directive / task / agent applies here too).
+    * ``occurred_at`` — UTC tz-aware moment.
+    """
+
+    model_config = ConfigDict(
+        frozen=True,
+        extra="forbid",
+        arbitrary_types_allowed=False,
+    )
+
+    id: UUID
+    actor_id: OwnerId
+    action: AuditAction
+    comment: str = Field(default="", max_length=_AUDIT_COMMENT_MAX_CHARS)
+    occurred_at: datetime
+
+    @field_validator("comment", mode="before")
+    @classmethod
+    def _normalize_comment(cls, value: object) -> object:
+        # NFC only — preserves leading whitespace / multi-line context
+        # (CEO comments may include indented quoting).
+        if isinstance(value, str):
+            return unicodedata.normalize("NFC", value)
+        return value
+
+    @field_validator("occurred_at", mode="after")
+    @classmethod
+    def _require_tz_aware(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError(
+                "AuditEntry.occurred_at must be a timezone-aware UTC datetime "
+                "(received a naive datetime)"
+            )
+        return value
+
+
 __all__ = [
     "AgentId",
     "AgentRef",
     "Attachment",
+    "AuditAction",
+    "AuditEntry",
     "CompletionPolicy",
     "CompletionPolicyKind",
     "Deliverable",
     "DirectiveId",
     "EmpireId",
+    "GateId",
     "LLMErrorKind",
     "NormalizedAgentName",
     "NormalizedShortName",
@@ -590,6 +700,7 @@ __all__ = [
     "NotifyChannelKind",
     "OwnerId",
     "ProviderKind",
+    "ReviewDecision",
     "Role",
     "RoomId",
     "RoomRef",

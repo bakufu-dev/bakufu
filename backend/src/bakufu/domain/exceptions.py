@@ -369,6 +369,58 @@ class TaskInvariantViolation(Exception):  # noqa: N818
         self.detail: dict[str, object] = masked_detail
 
 
+type ExternalReviewGateViolationKind = Literal[
+    "decision_already_decided",
+    "decided_at_inconsistent",
+    "snapshot_immutable",
+    "feedback_text_range",
+    "audit_trail_append_only",
+]
+"""Discriminator for :class:`ExternalReviewGateInvariantViolation` per
+external-review-gate detailed-design §確定 I. The closed set of five
+kinds covers state-machine bypass (PENDING-only decision transitions),
+the four ``model_validator(mode='after')`` structural invariants, and
+the audit-trail append-only contract. Type / required-field violations
+surface as :class:`pydantic.ValidationError` (MSG-GT-006) so they never
+leak into this discriminator namespace."""
+
+
+# DDD: "Violation" describes an invariant breach, not a programming bug, so
+# the N818 "Error suffix" rule does not apply here.
+class ExternalReviewGateInvariantViolation(Exception):  # noqa: N818
+    """Raised when an :class:`ExternalReviewGate` aggregate invariant is violated.
+
+    Mirrors :class:`TaskInvariantViolation` /
+    :class:`DirectiveInvariantViolation` /
+    :class:`RoomInvariantViolation` /
+    :class:`AgentInvariantViolation` /
+    :class:`WorkflowInvariantViolation` in shape (``kind`` +
+    ``message`` + ``detail`` + immutable copy of detail) and applies
+    the same Discord webhook secret masking. Gate ``feedback_text``
+    and ``audit_trail.comment`` are CEO-authored fields that may
+    embed a webhook URL pasted from a Discord channel; masking
+    ``message`` / ``detail`` at construction time means callers
+    cannot leak a token by serializing the exception (multi-layer
+    defense, see external-review-gate detailed-design §確定 H).
+    """
+
+    def __init__(
+        self,
+        *,
+        kind: ExternalReviewGateViolationKind,
+        message: str,
+        detail: Mapping[str, object] | None = None,
+    ) -> None:
+        masked_message = mask_discord_webhook(message)
+        masked_detail: dict[str, object] = (
+            {key: mask_discord_webhook_in(value) for key, value in detail.items()} if detail else {}
+        )
+        super().__init__(masked_message)
+        self.kind: ExternalReviewGateViolationKind = kind
+        self.message: str = masked_message
+        self.detail: dict[str, object] = masked_detail
+
+
 __all__ = [
     "AgentInvariantViolation",
     "AgentViolationKind",
@@ -376,6 +428,8 @@ __all__ = [
     "DirectiveViolationKind",
     "EmpireInvariantViolation",
     "EmpireViolationKind",
+    "ExternalReviewGateInvariantViolation",
+    "ExternalReviewGateViolationKind",
     "RoomInvariantViolation",
     "RoomViolationKind",
     "StageInvariantViolation",
