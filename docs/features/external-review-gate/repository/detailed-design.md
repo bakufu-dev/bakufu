@@ -1,7 +1,8 @@
-# 詳細設計書
+# 詳細設計書 — external-review-gate / repository
 
-> feature: `external-review-gate-repository`
-> 関連: [basic-design.md](basic-design.md) / [`docs/features/empire-repository/detailed-design.md`](../empire-repository/detailed-design.md) **テンプレート真実源** / [`docs/features/task-repository/detailed-design.md`](../task-repository/detailed-design.md) **直近テンプレート** / [`docs/features/external-review-gate/detailed-design.md`](../external-review-gate/detailed-design.md)
+> feature: `external-review-gate` / sub-feature: `repository`
+> 親 spec: [../feature-spec.md](../feature-spec.md)
+> 関連: [basic-design.md](basic-design.md) / [`../../empire-repository/detailed-design.md`](../../empire-repository/detailed-design.md) **テンプレート真実源** / [`../../task-repository/detailed-design.md`](../../task-repository/detailed-design.md) **直近テンプレート** / [`../domain/detailed-design.md`](../domain/detailed-design.md)
 
 ## 記述ルール（必ず守ること）
 
