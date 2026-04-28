@@ -1,7 +1,7 @@
 # 基本設計書
 
 > feature: `workflow`
-> 関連: [requirements.md](requirements.md) / [`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) §Workflow
+> 関連: [requirements.md](requirements.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Workflow
 
 ## 記述ルール（必ず守ること）
 
@@ -137,10 +137,10 @@ sequenceDiagram
 
 ## アーキテクチャへの影響
 
-- `docs/architecture/domain-model.md` への変更: なし（凍結済み設計に従う実装のみ）
-- `docs/architecture/domain-model/value-objects.md` §Stage 属性表 L50 で `notify_channels` の説明に「Discord / Slack / Email 等」とあるが、本 feature の MVP では `kind='discord'` のみコンストラクタ受理（[detailed-design.md](detailed-design.md) §確定 G）。`'slack'` / `'email'` の解禁は **Phase 2 でメッセンジャー多対応を検討する際に、kind ごとの URL / target 規則を凍結した上で**実施する。本 PR ではアーキ側の文言は触らず、feature レイヤで MVP 制約を凍結する責務分離を選択
-- `docs/architecture/domain-model/storage.md` §シークレットマスキング規則 への追補: Discord webhook URL の token 部マスキング規則（正規表現 `https://discord\.com/api/webhooks/([0-9]+)/([A-Za-z0-9_\-]+)` → `https://discord.com/api/webhooks/\1/<REDACTED:DISCORD_WEBHOOK>`）は本 feature の domain 層では VO 内 `field_serializer` として実装する。`feature/persistence` で Repository 実装時に `infrastructure/security/masking.py` 単一ゲートウェイにも追加する（本 PR スコープ外、`feature/persistence` で `storage.md` を更新する PR を立てる）
-- `docs/architecture/tech-stack.md` への変更: なし
+- `docs/design/domain-model.md` への変更: なし（凍結済み設計に従う実装のみ）
+- `docs/design/domain-model/value-objects.md` §Stage 属性表 L50 で `notify_channels` の説明に「Discord / Slack / Email 等」とあるが、本 feature の MVP では `kind='discord'` のみコンストラクタ受理（[detailed-design.md](detailed-design.md) §確定 G）。`'slack'` / `'email'` の解禁は **Phase 2 でメッセンジャー多対応を検討する際に、kind ごとの URL / target 規則を凍結した上で**実施する。本 PR ではアーキ側の文言は触らず、feature レイヤで MVP 制約を凍結する責務分離を選択
+- `docs/design/domain-model/storage.md` §シークレットマスキング規則 への追補: Discord webhook URL の token 部マスキング規則（正規表現 `https://discord\.com/api/webhooks/([0-9]+)/([A-Za-z0-9_\-]+)` → `https://discord.com/api/webhooks/\1/<REDACTED:DISCORD_WEBHOOK>`）は本 feature の domain 層では VO 内 `field_serializer` として実装する。`feature/persistence` で Repository 実装時に `infrastructure/security/masking.py` 単一ゲートウェイにも追加する（本 PR スコープ外、`feature/persistence` で `storage.md` を更新する PR を立てる）
+- `docs/design/tech-stack.md` への変更: なし
 - 既存 feature への波及: なし。後続 `feature/task` が Workflow 内 Stage を `current_stage_id` で参照する設計だが、本 feature 範囲では参照されないので波及なし
 - 後続 `feature/discord-notifier` への申し送り: 実 webhook 送信時に DNS rebinding / IPv4-mapped IPv6 / リダイレクト追跡時の再検査を `basic-design.md` に必ず凍結する（本 feature 範囲では VO レベルで対処不能）
 
@@ -166,7 +166,7 @@ sequenceDiagram
 
 ### 脅威モデル
 
-本 feature 範囲では以下の 3 件。詳細な信頼境界は [`docs/architecture/threat-model.md`](../../architecture/threat-model.md) を参照。
+本 feature 範囲では以下の 3 件。詳細な信頼境界は [`docs/design/threat-model.md`](../../design/threat-model.md) を参照。
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|

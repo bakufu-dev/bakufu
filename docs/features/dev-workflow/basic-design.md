@@ -240,7 +240,7 @@ sequenceDiagram
 
 ## アーキテクチャへの影響
 
-`docs/architecture/tech-stack.md` に **§開発ワークフロー（Git フック / タスクランナー）** セクションを追加する（同一 PR で更新）。内容:
+`docs/design/tech-stack.md` に **§開発ワークフロー（Git フック / タスクランナー）** セクションを追加する（同一 PR で更新）。内容:
 
 - 採用: `lefthook` / `just` / `convco` / `gitleaks` / `uv` / `ruff` / `pyright` / `biome` / `osv-scanner` の 9 ツール
 - 不採用候補と却下根拠（pre-commit / husky / commitlint / mypy / eslint+prettier / flake8 / black / npm audit / safety / Makefile / npm scripts / tox / nox / core.hooksPath）
@@ -248,7 +248,7 @@ sequenceDiagram
 - CI ワークフローとローカルフックが **同一 `just <recipe>` を参照**する DRY 原則
 - 全ツールバイナリを **GitHub Releases + SHA256 検証で統一導入**する一貫性
 
-`docs/architecture/domain-model.md` には影響しない（本 feature は配布バイナリに含まれない開発者ツールチェーンのみ）。
+`docs/design/domain-model.md` には影響しない（本 feature は配布バイナリに含まれない開発者ツールチェーンのみ）。
 
 ## 外部連携
 

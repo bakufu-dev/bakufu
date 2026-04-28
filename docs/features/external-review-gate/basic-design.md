@@ -1,7 +1,7 @@
 # 基本設計書
 
 > feature: `external-review-gate`
-> 関連: [requirements.md](requirements.md) / [`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) §ExternalReviewGate / [`docs/features/task/`](../task/) （PR #42 §確定 A-2 連携先）
+> 関連: [requirements.md](requirements.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §ExternalReviewGate / [`docs/features/task/`](../task/) （PR #42 §確定 A-2 連携先）
 
 ## 記述ルール（必ず守ること）
 
@@ -198,10 +198,10 @@ sequenceDiagram
 
 ## アーキテクチャへの影響
 
-- `docs/architecture/domain-model.md` への変更: なし（Gate の `mermaid classDiagram` は既に存在）
-- `docs/architecture/domain-model/aggregates.md` への変更: なし（§ExternalReviewGate は既に凍結済み、本 feature は実装の追従）
-- `docs/architecture/domain-model/value-objects.md` への変更: §列挙型一覧の `ReviewDecision` / `AuditAction` 行は既に存在、§AuditEntry 構造定義も存在、本 PR で Python 実体化
-- `docs/architecture/domain-model/storage.md` への変更: なし（snapshot 凍結方式は既に詳細凍結済み、本 PR は VO 構造定義まで）
+- `docs/design/domain-model.md` への変更: なし（Gate の `mermaid classDiagram` は既に存在）
+- `docs/design/domain-model/aggregates.md` への変更: なし（§ExternalReviewGate は既に凍結済み、本 feature は実装の追従）
+- `docs/design/domain-model/value-objects.md` への変更: §列挙型一覧の `ReviewDecision` / `AuditAction` 行は既に存在、§AuditEntry 構造定義も存在、本 PR で Python 実体化
+- `docs/design/domain-model/storage.md` への変更: なし（snapshot 凍結方式は既に詳細凍結済み、本 PR は VO 構造定義まで）
 - 既存 feature への波及: なし。task / その他 6 兄弟は本 feature を import しない（依存方向: gate → 既存 ID 型 + Deliverable VO のみ）
 
 ## 外部連携
@@ -226,7 +226,7 @@ sequenceDiagram
 
 ### 脅威モデル
 
-本 feature 範囲では以下の 4 件。詳細な信頼境界は [`docs/architecture/threat-model.md`](../../architecture/threat-model.md)。
+本 feature 範囲では以下の 4 件。詳細な信頼境界は [`docs/design/threat-model.md`](../../design/threat-model.md)。
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|

@@ -2,7 +2,7 @@
 
 > feature: `empire`
 > Issue: [#8 feat(empire): Empire Aggregate Root (M1)](https://github.com/bakufu-dev/bakufu/issues/8)
-> 凍結済み設計: [`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) §Empire
+> 凍結済み設計: [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Empire
 
 ## 人間の要求
 
@@ -27,14 +27,14 @@
 ### ビジネス価値
 
 - bakufu MVP の Vモデル E2E（M7）に至る最短経路の出発点を確保する
-- 設計書（`docs/architecture/`）と実コードの最初の接続点として、後続 PR がコピーできる「お手本」を提供する
+- 設計書（`docs/{analysis,requirements,design}/`）と実コードの最初の接続点として、後続 PR がコピーできる「お手本」を提供する
 
 ## 議論結果
 
 ### 設計担当による採用前提
 
 - Aggregate Root は **Pydantic v2 `BaseModel` + `model_config = ConfigDict(frozen=True)` + `model_validator(mode='after')`** で表現する。`@dataclass(frozen=True)` ではなく Pydantic を採用するのは、後段で OpenAPI スキーマ自動生成（FastAPI）と SQLAlchemy mapper 用 dict 変換を共通化するため
-- 不変条件検査は **pre-validate 方式**を厳守する（[`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) §`validate()` 呼びタイミングとロールバック方式）。状態変更ふるまいは「変更後の仮想状態を構築 → validate → 通過時のみ自身を置換」の手順
+- 不変条件検査は **pre-validate 方式**を厳守する（[`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §`validate()` 呼びタイミングとロールバック方式）。状態変更ふるまいは「変更後の仮想状態を構築 → validate → 通過時のみ自身を置換」の手順
 - 参照型 `RoomRef` / `AgentRef` は本 feature で frozen VO として確定する。実体 Aggregate（Room / Agent）は別 feature だが、Empire 内の参照表現は本 feature で凍結する
 - シングルトン制約は **application 層責務**。Aggregate 内部では「Empire は 1 件しか作れない」を強制せず、Repository.save() の前に application 層が件数を検査する
 
@@ -79,13 +79,13 @@ application 層 `EmpireService.create()`（別 Issue で実装）の責務:
 |-----------|------|-----------|---------|----------------|
 | 個人開発者 CEO | bakufu インスタンスのオーナー | GitHub / Docker / CLI 日常使用 | UI から Empire を 1 つ建てて、Agent 採用・Room 設立を編成する | 数クリックで Empire を構築、Agent 採用 / Room 設立を直感的に操作 |
 
-bakufu システム全体のペルソナは [`docs/architecture/context.md`](../../architecture/context.md) §4 を参照。本 feature は domain 層のため Aggregate-C 系（AI Agent）には直接触れない。
+bakufu システム全体のペルソナは [`docs/analysis/personas.md`](../../analysis/personas.md) を参照。本 feature は domain 層のため Aggregate-C 系（AI Agent）には直接触れない。
 
 ## 前提条件・制約
 
 | 区分 | 内容 |
 |-----|------|
-| 既存技術スタック | Python 3.12+ / Pydantic v2 / pyright strict / pytest（[`tech-stack.md`](../../architecture/tech-stack.md)）|
+| 既存技術スタック | Python 3.12+ / Pydantic v2 / pyright strict / pytest（[`tech-stack.md`](../../design/tech-stack.md)）|
 | 既存 CI | lint / typecheck / test-backend / audit（pip-audit）|
 | 既存ブランチ戦略 | GitFlow（CONTRIBUTING.md §ブランチ戦略） |
 | コミット規約 | Conventional Commits |

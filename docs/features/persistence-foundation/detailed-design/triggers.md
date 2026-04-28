@@ -19,15 +19,15 @@
 | Core `session.execute(insert(table).values({"col": value}))` | ✓ — 旧 listener 方式は不発火、本方式は捕捉 |
 | Core `session.execute(text("INSERT ..."))` + bind params | ✓ |
 
-raw SQL（plain `text()` クエリ）でも bind parameter 経由なら `process_bind_param` が発火する。bind を経由しない手書き SQL リテラル（`text("INSERT INTO ... VALUES ('secret')")` 等）は対象外だが、これは SQL injection 脆弱性そのものとして別途禁止される（[`../../../architecture/tech-stack.md`](../../../architecture/tech-stack.md) §ORM 確定方針: raw SQL 禁止、SQLAlchemy 経由のみ）。
+raw SQL（plain `text()` クエリ）でも bind parameter 経由なら `process_bind_param` が発火する。bind を経由しない手書き SQL リテラル（`text("INSERT INTO ... VALUES ('secret')")` 等）は対象外だが、これは SQL injection 脆弱性そのものとして別途禁止される（[`../../../design/tech-stack.md`](../../../design/tech-stack.md) §ORM 確定方針: raw SQL 禁止、SQLAlchemy 経由のみ）。
 
 ### 「属性追加時の漏れ」物理保証（CI 三層防衛）
 
 TypeDecorator 採用の唯一のリスク（カラム宣言時に `Masked*` 型指定忘れ）を以下 3 層で物理保証:
 
-1. **CI grep guard** (`scripts/ci/check_masking_columns.sh`): [`../../../architecture/domain-model/storage.md`](../../../architecture/domain-model/storage.md) §逆引き表 のカラム名を grep し、宣言行に `MaskedJSONEncoded` か `MaskedText` が含まれることを strict 検証
+1. **CI grep guard** (`scripts/ci/check_masking_columns.sh`): [`../../../design/domain-model/storage.md`](../../../design/domain-model/storage.md) §逆引き表 のカラム名を grep し、宣言行に `MaskedJSONEncoded` か `MaskedText` が含まれることを strict 検証
 2. **アーキテクチャテスト** (`backend/tests/architecture/test_masking_columns.py`): SQLAlchemy metadata から逆引き表のカラムを抽出し、`column.type.__class__` が `MaskedJSONEncoded` / `MaskedText` であることを assert
-3. **コードレビュー観点**: 新規 Aggregate Repository PR は逆引き表に行を追加 + masking 対象カラムの `Masked*` 指定を必須とするレビュー観点（[`../../../architecture/domain-model/storage.md`](../../../architecture/domain-model/storage.md) §逆引き表 §運用ルール）
+3. **コードレビュー観点**: 新規 Aggregate Repository PR は逆引き表に行を追加 + masking 対象カラムの `Masked*` 指定を必須とするレビュー観点（[`../../../design/domain-model/storage.md`](../../../design/domain-model/storage.md) §逆引き表 §運用ルール）
 
 これにより event listener 方式と同等以上の漏れ防止を担保しつつ、Core SQL 経路の物理保証を獲得する。
 

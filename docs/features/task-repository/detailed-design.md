@@ -114,7 +114,7 @@ parametrize に追加する 2 行:
 
 #### Layer 3: storage.md 逆引き表（§確定 R1-F で実施）
 
-`docs/architecture/domain-model/storage.md` §逆引き表の更新は REQ-TR-005 で実施済み（本 PR 設計書と同一コミット）。
+`docs/design/domain-model/storage.md` §逆引き表の更新は REQ-TR-005 で実施済み（本 PR 設計書と同一コミット）。
 
 ### §確定 R1-K: INDEX 設計の根拠
 
@@ -234,4 +234,4 @@ parametrize に追加する 2 行:
 - [`docs/features/empire-repository/detailed-design.md`](../empire-repository/detailed-design.md) §確定 A〜F — テンプレート真実源
 - [`docs/features/directive-repository/detailed-design.md`](../directive-repository/detailed-design.md) — 直近テンプレート（§確定 R1-A〜E、BUG-DRR-001 申し送り元）
 - [`docs/features/task/detailed-design.md`](../task/detailed-design.md) — Task Aggregate 凍結済み設計（§確定 A〜I）
-- [`docs/architecture/domain-model/storage.md`](../../architecture/domain-model/storage.md) §シークレットマスキング規則 — MaskedText 配線方式と CI 三層防衛の根拠
+- [`docs/design/domain-model/storage.md`](../../design/domain-model/storage.md) §シークレットマスキング規則 — MaskedText 配線方式と CI 三層防衛の根拠

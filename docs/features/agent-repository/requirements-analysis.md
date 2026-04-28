@@ -129,7 +129,7 @@ SQLite は partial index をサポート（[公式ドキュメント](https://ww
 
 #### 確定 R1-E: storage.md 逆引き表更新（Schneier #3 実適用の物理保証）
 
-`docs/architecture/domain-model/storage.md` §逆引き表に Agent 関連 2 行追加:
+`docs/design/domain-model/storage.md` §逆引き表に Agent 関連 2 行追加:
 
 | 行 | 内容 |
 |---|---|
@@ -197,7 +197,7 @@ storage.md §逆引き表の既存 `Persona.prompt_body` 行（persistence-found
 | 可用性 | 該当なし — infrastructure 層 |
 | 保守性 | pyright strict pass / ruff 警告ゼロ / カバレッジ 95% 以上（empire-repo / workflow-repo 実績水準） |
 | 可搬性 | SQLite 単一前提、Postgres 移行時は migration-plan.md §TODO-MIG-NNN として追記 |
-| セキュリティ | `agents.prompt_body` の API key / GitHub PAT を `MaskedText` で永続化前マスキング（Schneier 申し送り #3 実適用）。CI 三層防衛で物理保証。詳細は [`threat-model.md`](../../architecture/threat-model.md) §A02 / §A09 |
+| セキュリティ | `agents.prompt_body` の API key / GitHub PAT を `MaskedText` で永続化前マスキング（Schneier 申し送り #3 実適用）。CI 三層防衛で物理保証。詳細は [`threat-model.md`](../../design/threat-model.md) §A02 / §A09 |
 
 ## 受入基準
 

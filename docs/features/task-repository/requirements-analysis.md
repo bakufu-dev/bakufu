@@ -104,11 +104,11 @@ Task Aggregate の 2 masking カラムを CI 三層防衛に登録する（`conv
 
 **Layer 2（arch test）**: `backend/tests/architecture/test_masking_columns.py` の parametrize に 2 行追加（`column.type.__class__ is MaskedText` を assert）。
 
-**Layer 3（storage.md）**: `docs/architecture/domain-model/storage.md` §逆引き表を本 PR で更新（§確定 R1-F）。
+**Layer 3（storage.md）**: `docs/design/domain-model/storage.md` §逆引き表を本 PR で更新（§確定 R1-F）。
 
 ### §確定 R1-F: storage.md 逆引き表の更新内容
 
-`docs/architecture/domain-model/storage.md` §逆引き表に追加する行:
+`docs/design/domain-model/storage.md` §逆引き表に追加する行:
 
 | 追加行 | 更新内容 |
 |------|---------|

@@ -1,7 +1,7 @@
 # 要件定義書
 
 > feature: `agent`
-> 関連: [requirements-analysis.md](requirements-analysis.md) / [`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) §Agent
+> 関連: [requirements-analysis.md](requirements-analysis.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Agent
 
 ## 機能要件
 
@@ -79,7 +79,7 @@
 
 ## データモデル
 
-凍結済み設計（[`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) §Agent / [`value-objects.md`](../../architecture/domain-model/value-objects.md) §Agent 構成要素）に従う。
+凍結済み設計（[`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Agent / [`value-objects.md`](../../design/domain-model/value-objects.md) §Agent 構成要素）に従う。
 
 | エンティティ | 属性 | 型 | 制約 | 関連 |
 |-------------|------|---|------|------|

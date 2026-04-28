@@ -1,0 +1,37 @@
+# `docs/design/` — 基本設計（Vモデル左 3）
+
+bakufu の **基本設計** を凍結するディレクトリ。Vモデル工程の上から 3 番目（基本設計 ↔ 結合テスト）に対応する。
+
+## 本ディレクトリの役割
+
+「**システムをどう構成するか**」を構造契約・採用技術・脅威モデルの観点で凍結する。要件定義（[`../requirements/`](../requirements/)）を実現するためのシステム全体構造を定義する場。
+
+**書くこと**:
+- システム全体アーキテクチャ図（レイヤー構成、依存方向）
+- ドメインモデル（Aggregate / Entity / VO / Domain Event の関係）
+- 採用技術スタックと根拠 / 不採用ツール
+- 脅威モデル（信頼境界 / 攻撃面 / OWASP Top 10 対応方針）
+
+**書かないこと**（後段の工程ディレクトリへ追い出す）:
+- 各 feature の構造契約詳細 → [`../features/<name>/<sub>/basic-design.md`](../features/)
+- 各 feature の実装契約・MSG 確定文言 → [`../features/<name>/<sub>/detailed-design.md`](../features/)
+
+## 所収ファイル
+
+| ファイル | 役割 |
+|---|---|
+| [`architecture.md`](architecture.md) | システム全体構造（レイヤー / 依存方向 / 主要 Aggregate / 採用技術 / 脅威概観） |
+| [`domain-model.md`](domain-model.md) | Aggregate / Entity / VO / Domain Event の関係（DDD、概観） |
+| [`domain-model/`](domain-model/) | ドメインモデル詳細（aggregates / value-objects / events-and-outbox / transactions / storage） |
+| [`tech-stack.md`](tech-stack.md) | 採用技術と根拠 / 不採用ツール |
+| [`threat-model.md`](threat-model.md) | 信頼境界 / 攻撃面 / OWASP Top 10 対応方針 |
+| [`migration-plan.md`](migration-plan.md) | DB マイグレーション方針（M5+ で SQLite → PostgreSQL 移行 TODO 集約） |
+
+## 対応するテストレベル
+
+基本設計 ↔ **結合テスト**: 各 feature の [`features/<name>/<sub>/test-design.md §結合`](../features/)
+
+## 関連
+
+- [`../requirements/`](../requirements/) — 前工程（要件定義）
+- [`../features/`](../features/) — 次工程（詳細設計）

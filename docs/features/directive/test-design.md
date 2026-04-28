@@ -214,7 +214,7 @@ backend/
 
 **Schneier 申し送り（前 PR レビューより継承）**:
 
-- **`Directive.text` の secret マスキング**: 本 feature では文字列保持のみ。永続化前マスキング規則（[`storage.md`](../../architecture/domain-model/storage.md) §シークレットマスキング規則）の適用は `feature/directive-repository` 責務として明示申し送り（detailed-design §データ構造（永続化キー）に `MaskedText` 列指定済）。本 feature では「domain VO は raw 保持、Repository 層で適用」という適用先指定を凍結
+- **`Directive.text` の secret マスキング**: 本 feature では文字列保持のみ。永続化前マスキング規則（[`storage.md`](../../design/domain-model/storage.md) §シークレットマスキング規則）の適用は `feature/directive-repository` 責務として明示申し送り（detailed-design §データ構造（永続化キー）に `MaskedText` 列指定済）。本 feature では「domain VO は raw 保持、Repository 層で適用」という適用先指定を凍結
 - **本 feature 固有の申し送り**:
   - `target_room_id` 参照整合性 / Workflow 解決 / Task 生成と紐付けの 1 Tx は `DirectiveService.issue()` 責務（確定 G / H）。`feature/directive-application` 実装時に MSG-DR-004 / 005 + 1 Tx 内 Task 生成 + link_task の順序を漏れなく実装する申し送り
   - prompt injection 対策（敵対的 directive text 検出 / ユーザー入力境界 escape）は `feature/llm-adapter` および `feature/http-api` の入力境界責務として残す。本 feature は長さ制約（10000 文字）のみを Pydantic field validator + `_validate_text_range` で Fail Fast

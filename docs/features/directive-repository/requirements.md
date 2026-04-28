@@ -45,7 +45,7 @@
 
 | 項目 | 内容 |
 |------|------|
-| 入力 | `docs/architecture/domain-model/storage.md` §逆引き表（Room 行が最終行、Issue #33 で追加済み） |
+| 入力 | `docs/design/domain-model/storage.md` §逆引き表（Room 行が最終行、Issue #33 で追加済み） |
 | 処理 | §逆引き表に Directive 関連 2 行追加: (a) `directives.text: MaskedText`（directive §確定 G **実適用**、persistence-foundation #23 で hook 構造提供済みを本 PR で配線）、(b) `directives` 残カラム（`id` / `target_room_id` / `created_at` / `task_id`）は masking 対象なし |
 | 出力 | storage.md §逆引き表が「Directive 関連の masking 対象は `directives.text` のみ、directive §確定 G 実適用済み」状態 |
 | エラー時 | 該当なし |

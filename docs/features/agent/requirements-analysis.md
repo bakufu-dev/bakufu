@@ -2,7 +2,7 @@
 
 > feature: `agent`
 > Issue: [#10 feat(agent): Agent Aggregate Root (M1)](https://github.com/bakufu-dev/bakufu/issues/10)
-> 凍結済み設計: [`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) §Agent / [`value-objects.md`](../../architecture/domain-model/value-objects.md) §Agent 構成要素
+> 凍結済み設計: [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Agent / [`value-objects.md`](../../design/domain-model/value-objects.md) §Agent 構成要素
 
 ## 人間の要求
 
@@ -83,7 +83,7 @@ application 層 `AgentService.hire()`（別 Issue で実装）の責務:
 |-----------|------|-----------|---------|----------------|
 | 個人開発者 CEO | bakufu インスタンスのオーナー | GitHub / Docker / CLI 日常使用 | UI から Agent を採用し、Persona / Role / Provider を編集する | 数クリックで Agent を採用、複数 LLM プロバイダから 1 つを既定として選択 |
 
-bakufu システム全体のペルソナは [`docs/architecture/context.md`](../../architecture/context.md) §4 を参照。
+bakufu システム全体のペルソナは [`docs/analysis/personas.md`](../../analysis/personas.md) を参照。
 
 ## 前提条件・制約
 
@@ -124,7 +124,7 @@ bakufu システム全体のペルソナは [`docs/architecture/context.md`](../
 | 可用性 | 該当なし — domain 層 |
 | 保守性 | pyright strict pass / ruff 警告ゼロ / カバレッジ 80% 以上 |
 | 可搬性 | 純 Python のみ |
-| セキュリティ | `Persona.prompt_body` は LLM システムプロンプトに展開される。永続化前にマスキング規則の適用対象（[`storage.md`](../../architecture/domain-model/storage.md) §シークレットマスキング規則）。詳細は [`threat-model.md`](../../architecture/threat-model.md) §A04 |
+| セキュリティ | `Persona.prompt_body` は LLM システムプロンプトに展開される。永続化前にマスキング規則の適用対象（[`storage.md`](../../design/domain-model/storage.md) §シークレットマスキング規則）。詳細は [`threat-model.md`](../../design/threat-model.md) §A04 |
 
 ## 受入基準
 

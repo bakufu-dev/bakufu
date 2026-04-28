@@ -45,7 +45,7 @@
 
 | 項目 | 内容 |
 |------|------|
-| 入力 | `docs/architecture/domain-model/storage.md` の §逆引き表（11 行、persistence-foundation で凍結済み）|
+| 入力 | `docs/design/domain-model/storage.md` の §逆引き表（11 行、persistence-foundation で凍結済み）|
 | 処理 | §逆引き表に「Empire 関連カラム: masking 対象なし」を明示する行を追加（後続 Repository PR が誤って `MaskedText` を指定しないテンプレート） |
 | 出力 | storage.md §逆引き表に Empire 行が追加された状態（テキスト更新のみ）|
 | エラー時 | 該当なし（ドキュメント更新） |

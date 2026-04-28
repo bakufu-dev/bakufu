@@ -7,7 +7,7 @@ collections (``rooms`` / ``agents``) live in the side tables
 the foreign-key cascade target obvious.
 
 No ``Masked*`` TypeDecorator on any column: per
-``docs/architecture/domain-model/storage.md`` §逆引き表 the Empire
+``docs/design/domain-model/storage.md`` §逆引き表 the Empire
 schema carries no secret-bearing values. The CI three-layer defense
 (grep guard + arch test + reverse-lookup table) registers this
 explicit absence so a future PR cannot silently swap a column to a

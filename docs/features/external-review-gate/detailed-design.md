@@ -1,7 +1,7 @@
 # 詳細設計書
 
 > feature: `external-review-gate`
-> 関連: [basic-design.md](basic-design.md) / [`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) §ExternalReviewGate / [`docs/features/task/detailed-design.md`](../task/detailed-design.md) §確定 A-2（dispatch 表パターン継承元）
+> 関連: [basic-design.md](basic-design.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §ExternalReviewGate / [`docs/features/task/detailed-design.md`](../task/detailed-design.md) §確定 A-2（dispatch 表パターン継承元）
 
 ## 記述ルール（必ず守ること）
 
@@ -391,9 +391,9 @@ masking 対象（後続 #36 責務、本 PR スコープ外）: `feedback_text` 
 - [Pydantic v2 — frozen models](https://docs.pydantic.dev/latest/concepts/models/)
 - [Python typing.Literal / Final](https://docs.python.org/3/library/typing.html#typing.Final) — state_machine table 凍結根拠
 - [types.MappingProxyType](https://docs.python.org/3/library/types.html#types.MappingProxyType) — runtime read-only Mapping
-- [`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) — ExternalReviewGate 凍結済み設計
-- [`docs/architecture/domain-model/value-objects.md`](../../architecture/domain-model/value-objects.md) — ReviewDecision / AuditAction / AuditEntry 凍結済み列挙
-- [`docs/architecture/domain-model/storage.md`](../../architecture/domain-model/storage.md) — snapshot 凍結方式（後続 #36 で配線）
-- [`docs/architecture/threat-model.md`](../../architecture/threat-model.md) — A02 / A04 / A08 / A09 対応根拠
+- [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) — ExternalReviewGate 凍結済み設計
+- [`docs/design/domain-model/value-objects.md`](../../design/domain-model/value-objects.md) — ReviewDecision / AuditAction / AuditEntry 凍結済み列挙
+- [`docs/design/domain-model/storage.md`](../../design/domain-model/storage.md) — snapshot 凍結方式（後続 #36 で配線）
+- [`docs/design/threat-model.md`](../../design/threat-model.md) — A02 / A04 / A08 / A09 対応根拠
 - [`docs/features/task/detailed-design.md`](../task/detailed-design.md) §確定 A-2 — 専用 method 分離 dispatch 表パターンの先例
 - [`docs/features/room/detailed-design.md`](../room/detailed-design.md) §確定 I — 例外型統一規約 + MSG 2 行構造の先例

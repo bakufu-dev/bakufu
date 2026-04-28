@@ -1,6 +1,6 @@
 """CI 三層防衛 (2/3): SQLAlchemy metadata に対する arch test.
 
-真実源: ``docs/architecture/domain-model/storage.md`` §逆引き表
+真実源: ``docs/design/domain-model/storage.md`` §逆引き表
 詳細設計: ``docs/features/persistence-foundation/requirements-analysis.md``
 §確定 R1-D 補強条項
         ``docs/features/empire-repository/detailed-design.md`` §確定 E
@@ -219,7 +219,7 @@ class TestMaskingColumnContract:
             f"{type(column.type).__name__}, expected {expected_type.__name__}\n"
             f"Next: switch the column to "
             f"`mapped_column({expected_type.__name__}, ...)` per "
-            f"docs/architecture/domain-model/storage.md §逆引き表."
+            f"docs/design/domain-model/storage.md §逆引き表."
         )
 
 
@@ -254,7 +254,7 @@ class TestNoMaskContract:
             f"[FAIL] {table_name} unexpectedly declares Masked* columns: "
             f"{masked_columns}\n"
             f"Next: this table is registered as 'masking 対象なし' in "
-            f"docs/architecture/domain-model/storage.md §逆引き表; either "
+            f"docs/design/domain-model/storage.md §逆引き表; either "
             f"remove the Masked* type or update the §逆引き表 entry first."
         )
 
@@ -296,7 +296,7 @@ class TestPartialMaskContract:
             f"[FAIL] {table_name} masking surface should be exactly "
             f"['{allowed_column}'], got {masked_columns}.\n"
             f"Next: only '{allowed_column}' is registered as masked in "
-            f"docs/architecture/domain-model/storage.md §逆引き表; either "
+            f"docs/design/domain-model/storage.md §逆引き表; either "
             f"revert the extra Masked* type or update the §逆引き表 entry first."
         )
 
@@ -339,6 +339,6 @@ class TestDualMaskContract:
             f"[FAIL] {table_name} masking surface should be exactly "
             f"{sorted(allowed_columns)}, got {masked_columns}.\n"
             f"Next: only {sorted(allowed_columns)} are registered as masked in "
-            f"docs/architecture/domain-model/storage.md §逆引き表; either "
+            f"docs/design/domain-model/storage.md §逆引き表; either "
             f"revert extra Masked* types or update the §逆引き表 entry first."
         )

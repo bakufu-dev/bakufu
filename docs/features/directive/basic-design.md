@@ -1,7 +1,7 @@
 # 基本設計書
 
 > feature: `directive`
-> 関連: [requirements.md](requirements.md) / [`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) §Directive
+> 関連: [requirements.md](requirements.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Directive
 
 ## 記述ルール（必ず守ること）
 
@@ -116,10 +116,10 @@ sequenceDiagram
 
 ## アーキテクチャへの影響
 
-- `docs/architecture/domain-model.md` への変更: なし（`mermaid classDiagram` の Directive は既存）
-- `docs/architecture/domain-model/aggregates.md` への変更: なし（§Directive は既に凍結済み、本 feature は実装の追従）
-- `docs/architecture/domain-model/storage.md` への変更: §シークレットマスキング規則 §逆引き表に `Directive.text` 行が追加される（**ただし本 feature では追記しない**。後続 `feature/directive-repository` PR で永続化テーブル定義と同時に追記する責務分離）
-- `docs/architecture/tech-stack.md` への変更: なし
+- `docs/design/domain-model.md` への変更: なし（`mermaid classDiagram` の Directive は既存）
+- `docs/design/domain-model/aggregates.md` への変更: なし（§Directive は既に凍結済み、本 feature は実装の追従）
+- `docs/design/domain-model/storage.md` への変更: §シークレットマスキング規則 §逆引き表に `Directive.text` 行が追加される（**ただし本 feature では追記しない**。後続 `feature/directive-repository` PR で永続化テーブル定義と同時に追記する責務分離）
+- `docs/design/tech-stack.md` への変更: なし
 - 既存 feature への波及: なし。empire / workflow / agent / room は本 feature を import しない（依存方向: directive → 既存 ID 型のみ）
 
 ## 外部連携
@@ -144,11 +144,11 @@ sequenceDiagram
 
 ### 脅威モデル
 
-本 feature 範囲では以下の 2 件。詳細な信頼境界は [`docs/architecture/threat-model.md`](../../architecture/threat-model.md)。
+本 feature 範囲では以下の 2 件。詳細な信頼境界は [`docs/design/threat-model.md`](../../design/threat-model.md)。
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|
-| **T1: Directive.text 経由の secret 漏洩** | CEO がチャット欄で webhook URL / API key を含むメッセージを `$` 付きで送信 → DB 永続化 → ログ・監査経路へ流出 | OAuth トークン / Discord webhook token / API key | Aggregate 内ではマスキングしない（生入力を保持して UI で読み返す経路を確保）。**永続化前の単一ゲートウェイ**（[`storage.md`](../../architecture/domain-model/storage.md) §シークレットマスキング規則）で TypeDecorator `MaskedText` 経由で適用。後続 `feature/directive-repository` PR で `directives.text` カラムを `MaskedText` 型として宣言する責務 |
+| **T1: Directive.text 経由の secret 漏洩** | CEO がチャット欄で webhook URL / API key を含むメッセージを `$` 付きで送信 → DB 永続化 → ログ・監査経路へ流出 | OAuth トークン / Discord webhook token / API key | Aggregate 内ではマスキングしない（生入力を保持して UI で読み返す経路を確保）。**永続化前の単一ゲートウェイ**（[`storage.md`](../../design/domain-model/storage.md) §シークレットマスキング規則）で TypeDecorator `MaskedText` 経由で適用。後続 `feature/directive-repository` PR で `directives.text` カラムを `MaskedText` 型として宣言する責務 |
 | **T2: Directive.text に Discord webhook URL が混入した状態で `DirectiveInvariantViolation` を raise** | text 10001 文字超過 → 例外発生 → 例外 message / detail に webhook URL がそのまま埋め込まれログ / Discord 通知に流出 | Discord webhook token | `DirectiveInvariantViolation` の `__init__` で `mask_discord_webhook` + `mask_discord_webhook_in` を `super().__init__` 前に強制適用。agent / workflow / room と同パターン（多層防御） |
 
 ### OWASP Top 10 対応

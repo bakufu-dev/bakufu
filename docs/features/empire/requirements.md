@@ -1,7 +1,7 @@
 # 要件定義書
 
 > feature: `empire`
-> 関連: [requirements-analysis.md](requirements-analysis.md) / [`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) §Empire
+> 関連: [requirements-analysis.md](requirements-analysis.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Empire
 
 ## 機能要件
 
@@ -70,7 +70,7 @@
 
 ## データモデル
 
-凍結済み設計（[`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) §Empire）に従う。本 feature で確定する追加・変更は以下の通り。
+凍結済み設計（[`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Empire）に従う。本 feature で確定する追加・変更は以下の通り。
 
 | エンティティ | 属性 | 型 | 制約 | 関連 |
 |-------------|------|---|------|------|
@@ -85,7 +85,7 @@
 | AgentRef | `name` | `str` | 1〜40 文字（Agent の name と同一規格） | — |
 | AgentRef | `role` | `Role` | 列挙型 | — |
 
-`EmpireId` / `RoomId` / `AgentId` / `Role` は `domain/value_objects.py` 既存定義（[`domain-model/value-objects.md`](../../architecture/domain-model/value-objects.md)）を参照。
+`EmpireId` / `RoomId` / `AgentId` / `Role` は `domain/value_objects.py` 既存定義（[`domain-model/value-objects.md`](../../design/domain-model/value-objects.md)）を参照。
 
 ## ユーザー向けメッセージ一覧
 
@@ -104,7 +104,7 @@
 | 区分 | 依存 | バージョン方針 | 導入経路 | 備考 |
 |-----|------|-------------|---------|------|
 | ランタイム | Python 3.12+ | pyproject.toml | uv | 既存 |
-| Python 依存 | `pydantic` v2 | `pyproject.toml` | uv | 既存（[`tech-stack.md`](../../architecture/tech-stack.md)）|
+| Python 依存 | `pydantic` v2 | `pyproject.toml` | uv | 既存（[`tech-stack.md`](../../design/tech-stack.md)）|
 | Python 依存 | `pyright` (strict) | `pyproject.toml` dev | uv tool | 既存 |
 | Python 依存 | `ruff` | 同上 | uv tool | 既存 |
 | Python 依存 | `pytest` / `pytest-cov` | `pyproject.toml` dev | uv | 既存 |

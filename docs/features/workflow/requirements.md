@@ -1,7 +1,7 @@
 # 要件定義書
 
 > feature: `workflow`
-> 関連: [requirements-analysis.md](requirements-analysis.md) / [`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) §Workflow
+> 関連: [requirements-analysis.md](requirements-analysis.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Workflow
 
 ## 機能要件
 
@@ -88,7 +88,7 @@
 
 ## データモデル
 
-凍結済み設計（[`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) §Workflow / [`value-objects.md`](../../architecture/domain-model/value-objects.md) §Workflow 構成要素）に従う。
+凍結済み設計（[`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Workflow / [`value-objects.md`](../../design/domain-model/value-objects.md) §Workflow 構成要素）に従う。
 
 | エンティティ | 属性 | 型 | 制約 | 関連 |
 |-------------|------|---|------|------|
@@ -112,7 +112,7 @@
 | NotifyChannel（VO） | `kind` | `Literal['discord']` | **MVP は discord のみ**。slack/email は `pydantic.ValidationError` 拒否 | — |
 | NotifyChannel | `target` | `str` | 1〜500 文字、Discord webhook URL allow list G1〜G10（[detailed-design.md](detailed-design.md) §確定 G）を完全充足。token 部はシリアライズ時 `<REDACTED:DISCORD_WEBHOOK>` でマスキング | — |
 
-`StageKind` / `Role` / `TransitionCondition` の値域は [`value-objects.md`](../../architecture/domain-model/value-objects.md) §列挙型一覧 を参照。
+`StageKind` / `Role` / `TransitionCondition` の値域は [`value-objects.md`](../../design/domain-model/value-objects.md) §列挙型一覧 を参照。
 
 ## ユーザー向けメッセージ一覧
 

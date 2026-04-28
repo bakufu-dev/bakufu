@@ -1,7 +1,7 @@
 # 基本設計書
 
 > feature: `task`
-> 関連: [requirements.md](requirements.md) / [`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) §Task / [`storage.md`](../../architecture/domain-model/storage.md) §Deliverable / §Attachment
+> 関連: [requirements.md](requirements.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Task / [`storage.md`](../../design/domain-model/storage.md) §Deliverable / §Attachment
 
 ## 記述ルール（必ず守ること）
 
@@ -240,11 +240,11 @@ sequenceDiagram
 
 ## アーキテクチャへの影響
 
-- `docs/architecture/domain-model.md` への変更: なし（Task の `mermaid classDiagram` は既に存在）
-- `docs/architecture/domain-model/aggregates.md` への変更: なし（§Task は既に凍結済み、本 feature は実装の追従）
-- `docs/architecture/domain-model/value-objects.md` への変更: §列挙型一覧の `TaskStatus` / `LLMErrorKind` 行は既に存在、本 feature で Python 実体化
-- `docs/architecture/domain-model/storage.md` への変更: §逆引き表に `Task.last_error: MaskedText` / `Deliverable.body_markdown: MaskedText` 行は既に登録済み（**本 feature では追記しない**。後続 `feature/task-repository` PR #35 で永続化テーブル定義と同時に配線確認する責務分離）
-- `docs/architecture/tech-stack.md` への変更: なし
+- `docs/design/domain-model.md` への変更: なし（Task の `mermaid classDiagram` は既に存在）
+- `docs/design/domain-model/aggregates.md` への変更: なし（§Task は既に凍結済み、本 feature は実装の追従）
+- `docs/design/domain-model/value-objects.md` への変更: §列挙型一覧の `TaskStatus` / `LLMErrorKind` 行は既に存在、本 feature で Python 実体化
+- `docs/design/domain-model/storage.md` への変更: §逆引き表に `Task.last_error: MaskedText` / `Deliverable.body_markdown: MaskedText` 行は既に登録済み（**本 feature では追記しない**。後続 `feature/task-repository` PR #35 で永続化テーブル定義と同時に配線確認する責務分離）
+- `docs/design/tech-stack.md` への変更: なし
 - 既存 feature への波及: なし。empire / workflow / agent / room / directive は本 feature を import しない（依存方向: task → 既存 ID 型 + Workflow Stage 集合の参照のみ）
 
 ## 外部連携
@@ -269,7 +269,7 @@ sequenceDiagram
 
 ### 脅威モデル
 
-本 feature 範囲では以下の 4 件。詳細な信頼境界は [`docs/architecture/threat-model.md`](../../architecture/threat-model.md)。
+本 feature 範囲では以下の 4 件。詳細な信頼境界は [`docs/design/threat-model.md`](../../design/threat-model.md)。
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|

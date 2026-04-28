@@ -18,7 +18,7 @@
 | REQ-EMR-003 | Alembic 2nd revision | `backend/alembic/versions/0002_empire_aggregate.py` | 3 テーブル + INDEX 追加 |
 | REQ-EMR-004 | CI 三層防衛拡張（Layer 1） | `scripts/ci/check_masking_columns.sh`（既存ファイル更新） | Empire 3 テーブルを「masking 対象なし」で明示登録 |
 | REQ-EMR-004 | CI 三層防衛拡張（Layer 2） | `backend/tests/architecture/test_masking_columns.py`（既存ファイル更新） | Empire 3 テーブルを parametrize に追加、masking 対象なし assert |
-| REQ-EMR-005 | storage.md 逆引き表更新 | `docs/architecture/domain-model/storage.md`（既存ファイル更新） | Empire 関連カラム「masking 対象なし」行を追加 |
+| REQ-EMR-005 | storage.md 逆引き表更新 | `docs/design/domain-model/storage.md`（既存ファイル更新） | Empire 関連カラム「masking 対象なし」行を追加 |
 | 共通 | application/__init__.py | `backend/src/bakufu/application/__init__.py` | 新規（最初の application 層ファイル）|
 | 共通 | application/ports/__init__.py | `backend/src/bakufu/application/ports/__init__.py` | 新規 |
 | 共通 | repositories/__init__.py | `backend/src/bakufu/infrastructure/persistence/sqlite/repositories/__init__.py` | 新規 |
@@ -179,9 +179,9 @@ sequenceDiagram
 
 ## アーキテクチャへの影響
 
-- `docs/architecture/domain-model.md` への変更: なし（モジュール配置案の `application/ports/` / `infrastructure/persistence/sqlite/repositories/` は既に概念定義済み、本 PR で実体化）
-- `docs/architecture/domain-model/storage.md` への変更: **§逆引き表に「Empire 関連カラム: masking 対象なし」行を追加**（§確定 R1-E、本 PR で同一コミット）
-- `docs/architecture/tech-stack.md` への変更: なし
+- `docs/design/domain-model.md` への変更: なし（モジュール配置案の `application/ports/` / `infrastructure/persistence/sqlite/repositories/` は既に概念定義済み、本 PR で実体化）
+- `docs/design/domain-model/storage.md` への変更: **§逆引き表に「Empire 関連カラム: masking 対象なし」行を追加**（§確定 R1-E、本 PR で同一コミット）
+- `docs/design/tech-stack.md` への変更: なし
 - 既存 feature への波及:
   - `feature/persistence-foundation`（PR #23）の上に乗る、追加要件なし
   - `feature/empire`（PR #15）の domain 層 Empire を import するのみ、empire 設計書は変更しない
@@ -208,7 +208,7 @@ sequenceDiagram
 
 ### 脅威モデル
 
-詳細な信頼境界は [`docs/architecture/threat-model.md`](../../architecture/threat-model.md)。本 feature 範囲では以下の 2 件。
+詳細な信頼境界は [`docs/design/threat-model.md`](../../design/threat-model.md)。本 feature 範囲では以下の 2 件。
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|

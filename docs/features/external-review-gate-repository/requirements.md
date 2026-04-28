@@ -45,7 +45,7 @@
 
 | 項目 | 内容 |
 |------|------|
-| 入力 | `docs/architecture/domain-model/storage.md` §逆引き表（Task 残カラム行が現時点の最終行） |
+| 入力 | `docs/design/domain-model/storage.md` §逆引き表（Task 残カラム行が現時点の最終行） |
 | 処理 | §逆引き表に ExternalReviewGate 関連行を追加: (a) `snapshot_body_markdown` / `feedback_text` / `comment` を `（後続）` から **本 PR で配線完了** に更新、(b) ExternalReviewGate 残カラム（masking 非対象）を明示追加 |
 | 出力 | storage.md §逆引き表が「ExternalReviewGate 3 masking カラムは本 PR で配線完了、残カラムは masking 対象なし」状態 |
 | エラー時 | 該当なし（ドキュメント更新） |
