@@ -82,6 +82,10 @@
 
 application services の責務は Repository Port 経由の薄い CRUD のみ（M3 スコープ）。LLM Adapter 呼び出し・Notifier はスコープ外。service 内で `commit()` / `rollback()` は呼ばない。
 
+#### 確定 R1-I: M3 で各 Repository Protocol に `find_all` を追加（Issue B〜G が起点）
+
+M2 の 7 Repository Protocol（Empire / Room / Workflow / Agent / Directive / Task / ExternalReviewGate）は `find_by_id` / `count` / `save` のみ定義されており `find_all` が存在しない。M3（各 Aggregate HTTP API、Issue B〜G）では一覧取得エンドポイントが必要なため、各 Issue の実装 PR で該当 Repository Protocol に `find_all(offset: int, limit: int) -> list[<Name>]` を追加する。**Issue B〜G の実装者は、起点として担当 Repository Protocol の `find_all` 追加から着手すること。** service 層の `find_all(offset, limit) -> tuple[list[<Name>], int]` は Repository の `find_all` + `count` の 2 クエリを合成して返す（詳細は detailed-design.md §確定 F）。
+
 ## ペルソナ
 
 | ペルソナ名 | 役割 | 技術レベル | 利用文脈 | 達成したいゴール |

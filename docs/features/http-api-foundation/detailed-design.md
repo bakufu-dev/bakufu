@@ -77,15 +77,18 @@
 - `BAKUFU_BIND_PORT` 未設定 → `8000`
 - `BAKUFU_RELOAD` 未設定 → `false`（本番安全デフォルト）
 - `BAKUFU_CORS_ORIGINS` 未設定 → `http://localhost:5173`（開発安全デフォルト）
+- `BAKUFU_CORS_ORIGINS=*`（ワイルドカード）は起動時に `ValueError` を raise して Fail Fast（外部公開時の全 Origin 許可はセキュリティ設計違反。ワイルドカードを使いたい場合は設計書を先に更新し承認を得ること）
 - `BAKUFU_TRUST_PROXY` 未設定 → `false`（外部公開安全デフォルト）
 
 ### 確定 E: エラーコード体系
 
 - `HTTP_<status>`: HTTPException（例: `HTTP_404`, `HTTP_409`）
 - `VALIDATION_ERROR`: RequestValidationError
-- `CONFLICT`: IntegrityError
+- `CONFLICT`: IntegrityError（UNIQUE 制約違反 — 重複作成）
+- `DEPENDENCY`: IntegrityError（FK 制約違反 — 依存リソース不存在）
 - `INTERNAL_ERROR`: 未捕捉 Exception
 - 全コードは大文字スネークケース ASCII 文字列。後続 Issue でコードを追加する場合は本書 §確定 E に追記してから実装すること
+- `CONFLICT` と `DEPENDENCY` は SQLAlchemy `IntegrityError.orig` の例外メッセージを検査して判別する（`UNIQUE` キーワード含む → `CONFLICT`、`FOREIGN KEY` キーワード含む → `DEPENDENCY`、不明 → `CONFLICT` にフォールバック）
 
 ### 確定 F: `find_all` の戻り値が `tuple[list[T], int]`（total を含む）
 
@@ -133,7 +136,8 @@
 |----|------|----------------------|
 | MSG-HAF-001 | HTTP 500 response body | `[FAIL] Internal server error` / `Retry or contact administrator if issue persists` |
 | MSG-HAF-002 | HTTP 422 response body | `[FAIL] Validation error: <field_path> - <error>` |
-| MSG-HAF-003 | HTTP 409 response body | `[FAIL] Conflict: resource already exists or constraint violation` |
+| MSG-HAF-003 | HTTP 409 response body | `[FAIL] Conflict: resource already exists` |
+| MSG-HAF-004 | HTTP 409 response body | `[FAIL] Conflict: dependency constraint violation` |
 
 ## データ構造（永続化キー）
 

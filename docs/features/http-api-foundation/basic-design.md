@@ -69,13 +69,14 @@ classDiagram
     class EmpireService {
         +_repo: EmpireRepository
         +find_by_id(id) Empire|None
-        +find_all(offset, limit) list~Empire~
+        +find_all(offset, limit) tuple~list~Empire~,int~
         +count() int
         +save(empire) None
     }
     class EmpireRepository {
         <<Protocol>>
         +find_by_id(id) Empire|None
+        +find_all(offset, limit) list~Empire~
         +count() int
         +save(empire) None
     }
@@ -108,7 +109,7 @@ classDiagram
 3. `get_session()` が `app.state.async_sessionmaker` から `AsyncSession` を yield（request スコープ）
 4. `get_empire_repository(session)` が `SqliteEmpireRepository(session)` を生成
 5. `get_empire_service(repo)` が `EmpireService(repo)` を生成
-6. ルートハンドラが service を呼び出し、結果を Pydantic Response スキーマに変換して返す
+6. ルートハンドラが service を呼び出す。書き込み操作（POST/PUT/DELETE）の場合は router handler が `async with session.begin():` で Tx を開始してから service の `save()` を呼ぶ（Tx 境界は router handler が管理。service / repository 内で `commit()` / `rollback()` を呼ばない）。結果を Pydantic Response スキーマに変換して返す
 7. request 終了時に `get_session()` の finally で session を close
 
 ### ユースケース 3: エラー処理（例外→統一レスポンス変換）
@@ -184,7 +185,7 @@ sequenceDiagram
 
 | # | カテゴリ | 対応状況 |
 |---|---------|---------|
-| A01 | Broken Access Control | MVP は認証なし（loopback + シングルユーザー設計）。`BAKUFU_TRUST_PROXY=false` 既定で外部公開安全デフォルト禁止 |
+| A01 | Broken Access Control | MVP は認証なし（loopback + シングルユーザー設計）。**アクセス制御の主体は `BAKUFU_BIND_HOST=127.0.0.1`（loopback バインドによる外部到達不能化）**。`BAKUFU_TRUST_PROXY=false` は `X-Forwarded-For` 等プロキシヘッダを無視する制御であり、外部アクセス遮断とは独立した防御（混同禁止）|
 | A02 | Cryptographic Failures | loopback HTTP のみ。外部公開時は reverse proxy で TLS 終端（tech-stack.md 凍結済み）|
 | A03 | Injection | SQLAlchemy ORM + Pydantic v2 バリデーションで対応 |
 | A04 | Insecure Design | lifespan での確実な接続初期化。DI による session scope 明確化 |
@@ -205,5 +206,6 @@ sequenceDiagram
 |---------|---------|----------------|
 | `HTTPException` | `{"error":{"code":"HTTP_<status>","message":detail}}` に変換 | MSG-HAF-001 相当 |
 | `RequestValidationError` | HTTP 422 + `{"error":{"code":"VALIDATION_ERROR","message":"...","detail":[...]}}` | MSG-HAF-002 |
-| `sqlalchemy.exc.IntegrityError` | HTTP 409 + `{"error":{"code":"CONFLICT","message":"Resource already exists or FK violation"}}` | MSG-HAF-003 |
+| `sqlalchemy.exc.IntegrityError`（UNIQUE 違反） | HTTP 409 + `{"error":{"code":"CONFLICT","message":"..."}}` | MSG-HAF-003 |
+| `sqlalchemy.exc.IntegrityError`（FK 違反） | HTTP 409 + `{"error":{"code":"DEPENDENCY","message":"..."}}` | MSG-HAF-004 |
 | `Exception`（未捕捉） | HTTP 500 + `{"error":{"code":"INTERNAL_ERROR","message":"Internal server error"}}`。stdout にスタックトレース出力 | MSG-HAF-001 |

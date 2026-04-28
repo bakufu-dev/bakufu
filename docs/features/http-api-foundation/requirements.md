@@ -28,7 +28,7 @@
 | 項目 | 内容 |
 |------|------|
 | 入力 | FastAPI / SQLAlchemy / Pydantic が raise した例外 |
-| 処理 | `HTTPException` → `{"error":{"code":"HTTP_<status>","message":detail}}`。`RequestValidationError` → HTTP 422 `{"error":{"code":"VALIDATION_ERROR","message":"..."}}` + `detail` フィールドにフィールド別エラー。`sqlalchemy.exc.IntegrityError` → HTTP 409 `{"error":{"code":"CONFLICT","message":"..."}}`. `Exception`（その他）→ HTTP 500 `{"error":{"code":"INTERNAL_ERROR","message":"Internal server error"}}`（スタックトレースは stdout には出すが response には含めない） |
+| 処理 | `HTTPException` → `{"error":{"code":"HTTP_<status>","message":detail}}`。`RequestValidationError` → HTTP 422 `{"error":{"code":"VALIDATION_ERROR","message":"..."}}` + `detail` フィールドにフィールド別エラー。`sqlalchemy.exc.IntegrityError` → HTTP 409。UNIQUE 制約違反は `code: "CONFLICT"`（MSG-HAF-003）、FK 制約違反は `code: "DEPENDENCY"`（MSG-HAF-004）で判別して返す（判別方法は detailed-design.md §確定 E）。`Exception`（その他）→ HTTP 500 `{"error":{"code":"INTERNAL_ERROR","message":"Internal server error"}}`（スタックトレースは stdout には出すが response には含めない） |
 | 出力 | 統一エラー JSON レスポンス |
 | エラー時 | 該当なし — 理由: エラーハンドラ自体が例外を raise した場合は uvicorn がデフォルト 500 を返す |
 
@@ -116,7 +116,8 @@
 |----|------|----------------|---------|
 | MSG-HAF-001 | エラー | `Internal server error` | 未捕捉例外（HTTP 500）|
 | MSG-HAF-002 | エラー | `Validation error: <fields>` | RequestValidationError（HTTP 422）|
-| MSG-HAF-003 | エラー | `Conflict: <resource>` | IntegrityError（HTTP 409）|
+| MSG-HAF-003 | エラー | `Conflict: resource already exists` | UNIQUE 制約違反（重複作成, HTTP 409）|
+| MSG-HAF-004 | エラー | `Conflict: dependency constraint violation` | FK 制約違反（HTTP 409）|
 
 ## 依存関係
 
