@@ -158,8 +158,8 @@ room-repository PR #47 BUG-EMR-001 規約（`ORDER BY` は PK を tiebreaker に
 | 判断項目 | 採用 | 不採用 | 根拠 |
 |---------|------|-------|------|
 | Protocol method 数 | 6（empire 3 + Task 固有 3） | 2（find_by_id / save のみ） | count_by_status / count_by_room / find_blocked はダッシュボード + 障害隔離の確定要件、YAGNI ではない |
-| save() DELETE 戦略 | CASCADE 活用（3 段 DELETE → 3 親テーブル） | 全子テーブル明示 DELETE（6 段） | CASCADE を使うことで DELETE 段数を削減し、コード量と FK 制約の重複を避ける |
-| Alembic revision 方式 | 1 ファイル（0007_task_aggregate.py）に 6 テーブル + BUG-DRR-001 FK closure を全収録 | 7 ファイル分割 | 1 ファイル atomic migration。テーブル群が 1 Aggregate に属するため分割する業務理由なし |
+| save() DELETE 戦略 | CASCADE 活用（2 段 DELETE → 2 親テーブル、§BUG-TR-002 凍結済み） | 全子テーブル明示 DELETE（3 段） | CASCADE を使うことで DELETE 段数を削減し、コード量と FK 制約の重複を避ける |
+| Alembic revision 方式 | 1 ファイル（0007_task_aggregate.py）に 4 テーブル + BUG-DRR-001 FK closure を全収録（§BUG-TR-002 凍結済みのため conversations/conversation_messages 除外） | 7 ファイル分割 | 1 ファイル atomic migration。テーブル群が 1 Aggregate に属するため分割する業務理由なし |
 | `current_stage_id` FK | なし（Aggregate 境界 + application 層保証） | `workflow_stages.id` FK | Workflow Aggregate と Task Aggregate の Aggregate 境界。ON DELETE 選択肢がどれも不整合（§確定 R1-G） |
 
 ## 関連 Issue / PR
