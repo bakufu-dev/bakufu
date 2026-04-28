@@ -167,7 +167,7 @@ classDiagram
 
 1. application 層が `task.block(reason, last_error)` で新 Task インスタンスを取得（status=BLOCKED, last_error='...'）
 2. `TaskRepository.save(updated_task)` を呼び出す
-3. §確定 R1-B の 9 段階で tasks UPSERT（status / last_error / updated_at 更新）
+3. §確定 R1-B の 6 段階で tasks UPSERT（status / last_error / updated_at 更新）
 4. 成功: `None` 返却
 
 ## シーケンス図
