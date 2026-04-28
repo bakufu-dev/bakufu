@@ -1,7 +1,7 @@
 # テスト設計書
 
-<!-- feature: agent-repository -->
-<!-- 配置先: docs/features/agent-repository/test-design.md -->
+<!-- feature: agent / sub-feature: repository -->
+<!-- 配置先: docs/features/agent/repository/test-design.md -->
 <!-- 対象範囲: REQ-AGR-001〜005 / 受入基準 1〜12 / 詳細設計 §確定 A〜I / Schneier #3 実適用物理確認 -->
 
 本 feature は M2 永続化基盤の上で動く Agent Aggregate Repository。empire-repo (PR #29/#30) / workflow-repo (PR #41) と同じ規約で、**最初から 4 ファイル分割** で test を構成（Norman R-N1 教訓継承）。**`test_masking_persona.py` が Schneier #3 実適用の物理確認を担う本 PR 固有のテストファイル**。
