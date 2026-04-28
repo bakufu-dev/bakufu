@@ -1,4 +1,4 @@
-# 要求分析書
+# 業務仕様書（feature-spec）— Empire
 
 > feature: `empire`（業務概念単位）
 > sub-features: [`domain/`](domain/) | [`repository/`](repository/) | http-api（将来）| ui（将来）
@@ -7,7 +7,7 @@
 
 ## 本書の役割
 
-本書は **Empire という業務概念全体** で「誰が・何のために・どうなれば成功か」を凍結する。観察主体（個人開発者 CEO）から見て **観察可能な業務ふるまい** を、実装レイヤー（domain / repository / http-api / ui）に依存せず定義する。
+本書は **Empire という業務概念全体の業務仕様** を凍結する。bakufu 全体の要求分析（[`docs/analysis/`](../../analysis/)）を Empire という業務概念で具体化し、ペルソナ（個人開発者 CEO）から見て **観察可能な業務ふるまい** を実装レイヤー（domain / repository / http-api / ui）に依存せず定義する。Vモデル正規工程では **要件定義（業務）** 相当（システムテスト ↔ [`system-test-design.md`](system-test-design.md)）。
 
 各 sub-feature（[`domain/`](domain/) / [`repository/`](repository/) / 将来の http-api / ui）は本書を **業務根拠の真実源** として参照する。各 sub-feature は本書の業務ルール R1-X を実装方針 §確定 A〜Z として展開し、本書には逆流させない（本書の更新は別 PR で先行する）。
 
