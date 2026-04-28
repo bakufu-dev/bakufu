@@ -1,7 +1,7 @@
 # 要件定義書
 
 > feature: `empire-repository`
-> 関連: [requirements-analysis.md](requirements-analysis.md) / [`docs/features/persistence-foundation/`](../persistence-foundation/) / [`docs/features/empire/`](../empire/)
+> 関連: [feature-spec.md](../feature-spec.md) / [`docs/features/persistence-foundation/`](../../persistence-foundation/) / [`docs/features/empire/`](../domain/)
 
 ## 機能要件
 

@@ -1,7 +1,7 @@
 # 基本設計書
 
 > feature: `empire-repository`
-> 関連: [requirements.md](requirements.md) / [`docs/features/persistence-foundation/`](../persistence-foundation/) / [`docs/features/empire/`](../empire/)
+> 関連: [requirements.md](requirements.md) / [`docs/features/persistence-foundation/`](../../persistence-foundation/) / [`docs/features/empire/`](../domain/)
 
 ## 記述ルール（必ず守ること）
 
@@ -208,7 +208,7 @@ sequenceDiagram
 
 ### 脅威モデル
 
-詳細な信頼境界は [`docs/design/threat-model.md`](../../design/threat-model.md)。本 feature 範囲では以下の 2 件。
+詳細な信頼境界は [`docs/design/threat-model.md`](../../../design/threat-model.md)。本 feature 範囲では以下の 2 件。
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|

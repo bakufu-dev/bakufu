@@ -1,7 +1,25 @@
 # 要件定義書
 
-<!-- feature 単位で 1 ファイル。requirements-analysis.md の機能一覧（REQ-XX-NNN）を 1 件ずつ「入力 / 処理 / 出力 / エラー時」の 4 観点で詳細化する。 -->
+<!-- feature 単位で 1 ファイル。feature-spec.md のユースケース（UC-XX-NNN）を業務要件 REQ-XX-NNN として「入力 / 処理 / 出力 / エラー時」の 4 観点で詳細化する。 -->
 <!-- 配置先: docs/features/<feature-name>/requirements.md -->
+
+## 本書の役割
+
+本書は **業務要件の入出力契約を凍結する**。feature-spec.md のユースケースを「ペルソナ視点で何を入れたら何が返るか」のレベルで詳細化する。
+
+**書くこと**:
+- 各 REQ の入力（業務的なパラメータ名・制約）
+- 各 REQ の処理（**業務記述**: "重複チェック → OK なら追加" レベル。実装手順ではない）
+- 各 REQ の出力 / エラー時の返り
+- ユーザー向けメッセージの種別と表示条件
+- 公開エントリポイント外形（CLI / UI / API）
+
+**書かないこと**（後段の設計書へ追い出す）:
+- 実装手順（Pydantic コンストラクタ / model_validator / model_dump など）→ [`basic-design.md`](basic-design.md) §処理フロー / [`detailed-design.md`](detailed-design.md) §確定事項
+- 内部メソッドの呼び出し順 → [`basic-design.md`](basic-design.md) §処理フロー
+- 確定文言（`[FAIL] xxx must be ...`）→ [`detailed-design.md`](detailed-design.md) §MSG 確定文言表
+
+REQ-XX-NNN は feature-spec.md §5 ユースケース UC-XX-NNN と 1:1 または N:1 で対応する（孤児要件を作らない）。
 
 ## 機能要件
 
@@ -23,7 +41,7 @@
 | 出力 | ... |
 | エラー時 | ... |
 
-<!-- requirements-analysis.md の機能一覧に列挙された REQ-XX-NNN を全件詳細化する。孤児要件を作らない。 -->
+<!-- feature-spec.md の機能一覧に列挙された REQ-XX-NNN を全件詳細化する。孤児要件を作らない。 -->
 
 ## 画面・CLI 仕様
 

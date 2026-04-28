@@ -1,8 +1,24 @@
-# 要求分析書
+# 業務仕様書（feature-spec）
 
 <!-- feature 単位で 1 ファイル。新規 feature ならこのテンプレートをコピーし、既存 feature ならファイルを READ→EDIT。 -->
-<!-- 配置先: docs/features/<feature-name>/requirements-analysis.md -->
-<!-- 本書はどんな課題に対し何を作るかを凍結する。設計判断の根拠（採用・却下・確定事項）を残し、後段の requirements.md / basic-design.md / detailed-design.md が参照する真実源とする。 -->
+<!-- 配置先: docs/features/<feature-name>/feature-spec.md -->
+
+## 本書の役割
+
+本書は **業務概念単位の業務仕様** を凍結する。bakufu 全体の要求分析（[`docs/analysis/`](../../analysis/)）を当該業務概念で具体化し、ペルソナが観察可能な業務ふるまいとして定義する。Vモデル正規工程では **要件定義（業務）** 相当（システムテスト ↔ `system-test-design.md`）。
+
+**書くこと**:
+- ペルソナがこの業務概念で達成できるようになる行為（ユースケース UC-XX-NNN）
+- 業務ルール（重複拒否・容量上限・保護対象 等、確定 R1-X として凍結）
+- 観察可能な事象としての受入基準（システムテストの真実源）
+
+**書かないこと**（後段の設計書・別ディレクトリへ追い出す）:
+- 採用する技術スタック → [`docs/design/tech-stack.md`](../../design/tech-stack.md) / sub-feature の `basic-design.md`
+- 実装方式の比較・選定議論 → sub-feature の `detailed-design.md`
+- 内部 API 形・メソッド名・属性名・型 → sub-feature の `basic-design.md` / `detailed-design.md`
+- pyright strict / カバレッジ閾値 → §開発者品質基準（CI 担保、業務要求とは分離）
+
+---
 
 ## 人間の要求
 

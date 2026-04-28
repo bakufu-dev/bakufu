@@ -4,11 +4,26 @@
 <!-- feature 単位で 1 ファイル。requirements.md の機能要件をどう実装するかを「モジュール構成 / 処理フロー / セキュリティ」の観点で凍結する。 -->
 <!-- 配置先: docs/features/<feature-name>/basic-design.md -->
 
+## 本書の役割
+
+本書は **構造契約と処理フローを凍結する**。requirements.md の業務要件を「どのモジュールが・どの順で・何を担うか」のレベルで凍結する。
+
+**書くこと**:
+- モジュール構成（機能 ID → ディレクトリ → 責務）
+- クラス設計（概要、属性は名前のみ列挙、型・制約は detailed-design.md）
+- 処理フロー（ユースケース単位で「pre-validate 方式で再構築」などの**設計戦略レベル**まで）
+- シーケンス図 / 脅威モデル / エラーハンドリング方針
+
+**書かないこと**（後段の設計書へ追い出す）:
+- メソッド呼び出しの細部（`model_dump(mode='python')` / `Empire.model_validate(...)` など）→ [`detailed-design.md`](detailed-design.md) §確定事項
+- 属性の型・制約 → [`detailed-design.md`](detailed-design.md) §クラス設計（詳細）
+- MSG 確定文言 → [`detailed-design.md`](detailed-design.md) §MSG 確定文言表
+
 ## 記述ルール（必ず守ること）
 
 基本設計に**疑似コード・サンプル実装（python/ts/sh/yaml 等の言語コードブロック）を書くな**。
 ソースコードと二重管理になりメンテナンスコストしか生まない。
-必要なのは構造契約（クラス・モジュール・データの関係）であり、実装の細部は detailed-design.md で凍結する。
+必要なのは構造契約（クラス・モジュール・データの関係）であり、実装の細部は [`detailed-design.md`](detailed-design.md) で凍結する。
 
 ## モジュール構成
 

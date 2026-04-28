@@ -14,11 +14,11 @@ cp -r docs/features/_template docs/features/$NAME
 
 | 順 | ファイル | 役割 | 着手タイミング |
 |----|----|----|----|
-| 1 | `requirements-analysis.md` | 人間の要求 → 痛点 → 議論結果 → ペルソナ → 機能一覧 → 受入基準 | feature 起票直後 |
-| 2 | `requirements.md` | REQ-XX-NNN を入力/処理/出力/エラー時で詳細化 + MSG-XX-NNN 一覧 | requirements-analysis.md がオーナー承認後 |
-| 3 | `basic-design.md` | モジュール構成 + クラス概要 + 処理フロー + シーケンス + 脅威モデル | requirements.md がオーナー承認後 |
-| 4 | `detailed-design.md` | 構造契約詳細 + MSG 確定文言 + キー構造 + API 詳細 | basic-design.md がオーナー承認後 |
-| 5 | `test-design.md` | テストマトリクス + E2E / 結合 / ユニットテストケース | detailed-design.md と並行作成可 |
+| 1 | `feature-spec.md` | **業務要求の凍結**。観察可能なユースケース UC-XX-NNN + 業務ルール確定 R1-X + 受入基準（観察可能な事象） | feature 起票直後 |
+| 2 | `requirements.md` | **業務要件の入出力契約**。UC-XX-NNN を REQ-XX-NNN として入力/処理/出力/エラー時で詳細化 + MSG-XX-NNN 一覧 | feature-spec.md がオーナー承認後 |
+| 3 | `basic-design.md` | **構造契約と処理フロー**。モジュール構成 + クラス設計（概要）+ 処理フロー + 脅威モデル | requirements.md がオーナー承認後 |
+| 4 | `detailed-design.md` | **実装契約の凍結**。構造契約詳細 + 確定 A〜Z（実装方針）+ MSG 確定文言 + キー構造 + API 詳細 | basic-design.md がオーナー承認後 |
+| 5 | `test-design.md` | **トレーサビリティと検証戦略**。テストマトリクス + E2E / 結合 / ユニットテストケース | detailed-design.md と並行作成可 |
 
 ## ファイル単位の規律
 
@@ -31,7 +31,8 @@ cp -r docs/features/_template docs/features/$NAME
 
 | プレフィックス | 用途 |
 |----|----|
-| `REQ-XX-NNN` | 機能要件（XX は feature 略号 2 文字、NNN は 3 桁連番） |
+| `UC-XX-NNN` | ユースケース（feature-spec.md §5、観察可能な業務ふるまい）。XX は feature 略号 2 文字、NNN は 3 桁連番 |
+| `REQ-XX-NNN` | 機能要件（requirements.md §機能要件、UC を入出力契約として詳細化） |
 | `MSG-XX-NNN` | ユーザー向けメッセージ |
 | `TC-UT-NNN` | ユニットテストケース |
 | `TC-IT-NNN` | 結合テストケース |

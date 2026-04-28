@@ -1,7 +1,7 @@
 # 要件定義書
 
 > feature: `empire`
-> 関連: [requirements-analysis.md](requirements-analysis.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Empire
+> 関連: [feature-spec.md](../feature-spec.md) / [`docs/design/domain-model/aggregates.md`](../../../design/domain-model/aggregates.md) §Empire
 
 ## 機能要件
 
@@ -10,45 +10,45 @@
 | 項目 | 内容 |
 |------|------|
 | 入力 | `id: EmpireId`（UUIDv4）、`name: str`（1〜80 文字） |
-| 処理 | Pydantic v2 BaseModel コンストラクタが引数バリデーション → `model_validator(mode='after')` が不変条件を検査 → 通過時のみ Empire インスタンスを生成 |
-| 出力 | `Empire` インスタンス（`rooms=[]` / `agents=[]` / `archived=False` で初期化） |
-| エラー時 | `EmpireInvariantViolation` を raise。MSG-EM-001 を例外メッセージに格納 |
+| 処理 | 入力（id / name）を業務ルール R1-1（[`feature-spec.md §7`](../feature-spec.md)）に照らして検査 → 通過時のみ Empire を新規構築（rooms / agents は空の状態で構築） |
+| 出力 | `Empire` インスタンス（rooms / agents が空の状態） |
+| エラー時 | 業務ルール R1-1 違反（name 範囲外）で `EmpireInvariantViolation` を raise（MSG-EM-001） |
 
 ### REQ-EM-002: Agent 採用
 
 | 項目 | 内容 |
 |------|------|
 | 入力 | `agent_ref: AgentRef`（`agent_id`, `name`, `role` を含む VO） |
-| 処理 | 1) 現 `agents` リストに `agent_ref` を追加した新リストを構築 2) `self.model_dump(mode='python')` で現状を dict 化し `agents` を新リストに差し替え 3) `Empire.model_validate(updated_dict)` で仮 Empire を再構築（`model_validator(mode='after')` で不変条件検査） 4) OK なら新 Empire を返す（`model_copy` は `validate=False` 既定のため不採用、詳細は [detailed-design.md](detailed-design.md) §確定 A）|
+| 処理 | 既採用一覧と照らして `agent_id` の重複（業務ルール R1-2）および容量上限（業務ルール R1-6）を検査 → 通過時のみ採用（既採用一覧に追加した新 Empire を返す）。実装方針は [`basic-design.md §処理フロー`](basic-design.md) / [`detailed-design.md §確定 A`](detailed-design.md) |
 | 出力 | `agent_ref.agent_id`（追加された Agent の ID） + 更新された Empire（呼び出し側が受け取る） |
-| エラー時 | 同一 `agent_id` が既存なら `EmpireInvariantViolation`（MSG-EM-002）。raise 時、元の Empire は変化していないことを保証 |
+| エラー時 | 業務ルール R1-2 違反（`agent_id` 重複）または R1-6 違反（容量超過）で `EmpireInvariantViolation`（MSG-EM-002 / MSG-EM-005）を raise。失敗時、元の Empire は変化しない（pre-validate 方式の保証） |
 
 ### REQ-EM-003: Room 設立
 
 | 項目 | 内容 |
 |------|------|
 | 入力 | `room_ref: RoomRef`（`room_id`, `name`, `archived=False` で初期化済み） |
-| 処理 | REQ-EM-002 と同手順（pre-validate 方式）で `rooms` リストに追加 |
+| 処理 | 既設立一覧と照らして `room_id` の重複(業務ルール R1-3)および容量上限(業務ルール R1-6)を検査 → 通過時のみ設立(既設立一覧に追加した新 Empire を返す) |
 | 出力 | `room_ref.room_id` + 更新された Empire |
-| エラー時 | 同一 `room_id` が既存なら `EmpireInvariantViolation`（MSG-EM-003） |
+| エラー時 | 業務ルール R1-3 違反（`room_id` 重複）または R1-6 違反（容量超過）で `EmpireInvariantViolation`（MSG-EM-003 / MSG-EM-005）を raise。失敗時、元の Empire は変化しない |
 
 ### REQ-EM-004: Room アーカイブ
 
 | 項目 | 内容 |
 |------|------|
 | 入力 | `room_id: RoomId` |
-| 処理 | 1) `rooms` 中で `room_id` 一致する RoomRef を検索 2) 見つかったら `archived=True` の新 RoomRef に置換した `rooms` リストを構築 3) 仮 Empire を構築・検査 4) OK なら新 Empire を返す。物理削除はしない（履歴保持） |
+| 処理 | 既設立一覧から該当する Room を検索 → 見つかれば archived フラグを立てた状態に置換した新 Empire を返す（業務ルール R1-4 により物理削除はしない、履歴保持）。見つからなければ拒否 |
 | 出力 | 更新された Empire |
-| エラー時 | `room_id` が見つからない場合 `EmpireInvariantViolation`（MSG-EM-004） |
+| エラー時 | `room_id` が既設立一覧に存在しない場合 `EmpireInvariantViolation`（MSG-EM-004）を raise。失敗時、元の Empire は変化しない |
 
 ### REQ-EM-005: 不変条件検査
 
 | 項目 | 内容 |
 |------|------|
 | 入力 | Empire インスタンス（コンストラクタ末尾 / 状態変更ふるまい末尾で自動呼び出し） |
-| 処理 | `model_validator(mode='after')` が以下を検査: ①`name` 1〜80 文字 ②`agents` 内 `agent_id` の重複なし ③`rooms` 内 `room_id` の重複なし |
+| 処理 | 以下を検査: ① name 範囲（業務ルール R1-1）② `agent_id` の重複なし（R1-2）③ `room_id` の重複なし（R1-3）④ 採用済み一覧 / 設立済み一覧の容量上限（R1-6） |
 | 出力 | None（検査通過） |
-| エラー時 | いずれか違反で `EmpireInvariantViolation` を raise（Pydantic の `ValidationError` ではなく独自例外として明示的に raise） |
+| エラー時 | いずれか違反で `EmpireInvariantViolation` を raise。違反種別は `kind` フィールドに格納（詳細は [`detailed-design.md §クラス設計（詳細）`](detailed-design.md)） |
 
 ## 画面・CLI 仕様
 
@@ -70,7 +70,7 @@
 
 ## データモデル
 
-凍結済み設計（[`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Empire）に従う。本 feature で確定する追加・変更は以下の通り。
+凍結済み設計（[`docs/design/domain-model/aggregates.md`](../../../design/domain-model/aggregates.md) §Empire）に従う。本 feature で確定する追加・変更は以下の通り。
 
 | エンティティ | 属性 | 型 | 制約 | 関連 |
 |-------------|------|---|------|------|
@@ -85,7 +85,7 @@
 | AgentRef | `name` | `str` | 1〜40 文字（Agent の name と同一規格） | — |
 | AgentRef | `role` | `Role` | 列挙型 | — |
 
-`EmpireId` / `RoomId` / `AgentId` / `Role` は `domain/value_objects.py` 既存定義（[`domain-model/value-objects.md`](../../design/domain-model/value-objects.md)）を参照。
+`EmpireId` / `RoomId` / `AgentId` / `Role` は `domain/value_objects.py` 既存定義（[`domain-model/value-objects.md`](../../../design/domain-model/value-objects.md)）を参照。
 
 ## ユーザー向けメッセージ一覧
 
@@ -104,7 +104,7 @@
 | 区分 | 依存 | バージョン方針 | 導入経路 | 備考 |
 |-----|------|-------------|---------|------|
 | ランタイム | Python 3.12+ | pyproject.toml | uv | 既存 |
-| Python 依存 | `pydantic` v2 | `pyproject.toml` | uv | 既存（[`tech-stack.md`](../../design/tech-stack.md)）|
+| Python 依存 | `pydantic` v2 | `pyproject.toml` | uv | 既存（[`tech-stack.md`](../../../design/tech-stack.md)）|
 | Python 依存 | `pyright` (strict) | `pyproject.toml` dev | uv tool | 既存 |
 | Python 依存 | `ruff` | 同上 | uv tool | 既存 |
 | Python 依存 | `pytest` / `pytest-cov` | `pyproject.toml` dev | uv | 既存 |

@@ -1,7 +1,7 @@
 # 基本設計書
 
 > feature: `empire`
-> 関連: [requirements.md](requirements.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Empire
+> 関連: [requirements.md](requirements.md) / [`docs/design/domain-model/aggregates.md`](../../../design/domain-model/aggregates.md) §Empire
 
 ## 記述ルール（必ず守ること）
 
@@ -77,18 +77,16 @@ classDiagram
 ### ユースケース 1: Empire 構築
 
 1. application 層が `Empire(id=..., name=...)` を呼び出す
-2. Pydantic v2 のフィールドバリデーションが `id` の UUID 形式と `name` の長さを検証
-3. `model_validator(mode='after')` が不変条件（重複なしは初期空リストのため自動成立）を確認
+2. 入力バリデーション（型・必須・名前長範囲、業務ルール R1-1）を実施
+3. 不変条件検査（業務ルール R1-1〜3, R1-6）を実施。初期は採用 / 設立リストが空のため重複・容量は自動成立
 4. valid なら Empire インスタンスを返す。違反なら `EmpireInvariantViolation` を raise
 
 ### ユースケース 2: Agent 採用（hire_agent）
 
 1. application 層が `empire.hire_agent(agent_ref)` を呼び出す
-2. `empire.model_dump(mode='python')` で現状を dict 化
-3. dict 内の `agents` を `agent_ref` を append した新リストに差し替え
-4. `Empire.model_validate(updated_dict)` で仮 Empire を再構築
-5. 再構築過程で `model_validator(mode='after')` が走り、`agent_id` の重複・容量上限を検査
-6. 通過時のみ仮 Empire を返す。違反なら `EmpireInvariantViolation` を raise（元 Empire は不変なので「ロールバック」不要）
+2. pre-validate 方式で「既採用一覧に追加された仮 Empire」を再構築（実装手順は [`detailed-design.md §確定 A`](detailed-design.md)）
+3. 再構築の過程で不変条件検査が走り、`agent_id` の重複（業務ルール R1-2）と容量上限（R1-6）を検査
+4. 通過時のみ仮 Empire を返す。違反なら `EmpireInvariantViolation` を raise（元 Empire は不変なので「ロールバック」不要）
 
 ### ユースケース 3: Room 設立（establish_room）
 
@@ -97,12 +95,10 @@ classDiagram
 ### ユースケース 4: Room アーカイブ（archive_room）
 
 1. application 層が `empire.archive_room(room_id)` を呼び出す
-2. `rooms` 中で `room_id` 一致する RoomRef を線形探索
+2. 既設立一覧で `room_id` 一致する RoomRef を線形探索（[`detailed-design.md §確定 D`](detailed-design.md)）
 3. 見つからない場合は `EmpireInvariantViolation` を raise（MSG-EM-004）
-4. 見つかった場合は対象 RoomRef の dict を `model_dump()` で取り出し、`archived=True` に更新して `RoomRef.model_validate(...)` で新 RoomRef を再構築
-5. `rooms` リストの該当要素を新 RoomRef に置換した新リストを構築
-6. `empire.model_dump(mode='python')` で現状を dict 化し、`rooms` を新リストに差し替え、`Empire.model_validate(updated_dict)` で仮 Empire を再構築
-7. 仮 Empire の不変条件検査を通過したら返す
+4. 見つかった場合は pre-validate 方式で対象 RoomRef の `archived=True` に置換した仮 Empire を再構築（[`detailed-design.md §確定 A`](detailed-design.md)）
+5. 仮 Empire の不変条件検査を通過したら返す
 
 ## シーケンス図
 
@@ -113,14 +109,12 @@ sequenceDiagram
     participant Validator as model_validator
 
     App->>Empire: hire_agent(agent_ref)
-    Empire->>Empire: model_dump() to get current dict
-    Empire->>Empire: build new agents list (append agent_ref)
-    Empire->>Empire: Empire.model_validate(updated_dict)
-    Empire->>Validator: model_validator(mode='after') runs
+    Empire->>Empire: pre-validate 方式で仮 Empire を再構築
+    Empire->>Validator: 業務ルール R1-2（重複） / R1-6（容量）を検査
     alt 不変条件 OK
         Validator-->>Empire: pass
         Empire-->>App: new Empire instance
-    else 不変条件違反
+    else 業務ルール違反
         Validator-->>Empire: raise EmpireInvariantViolation
         Empire-->>App: exception (original empire unchanged)
     end
@@ -154,7 +148,7 @@ sequenceDiagram
 
 ### 脅威モデル
 
-本 feature は domain 層のため、ほぼすべての攻撃面は HTTP API レイヤ / 添付配信レイヤで対処される（[`docs/design/threat-model.md`](../../design/threat-model.md) 参照）。本 feature 範囲では以下の 2 件に絞る。
+本 feature は domain 層のため、ほぼすべての攻撃面は HTTP API レイヤ / 添付配信レイヤで対処される（[`docs/design/threat-model.md`](../../../design/threat-model.md) 参照）。本 feature 範囲では以下の 2 件に絞る。
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|
@@ -178,7 +172,7 @@ sequenceDiagram
 
 ## ER 図
 
-該当なし — 理由: 本 feature は domain 層のみで永続化スキーマは含まない。Empire の永続化は `feature/persistence` で扱う。永続化スキーマの方針は [`docs/design/domain-model.md`](../../design/domain-model.md) §残課題 を参照。
+該当なし — 理由: 本 feature は domain 層のみで永続化スキーマは含まない。Empire の永続化は `feature/persistence` で扱う。永続化スキーマの方針は [`docs/design/domain-model.md`](../../../design/domain-model.md) §残課題 を参照。
 
 ```mermaid
 erDiagram
