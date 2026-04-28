@@ -1,13 +1,31 @@
 # 基本設計書
 
-> feature: `room-repository`
-> 関連: [requirements.md](requirements.md) / [`docs/features/empire-repository/`](../empire-repository/) **テンプレート真実源** / [`docs/features/workflow-repository/`](../workflow-repository/) **2 件目テンプレート** / [`docs/features/agent-repository/`](../agent-repository/) **3 件目テンプレート** / [`docs/features/room/`](../room/)
+> feature: `room` / sub-feature: `repository`
+> 関連: [feature-spec.md](../feature-spec.md) / [`docs/features/empire-repository/`](../../empire-repository/) **テンプレート真実源** / [`docs/features/workflow-repository/`](../../workflow-repository/) **2 件目テンプレート** / [`docs/features/agent-repository/`](../../agent-repository/) **3 件目テンプレート** / [`domain/`](../domain/)
 
 ## 記述ルール（必ず守ること）
 
 基本設計に**疑似コード・サンプル実装（python/ts/sh/yaml 等の言語コードブロック）を書かない**。
 ソースコードと二重管理になりメンテナンスコストしか生まない。
 必要なのは構造契約（クラス・モジュール・データの関係）であり、実装の細部は [detailed-design.md](detailed-design.md) で凍結する。
+
+## §モジュール契約（機能要件 REQ-RR-001〜006）
+
+> 本 §は親 [`feature-spec.md`](../feature-spec.md) §9 受入基準と紐付く機能要件を凍結する。
+
+| 要件 ID | 要件 | 入力 | 処理 | 出力 | エラー時 |
+|--------|------|------|------|------|---------|
+| REQ-RR-001 | `RoomRepository` Protocol を `application/ports/room_repository.py` に定義する | — | `find_by_id` / `count` / `save(room, empire_id)` / `find_by_name` の 4 method を `async def` で宣言、`@runtime_checkable` なし | Protocol 型 | — |
+| REQ-RR-002 | `SqliteRoomRepository` が `RoomRepository` Protocol を満たす | `AsyncSession` | 4 method を SQLite + SQLAlchemy AsyncSession で実装 | Protocol 充足（pyright strict pass） | — |
+| REQ-RR-003 | `save(room, empire_id)` が同一 Tx 内で rooms UPSERT + room_members DELETE/INSERT を行う | `Room`, `EmpireId` | (1) rooms UPSERT（`prompt_kit_prefix_markdown` は `MaskedText` 経由でマスキング）、(2) room_members DELETE、(3) room_members bulk INSERT | None（Tx は呼び出し側 service が `async with session.begin()` で管理） | `sqlalchemy.IntegrityError` を上位伝播 |
+| REQ-RR-004 | Alembic revision `0005_room_aggregate` で 2 テーブル + UNIQUE + INDEX + FK 3 件 + `empire_room_refs.room_id` FK closure を追加する | Alembic `upgrade head` | `rooms` / `room_members` テーブル作成、非 UNIQUE INDEX(empire_id, name)、`op.batch_alter_table` で BUG-EMR-001 FK closure | Migration 適用成功 | `alembic.util.exc.CommandError` / `sqlalchemy.exc.OperationalError` |
+| REQ-RR-005 | CI 三層防衛で `rooms.prompt_kit_prefix_markdown` の `MaskedText` 必須を物理保証する | `scripts/ci/check_masking_columns.sh` + `test_masking_columns.py` + `storage.md` | Layer 1 grep / Layer 2 arch test parametrize / Layer 3 storage.md 逆引き表を更新 | CI 7 ジョブ全緑 | grep miss / arch test fail → PR ブロック |
+| REQ-RR-006 | `docs/features/empire-repository/detailed-design.md` §Known Issues §BUG-EMR-001 を FK closure 完了に同期する | 設計書更新 | BUG-EMR-001 RESOLVED marker 追記 + `empire_room_refs` FK 完了記録 | 設計書更新コミット | — |
+
+**依存先**:
+- 親 [`feature-spec.md`](../feature-spec.md) §3 業務ルール R1-7〜R1-9（永続化保持 / Empire 内 name 一意 / PromptKit masking）
+- [`domain/`](../domain/) sub-feature の `Room` / `PromptKit` / `AgentMembership` Aggregate（M1 マージ済み）
+- `feature/persistence-foundation`（`MaskedText` TypeDecorator + room §確定 G hook 構造）
 
 ## モジュール構成
 
@@ -23,7 +41,7 @@
 | 共通 | tables/rooms.py / room_members.py | `backend/src/bakufu/infrastructure/persistence/sqlite/tables/` | 新規 2 ファイル |
 
 ```
-ディレクトリ構造（本 feature で追加・変更されるファイル）:
+ディレクトリ構造（本 sub-feature で追加・変更されるファイル）:
 
 .
 ├── backend/
@@ -60,13 +78,14 @@
 │   └── ci/
 │       └── check_masking_columns.sh                # 既存更新: Room 2 テーブル明示登録
 └── docs/
-    ├── architecture/
+    ├── design/
     │   └── domain-model/
     │       └── storage.md                          # 既存更新: 逆引き表に Room 行追加
     └── features/
         ├── empire-repository/
         │   └── detailed-design.md                  # 既存更新: BUG-EMR-001 FK closure 完了同期
-        └── room-repository/                        # 本 feature 設計書 5 本
+        └── room/
+            └── repository/                         # 本 sub-feature 設計書 3 本
 ```
 
 ## クラス設計（概要）
@@ -92,7 +111,6 @@ classDiagram
     class Room {
         <<Aggregate Root>>
         +id: RoomId
-        +empire_id: EmpireId
         +workflow_id: WorkflowId
         +name: str
         +description: str
@@ -118,15 +136,13 @@ classDiagram
 
 ##### `Room` Aggregate に `empire_id` を含めない理由（room domain 設計の継承）
 
-room/detailed-design.md L41-49 で `Room` Aggregate Root の属性に `empire_id` は**含まれていない**（agent と異なる）。これは room §確定で「Room の所属 Empire は Empire Aggregate の `rooms: list[RoomRef]` 経由で表現される」と凍結されたため。
+[`domain/detailed-design.md`](../domain/detailed-design.md) §クラス設計（詳細）で `Room` Aggregate Root の属性に `empire_id` は**含まれていない**（agent と異なる）。これは room §確定で「Room の所属 Empire は Empire Aggregate の `rooms: list[RoomRef]` 経由で表現される」と凍結されたため。
 
 しかし Repository 永続化では:
 - `find_by_id` で Room を取得した application 層が「この Room はどの Empire のものか」を即座に知るには **`empire_id` カラムが rooms 行に必要**（毎回 empire_room_refs を逆引きするのは N+1）
 - `find_by_name(empire_id, name)` の SELECT が `WHERE empire_id=? AND name=?` で動くには `rooms.empire_id` が必要
 
-そのため、**rows 層では `rooms.empire_id` カラムを持つが Aggregate `Room` には属性として現れない**。`_to_row` は `Empire` Aggregate から `rooms` を取り出した呼び出し元 service が引数で `empire_id` を渡す形（後述シーケンス図 L141-144）。
-
-詳細は [detailed-design.md §確定 R1-H](detailed-design.md) で `_to_row(room, empire_id)` 契約として凍結する。
+そのため、**rows 層では `rooms.empire_id` カラムを持つが Aggregate `Room` には属性として現れない**。`_to_row` は `Empire` Aggregate から `rooms` を取り出した呼び出し元 service が引数で `empire_id` を渡す形（詳細設計 §確定 R1-H）。
 
 ## 処理フロー
 
@@ -166,7 +182,7 @@ room/detailed-design.md L41-49 で `Room` Aggregate Root の属性に `empire_id
 ### ユースケース 4: Room の更新（save 経路、prompt_kit / members 変更等）
 
 1. application 層が `find_by_id(room_id)` で既存 Room を取得
-2. service が Room のドメイン操作（例: `room.update_prompt_kit(...)` / `room.add_member(...)`）で新 Room を構築（pre-validate 方式、room PR #22 で凍結）
+2. service が Room のドメイン操作（例: `room.update_prompt_kit(...)` / `room.add_member(...)`）で新 Room を構築（pre-validate 方式、domain PR で凍結）
 3. service が `RoomRepository.save(updated_room, empire_id=empire_id)` を呼ぶ
 4. ユースケース 1 と同じ手順で同一 Tx 内に delete-then-insert
 
@@ -213,14 +229,12 @@ sequenceDiagram
 
 - `docs/design/domain-model.md` への変更: なし
 - `docs/design/domain-model/storage.md` への変更: **§逆引き表に Room 関連 2 行追加 + 既存 `PromptKit.prefix_markdown` 行を本 PR で実適用済みに更新**（§確定 R1-G、本 PR で同一コミット）
-- `docs/design/domain-model/aggregates.md` への変更: なし（Room §定義は既存 PR #22 で凍結済み）
-- `docs/design/migration-plan.md` への変更: なし（Room の Postgres 移行論点は本 PR 範囲外、ただし `op.batch_alter_table` の SQLite 特化挙動は将来の Postgres 移行時に Postgres ネイティブ ALTER TABLE で代替可能なため migration-plan.md §TODO-MIG-NNN への追記は不要）
-- `docs/design/tech-stack.md` への変更: なし
+- `docs/design/domain-model/aggregates.md` への変更: なし（Room §定義は既存 PR で凍結済み）
 - 既存 feature への波及:
-  - `feature/persistence-foundation`（PR #23）の `MaskedText` TypeDecorator + room §確定 G hook 構造の上に乗る、本 PR で実適用配線
-  - `feature/empire-repository`（PR #29 / #30）+ `feature/workflow-repository`（PR #41）+ `feature/agent-repository`（PR #45）テンプレート踏襲
+  - `feature/persistence-foundation`（`MaskedText` TypeDecorator + room §確定 G hook 構造）の上に乗る、本 PR で実適用配線
+  - `feature/empire-repository` + `feature/workflow-repository` + `feature/agent-repository` テンプレート踏襲
   - `feature/empire-repository` 設計書を**本 PR で同期更新**（§Known Issues §BUG-EMR-001 FK closure 完了 + §`empire_room_refs` テーブル §FK を張らない理由 → 完了済み更新、REQ-RR-006）
-  - `feature/room`（PR #22）の domain 層 Room / PromptKit / AgentMembership / RoomInvariantViolation を import するのみ、room 設計書は変更しない（room §確定 G 申し送りが「本 PR で実適用」なので、room/detailed-design.md L81 の文言更新は **設計書として正確に「実適用済み」を反映するため許容**だが、本 PR では room/detailed-design.md は触らず room-repository 側で完結させる方針）
+  - [`domain/`](../domain/) sub-feature の `Room` / `PromptKit` / `AgentMembership` / `RoomInvariantViolation` を import するのみ、domain 設計書は変更しない
 
 ## 外部連携
 
@@ -244,7 +258,7 @@ sequenceDiagram
 
 ### 脅威モデル
 
-詳細な信頼境界は [`docs/design/threat-model.md`](../../design/threat-model.md)。本 feature 範囲では以下の 4 件。
+詳細な信頼境界は [`docs/design/threat-model.md`](../../../design/threat-model.md)。本 sub-feature 範囲では以下の 4 件。
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|
@@ -262,7 +276,7 @@ sequenceDiagram
 | A03 | Injection | **適用**: SQLAlchemy ORM 経由で SQL injection 防御。raw SQL は使わない |
 | A04 | Insecure Design | **適用**: Repository ポート分離 + delete-then-insert + DB UNIQUE(room_id, agent_id, role) + FK RESTRICT による多層防衛 |
 | A05 | Security Misconfiguration | M2 永続化基盤の PRAGMA 強制の上に乗る |
-| A06 | Vulnerable Components | SQLAlchemy 2.x / Alembic / aiosqlite — persistence-foundation PR #23 で pip-audit 確認済み（本 PR で新規依存なし）。**CVE-2025-6965（SQLite < 3.50.2）**: 本システムは SQLAlchemy ORM 経由のみ SQL を発行（A03 の raw SQL 禁止）しており、外部入力から SQL を inject する攻撃前提が物理遮断されるため直接の悪用経路なし。デプロイ環境の SQLite バージョンは **>= 3.50.2** を ops 要件とし、`docs/design/tech-stack.md` に制約を追記する |
+| A06 | Vulnerable Components | SQLAlchemy 2.x / Alembic / aiosqlite — persistence-foundation で pip-audit 確認済み（本 PR で新規依存なし）。**CVE-2025-6965（SQLite < 3.50.2）**: 本システムは SQLAlchemy ORM 経由のみ SQL を発行しており、外部入力から SQL を inject する攻撃前提が物理遮断されるため直接の悪用経路なし。デプロイ環境の SQLite バージョンは **>= 3.50.2** を ops 要件とし、`docs/design/tech-stack.md` に制約を追記する |
 | A07 | Auth Failures | 該当なし |
 | A08 | Data Integrity Failures | **適用**: foreign_keys ON + ON DELETE CASCADE/RESTRICT で参照整合性、Tx 原子性、UNIQUE(room_id, agent_id, role) で member 二重防衛、empire_room_refs FK closure で Empire ↔ Room 整合性物理保証 |
 | A09 | Logging Failures | **適用**: `rooms.prompt_kit_prefix_markdown` のマスキングにより SQL ログ / 監査ログ経路で webhook token 漏洩なし（room §確定 G 実適用の二次効果）|
@@ -303,7 +317,7 @@ erDiagram
 
 UNIQUE 制約 / INDEX:
 
-- `room_members(room_id, agent_id, role)` UNIQUE: 同 Room 内で `(agent_id, role)` 重複禁止（**§確定 R1-D 二重防衛**）
+- `room_members(room_id, agent_id, role)` UNIQUE: 同 Room 内で `(agent_id, role)` 重複禁止（**§確定 R1-D 二重防衛**、受入基準 5 の DB 防衛）
 - `rooms(empire_id, name)` 非 UNIQUE INDEX: `find_by_name` の Empire スコープ検索に使用（**§確定 R1-F**）
 - `empire_room_refs.room_id → rooms.id` FK CASCADE: **§確定 R1-C**、BUG-EMR-001 close（`op.batch_alter_table` 経由）
 

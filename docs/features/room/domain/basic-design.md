@@ -1,13 +1,75 @@
-# 基本設計書
+# 基本設計書 — room / domain
 
-> feature: `room`
-> 関連: [requirements.md](requirements.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Room
+> feature: `room`（業務概念）/ sub-feature: `domain`
+> 親業務仕様: [`../feature-spec.md`](../feature-spec.md)
+> 関連 Issue: [#18 feat(room): Room Aggregate Root (M1)](https://github.com/bakufu-dev/bakufu/issues/18)
+> 凍結済み設計: [`docs/design/domain-model/aggregates.md`](../../../design/domain-model/aggregates.md) §Room / [`docs/design/domain-model/value-objects.md`](../../../design/domain-model/value-objects.md) §AgentMembership
 
 ## 記述ルール（必ず守ること）
 
 基本設計に**疑似コード・サンプル実装（python/ts/sh/yaml 等の言語コードブロック）を書かない**。
 ソースコードと二重管理になりメンテナンスコストしか生まない。
 必要なのは構造契約（クラス・モジュール・データの関係）であり、実装の細部は [detailed-design.md](detailed-design.md) で凍結する。
+
+## §モジュール契約（機能要件）
+
+本 sub-feature が満たすべき機能要件（入力 / 処理 / 出力 / エラー時）を凍結する。業務根拠は [`../feature-spec.md §9 受入基準`](../feature-spec.md) を参照。
+
+### REQ-RM-001: Room 構築
+
+| 項目 | 内容 |
+|------|------|
+| 入力 | `id: RoomId` / `name: str` / `description: str` / `workflow_id: WorkflowId` / `members: list[AgentMembership]` / `prompt_kit: PromptKit` / `archived: bool`（既定 False） |
+| 処理 | Pydantic 型バリデーション → `model_validator(mode='after')` で不変条件検査（`name` 1〜80 文字 / `description` 0〜500 文字 / `(agent_id, role)` 重複なし / `len(members) <= 50`）。すべて NFC + strip 適用後の長さで判定 |
+| 出力 | valid な `Room` インスタンス（frozen） |
+| エラー時 | `RoomInvariantViolation` を raise。`message` は MSG-RM-001/002/003/004（2 行構造 — `[FAIL] ...` + `Next: ...`）、`kind` は `name_range` / `description_too_long` / `member_duplicate` / `capacity_exceeded` のいずれか。`prompt_kit` 引数の長さ違反は **VO 構築段階で `pydantic.ValidationError`**（MSG-RM-007）として Room 構築前に raise 済み |
+
+### REQ-RM-002: メンバー追加
+
+| 項目 | 内容 |
+|------|------|
+| 入力 | `agent_id: AgentId` / `role: Role` / `joined_at: datetime`（UTC） |
+| 処理 | 現 `members` に新 `AgentMembership` を append した dict を構築 → `Room.model_validate(updated_dict)` で再構築 → `model_validator` 走行 → 不変条件通過時のみ新 Room を返す |
+| 出力 | 新 `Room` インスタンス（pre-validate 方式により元 Room は変化しない） |
+| エラー時 | `RoomInvariantViolation`。`kind`: `member_duplicate` / `capacity_exceeded` / `room_archived` のいずれか。元 Room は変更されない |
+
+### REQ-RM-003: メンバー削除
+
+| 項目 | 内容 |
+|------|------|
+| 入力 | `agent_id: AgentId` / `role: Role` |
+| 処理 | 現 `members` から `(agent_id, role)` ペアに一致する 1 件を削除した dict を構築 → `model_validate` で再構築 |
+| 出力 | 新 `Room` インスタンス |
+| エラー時 | `RoomInvariantViolation`。`kind`: `member_not_found` / `room_archived` のいずれか |
+
+### REQ-RM-004: PromptKit 更新
+
+| 項目 | 内容 |
+|------|------|
+| 入力 | `prompt_kit: PromptKit` |
+| 処理 | `prompt_kit` を新 PromptKit に差し替えた dict を構築 → `model_validate` で再構築 |
+| 出力 | 新 `Room` インスタンス |
+| エラー時 | `RoomInvariantViolation(kind='room_archived')` のみ。PromptKit 自体の検査は VO 構築時に完了済み（`prefix_markdown` 0〜10000 文字） |
+
+### REQ-RM-005: アーカイブ
+
+| 項目 | 内容 |
+|------|------|
+| 入力 | なし（self） |
+| 処理 | `_rebuild_with_state` 経由で `archived = True` の dict を構築 → `model_validate` で再構築。状態に依らず実行（既に `archived == True` でも新インスタンス返却、エラーにしない） |
+| 出力 | 新 `Room` インスタンス（`archived == True`） |
+| エラー時 | 通常経路では発生しない（不変条件は archive 後も保持される） |
+
+### REQ-RM-006: 不変条件検査
+
+| 項目 | 内容 |
+|------|------|
+| 入力 | Room の現状属性 |
+| 処理 | `_validate_name_range` / `_validate_description_length` / `_validate_member_unique` / `_validate_member_capacity` を順次実行 |
+| 出力 | 違反なしなら return（None）、違反時は `RoomInvariantViolation` を raise |
+| エラー時 | `RoomInvariantViolation` 単一例外。`kind` で違反種別を識別 |
+
+---
 
 ## モジュール構成
 
@@ -41,12 +103,12 @@
 │               ├── __init__.py                 # 新規
 │               └── test_room.py                # 新規: ユニットテスト
 └── docs/
-    ├── architecture/
+    ├── design/
     │   └── domain-model/
     │       ├── value-objects.md                # 既存更新: PromptKit 属性追記
     │       └── storage.md                      # 既存更新: マスキング適用先に PromptKit.prefix_markdown 追記
     └── features/
-        └── room/                               # 本 feature 設計書 4 本
+        └── room/                               # 本 feature 設計書群
 ```
 
 ## クラス設計（概要）
@@ -97,7 +159,7 @@ classDiagram
 3. application 層が `WorkflowRepository.find_by_id(workflow_id)` で Workflow 存在検証（不在なら `WorkflowNotFoundError`）
 4. application 層が `Room(id=..., name=..., description=..., workflow_id=..., members=[], prompt_kit=..., archived=False)` を構築
 5. Pydantic 型バリデーション → `model_validator(mode='after')` で `_validate_name_range` → `_validate_description_length` → `_validate_member_unique` → `_validate_member_capacity` の順に走行
-6. valid なら `RoomRepository.save(room)` で永続化（永続化前に PromptKit.prefix_markdown のマスキング適用）
+6. valid なら `RoomRepository.save(room, empire_id)` で永続化（永続化前に PromptKit.prefix_markdown のマスキング適用）
 
 ### ユースケース 2: メンバー追加（add_member）
 
@@ -106,7 +168,7 @@ classDiagram
 3. application 層が Workflow を取得し、`required_role` 集合に LEADER が含まれる Stage が存在する場合、追加後に `role == LEADER` の member が結果として 1 件以上残ることを検査
 4. application 層が `room.add_member(agent_id, role, joined_at=now())` を呼ぶ
 5. Aggregate 内で `members + [new_membership]` の dict を `_rebuild_with_state` 経由で構築 → `model_validate` で再構築 → 不変条件検査
-6. 通過なら新 Room を返却。application 層が `RoomRepository.save(updated_room)`
+6. 通過なら新 Room を返却。application 層が `RoomRepository.save(updated_room, empire_id)`
 
 ### ユースケース 3: メンバー削除（remove_member）
 
@@ -123,7 +185,7 @@ classDiagram
 2. application 層が `RoomRepository.find_by_id(room_id)` で Room 取得
 3. application 層が `room.update_prompt_kit(prompt_kit)` を呼ぶ
 4. Aggregate 内で `prompt_kit` を差し替えた dict を構築 → `model_validate` で再構築（archived terminal チェックのみ実質的）
-5. 通過なら新 Room を返却。application 層が `RoomRepository.save(updated_room)`（永続化時に prefix_markdown のマスキング適用）
+5. 通過なら新 Room を返却。application 層が `RoomRepository.save(updated_room, empire_id)`（永続化時に prefix_markdown のマスキング適用）
 
 ### ユースケース 5: アーカイブ（archive）
 
@@ -131,7 +193,7 @@ classDiagram
 2. application 層が `room.archive()` を呼ぶ
 3. Aggregate 内で `_rebuild_with_state(archived=True)` で新インスタンスを構築（状態に依らず実行、冪等）
 4. 不変条件検査が走り通過時のみ新 Room を返す
-5. application 層が `RoomRepository.save(updated_room)`
+5. application 層が `RoomRepository.save(updated_room, empire_id)`
 
 ## シーケンス図
 
@@ -150,7 +212,7 @@ sequenceDiagram
     alt 不変条件 OK
         Validator-->>Room: pass
         Room-->>App: 新 Room（pre-validate 通過）
-        App->>Repo: save(updated_room)
+        App->>Repo: save(updated_room, empire_id)
     else 違反（重複 / capacity / archived）
         Validator-->>Room: raise RoomInvariantViolation
         Room-->>App: exception（元 Room は変化なし）
@@ -187,11 +249,11 @@ sequenceDiagram
 
 ### 脅威モデル
 
-本 feature 範囲では以下の 2 件。詳細な信頼境界は [`docs/design/threat-model.md`](../../design/threat-model.md)。
+本 feature 範囲では以下の 2 件。詳細な信頼境界は [`docs/design/threat-model.md`](../../../design/threat-model.md)。
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|
-| **T1: PromptKit.prefix_markdown 経由の secret 漏洩** | UI / API から PromptKit に webhook URL / API key を貼り付け → DB 永続化 → ログ・監査経路へ流出 | OAuth トークン / Discord webhook token / API key | Aggregate 内ではマスキングしない（生入力を保持して UI で読み返す経路を確保）。**永続化前の単一ゲートウェイ**（[`storage.md`](../../design/domain-model/storage.md) §シークレットマスキング規則）で適用。本 PR で適用先一覧に PromptKit.prefix_markdown を追記する |
+| **T1: PromptKit.prefix_markdown 経由の secret 漏洩** | UI / API から PromptKit に webhook URL / API key を貼り付け → DB 永続化 → ログ・監査経路へ流出 | OAuth トークン / Discord webhook token / API key | Aggregate 内ではマスキングしない（生入力を保持して UI で読み返す経路を確保）。**永続化前の単一ゲートウェイ**（[`docs/design/domain-model/storage.md`](../../../design/domain-model/storage.md) §シークレットマスキング規則）で適用。本 PR で適用先一覧に PromptKit.prefix_markdown を追記する |
 | **T2: PromptKit / Room.name に Discord webhook URL が混入した状態で `RoomInvariantViolation` を raise** | 不正入力で例外発生 → 例外 message / detail に Discord webhook URL がそのまま埋め込まれログ / Discord 通知に流出 | Discord webhook token | `RoomInvariantViolation` の `__init__` で `mask_discord_webhook` + `mask_discord_webhook_in` を `super().__init__` 前に強制適用。agent / workflow と同パターン（多層防御） |
 
 ### OWASP Top 10 対応
@@ -211,27 +273,7 @@ sequenceDiagram
 
 ## ER 図
 
-該当なし — 理由: 本 feature は domain 層のみで永続化スキーマは含まない。永続化は `feature/room-repository` で扱う（M2 永続化基盤完了後）。参考の概形:
-
-```mermaid
-erDiagram
-    ROOM {
-        string id PK
-        string empire_id FK
-        string workflow_id FK
-        string name
-        string description
-        string prompt_kit_prefix_markdown
-        boolean archived
-    }
-    AGENT_MEMBERSHIP {
-        string room_id FK
-        string agent_id FK
-        string role
-        datetime joined_at
-    }
-    ROOM ||--o{ AGENT_MEMBERSHIP : has
-```
+該当なし — 理由: 本 feature は domain 層のみで永続化スキーマは含まない。永続化は `feature/room-repository` で扱う（M2 永続化基盤完了後）。
 
 ## エラーハンドリング方針
 
