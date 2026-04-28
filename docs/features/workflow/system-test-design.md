@@ -1,7 +1,7 @@
 # E2E テスト設計書
 
 > feature: `workflow`（業務概念単位）
-> 関連: [`feature-spec.md`](feature-spec.md) §9 受入基準 11, 12
+> 関連: [`feature-spec.md`](feature-spec.md) §9 受入基準 11（12 は repository IT）
 
 ## 本書の役割
 

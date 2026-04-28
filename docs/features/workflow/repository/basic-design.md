@@ -278,7 +278,7 @@ sequenceDiagram
 | A06 | Vulnerable Components | SQLAlchemy 2.x / Alembic / aiosqlite |
 | A07 | Auth Failures | 該当なし |
 | A08 | Data Integrity Failures | **適用**: foreign_keys ON + ON DELETE CASCADE で参照整合性、Tx 原子性 |
-| A09 | Logging Failures | M2 永続化基盤のマスキング適用ログの上に乗る |
+| A09 | Logging Failures | **適用**: `notify_channels_json` のマスキングにより SQL ログ / 監査ログ経路で Discord webhook token 漏洩なし。M2 永続化基盤のマスキング適用ログ基盤の上に乗る |
 | A10 | SSRF | 該当なし（外部 URL fetch なし、NotifyChannel の URL は受信側で TLS / origin 検証する別 feature 責務） |
 
 ## ER 図
