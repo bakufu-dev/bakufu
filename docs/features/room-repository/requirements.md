@@ -10,7 +10,7 @@
 | 項目 | 内容 |
 |------|------|
 | 入力 | 該当なし（Protocol 定義） |
-| 処理 | `application/ports/room_repository.py` で `RoomRepository(Protocol)` を定義。**5 method**（empire-repo の 3 method + agent-repo §R1-C の `find_by_name` + 本 PR 拡張 `count_by_empire`、§確定 R1-F）: `find_by_id(room_id: RoomId) -> Room \| None` / `count() -> int` / `save(room: Room) -> None` / `find_by_name(empire_id: EmpireId, name: str) -> Room \| None` / `count_by_empire(empire_id: EmpireId) -> int`。すべて `async def`、`@runtime_checkable` なし |
+| 処理 | `application/ports/room_repository.py` で `RoomRepository(Protocol)` を定義。**4 method**（empire-repo の 3 method + agent-repo §R1-C の `find_by_name`、§確定 F）: `find_by_id(room_id: RoomId) -> Room \| None` / `count() -> int` / `save(room: Room, empire_id: EmpireId) -> None` / `find_by_name(empire_id: EmpireId, name: str) -> Room \| None`。すべて `async def`、`@runtime_checkable` なし |
 | 出力 | Protocol 定義。pyright strict で SqliteRoomRepository が満たすことを型レベル検証 |
 | エラー時 | 該当なし |
 
@@ -19,8 +19,8 @@
 | 項目 | 内容 |
 |------|------|
 | 入力 | `AsyncSession`（コンストラクタ引数）、各 method の引数 |
-| 処理 | `find_by_id`: `rooms` SELECT → 不在なら None。存在すれば `room_members` を `ORDER BY agent_id, role` で SELECT（§BUG-EMR-001 規約） → `_from_row()` で Room 復元。`count`: `select(func.count()).select_from(RoomRow)` で SQL `COUNT(*)`。`save`: §確定 R1-A の delete-then-insert（3 段階手順、empire-repo と同パターンで子テーブル数のみ縮小: rooms UPSERT + room_members DELETE/INSERT）。`find_by_name`: `SELECT id FROM rooms WHERE empire_id=:empire_id AND name=:name LIMIT 1` で RoomId 取得 → `find_by_id` 委譲（agent §確定 F 同パターン）。`count_by_empire`: `select(func.count()).select_from(RoomRow).where(RoomRow.empire_id == empire_id)` で SQL `COUNT(*) WHERE` 発行 |
-| 出力 | `find_by_id` / `find_by_name`: `Room \| None`、`count` / `count_by_empire`: `int`、`save`: `None` |
+| 処理 | `find_by_id`: `rooms` SELECT → 不在なら None。存在すれば `room_members` を `ORDER BY agent_id, role` で SELECT（§BUG-EMR-001 規約） → `_from_row()` で Room 復元。`count`: `select(func.count()).select_from(RoomRow)` で SQL `COUNT(*)`。`save`: §確定 A の delete-then-insert（3 段階手順、empire-repo と同パターンで子テーブル数のみ縮小: rooms UPSERT + room_members DELETE/INSERT）。`find_by_name`: `SELECT id FROM rooms WHERE empire_id=:empire_id AND name=:name LIMIT 1` で RoomId 取得 → `find_by_id` 委譲（agent §確定 F 同パターン） |
+| 出力 | `find_by_id` / `find_by_name`: `Room \| None`、`count`: `int`、`save`: `None` |
 | エラー時 | SQLAlchemy `IntegrityError`（FK RESTRICT 違反 / UNIQUE(room_id, agent_id, role) 違反等）/ `OperationalError` を上位伝播。Repository 内で明示的 `commit` / `rollback` はしない |
 
 ### REQ-RR-003: Alembic 0005 revision
@@ -98,7 +98,7 @@
 | `rooms` | `description` | `String(500)` | NOT NULL DEFAULT '' | 用途説明 |
 | `rooms` | `prompt_kit_prefix_markdown` | **`MaskedText`** | NOT NULL DEFAULT '' | PromptKit.prefix_markdown（room §確定 G 実適用） |
 | `rooms` | `archived` | `Boolean` | NOT NULL DEFAULT FALSE | アーカイブ状態 |
-| `rooms` INDEX | `(empire_id, name)` 非 UNIQUE | — | — | **§確定 R1-F**: find_by_name + count_by_empire の左端プリフィックス |
+| `rooms` INDEX | `(empire_id, name)` 非 UNIQUE | — | — | **§確定 F**: find_by_name の Empire スコープ検索（左端プリフィックス）|
 | `room_members` | `room_id` | `UUIDStr` | FK → `rooms.id` ON DELETE CASCADE, NOT NULL | 所属 Room |
 | `room_members` | `agent_id` | `UUIDStr` | NOT NULL（FK は **意図的に張らない** — Agent は別 Aggregate、application 層 `RoomService.add_member` が `AgentRepository.find_by_id` で参照整合性検査） | Agent への参照 |
 | `room_members` | `role` | `String(32)` | NOT NULL（Role enum）| ペアリング Role |

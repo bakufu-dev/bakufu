@@ -13,8 +13,8 @@
 
 | 機能 ID | モジュール | ディレクトリ | 責務 |
 |--------|----------|------------|------|
-| REQ-RR-001 | `RoomRepository` Protocol | `backend/src/bakufu/application/ports/room_repository.py` | Repository ポート定義（5 method、empire-repo の 3 method + agent-repo §R1-C の `find_by_name` + 本 PR 拡張 `count_by_empire`、§確定 R1-F） |
-| REQ-RR-002 | `SqliteRoomRepository` | `backend/src/bakufu/infrastructure/persistence/sqlite/repositories/room_repository.py` | SQLite 実装、§確定 R1-A〜F |
+| REQ-RR-001 | `RoomRepository` Protocol | `backend/src/bakufu/application/ports/room_repository.py` | Repository ポート定義（4 method、empire-repo の 3 method + agent-repo §R1-C の `find_by_name`、§確定 F） |
+| REQ-RR-002 | `SqliteRoomRepository` | `backend/src/bakufu/infrastructure/persistence/sqlite/repositories/room_repository.py` | SQLite 実装、§確定 A〜F |
 | REQ-RR-003 | Alembic 0005 revision | `backend/alembic/versions/0005_room_aggregate.py` | 2 テーブル + UNIQUE + INDEX + FK 3 件追加、`down_revision="0004_agent_aggregate"`、`empire_room_refs.room_id` FK closure 同梱 |
 | REQ-RR-004 | CI 三層防衛拡張 Layer 1 | `scripts/ci/check_masking_columns.sh`（既存ファイル更新）| Room 2 テーブル明示登録、`rooms.prompt_kit_prefix_markdown` の `MaskedText` 必須を assert（正のチェック）|
 | REQ-RR-004 | CI 三層防衛拡張 Layer 2 | `backend/tests/architecture/test_masking_columns.py`（既存ファイル更新）| parametrize に Room 2 テーブル追加 |
@@ -34,7 +34,7 @@
 │   │   └── bakufu/
 │   │       ├── application/
 │   │       │   └── ports/
-│   │       │       └── room_repository.py         # 新規: Protocol（5 method）
+│   │       │       └── room_repository.py         # 新規: Protocol（4 method）
 │   │       └── infrastructure/
 │   │           └── persistence/
 │   │               └── sqlite/
@@ -77,18 +77,16 @@ classDiagram
         <<Protocol>>
         +async find_by_id(room_id) Room | None
         +async count() int
-        +async save(room) None
+        +async save(room, empire_id) None
         +async find_by_name(empire_id, name) Room | None
-        +async count_by_empire(empire_id) int
     }
     class SqliteRoomRepository {
         +session: AsyncSession
         +async find_by_id(room_id) Room | None
         +async count() int
-        +async save(room) None
+        +async save(room, empire_id) None
         +async find_by_name(empire_id, name) Room | None
-        +async count_by_empire(empire_id) int
-        -_to_row(room) tuple
+        -_to_row(room, empire_id) tuple
         -_from_row(room_row, member_rows) Room
     }
     class Room {
@@ -115,8 +113,7 @@ classDiagram
 - domain ↔ row 変換は `_to_row()` / `_from_row()` の private method（empire-repo §確定 C）
 - `save()` は同一 Tx 内で 2 テーブル delete-then-insert（empire-repo §確定 B、Room では 3 段階手順）
 - 呼び出し側 service が `async with session.begin():` で UoW 境界を管理
-- **`find_by_name(empire_id, name)` は第 4 method**、Empire スコープ検索（agent §R1-C 継承）
-- **`count_by_empire(empire_id)` は第 5 method**、Empire 内 Room 数 SQL `COUNT(*)`（§確定 R1-F）
+- **`find_by_name(empire_id, name)` は第 4 method**、Empire スコープ検索（agent §R1-C 継承、§確定 F）
 - `Room` Aggregate は `empire_id` を直接保持しないが、Repository row 上では正規化のため `empire_id` カラムを持つ（room §確定で凍結された結合関係、後述）
 
 ##### `Room` Aggregate に `empire_id` を含めない理由（room domain 設計の継承）
@@ -157,31 +154,23 @@ room/detailed-design.md L41-49 で `Room` Aggregate Root の属性に `empire_id
    - `_from_row(room_row, member_rows)` で Room 復元（**`prompt_kit_prefix_markdown` は masked 文字列のまま** で `PromptKit` 構築、不可逆性、申し送り）
 3. valid な Room を返却（pre-validate 通過）
 
-### ユースケース 3: Room の Empire 内一意検索（find_by_name 経路、§確定 R1-F）
+### ユースケース 3: Room の Empire 内一意検索（find_by_name 経路、§確定 F）
 
 1. application 層 `EmpireService.establish_room()` 内で `RoomRepository.find_by_name(empire_id, name)` を呼ぶ
 2. `SqliteRoomRepository.find_by_name(empire_id, name)`:
-   - `SELECT id FROM rooms WHERE empire_id = :empire_id AND name = :name LIMIT 1`（**INDEX(empire_id, name)** が効く、§確定 R1-F）
+   - `SELECT id FROM rooms WHERE empire_id = :empire_id AND name = :name LIMIT 1`（**INDEX(empire_id, name)** が効く、§確定 F）
    - 不在なら None
    - 存在すれば `find_by_id(found_id)` を呼んで子テーブル含めて Room を復元
 3. application 層が結果で重複判定（None → 新規作成可、Room → 409）
 
-### ユースケース 4: Empire 内 Room 数取得（count_by_empire 経路、§確定 R1-F）
-
-1. application 層 `EmpireService.list_rooms_summary(empire_id)` 等で `RoomRepository.count_by_empire(empire_id)` を呼ぶ
-2. `SqliteRoomRepository.count_by_empire(empire_id)`:
-   - `select(func.count()).select_from(RoomRow).where(RoomRow.empire_id == empire_id)` で SQL `COUNT(*) WHERE` 発行（**INDEX(empire_id, name)** の左端プリフィックスが効く）
-   - `scalar_one()` で int 取得
-3. **全行ロード+ Python `len()` パターン禁止**（empire-repo §確定 D 踏襲）
-
-### ユースケース 5: Room の更新（save 経路、prompt_kit / members 変更等）
+### ユースケース 4: Room の更新（save 経路、prompt_kit / members 変更等）
 
 1. application 層が `find_by_id(room_id)` で既存 Room を取得
 2. service が Room のドメイン操作（例: `room.update_prompt_kit(...)` / `room.add_member(...)`）で新 Room を構築（pre-validate 方式、room PR #22 で凍結）
 3. service が `RoomRepository.save(updated_room, empire_id=empire_id)` を呼ぶ
 4. ユースケース 1 と同じ手順で同一 Tx 内に delete-then-insert
 
-### ユースケース 6: Room 件数取得（count 経路）
+### ユースケース 5: Room 件数取得（count 経路）
 
 1. application 層が `RoomRepository.count()` を呼ぶ
 2. `SqliteRoomRepository.count()` が `select(func.count()).select_from(RoomRow))` で SQL `COUNT(*)` 発行（empire-repo §確定 D 踏襲、Empire 制限なし、全 Empire 合計）
@@ -273,7 +262,7 @@ sequenceDiagram
 | A03 | Injection | **適用**: SQLAlchemy ORM 経由で SQL injection 防御。raw SQL は使わない |
 | A04 | Insecure Design | **適用**: Repository ポート分離 + delete-then-insert + DB UNIQUE(room_id, agent_id, role) + FK RESTRICT による多層防衛 |
 | A05 | Security Misconfiguration | M2 永続化基盤の PRAGMA 強制の上に乗る |
-| A06 | Vulnerable Components | SQLAlchemy 2.x / Alembic / aiosqlite |
+| A06 | Vulnerable Components | SQLAlchemy 2.x / Alembic / aiosqlite — persistence-foundation PR #23 で pip-audit 確認済み（本 PR で新規依存なし）。**CVE-2025-6965（SQLite < 3.50.2）**: 本システムは SQLAlchemy ORM 経由のみ SQL を発行（A03 の raw SQL 禁止）しており、外部入力から SQL を inject する攻撃前提が物理遮断されるため直接の悪用経路なし。デプロイ環境の SQLite バージョンは **>= 3.50.2** を ops 要件とし、`docs/architecture/tech-stack.md` に制約を追記する |
 | A07 | Auth Failures | 該当なし |
 | A08 | Data Integrity Failures | **適用**: foreign_keys ON + ON DELETE CASCADE/RESTRICT で参照整合性、Tx 原子性、UNIQUE(room_id, agent_id, role) で member 二重防衛、empire_room_refs FK closure で Empire ↔ Room 整合性物理保証 |
 | A09 | Logging Failures | **適用**: `rooms.prompt_kit_prefix_markdown` のマスキングにより SQL ログ / 監査ログ経路で webhook token 漏洩なし（room §確定 G 実適用の二次効果）|
@@ -315,7 +304,7 @@ erDiagram
 UNIQUE 制約 / INDEX:
 
 - `room_members(room_id, agent_id, role)` UNIQUE: 同 Room 内で `(agent_id, role)` 重複禁止（**§確定 R1-D 二重防衛**）
-- `rooms(empire_id, name)` 非 UNIQUE INDEX: `find_by_name` + `count_by_empire` の左端プリフィックス（**§確定 R1-F**）
+- `rooms(empire_id, name)` 非 UNIQUE INDEX: `find_by_name` の Empire スコープ検索に使用（**§確定 F**）
 - `empire_room_refs.room_id → rooms.id` FK CASCADE: **§確定 R1-C**、BUG-EMR-001 close（`op.batch_alter_table` 経由）
 
 masking 対象カラム: `rooms.prompt_kit_prefix_markdown` のみ（`MaskedText`、§確定 R1-E）。CI 三層防衛で物理保証。
