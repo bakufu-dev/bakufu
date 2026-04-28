@@ -50,7 +50,7 @@
 
 ### §確定 R1-B: save() 5 段階の順序と SQLite FK 整合性
 
-§確定 R1-B（requirements-analysis.md）で定義した 5 段階を詳細凍結する:
+§確定 R1-B（[`basic-design.md`](basic-design.md) §確定 R1-B）で定義した 5 段階を詳細凍結する:
 
 | 段階 | SQL 操作 | 対象 | 留意点 |
 |------|---------|------|-------|
