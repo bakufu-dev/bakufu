@@ -1,7 +1,8 @@
-# 詳細設計書
+# 詳細設計書 — task / domain
 
-> feature: `task`
-> 関連: [basic-design.md](basic-design.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Task / [`storage.md`](../../design/domain-model/storage.md) §Deliverable / §Attachment
+> feature: `task`（業務概念）/ sub-feature: `domain`
+> 親業務仕様: [`../feature-spec.md`](../feature-spec.md)
+> 関連: [basic-design.md](basic-design.md) / [`docs/design/domain-model/aggregates.md`](../../../design/domain-model/aggregates.md) §Task / [`storage.md`](../../../design/domain-model/storage.md) §Deliverable / §Attachment
 
 ## 記述ルール（必ず守ること）
 

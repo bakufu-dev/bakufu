@@ -1,8 +1,8 @@
-# テスト設計書
+# テスト設計書 — task / domain
 
-<!-- feature: task -->
-<!-- 配置先: docs/features/task/test-design.md -->
-<!-- 対象範囲: REQ-TS-001〜011 / MSG-TS-001〜010 / 受入基準 1〜17 / 詳細設計 確定 A〜K / state machine 13 遷移 + DONE/CANCELLED terminal + BLOCKED 契約 + last_error consistency + auto-mask + 例外型統一 + 2 行構造 MSG -->
+> feature: `task`（業務概念）/ sub-feature: `domain`
+> 親業務仕様: [`../feature-spec.md`](../feature-spec.md)
+> 対象範囲: REQ-TS-001〜011 / MSG-TS-001〜010 / §9 受入基準 1〜15 + #16（E2E、親 system-test-design.md）+ #17（IT、repository sub-feature）/ 詳細設計 確定 A〜K / state machine 13 遷移 + DONE/CANCELLED terminal + BLOCKED 契約 + last_error consistency + auto-mask + 例外型統一 + 2 行構造 MSG
 
 本 feature は domain 層の Aggregate Root（Task）+ VO（Deliverable / Attachment）+ enum（TaskStatus / LLMErrorKind）+ 例外（TaskInvariantViolation）に閉じる **M1 6 兄弟目**（empire / workflow / agent / room / directive の確立済みパターンを継承）。HTTP API / CLI / UI の公開エントリポイントは持たないため、E2E は本 feature 範囲外（後続 `feature/admin-cli` / `feature/http-api` / `feature/chat-ui`（Phase 2）で起票）。本 feature のテストは **ユニット主体 + Aggregate 内 module 連携の往復シナリオ + state machine 全 13 遷移網羅 + 責務境界の物理確認** で構成する。
 
@@ -52,8 +52,8 @@
 | MSG-TS-008 | 型違反は `pydantic.ValidationError` 経由 | TC-UT-TS-053 | ユニット | 異常系 | （確定 J） |
 | MSG-TS-009 | Attachment サニタイズ違反 | TC-UT-TS-013 | ユニット | 異常系 | 13 |
 | **Next: hint 物理保証**（確定 J） | 全 MSG-TS-001〜007 で `assert "Next:" in str(exc)` を CI 強制 | TC-UT-TS-046〜052 | ユニット | 異常系 | 14（room §確定 I 踏襲） |
-| AC-16（lint/typecheck） | `pyright --strict` / `ruff check` | （CI ジョブ） | — | — | 16 |
-| AC-17（カバレッジ） | `pytest --cov=bakufu.domain.task` | （CI ジョブ） | — | — | 17 |
+| AC-16（lint/typecheck） | `pyright --strict` / `ruff check` | （CI ジョブ） | — | — | 内部品質基準 |
+| AC-17（カバレッジ） | `pytest --cov=bakufu.domain.task` | （CI ジョブ） | — | — | 内部品質基準 |
 | 結合シナリオ 1 | Task lifecycle 完走（PENDING → DONE） | TC-IT-TS-002 | 結合 | 正常系 | 1, 3, 8（DONE 到達） |
 | 結合シナリオ 2 | BLOCKED 経路と復旧（IN_PROGRESS → BLOCKED → IN_PROGRESS → DONE） | TC-IT-TS-003 | 結合 | 正常系 / 異常系 | 7, 8 |
 | 結合シナリオ 3 | cancel 経路（4 状態すべてから CANCELLED） | TC-IT-TS-004 | 結合 | 正常系 | （確定 E） |
@@ -67,7 +67,7 @@
 - **責務境界 5 件**（current_stage_id 存在 / agent_ids ∈ Room.members / transition_id 存在 / Stage.kind 検査 / by_agent_id ∈ assigned）すべてに「Aggregate 層で強制しない」ことを物理確認する unit ケース（TC-UT-TS-042, TC-UT-TS-043）
 - **TaskInvariantViolation auto-mask（確定 I）**: webhook URL を含む last_error で例外発生 → message と detail の両方が伏字化されていることを TC-UT-TS-011 で確認
 - **MSG 2 行構造 + Next: hint 物理保証（確定 J、room §確定 I 踏襲）**: 全 MSG-TS-001〜007 で `assert "Next:" in str(exc)` を CI 強制（TC-UT-TS-046〜052）
-- 受入基準 1〜15 すべてに unit/integration ケース（16/17 は CI ジョブ）
+- **§9 受入基準 1〜15 すべてに unit/integration ケース**（内部品質基準 lint/typecheck/coverage は CI ジョブ）。受入基準 #16（再起動跨ぎ保持）は親 [`../system-test-design.md`](../system-test-design.md) の TC-E2E-TS-001 で E2E カバー。受入基準 #17（DB masking）は repository sub-feature の TC-IT-TR-020-masking-* で IT カバー
 - 確定 A（pre-validate）/ B（table ロック）/ C（NFC + strip しない）/ D（last_error クリア）/ E（cancel 4 状態）/ F（agents 重複/容量）/ G（by_agent_id 責務）/ H（連続安全性）/ I（auto-mask）/ J（例外型統一 + 2 行 MSG）/ K（責務分離マトリクス）すべてに証拠ケース
 - 孤児要件ゼロ
 
@@ -82,7 +82,7 @@
 
 **根拠**:
 - [`basic-design.md`](basic-design.md) §外部連携 で「該当なし — domain 層のみのため外部システムへの通信は発生しない」と凍結
-- [`requirements-analysis.md`](requirements-analysis.md) §前提条件・制約 で「ネットワーク: 該当なし」と凍結
+- [`../feature-spec.md`](../feature-spec.md) §8 制約・前提 で「ネットワーク: 該当なし」と凍結
 - 本 feature では assumed mock 問題は構造上発生しない（モック対象なし）
 
 **factory（合成データ）の扱い**:
@@ -104,10 +104,10 @@
 
 **該当なし** — 理由:
 
-- 本 feature は domain 層の純粋ライブラリで、CLI / HTTP API / UI のいずれの公開エントリポイントも持たない（[`requirements.md`](requirements.md) §画面・CLI 仕様 / §API 仕様 で「該当なし」と凍結）
+- 本 feature は domain 層の純粋ライブラリで、CLI / HTTP API / UI のいずれの公開エントリポイントも持たない（[`../feature-spec.md`](../feature-spec.md) §6 スコープ で「該当なし」と凍結）
 - 戦略ガイド §E2E対象の判断「内部API・ライブラリなどエンドユーザー操作がない場合は結合テストで代替可」に従い、E2E は本 feature 範囲外
 - 後続 `feature/admin-cli` / `feature/http-api`（Task lifecycle API） / `feature/chat-ui`（Phase 2 Web UI）が公開 I/F を実装した時点で E2E を起票
-- 受入基準 1〜15 はすべて unit/integration テストで検証可能（16/17 は CI ジョブ）
+- §9 受入基準 1〜15 はすべて unit/integration テストで検証可能。#16（再起動跨ぎ保持）は親 [`../system-test-design.md`](../system-test-design.md) の TC-E2E-TS-001 が担当。#17（DB masking）は repository sub-feature の IT が担当
 
 | テストID | ペルソナ | シナリオ | 操作手順 | 期待結果 |
 |---------|---------|---------|---------|---------|
@@ -289,6 +289,6 @@ backend/
 - [ ] 確定 A〜K（pre-validate / table ロック / NFC + strip しない / unblock クリア / cancel 4 状態 / agents 重複・容量 / by_agent_id 責務 / 連続安全性 / auto-mask / 例外型統一 + 2 行 MSG / 責務分離マトリクス）すべてに証拠ケースが含まれる
 - [ ] frozen 不変性（TC-UT-TS-044）+ 構造的等価（TC-UT-TS-014）+ extra='forbid'（TC-UT-TS-045）が独立して検証されている
 - [ ] 5 兄弟の WeakValueDictionary レジストリ方式と整合した factory 設計になっている
-- [ ] 外部 I/O ゼロの主張が basic-design.md / requirements-analysis.md と整合している
+- [ ] 外部 I/O ゼロの主張が basic-design.md / ../feature-spec.md §8 制約・前提 と整合している
 - [ ] **テストファイル分割（4 ファイル）が basic-design.md §モジュール構成 / detailed-design.md §設計判断補足と整合**（empire-repo PR #29 の 500 行ルール教訓を最初から反映）
 - [ ] Schneier 申し送り（`Task.last_error` / `Deliverable.body_markdown` の persistence-foundation 経由マスキング配線 / state machine table の修正同期 / 並行性は Repository 責務 / BLOCKED 自動再試行禁止 / prompt injection は別 feature 責務）が次レビュー時に確認可能な形で test-design および設計書に記録されている

@@ -1,7 +1,8 @@
-# 詳細設計書
+# 詳細設計書 — task / repository
 
-> feature: `task-repository`
-> 関連: [basic-design.md](basic-design.md) / [`docs/features/empire-repository/`](../empire-repository/) **テンプレート真実源** / [`docs/features/directive-repository/`](../directive-repository/) **直近テンプレート** / [`docs/features/task/`](../task/)
+> feature: `task`（業務概念）/ sub-feature: `repository`
+> 親業務仕様: [`../feature-spec.md`](../feature-spec.md)
+> 関連: [basic-design.md](basic-design.md) / [`../../empire-repository/`](../../empire-repository/) **テンプレート真実源** / [`../../directive-repository/`](../../directive-repository/) **直近テンプレート** / [`../domain/detailed-design.md`](../domain/detailed-design.md)（domain VO 凍結済み）
 
 ## 記述ルール（必ず守ること）
 
@@ -233,5 +234,5 @@ parametrize に追加する 2 行:
 - [Alembic — batch_alter_table](https://alembic.sqlalchemy.org/en/latest/batch.html) — SQLite 向け ALTER TABLE / FK 追加方法
 - [`docs/features/empire-repository/detailed-design.md`](../empire-repository/detailed-design.md) §確定 A〜F — テンプレート真実源
 - [`docs/features/directive-repository/detailed-design.md`](../directive-repository/detailed-design.md) — 直近テンプレート（§確定 R1-A〜E、BUG-DRR-001 申し送り元）
-- [`docs/features/task/detailed-design.md`](../task/detailed-design.md) — Task Aggregate 凍結済み設計（§確定 A〜I）
+- [`docs/features/task/domain/detailed-design.md`](../domain/detailed-design.md) — Task Aggregate 凍結済み設計（§確定 A〜I）
 - [`docs/design/domain-model/storage.md`](../../design/domain-model/storage.md) §シークレットマスキング規則 — MaskedText 配線方式と CI 三層防衛の根拠

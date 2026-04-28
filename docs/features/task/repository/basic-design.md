@@ -1,7 +1,8 @@
-# 基本設計書
+# 基本設計書 — task / repository
 
-> feature: `task-repository`
-> 関連: [requirements.md](requirements.md) / [`docs/features/empire-repository/`](../empire-repository/) **テンプレート真実源** / [`docs/features/directive-repository/`](../directive-repository/) **直近テンプレート** / [`docs/features/task/`](../task/)
+> feature: `task`（業務概念）/ sub-feature: `repository`
+> 親業務仕様: [`../feature-spec.md`](../feature-spec.md)
+> 関連: [`../../empire-repository/`](../../empire-repository/) **テンプレート真実源** / [`../../directive-repository/`](../../directive-repository/) **直近テンプレート** / [`../domain/`](../domain/)（domain 設計済み）
 
 ## 記述ルール（必ず守ること）
 
@@ -72,7 +73,7 @@
     │   └── domain-model/
     │       └── storage.md                                      # 既存更新: Task 関連行追加・後続表記更新
     └── features/
-        ├── task-repository/                                     # 本 feature 設計書 4 本
+        ├── task/repository/                                     # 本 sub-feature 設計書 3 本
         └── directive-repository/
             └── detailed-design.md                              # 既存更新: §BUG-DRR-001 closure 済みに更新
 ```
