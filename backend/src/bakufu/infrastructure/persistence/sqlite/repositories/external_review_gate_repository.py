@@ -182,9 +182,7 @@ class SqliteExternalReviewGateRepository:
 
         results: list[ExternalReviewGate] = []
         for gate_row in gate_rows:
-            gate = await self.find_by_id(gate_row.id)
-            if gate is not None:
-                results.append(gate)
+            results.append(await self._hydrate_row(gate_row))
         return results
 
     async def find_by_task_id(self, task_id: TaskId) -> list[ExternalReviewGate]:
@@ -214,9 +212,7 @@ class SqliteExternalReviewGateRepository:
 
         results: list[ExternalReviewGate] = []
         for gate_row in gate_rows:
-            gate = await self.find_by_id(gate_row.id)
-            if gate is not None:
-                results.append(gate)
+            results.append(await self._hydrate_row(gate_row))
         return results
 
     async def count_by_decision(self, decision: ReviewDecision) -> int:
