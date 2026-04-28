@@ -225,22 +225,21 @@ CEO directive 由来の `last_error` / Agent 成果物の `body_markdown` に we
 | 1 | `Task(id, room_id, directive_id, current_stage_id, deliverables={}, status=PENDING, assigned_agent_ids=[], created_at, updated_at, last_error=None)` で valid な Task が構築される | UC-TS-001 | TC-UT-TS-001（[`domain/test-design.md`](domain/test-design.md)） |
 | 2 | TaskStatus 6 種すべての状態で構築可能（永続化からの復元経路、ただし `status=BLOCKED` のときは `last_error` 必須） | UC-TS-001 | TC-UT-TS-002 |
 | 3 | `assign(agent_ids)` で PENDING → IN_PROGRESS 遷移、`assigned_agent_ids` 更新 | UC-TS-002 | TC-UT-TS-003 |
-| 4 | state machine table に存在しない遷移は `TaskInvariantViolation(kind='state_transition_invalid')` | UC-TS-002〜007 | TC-UT-TS-004 |
-| 5 | `status == DONE` の Task に対する全 10 ふるまい呼び出しが `TaskInvariantViolation(kind='terminal_violation')` | UC-TS-005 | TC-UT-TS-005 |
-| 6 | `status == CANCELLED` の Task に対する全 10 ふるまい呼び出しが同上 | UC-TS-007 | TC-UT-TS-006 |
-| 7 | `block(reason, last_error='')` で `TaskInvariantViolation(kind='blocked_requires_last_error')` | UC-TS-006 | TC-UT-TS-007 |
-| 8 | `unblock_retry()` で BLOCKED → IN_PROGRESS、`last_error=None` に戻る | UC-TS-006 | TC-UT-TS-008 |
-| 9 | `assigned_agent_ids` の重複 → `TaskInvariantViolation(kind='assigned_agents_unique')` | UC-TS-002 | TC-UT-TS-009 |
-| 10 | IN_PROGRESS / DONE 等の状態で `last_error != None` → `TaskInvariantViolation(kind='last_error_consistency')` | UC-TS-001〜007 | TC-UT-TS-010 |
-| 11 | `TaskInvariantViolation` の `message` / `detail` 内 webhook URL が `<REDACTED:DISCORD_WEBHOOK>` に伏字化 | UC-TS-001〜007 | TC-UT-TS-011 |
+| 4 | state machine に定義されない遷移（例: DONE 状態からの再割り当て）を要求した場合、拒否される（業務ルール R1-2） | UC-TS-002〜007 | TC-UT-TS-004 |
+| 5 | DONE 状態の Task はすべての操作を拒否する（終端状態・業務ルール R1-3） | UC-TS-005 | TC-UT-TS-005 |
+| 6 | CANCELLED 状態の Task はすべての操作を拒否する（終端状態・業務ルール R1-3） | UC-TS-007 | TC-UT-TS-006 |
+| 7 | Task を BLOCKED にするにはエラー情報（last_error）が必須。空文字の場合は拒否される（業務ルール R1-5） | UC-TS-006 | TC-UT-TS-007 |
+| 8 | BLOCKED 状態から再開を指示すると IN_PROGRESS に戻り、エラー情報がクリアされる（業務ルール R1-5） | UC-TS-006 | TC-UT-TS-008 |
+| 9 | 同一エージェントを重複して割り当てることはできない（業務ルール R1-4） | UC-TS-002 | TC-UT-TS-009 |
+| 10 | BLOCKED 以外の状態で Task にエラー情報が残存している場合、整合性エラーとして拒否される（業務ルール R1-5） | UC-TS-001〜007 | TC-UT-TS-010 |
+| 11 | 業務ルール違反のエラーメッセージに Discord webhook URL が含まれていた場合、`<REDACTED:DISCORD_WEBHOOK>` として伏字化される（domain 層での多層防御、受入基準 17 の repository 層マスキングとは独立） | UC-TS-001〜007 | TC-UT-TS-011 |
 | 12 | `Deliverable(stage_id, body_markdown, attachments, committed_by, committed_at)` で valid な VO が構築される | UC-TS-003 | TC-UT-TS-012 |
-| 13 | `Attachment(sha256, filename, mime_type, size_bytes)` で valid な VO が構築、サニタイズ規則違反は `pydantic.ValidationError` | UC-TS-003 | TC-UT-TS-013 |
-| 14 | エラーメッセージは 2 行構造（`[FAIL] ...` + `Next: ...`）、`assert "Next:" in str(exc)` で CI 物理保証 | UC-TS-001〜007 | TC-UT-TS-046〜052（[`domain/test-design.md`](domain/test-design.md)） |
-| 15 | Task は frozen で構造的等価判定 | UC-TS-001〜007 | TC-UT-TS-014 |
+| 13 | sha256 / filename / mime_type / size_bytes を指定して有効な Attachment が構築できる。ファイル名のパストラバーサル（../）・不正 MIME 型等のサニタイズ規則違反は拒否される（業務ルール R1-10） | UC-TS-003 | TC-UT-TS-013 |
+| 14 | 業務ルール違反のエラーメッセージには次に取るべき行動の案内（Next: ...）が含まれる | UC-TS-001〜007 | TC-UT-TS-046〜052（[`domain/test-design.md`](domain/test-design.md)） |
 | 16 | Task の状態がアプリ再起動跨ぎで永続化される（status / deliverables / assigned_agent_ids / last_error が再起動後に構造的等価で復元） | UC-TS-008 | TC-E2E-TS-001（[`system-test-design.md`](system-test-design.md)） |
 | 17 | `tasks.last_error` / `deliverables.body_markdown` に Discord webhook token / GitHub PAT 等の secret を含む値を保存すると、DB には `<REDACTED:*>` でマスキングされた値が格納される（raw secret が DB に残らない） | UC-TS-008 | TC-IT-TR-020-masking-*（[`repository/test-design.md`](repository/test-design.md)） |
 
-E2E（受入基準 16）は [`system-test-design.md`](system-test-design.md) で詳細凍結。受入基準 1〜15 は domain sub-feature の IT / UT で検証（[`domain/test-design.md`](domain/test-design.md)）。受入基準 17 は repository sub-feature の IT で検証。
+E2E（受入基準 16）は [`system-test-design.md`](system-test-design.md) で詳細凍結。受入基準 1〜14 は domain sub-feature の IT / UT で検証（[`domain/test-design.md`](domain/test-design.md)）。受入基準 17 は repository sub-feature の IT で検証。
 
 ## 10. 開発者品質基準（CI 担保、業務要求ではない）
 

@@ -2,7 +2,7 @@
 
 > feature: `task`（業務概念）/ sub-feature: `domain`
 > 親業務仕様: [`../feature-spec.md`](../feature-spec.md)
-> 対象範囲: REQ-TS-001〜011 / MSG-TS-001〜010 / §9 受入基準 1〜15 + #16（E2E、親 system-test-design.md）+ #17（IT、repository sub-feature）/ 詳細設計 確定 A〜K / state machine 13 遷移 + DONE/CANCELLED terminal + BLOCKED 契約 + last_error consistency + auto-mask + 例外型統一 + 2 行構造 MSG
+> 対象範囲: REQ-TS-001〜011 / MSG-TS-001〜010 / §9 受入基準 1〜14 + #16（E2E、親 system-test-design.md）+ #17（IT、repository sub-feature）/ 詳細設計 確定 A〜K / state machine 13 遷移 + DONE/CANCELLED terminal + BLOCKED 契約 + last_error consistency + auto-mask + 例外型統一 + 2 行構造 MSG
 
 本 feature は domain 層の Aggregate Root（Task）+ VO（Deliverable / Attachment）+ enum（TaskStatus / LLMErrorKind）+ 例外（TaskInvariantViolation）に閉じる **M1 6 兄弟目**（empire / workflow / agent / room / directive の確立済みパターンを継承）。HTTP API / CLI / UI の公開エントリポイントは持たないため、E2E は本 feature 範囲外（後続 `feature/admin-cli` / `feature/http-api` / `feature/chat-ui`（Phase 2）で起票）。本 feature のテストは **ユニット主体 + Aggregate 内 module 連携の往復シナリオ + state machine 全 13 遷移網羅 + 責務境界の物理確認** で構成する。
 
@@ -45,8 +45,8 @@
 | 確定 I（webhook auto-mask） | `TaskInvariantViolation` の auto-mask | TC-UT-TS-011 | ユニット | 異常系 | 11 |
 | 確定 J（例外型統一） | terminal は `TaskInvariantViolation`、型違反は `pydantic.ValidationError` | TC-UT-TS-005, TC-UT-TS-008 | ユニット | 異常系 | （確定 J） |
 | 確定 K（責務分離マトリクス） | application 層責務 5 件すべてが Aggregate 内で強制されないことを物理確認 | TC-UT-TS-043 | ユニット | 正常系 | （責務境界） |
-| frozen 不変性 | `task.status = X` 直接代入拒否 | TC-UT-TS-044 | ユニット | 異常系 | 15 |
-| frozen 構造的等価 | 同一属性 Task 2 インスタンスが `==` True | TC-UT-TS-014 | ユニット | 正常系 | 15 |
+| frozen 不変性 | `task.status = X` 直接代入拒否 | TC-UT-TS-044 | ユニット | 異常系 | 内部品質基準 |
+| frozen 構造的等価 | 同一属性 Task 2 インスタンスが `==` True | TC-UT-TS-014 | ユニット | 正常系 | 内部品質基準 |
 | `extra='forbid'` | 未知フィールド拒否 | TC-UT-TS-045 | ユニット | 異常系 | （T1 防御） |
 | MSG-TS-001〜007（2 行構造） | 全 7 MSG で `assert "Next:" in str(exc)` | TC-UT-TS-046〜052 | ユニット | 異常系 | 14 |
 | MSG-TS-008 | 型違反は `pydantic.ValidationError` 経由 | TC-UT-TS-053 | ユニット | 異常系 | （確定 J） |
@@ -67,7 +67,7 @@
 - **責務境界 5 件**（current_stage_id 存在 / agent_ids ∈ Room.members / transition_id 存在 / Stage.kind 検査 / by_agent_id ∈ assigned）すべてに「Aggregate 層で強制しない」ことを物理確認する unit ケース（TC-UT-TS-042, TC-UT-TS-043）
 - **TaskInvariantViolation auto-mask（確定 I）**: webhook URL を含む last_error で例外発生 → message と detail の両方が伏字化されていることを TC-UT-TS-011 で確認
 - **MSG 2 行構造 + Next: hint 物理保証（確定 J、room §確定 I 踏襲）**: 全 MSG-TS-001〜007 で `assert "Next:" in str(exc)` を CI 強制（TC-UT-TS-046〜052）
-- **§9 受入基準 1〜15 すべてに unit/integration ケース**（内部品質基準 lint/typecheck/coverage は CI ジョブ）。受入基準 #16（再起動跨ぎ保持）は親 [`../system-test-design.md`](../system-test-design.md) の TC-E2E-TS-001 で E2E カバー。受入基準 #17（DB masking）は repository sub-feature の TC-IT-TR-020-masking-* で IT カバー
+- **§9 受入基準 1〜14 すべてに unit/integration ケース**（内部品質基準 lint/typecheck/coverage は CI ジョブ）。受入基準 #16（再起動跨ぎ保持）は親 [`../system-test-design.md`](../system-test-design.md) の TC-E2E-TS-001 で E2E カバー。受入基準 #17（DB masking）は repository sub-feature の TC-IT-TR-020-masking-* で IT カバー
 - 確定 A（pre-validate）/ B（table ロック）/ C（NFC + strip しない）/ D（last_error クリア）/ E（cancel 4 状態）/ F（agents 重複/容量）/ G（by_agent_id 責務）/ H（連続安全性）/ I（auto-mask）/ J（例外型統一 + 2 行 MSG）/ K（責務分離マトリクス）すべてに証拠ケース
 - 孤児要件ゼロ
 
@@ -107,7 +107,7 @@
 - 本 feature は domain 層の純粋ライブラリで、CLI / HTTP API / UI のいずれの公開エントリポイントも持たない（[`../feature-spec.md`](../feature-spec.md) §6 スコープ で「該当なし」と凍結）
 - 戦略ガイド §E2E対象の判断「内部API・ライブラリなどエンドユーザー操作がない場合は結合テストで代替可」に従い、E2E は本 feature 範囲外
 - 後続 `feature/admin-cli` / `feature/http-api`（Task lifecycle API） / `feature/chat-ui`（Phase 2 Web UI）が公開 I/F を実装した時点で E2E を起票
-- §9 受入基準 1〜15 はすべて unit/integration テストで検証可能。#16（再起動跨ぎ保持）は親 [`../system-test-design.md`](../system-test-design.md) の TC-E2E-TS-001 が担当。#17（DB masking）は repository sub-feature の IT が担当
+- §9 受入基準 1〜14 はすべて unit/integration テストで検証可能。#16（再起動跨ぎ保持）は親 [`../system-test-design.md`](../system-test-design.md) の TC-E2E-TS-001 が担当。#17（DB masking）は repository sub-feature の IT が担当
 
 | テストID | ペルソナ | シナリオ | 操作手順 | 期待結果 |
 |---------|---------|---------|---------|---------|

@@ -256,7 +256,7 @@ sequenceDiagram
 | A06 | Vulnerable Components | SQLAlchemy 2.x / Alembic を pyproject.toml で pin。CVE-2025-6965（SQLite < 3.50.2 メモリ破壊、CVSS 7.2-9.8）: SQLAlchemy ORM parameterized query 経由で直接 SQL 注入攻撃前提を物理遮断 + SQLite >= 3.50.2 ops 要件（tech-stack.md 凍結、room-repository PR #47 で確立済み）|
 | A07 | Auth Failures | 該当なし（Repository 層、認証は別 feature） |
 | A08 | Data Integrity Failures | **対応**: FK 制約（room_id → rooms.id CASCADE / directive_id → directives.id CASCADE 等）+ NOT NULL + UNIQUE で整合性保証 |
-| A09 | Logging Failures | **対応**: `MaskedText` により bind param 生成前にマスキング → SQLAlchemy echo ログに masked テキストが流れる |
+| A09 | Logging Failures | **適用**: `tasks.last_error` / `deliverables.body_markdown` のマスキングにより SQLAlchemy echo ログ / 監査ログ経路で API key / webhook token 漏洩なし。`MaskedText` TypeDecorator が `process_bind_param` 時点で機密パターンを `<REDACTED:*>` 化するため、raw secret は bind parameter 経由で SQLAlchemy echo ログにも残らない |
 | A10 | SSRF | 該当なし（外部通信なし）|
 
 ## ER 図
