@@ -1,7 +1,20 @@
-# 基本設計書
+# 基本設計書 — external-review-gate / repository
 
-> feature: `external-review-gate-repository`
-> 関連: [requirements.md](requirements.md) / [`docs/features/empire-repository/`](../empire-repository/) **テンプレート真実源** / [`docs/features/task-repository/`](../task-repository/) **直近テンプレート** / [`docs/features/external-review-gate/`](../external-review-gate/)
+> feature: `external-review-gate` / sub-feature: `repository`
+> 親 spec: [../feature-spec.md](../feature-spec.md) §9 受入基準 14, 15
+> 関連: [`../domain/basic-design.md`](../domain/basic-design.md) / [`../../empire-repository/`](../../empire-repository/) **テンプレート真実源** / [`../../task-repository/`](../../task-repository/) **直近テンプレート**
+
+## §モジュール契約（機能要件）
+
+| 要件ID | 概要 | 入力 | 処理 | 出力 | エラー時 | 親 spec 参照 |
+|--------|------|------|------|------|---------|-------------|
+| REQ-ERGR-001 | ExternalReviewGateRepository Protocol 定義 | — | 6 method（find_by_id / count / save / find_pending_by_reviewer / find_by_task_id / count_by_decision）を async def で宣言 | Protocol 型定義 | — | §9 AC#14 |
+| REQ-ERGR-002 | save() 5 段階 DELETE+UPSERT+INSERT | gate: ExternalReviewGate | 子テーブル DELETE → gate UPSERT → 子テーブル INSERT（§確定 R1-B 5 段階） | None | `sqlalchemy.IntegrityError`（FK 違反等）→ 上位伝播 | §9 AC#14 |
+| REQ-ERGR-003 | find_pending_by_reviewer | reviewer_id: OwnerId | WHERE reviewer_id + decision='PENDING' ORDER BY created_at DESC, id DESC | list[ExternalReviewGate]（空の場合 []） | — | §9 AC#14 |
+| REQ-ERGR-004 | find_by_task_id | task_id: TaskId | WHERE task_id ORDER BY created_at ASC, id ASC | list[ExternalReviewGate]（時系列昇順）| — | §9 AC#14 |
+| REQ-ERGR-005 | count_by_decision | decision: ReviewDecision | SELECT COUNT(*) WHERE decision = :decision | int | — | §9 AC#14 |
+| REQ-ERGR-006 | 3 masking カラム永続化（§確定 R1-E） | snapshot_body_markdown / feedback_text / audit_entries.comment を含む gate | MaskedText TypeDecorator が bind param 生成前に secret をマスキング | DB に raw secret が保存されない | — | §9 AC#15 |
+| REQ-ERGR-007 | Alembic 0008 DDL | — | 3 テーブル（external_review_gates / external_review_gate_attachments / external_review_audit_entries）+ INDEX 3 件（task_id_created / reviewer_decision / decision）を作成 | migrate 済み DB スキーマ | — | §9 AC#14 |
 
 ## 記述ルール（必ず守ること）
 
@@ -243,7 +256,7 @@ sequenceDiagram
 | A06 | Vulnerable Components | SQLAlchemy 2.x / Alembic を pyproject.toml で pin。CVE-2025-6965（SQLite < 3.50.2）: SQLAlchemy ORM parameterized query 経由で SQL 注入攻撃経路を物理遮断 + SQLite >= 3.50.2 ops 要件（tech-stack.md 凍結済み） |
 | A07 | Auth Failures | 該当なし（Repository 層、認証は別 feature） |
 | A08 | Data Integrity Failures | **対応**: FK 制約（task_id → tasks.id CASCADE）+ NOT NULL + UNIQUE で整合性保証。audit_trail 順序保証は §確定 R1-H ORDER BY で物理保証 |
-| A09 | Logging Failures | **対応**: `MaskedText` により bind param 生成前にマスキング → ログに masked テキストが流れる |
+| A09 | Logging Failures | **対応**: `external_review_gates.snapshot_body_markdown`（Agent 出力・API key 等を含み得る）/ `external_review_gates.feedback_text`（CEO コメント・webhook token / API key を含み得る）/ `external_review_audit_entries.comment`（CEO コメント・webhook token を含み得る）を `MaskedText` でマスキングしてから bind param を生成するため、SQLAlchemy echo ログ / 監査ログ経路でも raw secret が漏洩しない |
 | A10 | SSRF | 該当なし（外部通信なし）|
 
 ## ER 図

@@ -1,10 +1,10 @@
-# テスト設計書
+# テスト設計書 — external-review-gate / repository
 
-<!-- feature: external-review-gate-repository -->
-<!-- 配置先: docs/features/external-review-gate-repository/test-design.md -->
+<!-- feature: external-review-gate / sub-feature: repository -->
+<!-- 配置先: docs/features/external-review-gate/repository/test-design.md -->
 <!-- 対象範囲: RQ-ERGR-001〜007 / 詳細設計 §確定 R1-A〜R1-K / 5段階 save() / 3 masking カラム物理保証 / §設計決定 ERGR-001（reviewer_id FK 非存在） -->
 
-本 feature は M2 Repository **最後の Aggregate Repository PR**（empire / workflow / agent / room / directive / task 後）。ExternalReviewGate Aggregate（M1、PR #46 マージ済み）に対する Repository 層を新規追加する。テンプレートは task-repository (PR #52) を 100% 継承しつつ、**6-method Protocol**（`find_by_id` / `count` / `save(gate)` / `find_pending_by_reviewer` / `find_by_task_id` / `count_by_decision`）と **Gate 固有の 5-step save()**（3 テーブル構造: gate + attachments + audit_entries）および **3 masking カラム**（`external_review_gates.snapshot_body_markdown` / `external_review_gates.feedback_text` / `external_review_audit_entries.comment`）の構造を確立する。
+本 sub-feature は M2 Repository **最後の Aggregate Repository PR**（empire / workflow / agent / room / directive / task 後）。ExternalReviewGate Aggregate（M1、PR #46 マージ済み）に対する Repository 層を新規追加する。テンプレートは task-repository (PR #52) を 100% 継承しつつ、**6-method Protocol**（`find_by_id` / `count` / `save(gate)` / `find_pending_by_reviewer` / `find_by_task_id` / `count_by_decision`）と **Gate 固有の 5-step save()**（3 テーブル構造: gate + attachments + audit_entries）および **3 masking カラム**（`external_review_gates.snapshot_body_markdown` / `external_review_gates.feedback_text` / `external_review_audit_entries.comment`）の構造を確立する。
 
 外部レビューゲート固有の論点 5 件を**専用テストファイルで物理保証**する:
 
@@ -24,64 +24,59 @@
 | `test_save_child_tables.py` | TC-UT-ERGR-005 / 005b / 005c（5 段階 save() 物理確認）|
 | `test_masking_fields.py` | TC-IT-ERGR-020-masking-* (9 ケース、3 masking カラム核心) |
 
-## 受入基準定義一覧
+## 受入基準対応一覧
 
-テストマトリクスの「受入基準」列で参照する番号の定義。requirements-analysis.md の受入基準 §AC と 1:1 対応する。
+テストマトリクスの「受入基準」列の凡例。親 spec [`../feature-spec.md`](../feature-spec.md) §9 と対応する。
 
-| 番号 | 受入基準 | 対応テストケース |
-|-----|---------|---------------|
-| **1** | Protocol として 6 method（`find_by_id` / `count` / `save` / `find_pending_by_reviewer` / `find_by_task_id` / `count_by_decision`）が `async def` で宣言されている | TC-UT-ERGR-001 |
-| **2** | `SqliteExternalReviewGateRepository` が Protocol を充足する（pyright strict pass + duck typing 6 method 全 `hasattr`）| TC-UT-ERGR-001（内） |
-| **3** | `find_by_id` が存在 Gate を返し、不在 Gate に対して `None` を返す | TC-UT-ERGR-002 |
-| **4** | `save(gate)` → `find_by_id` のラウンドトリップで全属性（スカラ + 子テーブル構造: attachments / audit_trail）が完全復元される | TC-UT-ERGR-003 / 005 / 005b / 005c |
-| **5** | 3 masking カラム（`snapshot_body_markdown` / `feedback_text` / `audit_entries.comment`）に raw secret が DB に物理格納されない（raw SQL SELECT での byte-level 証明）| TC-IT-ERGR-020-masking-* (9 ケース) |
-| **6** | Alembic 0008 revision が 3 テーブル（`external_review_gates` / `external_review_gate_attachments` / `external_review_audit_entries`）と INDEX 3 件（`task_id_created` / `reviewer_decision` / `decision`）を作成し、upgrade/downgrade が idempotent | TC-IT-ERGR-001 / 002 / 003 / 005 |
-| **7** | `external_review_gates.task_id` FK ON DELETE CASCADE が機能する（Task 削除で Gate が自動削除）| TC-IT-ERGR-007 |
-| **8** | `reviewer_id` / `snapshot_committed_by` が FK を持たない（§設計決定 ERGR-001: Aggregate 境界、Owner Aggregate 未実装）| TC-IT-ERGR-008 |
-| **9** | `docs/design/domain-model/storage.md` §逆引き表に ExternalReviewGate 関連行（3 masking カラム含む）が存在する | TC-DOC-ERGR-001 |
+| 列の値 | 意味 |
+|-------|------|
+| **#15** | 親 spec §9 受入基準 15（3 masking カラム物理保証）。repository IT で検証 |
+| **内部品質基準** | Protocol 定義 / save round-trip / DDL / FK / storage.md 等、実装品質保証。親 spec CEO 可観測受入基準には含まない |
+
+**マトリクス充足**: 受入基準 #14（E2E 永続化ラウンドトリップ）は親 [`../system-test-design.md`](../system-test-design.md) TC-E2E-ERG-001〜003 で管理。受入基準 #15（masking IT）は本 sub-feature の repository IT（TC-IT-ERGR-020-masking-*）で検証済み。
 
 ## テストマトリクス
 
 | 要件ID | 実装アーティファクト | テストケースID | テストレベル | 種別 | 受入基準 |
 |--------|-------------------|---------------|------------|------|---------|
-| RQ-ERGR-001 | `ExternalReviewGateRepository` Protocol **6 method** 定義 | TC-UT-ERGR-001 | 結合 | 正常系 | 1, 2 |
-| RQ-ERGR-001（find_by_id） | `find_by_id` 存在 / 不在 | TC-UT-ERGR-002 | 結合 | 正常系 | 3 |
-| RQ-ERGR-002（save round-trip） | `save(gate)` 5 段階 → `find_by_id` round-trip | TC-UT-ERGR-003 | 結合 | 正常系 | 4 |
-| RQ-ERGR-002（save 5 段階 DELETE+UPSERT+INSERT） | 5 段階順序の物理確認（child table 完全往復） | TC-UT-ERGR-005 / TC-UT-ERGR-005b / TC-UT-ERGR-005c | 結合 | 正常系 | 4 |
-| RQ-ERGR-002（count SQL） | `count()` が SQL `COUNT(*)` を発行 | TC-UT-ERGR-004 | 結合 | 正常系 | — |
-| RQ-ERGR-003（find_pending_by_reviewer） | `find_pending_by_reviewer(reviewer_id)` が PENDING Gate のみ ORDER BY created_at DESC, id DESC で返す | TC-UT-ERGR-006 / TC-UT-ERGR-006b / TC-UT-ERGR-006c / TC-UT-ERGR-006d | 結合 | 正常系 | — |
-| RQ-ERGR-004（find_by_task_id） | `find_by_task_id(task_id)` が同一 Task の Gate 全件を ORDER BY created_at ASC, id ASC で返す | TC-UT-ERGR-007 / TC-UT-ERGR-007b / TC-UT-ERGR-007c | 結合 | 正常系 | — |
-| RQ-ERGR-005（count_by_decision） | `count_by_decision(decision)` が SQL `COUNT(*) WHERE decision = :decision` を発行 | TC-UT-ERGR-008 | 結合 | 正常系 | — |
-| RQ-ERGR-002（Tx boundary）| commit path 永続化 / rollback path 破棄 | TC-UT-ERGR-009 | 結合 | 正常系 / 異常系 | — |
-| **RQ-ERGR-006（masking、§確定 R1-E）** | raw `snapshot_body_markdown` / `feedback_text` / `comment` → DB に `<REDACTED:*>` 永続化（**3 masking カラム物理保証**）| TC-IT-ERGR-020-masking-* (9 経路) | 結合 | 正常系 | 5 |
-| RQ-ERGR-007（Alembic 0008 DDL）| 3 テーブル + INDEX 3 件 + FK 群作成 | TC-IT-ERGR-001 / TC-IT-ERGR-002 / TC-IT-ERGR-003 | 結合 | 正常系 | 6 |
-| RQ-ERGR-007（Alembic chain） | 0001→...→0008 単一 head | TC-IT-ERGR-004 | 結合 | 正常系 | — |
-| RQ-ERGR-007（upgrade/downgrade） | 双方向 migration が idempotent | TC-IT-ERGR-005 | 結合 | 正常系 | 6 |
-| RQ-ERGR-007（down_revision） | `0008.down_revision == "0007_task_aggregate"` | TC-IT-ERGR-006 | 結合 | 正常系 | — |
-| RQ-ERGR-007（Task CASCADE FK）| Task 削除で Gate 自動削除（CASCADE）| TC-IT-ERGR-007 | 結合 | 正常系 | 7 |
-| **RQ-ERGR-007（§設計決定 ERGR-001）**| 0008 で `reviewer_id` / `snapshot_committed_by` FK が存在しない（Aggregate 境界設計決定）| TC-IT-ERGR-008 | 結合 | 正常系 | 8 |
-| RQ-ERGR-006（CI Layer 2）| arch test parametrize（3 カラム追加）| TC-UT-ERGR-arch | 結合 | 正常系 | 5 |
-| RQ-ERGR-006（CI Layer 1）| grep guard で 3 カラムの `MaskedText` 必須 | （CI ジョブ） | — | — | 5 |
-| RQ-ERGR-001（storage.md）| §逆引き表更新（ExternalReviewGate 関連行追加）| TC-DOC-ERGR-001 | doc 検証 | 正常系 | 9 |
-| **§確定 R1-A（テンプレ継承）** | empire/workflow/agent/room/directive/task §確定 A 継承 | TC-UT-ERGR-001〜009 全件 | 結合 | — | — |
-| **§確定 R1-B（save 5 段階）** | DELETE 逆順 → gate UPSERT → 2 INSERT 順序の物理確認 | TC-UT-ERGR-005 | 結合 | 正常系 | 4 |
-| **§確定 R1-D（6-method Protocol）** | find_pending_by_reviewer / find_by_task_id / count_by_decision の 3 新 method 追加 | TC-UT-ERGR-006 / TC-UT-ERGR-007 / TC-UT-ERGR-008 | 結合 | 正常系 | — |
-| **§確定 R1-E（CI 三層防衛 3 カラム）** | 正のチェック + 負のチェック 3 カラム分 | TC-UT-ERGR-arch + TC-DOC-ERGR-001 | 結合 / doc | 正常系 | 5 |
-| **§確定 R1-H（ORDER BY 決定論性）** | 全子テーブルの ORDER BY + find_pending_by_reviewer / find_by_task_id の tiebreaker | TC-UT-ERGR-003 + TC-UT-ERGR-006c + TC-UT-ERGR-007b | 結合 | 正常系 | — |
-| **§確定 R1-K（INDEX 3 件）** | ix_external_review_gates_task_id_created / ix_external_review_gates_reviewer_decision / ix_external_review_gates_decision | TC-IT-ERGR-002 | 結合 | 正常系 | 6 |
-| **§確定 R1-C（_from_rows 子構造再組み立て）** | snapshot スカラ + attach_rows → Deliverable VO 復元 / audit_rows → AuditEntry list 復元 | TC-UT-ERGR-003 | 結合 | 正常系 | 4 |
-| **§設計決定 ERGR-001（reviewer_id FK 非存在）** | 0008 で `external_review_gates.reviewer_id` FK が存在しない（Aggregate 境界） | TC-IT-ERGR-008 | 結合 | 正常系 | 8 |
-| **Lifecycle 統合** | save → find_by_id → find_pending_by_reviewer → find_by_task_id → count_by_decision → save（更新）の 6 method 連携 | TC-IT-ERGR-LIFECYCLE | 結合 | 正常系 | 1, 4, 6 |
+| RQ-ERGR-001 | `ExternalReviewGateRepository` Protocol **6 method** 定義 | TC-UT-ERGR-001 | 結合 | 正常系 | 内部品質基準 |
+| RQ-ERGR-001（find_by_id） | `find_by_id` 存在 / 不在 | TC-UT-ERGR-002 | 結合 | 正常系 | 内部品質基準 |
+| RQ-ERGR-002（save round-trip） | `save(gate)` 5 段階 → `find_by_id` round-trip | TC-UT-ERGR-003 | 結合 | 正常系 | 内部品質基準 |
+| RQ-ERGR-002（save 5 段階 DELETE+UPSERT+INSERT） | 5 段階順序の物理確認（child table 完全往復） | TC-UT-ERGR-005 / TC-UT-ERGR-005b / TC-UT-ERGR-005c | 結合 | 正常系 | 内部品質基準 |
+| RQ-ERGR-002（count SQL） | `count()` が SQL `COUNT(*)` を発行 | TC-UT-ERGR-004 | 結合 | 正常系 | 内部品質基準 |
+| RQ-ERGR-003（find_pending_by_reviewer） | `find_pending_by_reviewer(reviewer_id)` が PENDING Gate のみ ORDER BY created_at DESC, id DESC で返す | TC-UT-ERGR-006 / TC-UT-ERGR-006b / TC-UT-ERGR-006c / TC-UT-ERGR-006d | 結合 | 正常系 | 内部品質基準 |
+| RQ-ERGR-004（find_by_task_id） | `find_by_task_id(task_id)` が同一 Task の Gate 全件を ORDER BY created_at ASC, id ASC で返す | TC-UT-ERGR-007 / TC-UT-ERGR-007b / TC-UT-ERGR-007c | 結合 | 正常系 | 内部品質基準 |
+| RQ-ERGR-005（count_by_decision） | `count_by_decision(decision)` が SQL `COUNT(*) WHERE decision = :decision` を発行 | TC-UT-ERGR-008 | 結合 | 正常系 | 内部品質基準 |
+| RQ-ERGR-002（Tx boundary）| commit path 永続化 / rollback path 破棄 | TC-UT-ERGR-009 | 結合 | 正常系 / 異常系 | 内部品質基準 |
+| **RQ-ERGR-006（masking、§確定 R1-E）** | raw `snapshot_body_markdown` / `feedback_text` / `comment` → DB に `<REDACTED:*>` 永続化（**3 masking カラム物理保証**）| TC-IT-ERGR-020-masking-* (9 経路) | 結合 | 正常系 | **#15** |
+| RQ-ERGR-007（Alembic 0008 DDL）| 3 テーブル + INDEX 3 件 + FK 群作成 | TC-IT-ERGR-001 / TC-IT-ERGR-002 / TC-IT-ERGR-003 | 結合 | 正常系 | 内部品質基準 |
+| RQ-ERGR-007（Alembic chain） | 0001→...→0008 単一 head | TC-IT-ERGR-004 | 結合 | 正常系 | 内部品質基準 |
+| RQ-ERGR-007（upgrade/downgrade） | 双方向 migration が idempotent | TC-IT-ERGR-005 | 結合 | 正常系 | 内部品質基準 |
+| RQ-ERGR-007（down_revision） | `0008.down_revision == "0007_task_aggregate"` | TC-IT-ERGR-006 | 結合 | 正常系 | 内部品質基準 |
+| RQ-ERGR-007（Task CASCADE FK）| Task 削除で Gate 自動削除（CASCADE）| TC-IT-ERGR-007 | 結合 | 正常系 | 内部品質基準 |
+| **RQ-ERGR-007（§設計決定 ERGR-001）**| 0008 で `reviewer_id` / `snapshot_committed_by` FK が存在しない（Aggregate 境界設計決定）| TC-IT-ERGR-008 | 結合 | 正常系 | 内部品質基準 |
+| RQ-ERGR-006（CI Layer 2）| arch test parametrize（3 カラム追加）| TC-UT-ERGR-arch | 結合 | 正常系 | **#15** |
+| RQ-ERGR-006（CI Layer 1）| grep guard で 3 カラムの `MaskedText` 必須 | （CI ジョブ） | — | — | **#15** |
+| RQ-ERGR-001（storage.md）| §逆引き表更新（ExternalReviewGate 関連行追加）| TC-DOC-ERGR-001 | doc 検証 | 正常系 | 内部品質基準 |
+| **§確定 R1-A（テンプレ継承）** | empire/workflow/agent/room/directive/task §確定 A 継承 | TC-UT-ERGR-001〜009 全件 | 結合 | — | 内部品質基準 |
+| **§確定 R1-B（save 5 段階）** | DELETE 逆順 → gate UPSERT → 2 INSERT 順序の物理確認 | TC-UT-ERGR-005 | 結合 | 正常系 | 内部品質基準 |
+| **§確定 R1-D（6-method Protocol）** | find_pending_by_reviewer / find_by_task_id / count_by_decision の 3 新 method 追加 | TC-UT-ERGR-006 / TC-UT-ERGR-007 / TC-UT-ERGR-008 | 結合 | 正常系 | 内部品質基準 |
+| **§確定 R1-E（CI 三層防衛 3 カラム）** | 正のチェック + 負のチェック 3 カラム分 | TC-UT-ERGR-arch + TC-DOC-ERGR-001 | 結合 / doc | 正常系 | **#15** |
+| **§確定 R1-H（ORDER BY 決定論性）** | 全子テーブルの ORDER BY + find_pending_by_reviewer / find_by_task_id の tiebreaker | TC-UT-ERGR-003 + TC-UT-ERGR-006c + TC-UT-ERGR-007b | 結合 | 正常系 | 内部品質基準 |
+| **§確定 R1-K（INDEX 3 件）** | ix_external_review_gates_task_id_created / ix_external_review_gates_reviewer_decision / ix_external_review_gates_decision | TC-IT-ERGR-002 | 結合 | 正常系 | 内部品質基準 |
+| **§確定 R1-C（_from_rows 子構造再組み立て）** | snapshot スカラ + attach_rows → Deliverable VO 復元 / audit_rows → AuditEntry list 復元 | TC-UT-ERGR-003 | 結合 | 正常系 | 内部品質基準 |
+| **§設計決定 ERGR-001（reviewer_id FK 非存在）** | 0008 で `external_review_gates.reviewer_id` FK が存在しない（Aggregate 境界） | TC-IT-ERGR-008 | 結合 | 正常系 | 内部品質基準 |
+| **Lifecycle 統合** | save → find_by_id → find_pending_by_reviewer → find_by_task_id → count_by_decision → save（更新）の 6 method 連携 | TC-IT-ERGR-LIFECYCLE | 結合 | 正常系 | 内部品質基準 |
 
 **マトリクス充足の証拠**:
 
 - RQ-ERGR-001〜007 すべてに最低 1 件のテストケース
 - **save() 5 段階の順序確認**: TC-UT-ERGR-005 で child table DELETE → gate UPSERT → child INSERT の順序違反が `IntegrityError` になることを物理確認
-- **3 masking カラム全経路**: TC-IT-ERGR-020-masking-* で `snapshot_body_markdown` / `feedback_text` / `comment` の各カラムに masked + passthrough + roundtrip + 3 カラム同時を確認
+- **3 masking カラム全経路（受入基準 #15）**: TC-IT-ERGR-020-masking-* で `snapshot_body_markdown` / `feedback_text` / `comment` の各カラムに masked + passthrough + roundtrip + 3 カラム同時を確認
 - **find_pending_by_reviewer ORDER BY tiebreaker（BUG-EMR-001 準拠）**: TC-UT-ERGR-006d で同時刻 PENDING Gate の id DESC tiebreaker を物理確認
 - **find_by_task_id ORDER BY 時系列昇順**: TC-UT-ERGR-007b で差し戻し + 再起票の複数ラウンドが created_at ASC で正しく返ることを確認
 - **§設計決定 ERGR-001（Aggregate 境界）**: TC-IT-ERGR-008 で `reviewer_id` / `snapshot_committed_by` FK が 0008 時点で存在しないことを確認
-- 受入基準 1〜9 すべてに unit/integration ケース
+- 受入基準 #15（masking IT）はリポジトリ IT で検証済み。受入基準 #14（E2E: 永続化ラウンドトリップ）は親 system-test-design.md TC-E2E-ERG-001〜003 で管理
 - 孤児要件ゼロ
 
 ## 外部 I/O 依存マップ
@@ -112,12 +107,13 @@
 
 ## E2E テストケース
 
-**該当なし** — 理由:
+**該当なし（repository sub-feature 範囲外）** — 理由:
 
 - 本 feature は infrastructure 層単独で、CLI / HTTP API / UI のいずれの公開エントリポイントも持たない
 - Repository は内部 API（Python module-level の Protocol / Class）のみ提供
 - テスト戦略ガイド §E2E対象の判断「内部 API・ライブラリなどエンドユーザー操作がない場合は結合テストで代替可」に従い、E2E は本 feature 範囲外
-- 後続 `feature/external-review-gate-application` / `feature/http-api` が公開 I/F を実装した時点で E2E を起票
+- **親 spec 受入基準 #14（アプリ再起動跨ぎ永続化）に対応する E2E は親 [`../system-test-design.md`](../system-test-design.md) TC-E2E-ERG-001〜003 で管理**
+- 後続 `feature/http-api` 等が公開 I/F を実装した時点で追加 E2E を起票
 
 | テストID | ペルソナ | シナリオ | 操作手順 | 期待結果 |
 |---------|---------|---------|---------|---------|
@@ -193,27 +189,27 @@
 | TC-IT-ERGR-020-masking-3columns | **3 masking カラム同時マスキング**（同一 save サイクル）| 正常系 | `snapshot_body_markdown` に Discord Token / `feedback_text` に Slack Token / `audit_entry.comment` に GitHub PAT を含む Gate を save | raw SQL で 3 カラムともに masked。Discord Token は `<REDACTED:DISCORD_TOKEN>`、Slack Token は `<REDACTED:SLACK_TOKEN>`、GitHub PAT は `<REDACTED:GITHUB_PAT>`。各カラムに raw secret が残らない（§確定 R1-E 3 カラム同時物理保証）|
 | TC-IT-ERGR-020-masking-feedback-roundtrip | `external_review_gates.feedback_text` — 不可逆性 | 正常系 | Slack Bot Token を含む `feedback_text` で save → `find_by_id` | 復元 Gate の `feedback_text` が `<REDACTED:SLACK_TOKEN>` を含む。raw token が `find_by_id` 経由で復元不能 |
 
-### Alembic 0008 + FK CASCADE + §設計決定 ERGR-001（受入基準 6〜8）
+### Alembic 0008 + FK CASCADE + §設計決定 ERGR-001（内部品質基準）
 
 **`test_alembic_external_review_gate.py`** — task-repository `test_alembic_task.py` のテンプレート継承。
 
 | テストID | 対象 | 使用 fixture | 前提条件 | 操作 | 期待結果 |
 |---------|-----|--------------|---------|------|---------|
-| TC-IT-ERGR-001 | 0008 が 3 テーブルを作成（受入基準 6）| `empty_engine`（clean DB） | — | `alembic upgrade head` → `SELECT name FROM sqlite_master WHERE type='table'` | `external_review_gates` / `external_review_gate_attachments` / `external_review_audit_entries` の 3 テーブルが存在 |
+| TC-IT-ERGR-001 | 0008 が 3 テーブルを作成（内部品質基準）| `empty_engine`（clean DB） | — | `alembic upgrade head` → `SELECT name FROM sqlite_master WHERE type='table'` | `external_review_gates` / `external_review_gate_attachments` / `external_review_audit_entries` の 3 テーブルが存在 |
 | TC-IT-ERGR-002 | 0008 が INDEX 3 件を作成（§確定 R1-K）| `empty_engine` | — | `upgrade head` → `SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='external_review_gates'` | `ix_external_review_gates_task_id_created` / `ix_external_review_gates_reviewer_decision` / `ix_external_review_gates_decision` の 3 INDEX が存在 |
 | TC-IT-ERGR-003 | `external_review_gates` の FK（→ tasks CASCADE）| `empty_engine` | — | `upgrade head` → `PRAGMA foreign_key_list('external_review_gates')` | `tasks` への FK が存在。ON DELETE CASCADE |
 | TC-IT-ERGR-004 | Alembic chain 0001→...→0008 が単一 head（分岐なし）| — | alembic.ini 存在 | `ScriptDirectory.get_heads()` | `len(heads) == 1`（head 分岐なし）|
-| TC-IT-ERGR-005 | upgrade head → downgrade base → upgrade head が idempotent（受入基準 6）| `empty_engine` | — | 双方向サイクル実行 | 最終状態で 3 テーブルが存在。downgrade base 後は全テーブル消滅。再 upgrade 後に再出現 |
+| TC-IT-ERGR-005 | upgrade head → downgrade base → upgrade head が idempotent（内部品質基準）| `empty_engine` | — | 双方向サイクル実行 | 最終状態で 3 テーブルが存在。downgrade base 後は全テーブル消滅。再 upgrade 後に再出現 |
 | TC-IT-ERGR-006 | `0008_external_review_gate_aggregate.down_revision == "0007_task_aggregate"` | — | alembic.ini 存在 | `ScriptDirectory.get_revision("0008_external_review_gate_aggregate").down_revision` | `"0007_task_aggregate"` と等しい（chain 一直線の物理確認）|
-| TC-IT-ERGR-007 | `external_review_gates.task_id` FK ON DELETE CASCADE（受入基準 7）| `empty_engine` | — | raw SQL で empire → workflow → room → directive → task → gate を INSERT → `DELETE FROM tasks WHERE id = :id` | Gate 行が CASCADE で自動削除。`SELECT * FROM external_review_gates WHERE task_id = :task_id` が空 |
-| **TC-IT-ERGR-008** | **§設計決定 ERGR-001: `external_review_gates.reviewer_id` / `snapshot_committed_by` FK が存在しない（受入基準 8）** | `empty_engine` | — | `upgrade head` → `PRAGMA foreign_key_list('external_review_gates')` | FK 参照テーブル一覧に `owners`（または相当する Aggregate テーブル）が**存在しない**（Aggregate 境界設計決定。reviewer_id は Owner Aggregate 未実装のため FK 非保証。参照整合性は application 層 GateService で保証）|
+| TC-IT-ERGR-007 | `external_review_gates.task_id` FK ON DELETE CASCADE（内部品質基準）| `empty_engine` | — | raw SQL で empire → workflow → room → directive → task → gate を INSERT → `DELETE FROM tasks WHERE id = :id` | Gate 行が CASCADE で自動削除。`SELECT * FROM external_review_gates WHERE task_id = :task_id` が空 |
+| **TC-IT-ERGR-008** | **§設計決定 ERGR-001: `external_review_gates.reviewer_id` / `snapshot_committed_by` FK が存在しない（内部品質基準）** | `empty_engine` | — | `upgrade head` → `PRAGMA foreign_key_list('external_review_gates')` | FK 参照テーブル一覧に `owners`（または相当する Aggregate テーブル）が**存在しない**（Aggregate 境界設計決定。reviewer_id は Owner Aggregate 未実装のため FK 非保証。参照整合性は application 層 GateService で保証）|
 
-### CI 三層防衛 ExternalReviewGate 拡張（受入基準 9、§確定 R1-E）
+### CI 三層防衛 ExternalReviewGate 拡張（内部品質基準、§確定 R1-E）
 
 | テストID | 対象 | 使用 fixture | 前提条件 | 操作 | 期待結果 |
 |---------|-----|--------------|---------|------|---------|
 | TC-UT-ERGR-arch | Layer 2: `tests/architecture/test_masking_columns.py` の ExternalReviewGate parametrize 拡張（**3 カラム**）| `Base.metadata` | M2 永続化基盤の arch test に masking 検証構造あり | parametrize に `("external_review_gates", "snapshot_body_markdown", MaskedText)` / `("external_review_gates", "feedback_text", MaskedText)` / `("external_review_audit_entries", "comment", MaskedText)` を追加 | pass（3 カラムは MaskedText、その他カラムは masking なし）。後続 PR が誤ってカラム型を変更した瞬間に落下して PR ブロック |
-| TC-DOC-ERGR-001 | storage.md §逆引き表 ExternalReviewGate 行存在（受入基準 9）| repo root | `docs/design/domain-model/storage.md` 編集済み（本 PR で実施）| `tests/docs/test_storage_md_back_index.py` で ExternalReviewGate 行検証 | (a) `external_review_gates.snapshot_body_markdown: MaskedText` が §逆引き表に存在、(b) `external_review_gates.feedback_text: MaskedText` が存在、(c) `external_review_audit_entries.comment: MaskedText` が存在、(d) ExternalReviewGate 残カラム（masking 対象なし）行が存在 |
+| TC-DOC-ERGR-001 | storage.md §逆引き表 ExternalReviewGate 行存在（内部品質基準）| repo root | `docs/design/domain-model/storage.md` 編集済み（本 PR で実施）| `tests/docs/test_storage_md_back_index.py` で ExternalReviewGate 行検証 | (a) `external_review_gates.snapshot_body_markdown: MaskedText` が §逆引き表に存在、(b) `external_review_gates.feedback_text: MaskedText` が存在、(c) `external_review_audit_entries.comment: MaskedText` が存在、(d) ExternalReviewGate 残カラム（masking 対象なし）行が存在 |
 
 ### Lifecycle 統合シナリオ
 
@@ -360,5 +356,4 @@ _read_persisted_audit_comment(session_factory, gate_id) -> str
 - [ ] **_from_rows 全子構造**（§確定 R1-C）: TC-UT-ERGR-003 で snapshot スカラ + attach_rows → Deliverable VO 復元 / audit_rows → AuditEntry list（occurred_at ASC 順）の復元が §確定 R1-H と一致することを確認
 - [ ] **テストファイル分割（5 ファイル: test_protocol_crud / test_find_methods / test_count_by_decision / test_save_child_tables / test_masking_fields）が basic-design.md §モジュール構成と整合**
 - [ ] §設計決定 ERGR-001（Aggregate 境界、FK 非存在）が detailed-design.md §Known Issues に明記されている
-- [ ] 受入基準 1〜9 すべてにテストケースがある
-- [ ] 受入基準定義一覧（本文書冒頭）と requirements-analysis.md §AC が 1:1 対応している
+- [ ] 受入基準 #15（masking IT）はリポジトリ IT（TC-IT-ERGR-020-masking-*）でカバーし、受入基準 #14（E2E）は親 system-test-design.md TC-E2E-ERG-001〜003 に委譲していることを確認

@@ -1,7 +1,8 @@
-# 詳細設計書
+# 詳細設計書 — external-review-gate / domain
 
-> feature: `external-review-gate`
-> 関連: [basic-design.md](basic-design.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §ExternalReviewGate / [`docs/features/task/detailed-design.md`](../task/detailed-design.md) §確定 A-2（dispatch 表パターン継承元）
+> feature: `external-review-gate` / sub-feature: `domain`
+> 親 spec: [../feature-spec.md](../feature-spec.md)
+> 関連: [basic-design.md](basic-design.md) / [`../../../design/domain-model/aggregates.md`](../../../design/domain-model/aggregates.md) §ExternalReviewGate / [`../../task/detailed-design.md`](../../task/detailed-design.md) §確定 A-2（dispatch 表パターン継承元）
 
 ## 記述ルール（必ず守ること）
 

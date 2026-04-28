@@ -1,7 +1,19 @@
-# 基本設計書
+# 基本設計書 — external-review-gate / domain
 
-> feature: `external-review-gate`
-> 関連: [requirements.md](requirements.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §ExternalReviewGate / [`docs/features/task/`](../task/) （PR #42 §確定 A-2 連携先）
+> feature: `external-review-gate` / sub-feature: `domain`
+> 親 spec: [../feature-spec.md](../feature-spec.md) §9 受入基準 1〜12
+> 関連: [`docs/design/domain-model/aggregates.md`](../../../design/domain-model/aggregates.md) §ExternalReviewGate / [`../../task/`](../../task/) （PR #42 §確定 A-2 連携先）
+
+## §モジュール契約（機能要件）
+
+| 要件ID | 概要 | 入力 | 処理 | 出力 | エラー時 | 親 spec 参照 |
+|--------|------|------|------|------|---------|-------------|
+| REQ-GT-001 | ExternalReviewGate 構築 | id / task_id / stage_id / deliverable_snapshot / reviewer_id / decision（既定 PENDING）/ feedback_text（既定 ''）/ audit_trail（既定 []）/ created_at / decided_at（既定 None） | Pydantic 型バリデーション → model_validator で 5 不変条件検査 | valid な ExternalReviewGate インスタンス | 型違反: `pydantic.ValidationError` / 不変条件違反: `ExternalReviewGateInvariantViolation` | §9 AC#1, 2 |
+| REQ-GT-002 | approve | by_owner_id / comment（0〜10000 文字）/ decided_at（UTC） | state machine lookup（PENDING のみ許可）→ feedback_text NFC 正規化・range 検査 → audit_trail に APPROVED エントリ追加 → 新インスタンス返却 | 新 ExternalReviewGate（APPROVED） | `ExternalReviewGateInvariantViolation(kind='decision_already_decided' / 'feedback_text_range')` | §9 AC#3, 5, 10 |
+| REQ-GT-003 | reject | by_owner_id / comment / decided_at | approve と同処理、REJECTED 遷移 | 新 ExternalReviewGate（REJECTED） | 同上 | §9 AC#4, 5, 10 |
+| REQ-GT-004 | cancel | by_owner_id / reason / decided_at | approve と同処理、CANCELLED 遷移 | 新 ExternalReviewGate（CANCELLED） | 同上 | §9 AC#4, 5, 10 |
+| REQ-GT-005 | record_view | by_owner_id / viewed_at | state machine lookup（4 状態すべて自己遷移許可）→ audit_trail に VIEWED エントリ追加 | 新 ExternalReviewGate（decision 不変） | 該当なし（4 状態すべて許可） | §9 AC#6 |
+| REQ-GT-006 | 不変条件検査（5 種） | Gate の現状属性 | _validate_decided_at_consistency / _validate_feedback_text_range / _validate_audit_trail_append_only / _validate_snapshot_immutable / _validate_decision_immutable を順次実行 | 違反なしなら return | `ExternalReviewGateInvariantViolation`（kind で違反種別識別）| §9 AC#5, 7, 8, 9, 10 |
 
 ## 記述ルール（必ず守ること）
 

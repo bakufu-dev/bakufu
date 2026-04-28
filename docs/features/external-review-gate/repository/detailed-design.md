@@ -1,7 +1,8 @@
-# 詳細設計書
+# 詳細設計書 — external-review-gate / repository
 
-> feature: `external-review-gate-repository`
-> 関連: [basic-design.md](basic-design.md) / [`docs/features/empire-repository/detailed-design.md`](../empire-repository/detailed-design.md) **テンプレート真実源** / [`docs/features/task-repository/detailed-design.md`](../task-repository/detailed-design.md) **直近テンプレート** / [`docs/features/external-review-gate/detailed-design.md`](../external-review-gate/detailed-design.md)
+> feature: `external-review-gate` / sub-feature: `repository`
+> 親 spec: [../feature-spec.md](../feature-spec.md)
+> 関連: [basic-design.md](basic-design.md) / [`../../empire-repository/detailed-design.md`](../../empire-repository/detailed-design.md) **テンプレート真実源** / [`../../task-repository/detailed-design.md`](../../task-repository/detailed-design.md) **直近テンプレート** / [`../domain/detailed-design.md`](../domain/detailed-design.md)
 
 ## 記述ルール（必ず守ること）
 
@@ -49,7 +50,7 @@
 
 ### §確定 R1-B: save() 5 段階の順序と SQLite FK 整合性
 
-§確定 R1-B（requirements-analysis.md）で定義した 5 段階を詳細凍結する:
+§確定 R1-B（[`basic-design.md`](basic-design.md) §確定 R1-B）で定義した 5 段階を詳細凍結する:
 
 | 段階 | SQL 操作 | 対象 | 留意点 |
 |------|---------|------|-------|
