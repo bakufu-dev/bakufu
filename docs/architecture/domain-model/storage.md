@@ -185,13 +185,14 @@ LLM subprocess の stdout / stderr、Outbox の `payload_json` / `last_error`、
 | `audit_log.error_text` | `audit_log` | `tables/audit_log.py` | `MaskedText` | **本 PR** |
 | `Task.last_error` | `tasks` | `tables/tasks.py` | `MaskedText` | `feature/task-repository`（後続） |
 | `Persona.prompt_body` | `agents` | `tables/agents.py` | `MaskedText` | `feature/agent-repository`（Issue #32、**Schneier 申し送り #3 実適用済み**、persistence-foundation #23 で hook 構造提供 → 本 PR で配線完了） |
-| `PromptKit.prefix_markdown` | `rooms` | `tables/rooms.py` | `MaskedText` | `feature/room-repository`（後続） |
+| `PromptKit.prefix_markdown` | `rooms` | `tables/rooms.py` | `MaskedText` | `feature/room-repository`（Issue #33、**room §確定 G 実適用済み**、persistence-foundation #23 で hook 構造提供 → 本 PR で配線完了） |
 | `bakufu_pid_registry.cmd` | `bakufu_pid_registry` | `tables/pid_registry.py` | `MaskedText` | **本 PR** |
 | 構造化ログ | （ファイル） | `infrastructure/logging/structured.py` | log filter（TypeDecorator 対象外、ログ層で `MaskingGateway.mask()` 呼び出し） | `feature/logging` |
 | **Empire 関連カラム（`empires` / `empire_room_refs` / `empire_agent_refs`）** | 同左 3 テーブル | `infrastructure/persistence/sqlite/repositories/empire_repository.py` + `tables/empires.py` 等 | **masking 対象なし**（`String` / `UUIDStr` / `Boolean` のみ。後続 Repository PR が誤って `MaskedText` を追加しないテンプレート、CI 三層防衛 Layer 1+2 で物理保証） | `feature/empire-repository`（PR #25） |
 | `workflow_stages.notify_channels_json` | `workflow_stages` | `infrastructure/persistence/sqlite/tables/workflow_stages.py` | **`MaskedJSONEncoded`** | `feature/workflow-repository`（Issue #31、Schneier 申し送り #6 + workflow §Confirmation G の Repository 経路実適用、Discord webhook token マスキング） |
 | **Workflow 残カラム（`workflows` 全カラム / `workflow_transitions` 全カラム / `workflow_stages` の `notify_channels_json` 以外）** | 同左 | `tables/workflows.py` / `tables/workflow_transitions.py` / `tables/workflow_stages.py` | **masking 対象なし**（`UUIDStr` / `String` / `Text` / `JSONEncoded` のみ。`completion_policy_json` は VO の自由記述だが secret 6 種非該当のため `JSONEncoded`、CI Layer 2 で `MaskedJSONEncoded` でないことを arch test で保証） | `feature/workflow-repository`（Issue #31） |
 | **Agent 残カラム（`agents` の `prompt_body` 以外 / `agent_providers` 全カラム / `agent_skills` 全カラム）** | 同左 | `tables/agents.py` / `tables/agent_providers.py` / `tables/agent_skills.py` | **masking 対象なし**（`UUIDStr` / `String` / `Boolean` のみ。`agents.prompt_body` 以外のカラムが secret 6 種に該当しないことを CI Layer 2 で arch test で保証、過剰マスキング防止） | `feature/agent-repository`（Issue #32） |
+| **Room 残カラム（`rooms` の `prompt_kit_prefix_markdown` 以外 / `room_members` 全カラム）** | 同左 | `tables/rooms.py` / `tables/room_members.py` | **masking 対象なし**（`UUIDStr` / `String` / `Boolean` / `DateTime` のみ。`rooms.prompt_kit_prefix_markdown` 以外のカラムが secret 6 種に該当しないことを CI Layer 2 で arch test で保証、過剰マスキング防止） | `feature/room-repository`（Issue #33） |
 
 ##### 逆引き表の運用ルール
 
@@ -209,6 +210,52 @@ LLM subprocess の stdout / stderr、Outbox の `payload_json` / `last_error`、
 1. SQLite の WAL を含むデータベースファイル（`bakufu.db`, `bakufu.db-wal`, `bakufu.db-shm`）の差し替え
 2. 影響を受けた Conversation / Deliverable / Outbox 行を特定し、当該 secret 列を `<REDACTED:LEAKED>` で UPDATE
 3. `audit_log` に `actor='security_response'` で記録
+
+## Repository save() インターフェース設計パターン（§確定 H 補足）
+
+`feature/room-repository`（Issue #33）で確立した、**Aggregate に外部 Aggregate ID 属性を持たない場合の Repository `save()` 引数設計**を凍結する。後続 Repository PR が同パターンに直面したときの真実源。
+
+### 標準パターン: `save(aggregate) -> None`
+
+| Aggregate | 属性内容 | save() シグネチャ |
+|---|---|---|
+| `Empire` | `id`, `name`, `rooms`, `agents` | `save(empire: Empire) -> None` |
+| `Workflow` | `id`, `name`, `stages`, ... | `save(workflow: Workflow) -> None` |
+| `Agent` | `id`, `empire_id`, `name`, ... | `save(agent: Agent) -> None` |
+
+これらの Aggregate は **DB 永続化に必要なすべての ID を自身の属性として保持する**。Repository は `aggregate.id` や `aggregate.empire_id` を直接参照できるため、`save(aggregate)` の 1 引数で十分。
+
+### 非対称パターン: `save(aggregate, scope_id) -> None`（Room の場合）
+
+`Room` Aggregate は **`empire_id` 属性を持たない**（`aggregates.md` §Room 参照）。Empire ↔ Room の帰属関係は `Empire.rooms: list[RoomRef]` 側が管理し、Room 自身は「自分がどの Empire に属するか」を知らない設計（Tell, Don't Ask 原則と DDD Bounded Context 境界の観点から意図的に排除）。
+
+しかし DB の `rooms` テーブルは `empire_id` カラム（FK → empires.id ON DELETE CASCADE）を必須で持つ。**Domain に `empire_id` を持たないのに DB には必要**という非対称が生じる。
+
+この非対称を解決するため、`RoomRepository` の `save()` は `empire_id` を明示的な引数で受け取る:
+
+```python
+async def save(self, room: Room, empire_id: EmpireId) -> None: ...
+```
+
+| 解決策候補 | 採否 | 理由 |
+|---|---|---|
+| `save(room: Room, empire_id: EmpireId)` | ✅ **採用** | 非対称性を明示化し、呼び出し元（application 層 `EmpireService.establish_room`）が `empire_id` を責任を持って渡す。依存方向は application → domain → (上位に持つ empire_id) のまま崩れない |
+| `Room` に `empire_id` 属性を追加 | ✗ | Bounded Context の境界を壊す。Room が「自分の Empire」を知る必要はなく、Empire 側が RoomRef を持つ設計と二重化する |
+| `Optional[EmpireId]` で nullable にする | ✗ | 永続化必須カラムを Optional にすると Fail Fast 原則違反。null の Room は存在しないはずなのに防衛コードが散在する |
+| `RoomWithEmpireId`（DTO）を別途定義 | ✗ | YAGNI。単一引数の追加で済む問題に新 DTO を作る過剰設計 |
+
+### 判断ルール（後続 PR 向けテンプレート）
+
+> **Aggregate が DB 永続化に必要な外部 ID を属性として持たない場合は `save(aggregate, scope_id)` パターンを使う。**
+
+| Aggregate に `scope_id` があるか | save() シグネチャ |
+|---|---|
+| ある（Empire / Workflow / Agent） | `save(aggregate) -> None` |
+| **ない（Room など）** | **`save(aggregate, scope_id) -> None`** |
+
+`save(aggregate, scope_id)` パターンを採用した場合は本 §確定 H の根拠を設計書 §確定 H に明示し、呼び出し側の application 層で `scope_id` の決定責務を凍結すること（`feature/room-application` §確定 H 申し送り参照）。
+
+---
 
 ## 監査ログ（`audit_log`）
 
