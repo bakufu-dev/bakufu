@@ -10,9 +10,11 @@
 
 ## 背景と目的
 
-Task Aggregate（`domain/task/`、PR #42）は M1 ドメインモデルの第 6 集約であり、`tasks` / `task_assigned_agents` / `conversations` / `conversation_messages` / `deliverables` / `deliverable_attachments` の **6 テーブル**にまたがる複合永続化構造を持つ。本 feature（Issue #35）はその SQLite 永続化基盤（M2 層）を実装する Repository PR である。
+Task Aggregate（`domain/task/`、PR #42）は M1 ドメインモデルの第 6 集約であり、`tasks` / `task_assigned_agents` / `deliverables` / `deliverable_attachments` の **4 テーブル**にまたがる複合永続化構造を持つ。本 feature（Issue #35）はその SQLite 永続化基盤（M2 層）を実装する Repository PR である。
 
-empire-repository（PR #25）で確立したテンプレートパターン（Protocol / SqliteXxxRepository / `_to_row` / `_from_row` / Alembic revision）を 100% 継承しつつ、Task Aggregate 固有の多段階永続化要件・masking 3 カラム・BUG-DRR-001 closure を追加凍結する。
+empire-repository（PR #25）で確立したテンプレートパターン（Protocol / SqliteXxxRepository / `_to_row` / `_from_row` / Alembic revision）を 100% 継承しつつ、Task Aggregate 固有の多段階永続化要件・masking 2 カラム・BUG-DRR-001 closure を追加凍結する。
+
+> **§BUG-TR-002 申し送り（凍結）**: `conversations` / `conversation_messages` テーブルは Alembic 0007 で誤って先行作成されたが、Task Aggregate（PR #42）は現時点で `conversations` 属性を持たない（YAGNI 違反）。両テーブルはこの PR から削除し、Task domain が `conversations: list[Conversation]` 属性を獲得する将来 PR で改めて追加する。それまで本テーブル群・関連 Repository コード・masking 配線を凍結禁止とする。
 
 ## 要求一覧
 
@@ -23,7 +25,7 @@ empire-repository（PR #25）で確立したテンプレートパターン（Pro
 | RQ-TR-003 | BLOCKED 状態の Task 一覧を取得できる（障害隔離用） | Must | Task.block() + TaskService 要件（後続 Issue #38） |
 | RQ-TR-004 | Room スコープ・ステータス別の Task 件数を取得できる | Must | Room ダッシュボード後続要件（後続 HTTP API） |
 | RQ-TR-005 | `directives.task_id → tasks.id` FK 未追加（BUG-DRR-001）を closure する | Must | directive-repository PR #50 §BUG-DRR-001 申し送り |
-| RQ-TR-006 | `tasks.last_error` / `conversation_messages.body_markdown` / `deliverables.body_markdown` を MaskedText で永続化し、DB に raw secret が保存されないことを CI で物理保証する | Must | MaskingGateway §確定 G（persistence-foundation PR #23 で TypeDecorator hook 提供済み） |
+| RQ-TR-006 | `tasks.last_error` / `deliverables.body_markdown` を MaskedText で永続化し、DB に raw secret が保存されないことを CI で物理保証する（2 カラム。`conversation_messages.body_markdown` は §BUG-TR-002 凍結済み） | Must | MaskingGateway §確定 G（persistence-foundation PR #23 で TypeDecorator hook 提供済み） |
 | RQ-TR-007 | Alembic revision chain に 0007 を追加する（down_revision = "0006_directive_aggregate"） | Must | bakufu Bootstrap M2 migration chain 連続性 |
 
 ## §確定事項（先送り撤廃）
@@ -43,23 +45,20 @@ empire-repository / room-repository / directive-repository の 3 PR で実績を
 | UPSERT | `INSERT OR REPLACE` / SQLAlchemy `merge()` パターン |
 | Transaction | Repository 内で `commit` / `rollback` しない（UoW 責務は application 層） |
 
-### §確定 R1-B: save() 多段階 DELETE+UPSERT+INSERT 順序（6 テーブル対応）
+### §確定 R1-B: save() 多段階 DELETE+UPSERT+INSERT 順序（4 テーブル対応、6 段階）
 
-empire §確定 B の「子テーブル DELETE → 親 UPSERT → 子 INSERT」パターンを Task の 6 テーブル構造に拡張する。FK CASCADE を活用して DELETE 段数を削減する:
+empire §確定 B の「子テーブル DELETE → 親 UPSERT → 子 INSERT」パターンを Task の 4 テーブル構造に適用する。FK CASCADE を活用して DELETE 段数を削減する:
 
 | 段階 | 操作 | 対象テーブル | 理由 |
 |------|------|------------|------|
 | 1 | DELETE | `deliverables WHERE task_id = :id` | CASCADE で `deliverable_attachments` も自動削除 |
-| 2 | DELETE | `conversations WHERE task_id = :id` | CASCADE で `conversation_messages` も自動削除 |
-| 3 | DELETE | `task_assigned_agents WHERE task_id = :id` | CASCADE なし、直接 DELETE |
-| 4 | UPSERT | `tasks` | ON CONFLICT id DO UPDATE（親テーブル先行） |
-| 5 | INSERT | `task_assigned_agents`（各 AgentId / order_index） | 親 tasks 確定後 |
-| 6 | INSERT | `conversations`（各 Conversation） | 親 tasks 確定後 |
-| 7 | INSERT | `conversation_messages`（各 Message per Conversation） | 親 conversations 確定後 |
-| 8 | INSERT | `deliverables`（各 Deliverable） | 親 tasks 確定後 |
-| 9 | INSERT | `deliverable_attachments`（各 Attachment per Deliverable） | 親 deliverables 確定後 |
+| 2 | DELETE | `task_assigned_agents WHERE task_id = :id` | CASCADE なし、直接 DELETE |
+| 3 | UPSERT | `tasks` | ON CONFLICT id DO UPDATE（親テーブル先行） |
+| 4 | INSERT | `task_assigned_agents`（各 AgentId / order_index） | 親 tasks 確定後 |
+| 5 | INSERT | `deliverables`（各 Deliverable） | 親 tasks 確定後。`UNIQUE(task_id, stage_id)` は段階 1 DELETE で先行クリア済み |
+| 6 | INSERT | `deliverable_attachments`（各 Attachment per Deliverable） | 親 deliverables 確定後 |
 
-**根拠**: `deliverable_attachments → deliverables → tasks` / `conversation_messages → conversations → tasks` / `task_assigned_agents → tasks` の FK 制約から、DELETE は深いテーブル優先（CASCADE 活用）、INSERT は浅いテーブル優先でなければ `IntegrityError` が発生する。Fail Fast 設計として順序を静的に凍結する。
+**根拠**: `deliverable_attachments → deliverables → tasks` / `task_assigned_agents → tasks` の FK 制約から、DELETE は深いテーブル優先（CASCADE 活用）、INSERT は浅いテーブル優先でなければ `IntegrityError` が発生する。Fail Fast 設計として順序を静的に凍結する。`conversations` / `conversation_messages` テーブルは §BUG-TR-002 凍結済みのため本スコープから除外。
 
 ### §確定 R1-C: BUG-DRR-001 closure — `directives.task_id → tasks.id` FK 追加
 
@@ -92,19 +91,18 @@ empire §確定 B の 3 method（`find_by_id` / `count` / `save`）に加え、T
 | `find_by_room(room_id)` | 後続 HTTP API で Task 一覧ページネーションが必要になるが、現時点では full list の仕様が未確定。ページネーション対応は Protocol 設計を変える（引数追加）ため、YAGNI として申し送り |
 | `find_by_directive(directive_id)` | 呼び出し箇所なし。directive-repository と同様の YAGNI 違反（directive v1 で §確定 G 却下済み） |
 
-### §確定 R1-E: CI 三層防衛の 3 masking カラム対応
+### §確定 R1-E: CI 三層防衛の 2 masking カラム対応
 
-Task Aggregate の 3 masking カラムを CI 三層防衛に登録する:
+Task Aggregate の 2 masking カラムを CI 三層防衛に登録する（`conversation_messages.body_markdown` は §BUG-TR-002 凍結済みのため除外）:
 
 | カラム | テーブル | TypeDecorator | Layer 1（grep guard） | Layer 2（arch test） |
 |-------|---------|------------|---------------------|---------------------|
 | `last_error` | `tasks` | `MaskedText` | `tables/tasks.py:last_error:MaskedText` | `tasks.last_error: MaskedText` |
-| `body_markdown` | `conversation_messages` | `MaskedText` | `tables/conversation_messages.py:body_markdown:MaskedText` | `conversation_messages.body_markdown: MaskedText` |
 | `body_markdown` | `deliverables` | `MaskedText` | `tables/deliverables.py:body_markdown:MaskedText` | `deliverables.body_markdown: MaskedText` |
 
-**Layer 1（grep guard）**: `scripts/ci/check_masking_columns.sh` の `PARTIAL_MASK_FILES` に 3 エントリ追加（正のチェック: 必須確認 + 負のチェック: 過剰マスキング防止）。
+**Layer 1（grep guard）**: `scripts/ci/check_masking_columns.sh` の `PARTIAL_MASK_FILES` に 2 エントリ追加（正のチェック: 必須確認 + 負のチェック: 過剰マスキング防止）。
 
-**Layer 2（arch test）**: `backend/tests/architecture/test_masking_columns.py` の parametrize に 3 行追加（`column.type.__class__ is MaskedText` を assert）。
+**Layer 2（arch test）**: `backend/tests/architecture/test_masking_columns.py` の parametrize に 2 行追加（`column.type.__class__ is MaskedText` を assert）。
 
 **Layer 3（storage.md）**: `docs/architecture/domain-model/storage.md` §逆引き表を本 PR で更新（§確定 R1-F）。
 
@@ -116,8 +114,8 @@ Task Aggregate の 3 masking カラムを CI 三層防衛に登録する:
 |------|---------|
 | `Task.last_error` | `（後続）` → `feature/task-repository`（Issue #35、**task §確定 G 実適用、本 PR で配線完了**） |
 | `Deliverable.body_markdown` | `（後続）` → `feature/task-repository`（Issue #35、**task §確定 G 実適用、本 PR で配線完了**） |
-| `Conversation.messages[].body_markdown` | `feature/conversation-repository`（後続）→ `feature/task-repository`（Issue #35、**会話履歴は Task Aggregate の子構造として task-repository が永続化**） |
-| `Task 残カラム（tasks / task_assigned_agents / conversations / deliverables / deliverable_attachments の masking 非対象カラム）` | masking 対象なし。CI Layer 2 で arch test 保証 |
+| `Conversation.messages[].body_markdown` | `feature/conversation-repository`（後続）のまま据え置き。§BUG-TR-002 凍結済み: Task domain が `conversations` 属性を獲得する将来 PR で配線する |
+| `Task 残カラム（tasks / task_assigned_agents / deliverables / deliverable_attachments の masking 非対象カラム）` | masking 対象なし。CI Layer 2 で arch test 保証 |
 
 ### §確定 R1-G: `tasks.current_stage_id` に FK を張らない理由（Aggregate 境界 + application 層保証）
 
@@ -139,11 +137,11 @@ room-repository PR #47 BUG-EMR-001 規約（`ORDER BY` は PK を tiebreaker に
 | テーブル | ORDER BY | tiebreaker 根拠 |
 |---------|---------|----------------|
 | `task_assigned_agents` | `ORDER BY order_index ASC` | order_index は Agent 割り当て順の業務意味を持つ（tiebreaker 兼 primary key） |
-| `conversations` | `ORDER BY created_at ASC, id ASC` | 会話は時系列昇順。同タイムスタンプは id で決定論的順序 |
-| `conversation_messages` | `ORDER BY timestamp ASC, id ASC` | メッセージは時系列昇順。同タイムスタンプは id で決定論的順序 |
 | `deliverables` | `ORDER BY stage_id ASC` | UNIQUE(task_id, stage_id) 制約より stage_id は task scope 内で一意。ソート安定 |
 | `deliverable_attachments` | `ORDER BY sha256 ASC` | `UNIQUE(deliverable_id, sha256)` 制約より deliverable scope 内で一意。ソート安定 |
 | `find_blocked()` | `ORDER BY updated_at DESC, id DESC` | 最近 BLOCKED になった Task を優先表示（障害隔離 UX）。同タイムスタンプは id で決定論的順序 |
+
+> `conversations` / `conversation_messages` テーブルの ORDER BY は §BUG-TR-002 凍結済みのため除外。将来 Task domain に `conversations` 属性が追加された時点で本表に追記する。
 
 ### §確定 R1-I: Attachment 物理ファイルはスコープ外（metadata のみ）
 
