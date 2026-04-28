@@ -117,9 +117,7 @@ def upgrade() -> None:
         sa.Column("order_index", sa.Integer(), nullable=False),
         # Defense-in-Depth: explicit UNIQUE mirrors Aggregate invariant
         # _validate_assigned_agents_unique at the DB level.
-        sa.UniqueConstraint(
-            "task_id", "agent_id", name="uq_task_assigned_agents"
-        ),
+        sa.UniqueConstraint("task_id", "agent_id", name="uq_task_assigned_agents"),
     )
 
     # ---- conversations table -----------------------------------------------
@@ -176,9 +174,7 @@ def upgrade() -> None:
         sa.Column("committed_at", sa.Text(), nullable=False),
         # UNIQUE(task_id, stage_id): mirrors Aggregate's dict[StageId, Deliverable]
         # key-uniqueness invariant at the DB level.
-        sa.UniqueConstraint(
-            "task_id", "stage_id", name="uq_deliverables_task_stage"
-        ),
+        sa.UniqueConstraint("task_id", "stage_id", name="uq_deliverables_task_stage"),
     )
 
     # ---- deliverable_attachments table -------------------------------------

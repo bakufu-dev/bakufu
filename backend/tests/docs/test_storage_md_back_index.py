@@ -211,10 +211,7 @@ class TestBackIndexHasDirectiveRows:
         co_located_lines = [
             line
             for line in storage_md_text.splitlines()
-            if (
-                "directives" in line
-                and "MaskedText" in line
-            )
+            if ("directives" in line and "MaskedText" in line)
         ]
         assert co_located_lines, (
             "storage.md §逆引き表 must contain at least one line that "
@@ -287,9 +284,7 @@ class TestBackIndexHasTaskRows:
             "task-repository §確定 G 実適用 (Issue #35, conversation history masking)."
         )
 
-    def test_deliverables_body_markdown_masked_text_row_present(
-        self, storage_md_text: str
-    ) -> None:
+    def test_deliverables_body_markdown_masked_text_row_present(self, storage_md_text: str) -> None:
         """TC-DOC-TR-001c: §逆引き表 declares MaskedText on deliverables.body_markdown.
 
         The line must co-locate ``deliverables`` and ``MaskedText``.

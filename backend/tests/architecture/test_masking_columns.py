@@ -79,7 +79,7 @@ _MASKING_CONTRACT: list[tuple[str, str, type]] = [
     # Directive Repository (PR #34, detailed-design.md §確定 R1-E).
     ("directives", "text", MaskedText),
     # Task Repository (PR #35, detailed-design.md §確定 R1-E):
-    # tasks.last_error — BLOCKED 隔離理由（LLM error に secret 混入の可能性）.
+    # tasks.last_error — BLOCKED 隔離理由(LLM error に secret 混入の可能性).
     ("tasks", "last_error", MaskedText),
     # conversation_messages.body_markdown — subprocess 出力に secret 混入の可能性.
     ("conversation_messages", "body_markdown", MaskedText),

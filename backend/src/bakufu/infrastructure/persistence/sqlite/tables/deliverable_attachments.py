@@ -50,9 +50,7 @@ class DeliverableAttachmentRow(Base):
         # UNIQUE(deliverable_id, sha256): prevents duplicate file content
         # within one Deliverable. Also provides stable ORDER BY sha256 ASC
         # sort for deterministic hydration (§確定 R1-H).
-        UniqueConstraint(
-            "deliverable_id", "sha256", name="uq_deliverable_attachments_sha256"
-        ),
+        UniqueConstraint("deliverable_id", "sha256", name="uq_deliverable_attachments_sha256"),
     )
 
 

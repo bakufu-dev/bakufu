@@ -113,9 +113,7 @@ async def _read_conv_msg_body(
     async with session_factory() as session:
         row = (
             await session.execute(
-                text(
-                    "SELECT body_markdown FROM conversation_messages WHERE id = :id"
-                ),
+                text("SELECT body_markdown FROM conversation_messages WHERE id = :id"),
                 {"id": conv_msg_id.hex},
             )
         ).first()
@@ -154,8 +152,7 @@ class TestLastErrorDiscordTokenMasked:
 
         assert persisted is not None
         assert _DISCORD_SENTINEL in persisted, (
-            f"[FAIL] tasks.last_error missing Discord redaction sentinel.\n"
-            f"Persisted: {persisted!r}"
+            f"[FAIL] tasks.last_error missing Discord redaction sentinel.\nPersisted: {persisted!r}"
         )
         assert _DISCORD_TOKEN not in persisted, (
             f"[FAIL] Raw Discord Bot Token leaked into tasks.last_error.\n"
@@ -271,11 +268,7 @@ class TestDeliverableBodyMarkdownGitHubPatMasked:
         """Raw-SQL SELECT shows <REDACTED:GITHUB_PAT>; raw PAT absent from disk."""
         room_id, directive_id = seeded_task_context
         stage_id = uuid4()
-        body = (
-            f"## 成果物\n"
-            f"GitHub PAT: {_GITHUB_TOKEN}\n"
-            f"このトークンでリポジトリを操作しました。"
-        )
+        body = f"## 成果物\nGitHub PAT: {_GITHUB_TOKEN}\nこのトークンでリポジトリを操作しました。"
         deliv = make_deliverable(stage_id=stage_id, body_markdown=body)
         task = make_done_task(
             room_id=room_id,
@@ -388,8 +381,7 @@ class TestConversationMessageBodyMarkdownMasked:
             await SqliteTaskRepository(session).save(task)
 
         body = (
-            f"Claude API呼び出し完了。Key: ANTHROPIC_API_KEY={_ANTHROPIC_TOKEN}\n"
-            f"リクエスト成功。"
+            f"Claude API呼び出し完了。Key: ANTHROPIC_API_KEY={_ANTHROPIC_TOKEN}\nリクエスト成功。"
         )
         msg_id = await self._insert_conv_msg(session_factory, task.id, body)
         persisted = await _read_conv_msg_body(session_factory, msg_id)
@@ -493,19 +485,19 @@ class TestThreeColumnSimultaneousMasking:
         # tasks.last_error — Discord
         assert persisted_last_error is not None
         assert _DISCORD_SENTINEL in persisted_last_error, (
-            f"[FAIL] tasks.last_error missing Discord sentinel in 3-column test."
+            "[FAIL] tasks.last_error missing Discord sentinel in 3-column test."
         )
         assert _DISCORD_TOKEN not in persisted_last_error
 
         # deliverables.body_markdown — GitHub
         assert persisted_deliv is not None
         assert _GITHUB_SENTINEL in persisted_deliv, (
-            f"[FAIL] deliverables.body_markdown missing GitHub sentinel in 3-column test."
+            "[FAIL] deliverables.body_markdown missing GitHub sentinel in 3-column test."
         )
         assert _GITHUB_TOKEN not in persisted_deliv
 
         # conversation_messages.body_markdown — Anthropic
         assert _ANTHROPIC_SENTINEL in persisted_msg, (
-            f"[FAIL] conversation_messages.body_markdown missing Anthropic sentinel."
+            "[FAIL] conversation_messages.body_markdown missing Anthropic sentinel."
         )
         assert _ANTHROPIC_TOKEN not in persisted_msg

@@ -22,10 +22,7 @@ from bakufu.infrastructure.persistence.sqlite.repositories.directive_repository 
 )
 from sqlalchemy import event
 
-from tests.factories.directive import make_directive, make_linked_directive
-from tests.infrastructure.persistence.sqlite.repositories.test_directive_repository.conftest import (
-    seed_room,
-)
+from tests.factories.directive import make_directive
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
@@ -388,7 +385,7 @@ class TestLifecycleIntegration:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """4-method full lifecycle: save×3 → find_by_room → link_task+resave → count → find_by_id.
+        """4-method full lifecycle: save x3 → find_by_room → link_task+resave → count → find_by_id.
 
         Validates §確定 R1-F (save 1引数) and §確定 R1-G (task_id update)
         in a real end-to-end sequence without any mocking.
@@ -401,6 +398,7 @@ class TestLifecycleIntegration:
             created_at=now,
         )
         import asyncio
+
         await asyncio.sleep(0)  # yield to ensure ordering
         d2 = make_directive(
             target_room_id=seeded_room_id,

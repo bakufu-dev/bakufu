@@ -16,10 +16,10 @@ from uuid import UUID, uuid4
 
 import pytest
 from bakufu.application.ports.task_repository import TaskRepository
+from bakufu.domain.value_objects import TaskStatus
 from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
     SqliteTaskRepository,
 )
-from bakufu.domain.value_objects import TaskStatus
 from sqlalchemy import event
 
 from tests.factories.task import (
@@ -28,9 +28,6 @@ from tests.factories.task import (
     make_done_task,
     make_in_progress_task,
     make_task,
-)
-from tests.infrastructure.persistence.sqlite.repositories.test_task_repository.conftest import (
-    seed_task_context,
 )
 
 if TYPE_CHECKING:
@@ -318,12 +315,12 @@ class TestCountScalar:
         assert result == 3
         count_stmts = [s for s in captured if "count" in s.lower() and "tasks" in s.lower()]
         assert count_stmts, (
-            f"[FAIL] count() did not emit SELECT count(*) FROM tasks.\n"
-            f"Captured: {captured}"
+            f"[FAIL] count() did not emit SELECT count(*) FROM tasks.\nCaptured: {captured}"
         )
         # Full-row load path must NOT appear
         full_load_stmts = [
-            s for s in captured
+            s
+            for s in captured
             if "FROM tasks" in s and "SELECT" in s.upper() and "count" not in s.lower()
         ]
         assert not full_load_stmts, (
@@ -386,9 +383,7 @@ class TestSave9StageSemantics:
 
         async with session_factory() as session:
             count = await SqliteTaskRepository(session).count()
-        assert count == 1, (
-            f"[FAIL] Re-saving a Task duplicated the row. count={count}"
-        )
+        assert count == 1, f"[FAIL] Re-saving a Task duplicated the row. count={count}"
 
     async def test_resave_reinsertes_child_tables(
         self,
@@ -564,7 +559,7 @@ class TestLifecycleIntegration:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
-        """6-method lifecycle: save×2 → count_by_status → find_blocked → count_by_room → count → re-save → verify."""
+        """save x2 → count_by_status → find_blocked → count_by_room → count → re-save → verify."""
         room_id, directive_id = seeded_task_context
 
         # Step 1: save a PENDING task and a BLOCKED task
@@ -581,9 +576,7 @@ class TestLifecycleIntegration:
 
         # Step 2: count_by_status
         async with session_factory() as session:
-            blocked_count = await SqliteTaskRepository(session).count_by_status(
-                TaskStatus.BLOCKED
-            )
+            blocked_count = await SqliteTaskRepository(session).count_by_status(TaskStatus.BLOCKED)
         assert blocked_count == 1
 
         # Step 3: find_blocked returns the blocked task

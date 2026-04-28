@@ -13,7 +13,7 @@ Issue #35 — M2 0007.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
@@ -28,7 +28,6 @@ from tests.factories.task import (
     make_blocked_task,
     make_deliverable,
     make_done_task,
-    make_in_progress_task,
     make_task,
 )
 from tests.infrastructure.persistence.sqlite.repositories.test_task_repository.conftest import (
@@ -65,9 +64,7 @@ class TestCountByStatus:
             )
 
         async with session_factory() as session:
-            pending_count = await SqliteTaskRepository(session).count_by_status(
-                TaskStatus.PENDING
-            )
+            pending_count = await SqliteTaskRepository(session).count_by_status(TaskStatus.PENDING)
         assert pending_count == 2, (
             f"[FAIL] count_by_status(PENDING) expected 2, got {pending_count}"
         )
@@ -107,9 +104,7 @@ class TestCountByStatus:
             )
 
         async with session_factory() as session:
-            blocked_count = await SqliteTaskRepository(session).count_by_status(
-                TaskStatus.BLOCKED
-            )
+            blocked_count = await SqliteTaskRepository(session).count_by_status(TaskStatus.BLOCKED)
         assert blocked_count == 0
 
     async def test_count_by_status_emits_sql_count(
@@ -147,8 +142,7 @@ class TestCountByStatus:
 
         count_stmts = [s for s in captured if "count" in s.lower() and "tasks" in s.lower()]
         assert count_stmts, (
-            f"[FAIL] count_by_status() did not emit COUNT(*) FROM tasks.\n"
-            f"Captured: {captured}"
+            f"[FAIL] count_by_status() did not emit COUNT(*) FROM tasks.\nCaptured: {captured}"
         )
 
 
@@ -181,7 +175,7 @@ class TestCountByRoom:
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
         """count_by_room returns 0 for a room with no tasks."""
-        room_id, directive_id = seeded_task_context
+        room_id, _directive_id = seeded_task_context
         # Seed tasks in a different room
         room2_id, directive2_id = await seed_task_context(session_factory)
         async with session_factory() as session, session.begin():
@@ -191,9 +185,7 @@ class TestCountByRoom:
 
         async with session_factory() as session:
             count = await SqliteTaskRepository(session).count_by_room(room_id)  # type: ignore[arg-type]
-        assert count == 0, (
-            f"[FAIL] count_by_room leaked tasks from another room. count={count}"
-        )
+        assert count == 0, f"[FAIL] count_by_room leaked tasks from another room. count={count}"
 
     async def test_count_by_room_cross_room_isolation(
         self,
@@ -223,12 +215,8 @@ class TestCountByRoom:
         async with session_factory() as session:
             count_b = await SqliteTaskRepository(session).count_by_room(room_b_id)  # type: ignore[arg-type]
 
-        assert count_a == 2, (
-            f"[FAIL] count_by_room(room_a) expected 2, got {count_a}"
-        )
-        assert count_b == 3, (
-            f"[FAIL] count_by_room(room_b) expected 3, got {count_b}"
-        )
+        assert count_a == 2, f"[FAIL] count_by_room(room_a) expected 2, got {count_a}"
+        assert count_b == 3, f"[FAIL] count_by_room(room_b) expected 3, got {count_b}"
 
 
 # ---------------------------------------------------------------------------
@@ -282,9 +270,7 @@ class TestFindBlocked:
         async with session_factory() as session:
             results = await SqliteTaskRepository(session).find_blocked()
 
-        assert results == [], (
-            f"[FAIL] find_blocked returned {results!r} but expected []."
-        )
+        assert results == [], f"[FAIL] find_blocked returned {results!r} but expected []."
 
     async def test_find_blocked_returns_empty_from_empty_db(
         self,
@@ -329,10 +315,7 @@ class TestFindBlocked:
             event.remove(sync_engine, "before_cursor_execute", _on_execute)
 
         # The find_blocked statement must include tasks table with ORDER BY
-        status_stmts = [
-            s for s in captured
-            if "tasks" in s.lower() and "status" in s.lower()
-        ]
+        status_stmts = [s for s in captured if "tasks" in s.lower() and "status" in s.lower()]
         assert status_stmts, (
             f"[FAIL] find_blocked() did not emit SQL with tasks + status filter.\n"
             f"Captured: {captured}"
@@ -340,8 +323,7 @@ class TestFindBlocked:
         # ORDER BY must be present (DESC ordering for recency-first)
         order_stmts = [s for s in status_stmts if "order by" in s.lower() or "ORDER BY" in s]
         assert order_stmts, (
-            f"[FAIL] find_blocked() SQL lacks ORDER BY clause.\n"
-            f"status_stmts: {status_stmts}"
+            f"[FAIL] find_blocked() SQL lacks ORDER BY clause.\nstatus_stmts: {status_stmts}"
         )
 
     async def test_find_blocked_restores_full_attributes(
@@ -430,9 +412,7 @@ class TestFindBlocked:
         async with session_factory() as session:
             results = await SqliteTaskRepository(session).find_blocked()
 
-        assert len(results) == 2, (
-            f"[FAIL] Expected 2 BLOCKED tasks, got {len(results)}"
-        )
+        assert len(results) == 2, f"[FAIL] Expected 2 BLOCKED tasks, got {len(results)}"
         # id DESC: id_high must come before id_low
         assert results[0].id == id_high, (
             f"[FAIL] Tiebreaker ORDER BY id DESC violated.\n"

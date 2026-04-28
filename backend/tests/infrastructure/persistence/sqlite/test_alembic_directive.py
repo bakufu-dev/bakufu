@@ -74,8 +74,7 @@ class TestSixthRevisionApplied:
             result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
             tables = {row[0] for row in result}
         assert "directives" in tables, (
-            f"[FAIL] directives table missing after upgrade head.\n"
-            f"Tables found: {tables}"
+            f"[FAIL] directives table missing after upgrade head.\nTables found: {tables}"
         )
 
     async def test_directives_composite_index_present(
@@ -86,10 +85,7 @@ class TestSixthRevisionApplied:
         await run_upgrade_head(empty_engine)
         async with empty_engine.connect() as conn:
             result = await conn.execute(
-                text(
-                    "SELECT name FROM sqlite_master "
-                    "WHERE type='index' AND tbl_name='directives'"
-                )
+                text("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='directives'")
             )
             index_names = {row[0] for row in result}
         assert "ix_directives_target_room_id_created_at" in index_names, (
@@ -248,9 +244,7 @@ class TestCascadeDeleteOnRoomDeletion:
         async with empty_engine.begin() as conn:
             await conn.execute(text("PRAGMA foreign_keys = ON"))
             await conn.execute(
-                text(
-                    "INSERT INTO empires (id, name) VALUES (:id, :name)"
-                ),
+                text("INSERT INTO empires (id, name) VALUES (:id, :name)"),
                 {"id": empire_id, "name": "test_empire"},
             )
             await conn.execute(
@@ -305,9 +299,9 @@ class TestCascadeDeleteOnRoomDeletion:
             )
             remaining = result.first()
         assert remaining is None, (
-            f"[FAIL] Directive row still exists after Room deletion.\n"
-            f"directives.target_room_id → rooms.id ON DELETE CASCADE is not working.\n"
-            f"Next: verify ForeignKey('rooms.id', ondelete='CASCADE') in tables/directives.py."
+            "[FAIL] Directive row still exists after Room deletion.\n"
+            "directives.target_room_id → rooms.id ON DELETE CASCADE is not working.\n"
+            "Next: verify ForeignKey('rooms.id', ondelete='CASCADE') in tables/directives.py."
         )
 
 
@@ -360,8 +354,7 @@ class TestBugDrr001TaskIdFkClosure:
             result = await conn.execute(text("PRAGMA table_info('directives')"))
             columns = {row[1]: {"notnull": row[3], "dflt": row[4]} for row in result}
         assert "task_id" in columns, (
-            f"[FAIL] task_id column missing from directives.\n"
-            f"Columns found: {list(columns.keys())}"
+            f"[FAIL] task_id column missing from directives.\nColumns found: {list(columns.keys())}"
         )
         assert columns["task_id"]["notnull"] == 0, (
             "[FAIL] task_id must be nullable at 0006 level (§BUG-DRR-001)."

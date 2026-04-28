@@ -152,8 +152,7 @@ class TestTaskForeignKeys:
             fk_rows = list(result)
         referenced_tables = {row[2] for row in fk_rows}
         assert "rooms" in referenced_tables, (
-            f"[FAIL] tasks has no FK to rooms.\n"
-            f"FK references found: {referenced_tables}"
+            f"[FAIL] tasks has no FK to rooms.\nFK references found: {referenced_tables}"
         )
 
     async def test_tasks_directive_id_fk_to_directives(
@@ -167,8 +166,7 @@ class TestTaskForeignKeys:
             fk_rows = list(result)
         referenced_tables = {row[2] for row in fk_rows}
         assert "directives" in referenced_tables, (
-            f"[FAIL] tasks has no FK to directives.\n"
-            f"FK references found: {referenced_tables}"
+            f"[FAIL] tasks has no FK to directives.\nFK references found: {referenced_tables}"
         )
 
 
@@ -377,9 +375,9 @@ class TestRoomCascadeDeletesTask:
             )
             remaining = result.first()
         assert remaining is None, (
-            f"[FAIL] Task row still exists after Room deletion.\n"
-            f"tasks.room_id → rooms.id ON DELETE CASCADE is not working.\n"
-            f"Next: verify ForeignKey('rooms.id', ondelete='CASCADE') in tables/tasks.py."
+            "[FAIL] Task row still exists after Room deletion.\n"
+            "tasks.room_id → rooms.id ON DELETE CASCADE is not working.\n"
+            "Next: verify ForeignKey('rooms.id', ondelete='CASCADE') in tables/tasks.py."
         )
 
 
@@ -439,9 +437,7 @@ class TestDesignDecisionTr001AgentFkAbsent:
         """
         await run_upgrade_head(empty_engine)
         async with empty_engine.connect() as conn:
-            result = await conn.execute(
-                text("PRAGMA foreign_key_list('task_assigned_agents')")
-            )
+            result = await conn.execute(text("PRAGMA foreign_key_list('task_assigned_agents')"))
             fk_rows = list(result)
         referenced_tables = {row[2] for row in fk_rows}
         assert "agents" not in referenced_tables, (
