@@ -142,12 +142,10 @@ class TestAnthropicKeyMasked:
         persisted = await _read_persisted_text(session_factory, directive.id)
 
         assert _ANTHROPIC_SENTINEL in persisted, (
-            f"[FAIL] directives.text missing Anthropic redaction sentinel. "
-            f"Persisted: {persisted!r}"
+            f"[FAIL] directives.text missing Anthropic redaction sentinel. Persisted: {persisted!r}"
         )
         assert _ANTHROPIC_TOKEN not in persisted, (
-            f"[FAIL] Raw Anthropic API key leaked into directives.text. "
-            f"Persisted: {persisted!r}"
+            f"[FAIL] Raw Anthropic API key leaked into directives.text. Persisted: {persisted!r}"
         )
 
 
@@ -175,8 +173,7 @@ class TestGitHubPatMasked:
             f"Persisted: {persisted!r}"
         )
         assert _GITHUB_TOKEN not in persisted, (
-            f"[FAIL] Raw GitHub PAT leaked into directives.text. "
-            f"Persisted: {persisted!r}"
+            f"[FAIL] Raw GitHub PAT leaked into directives.text. Persisted: {persisted!r}"
         )
 
 
@@ -192,9 +189,7 @@ class TestBearerTokenMasked:
         seeded_room_id: UUID,
     ) -> None:
         """Raw-SQL SELECT shows <REDACTED:BEARER>; raw Bearer token absent."""
-        directive_text = (
-            f"APIコール時は Authorization: Bearer {_BEARER_TOKEN} を使うこと"
-        )
+        directive_text = f"APIコール時は Authorization: Bearer {_BEARER_TOKEN} を使うこと"
         directive = make_directive(target_room_id=seeded_room_id, text=directive_text)
         async with session_factory() as session, session.begin():
             await SqliteDirectiveRepository(session).save(directive)
@@ -202,12 +197,10 @@ class TestBearerTokenMasked:
         persisted = await _read_persisted_text(session_factory, directive.id)
 
         assert _BEARER_SENTINEL in persisted, (
-            f"[FAIL] directives.text missing Bearer redaction sentinel. "
-            f"Persisted: {persisted!r}"
+            f"[FAIL] directives.text missing Bearer redaction sentinel. Persisted: {persisted!r}"
         )
         assert _BEARER_TOKEN not in persisted, (
-            f"[FAIL] Raw Bearer token leaked into directives.text. "
-            f"Persisted: {persisted!r}"
+            f"[FAIL] Raw Bearer token leaked into directives.text. Persisted: {persisted!r}"
         )
 
 
@@ -257,9 +250,7 @@ class TestRoundTripIsIrreversible:
         seeded_room_id: UUID,
     ) -> None:
         """Save raw Discord webhook URL → find_by_id → text == masked form."""
-        raw_text = (
-            f"配信先: https://discord.com/api/webhooks/12345/{_DISCORD_TOKEN}"
-        )
+        raw_text = f"配信先: https://discord.com/api/webhooks/12345/{_DISCORD_TOKEN}"
         directive = make_directive(target_room_id=seeded_room_id, text=raw_text)
         async with session_factory() as session, session.begin():
             await SqliteDirectiveRepository(session).save(directive)
@@ -269,8 +260,7 @@ class TestRoundTripIsIrreversible:
 
         assert restored is not None
         assert _DISCORD_SENTINEL in restored.text, (
-            f"[FAIL] find_by_id did not return masked text.\n"
-            f"Restored text: {restored.text!r}"
+            f"[FAIL] find_by_id did not return masked text.\nRestored text: {restored.text!r}"
         )
         assert _DISCORD_TOKEN not in restored.text, (
             f"[FAIL] directive §確定 G §不可逆性 violated: raw Discord token recovered after "
@@ -309,16 +299,13 @@ class TestMultipleSecretsAllRedacted:
 
         # All 3 sentinels present
         assert _DISCORD_SENTINEL in persisted, (
-            f"[FAIL] Discord sentinel missing in multi-secret directive. "
-            f"Persisted: {persisted!r}"
+            f"[FAIL] Discord sentinel missing in multi-secret directive. Persisted: {persisted!r}"
         )
         assert _ANTHROPIC_SENTINEL in persisted, (
-            f"[FAIL] Anthropic sentinel missing in multi-secret directive. "
-            f"Persisted: {persisted!r}"
+            f"[FAIL] Anthropic sentinel missing in multi-secret directive. Persisted: {persisted!r}"
         )
         assert _GITHUB_SENTINEL in persisted, (
-            f"[FAIL] GitHub sentinel missing in multi-secret directive. "
-            f"Persisted: {persisted!r}"
+            f"[FAIL] GitHub sentinel missing in multi-secret directive. Persisted: {persisted!r}"
         )
         # All 3 raw tokens absent
         assert _DISCORD_TOKEN not in persisted, (

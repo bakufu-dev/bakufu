@@ -53,8 +53,31 @@ Directive Aggregate (PR #34):
 * :mod:`...tables.directives` — Directive root row. The ``text`` column
   is ``MaskedText`` (§確定 R1-E 実適用); the table is registered with
   the CI three-layer defense's *partial-mask* contract pinning exactly
-  one masked column. ``directives.task_id → tasks.id`` FK is deferred
-  to the task-repository PR (§BUG-DRR-001 申し送り).
+  one masked column. ``directives.task_id → tasks.id`` FK closed in
+  Alembic 0007 (BUG-DRR-001 closure).
+
+Task Aggregate (PR #35):
+
+* :mod:`...tables.tasks` — Task root row. The ``last_error`` column is
+  ``MaskedText`` (§確定 R1-E 実適用); the table is registered with the
+  CI three-layer defense's *partial-mask* contract pinning exactly one
+  masked column. Two indexes: ``ix_tasks_room_id`` (single-column) and
+  ``ix_tasks_status_updated_id`` (composite, §確定 R1-K).
+* :mod:`...tables.task_assigned_agents` — AgentId list child rows.
+  Composite PK ``(task_id, agent_id)`` + explicit ``UniqueConstraint``
+  for Defense-in-Depth. ``agent_id`` intentionally has no FK onto
+  ``agents.id`` (§設計決定 TR-001).
+* :mod:`...tables.deliverables` — Deliverable child rows. ``body_markdown``
+  is ``MaskedText`` (§確定 R1-E 実適用); registered with CI three-layer
+  defense *partial-mask* contract. ``UNIQUE(task_id, stage_id)`` mirrors
+  the Aggregate's ``deliverables: dict[StageId, Deliverable]`` invariant.
+* :mod:`...tables.deliverable_attachments` — Attachment metadata child rows
+  (no-mask). Metadata only — physical file bytes are ``feature/attachment-
+  storage`` scope (§確定 R1-I).
+
+Note: ``conversations`` / ``conversation_messages`` tables are excluded
+(§BUG-TR-002 凍結済み). They will be registered here when Task domain gains
+a ``conversations: list[Conversation]`` attribute.
 
 Secret-bearing tables declare their columns with
 :class:`MaskedJSONEncoded` / :class:`MaskedText` TypeDecorators
@@ -85,6 +108,8 @@ from bakufu.infrastructure.persistence.sqlite.tables import (
     agent_skills,
     agents,
     audit_log,
+    deliverable_attachments,
+    deliverables,
     directives,
     empire_agent_refs,
     empire_room_refs,
@@ -93,6 +118,8 @@ from bakufu.infrastructure.persistence.sqlite.tables import (
     pid_registry,
     room_members,
     rooms,
+    task_assigned_agents,
+    tasks,
     workflow_stages,
     workflow_transitions,
     workflows,
@@ -103,6 +130,8 @@ __all__ = [
     "agent_skills",
     "agents",
     "audit_log",
+    "deliverable_attachments",
+    "deliverables",
     "directives",
     "empire_agent_refs",
     "empire_room_refs",
@@ -111,6 +140,8 @@ __all__ = [
     "pid_registry",
     "room_members",
     "rooms",
+    "task_assigned_agents",
+    "tasks",
     "workflow_stages",
     "workflow_transitions",
     "workflows",

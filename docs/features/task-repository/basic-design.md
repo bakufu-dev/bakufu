@@ -15,15 +15,13 @@
 |--------|----------|------------|------|
 | REQ-TR-001 | `TaskRepository` Protocol | `backend/src/bakufu/application/ports/task_repository.py` | Repository ポート定義（6 method）|
 | REQ-TR-002 | `SqliteTaskRepository` | `backend/src/bakufu/infrastructure/persistence/sqlite/repositories/task_repository.py` | SQLite 実装、§確定 R1-A〜H 全適用 |
-| REQ-TR-003 | Alembic 0007 revision | `backend/alembic/versions/0007_task_aggregate.py` | 6 テーブル + INDEX + BUG-DRR-001 FK closure、`down_revision="0006_directive_aggregate"` |
-| REQ-TR-004 | CI 三層防衛拡張 Layer 1 | `scripts/ci/check_masking_columns.sh`（既存ファイル更新）| Task 関連 3 テーブル明示登録 |
-| REQ-TR-004 | CI 三層防衛拡張 Layer 2 | `backend/tests/architecture/test_masking_columns.py`（既存ファイル更新）| parametrize に Task 関連 3 カラム追加 |
+| REQ-TR-003 | Alembic 0007 revision | `backend/alembic/versions/0007_task_aggregate.py` | 4 テーブル + INDEX + BUG-DRR-001 FK closure、`down_revision="0006_directive_aggregate"`（`conversations`/`conversation_messages` は §BUG-TR-002 凍結済みのため除外） |
+| REQ-TR-004 | CI 三層防衛拡張 Layer 1 | `scripts/ci/check_masking_columns.sh`（既存ファイル更新）| Task 関連 2 テーブル明示登録（`conversation_messages` は §BUG-TR-002 除外） |
+| REQ-TR-004 | CI 三層防衛拡張 Layer 2 | `backend/tests/architecture/test_masking_columns.py`（既存ファイル更新）| parametrize に Task 関連 2 カラム追加 |
 | REQ-TR-005 | storage.md 逆引き表更新 | `docs/architecture/domain-model/storage.md`（既存ファイル更新）| Task 関連行追加・後続表記を本 PR 配線完了に更新 |
 | REQ-TR-006 | directive-repository §BUG-DRR-001 更新 | `docs/features/directive-repository/detailed-design.md`（既存ファイル更新）| status OPEN → RESOLVED |
 | 共通 | `tables/tasks.py` | `backend/src/bakufu/infrastructure/persistence/sqlite/tables/` | `tasks` テーブル ORM 定義（last_error は MaskedText） |
 | 共通 | `tables/task_assigned_agents.py` | 同上 | `task_assigned_agents` テーブル ORM 定義 |
-| 共通 | `tables/conversations.py` | 同上 | `conversations` テーブル ORM 定義 |
-| 共通 | `tables/conversation_messages.py` | 同上 | `conversation_messages` テーブル ORM 定義（body_markdown は MaskedText） |
 | 共通 | `tables/deliverables.py` | 同上 | `deliverables` テーブル ORM 定義（body_markdown は MaskedText） |
 | 共通 | `tables/deliverable_attachments.py` | 同上 | `deliverable_attachments` テーブル ORM 定義 |
 
@@ -34,7 +32,7 @@
 ├── backend/
 │   ├── alembic/
 │   │   └── versions/
-│   │       └── 0007_task_aggregate.py                          # 新規: 6 テーブル + INDEX + BUG-DRR-001 FK closure
+│   │       └── 0007_task_aggregate.py                          # 新規: 4 テーブル + INDEX + BUG-DRR-001 FK closure（§BUG-TR-002凍結済み）
 │   ├── src/
 │   │   └── bakufu/
 │   │       ├── application/
@@ -48,10 +46,9 @@
 │   │                   └── tables/
 │   │                       ├── tasks.py                        # 新規（last_error は MaskedText）
 │   │                       ├── task_assigned_agents.py         # 新規
-│   │                       ├── conversations.py                # 新規
-│   │                       ├── conversation_messages.py        # 新規（body_markdown は MaskedText）
 │   │                       ├── deliverables.py                 # 新規（body_markdown は MaskedText）
 │   │                       └── deliverable_attachments.py      # 新規
+│   │                       # conversations.py / conversation_messages.py は §BUG-TR-002 凍結済みのため除外
 │   └── tests/
 │       ├── infrastructure/
 │       │   └── persistence/
@@ -59,16 +56,17 @@
 │       │           └── repositories/
 │       │               └── test_task_repository/               # 新規ディレクトリ（500 行ルール対応）
 │       │                   ├── __init__.py
-│       │                   ├── test_protocol_crud.py
-│       │                   ├── test_find_blocked.py
-│       │                   ├── test_count_methods.py           # count_by_status / count_by_room
-│       │                   ├── test_save_child_tables.py       # 6 テーブル save() / 9 段階 DELETE+INSERT
-│       │                   └── test_masking_columns.py         # 3 MaskedText カラム専用テスト
+│       │                   ├── conftest.py                     # seeded_task_context fixture
+│       │                   ├── test_protocol_crud.py           # TC-UT-TR-001〜009 + LIFECYCLE
+│       │                   ├── test_find_blocked.py            # find_blocked / count_by_* 専用
+│       │                   ├── test_count_methods.py           # count() / count_by_status / count_by_room SQL保証
+│       │                   ├── test_save_child_tables.py       # 4 テーブル save() 6 段階 DELETE+UPSERT+INSERT
+│       │                   └── test_masking_fields.py          # 2 MaskedText カラム専用（§確定 R1-E）
 │       └── architecture/
-│           └── test_masking_columns.py                         # 既存更新: Task 関連 3 カラム parametrize 追加
+│           └── test_masking_columns.py                         # 既存更新: Task 関連 2 カラム parametrize 追加
 ├── scripts/
 │   └── ci/
-│       └── check_masking_columns.sh                            # 既存更新: Task 関連 3 エントリ追加
+│       └── check_masking_columns.sh                            # 既存更新: Task 関連 2 エントリ追加（§BUG-TR-002凍結済みのため conversation_messages 除外）
 └── docs/
     ├── architecture/
     │   └── domain-model/
@@ -100,8 +98,8 @@ classDiagram
         +async count_by_status(status) int
         +async count_by_room(room_id) int
         +async find_blocked() list~Task~
-        -_to_rows(task) tuple~TaskRow, list~AssignedAgentRow~, list~ConversationRow~, list~MessageRow~, list~DeliverableRow~, list~AttachmentRow~~
-        -_from_rows(task_row, agents, conversations, messages, deliverables, attachments) Task
+        -_to_rows(task) tuple~TaskRow, list~AssignedAgentRow~, list~DeliverableRow~, list~AttachmentRow~~
+        -_from_rows(task_row, agents, deliverables, attachments) Task
     }
     class Task {
         <<Aggregate Root>>
@@ -137,7 +135,7 @@ classDiagram
 - `TaskRepository` は `typing.Protocol` で定義。`@runtime_checkable` なし（empire §確定 A 踏襲）
 - `SqliteTaskRepository` は `AsyncSession` をコンストラクタで受け取る（依存性注入）
 - `_to_rows` / `_from_rows` は private に閉じる（empire §確定 C 踏襲）
-- 6 テーブルにまたがるため mapping method は複数 Row を tuple で扱う（directive の 1 テーブルから拡張）
+- 4 テーブルにまたがるため mapping method は複数 Row を tuple で扱う（directive の 1 テーブルから拡張）
 
 ## 処理フロー
 
@@ -145,8 +143,8 @@ classDiagram
 
 1. application 層（`TaskService`）が `Task(id=..., status=PENDING, ...)` を持つ
 2. `TaskRepository.save(task)` を呼び出す
-3. `_to_rows(task)` で 6 種類の Row に変換（`last_error` は MaskedText TypeDecorator が `process_bind_param` でマスキング）
-4. §確定 R1-B の 9 段階を順次実行（DELETE 3 段 → tasks UPSERT → INSERT 5 段）
+3. `_to_rows(task)` で 4 種類の Row に変換（`last_error` は MaskedText TypeDecorator が `process_bind_param` でマスキング）
+4. §確定 R1-B の 6 段階を順次実行（DELETE 2 段 → tasks UPSERT → INSERT 3 段）
 5. 成功: `None` 返却
 
 ### ユースケース 2: Task 復元（find_by_id）
@@ -154,7 +152,7 @@ classDiagram
 1. application 層が `TaskRepository.find_by_id(task_id)` を呼び出す
 2. `SELECT * FROM tasks WHERE id = :task_id` で `TaskRow` を取得
 3. 不在: `None` 返却
-4. 存在: 5 子テーブルを各 SELECT して Row 一覧取得（§確定 R1-H ORDER BY 各テーブルに適用）
+4. 存在: 3 子テーブルを各 SELECT して Row 一覧取得（§確定 R1-H ORDER BY 各テーブルに適用）
 5. `_from_rows(task_row, ...)` で `Task` インスタンスに変換（`last_error` は MaskedText `process_result_value`）
 6. `Task` 返却
 
@@ -169,7 +167,7 @@ classDiagram
 
 1. application 層が `task.block(reason, last_error)` で新 Task インスタンスを取得（status=BLOCKED, last_error='...'）
 2. `TaskRepository.save(updated_task)` を呼び出す
-3. §確定 R1-B の 9 段階で tasks UPSERT（status / last_error / updated_at 更新）
+3. §確定 R1-B の 6 段階で tasks UPSERT（status / last_error / updated_at 更新）
 4. 成功: `None` 返却
 
 ## シーケンス図
@@ -178,29 +176,31 @@ classDiagram
 sequenceDiagram
     participant App as TaskService
     participant Repo as SqliteTaskRepository
-    participant DB as SQLite (6 tables)
+    participant DB as SQLite (4 tables)
     participant Masking as MaskedText TypeDecorator
 
     App->>Repo: save(task{last_error="API key: sk-...", status=BLOCKED})
     Repo->>Repo: _to_rows(task)
     Repo->>Masking: process_bind_param(last_error)
     Masking-->>Repo: masked_last_error
-    Repo->>DB: DELETE deliverables WHERE task_id
+    Repo->>DB: DELETE deliverables WHERE task_id (段階1)
     DB-->>Repo: OK (CASCADE: deliverable_attachments deleted)
-    Repo->>DB: DELETE conversations WHERE task_id
-    DB-->>Repo: OK (CASCADE: conversation_messages deleted)
-    Repo->>DB: DELETE task_assigned_agents WHERE task_id
+    Repo->>DB: DELETE task_assigned_agents WHERE task_id (段階2)
     DB-->>Repo: OK
-    Repo->>DB: INSERT OR REPLACE INTO tasks VALUES(...)
+    Repo->>DB: INSERT OR REPLACE INTO tasks VALUES(...) (段階3)
     DB-->>Repo: OK
-    Repo->>DB: INSERT INTO task_assigned_agents / conversations / messages / deliverables / attachments
+    Repo->>DB: INSERT INTO task_assigned_agents (段階4)
+    DB-->>Repo: OK
+    Repo->>DB: INSERT INTO deliverables (段階5)
+    DB-->>Repo: OK
+    Repo->>DB: INSERT INTO deliverable_attachments (段階6)
     DB-->>Repo: OK
     Repo-->>App: None
 
     App->>Repo: find_blocked()
     Repo->>DB: SELECT * FROM tasks WHERE status='BLOCKED' ORDER BY updated_at DESC, id DESC
     DB-->>Repo: task_rows
-    Repo->>DB: SELECT * FROM task_assigned_agents / conversations / ... (per task)
+    Repo->>DB: SELECT * FROM task_assigned_agents / deliverables / deliverable_attachments (per task)
     DB-->>Repo: child rows
     Repo->>Masking: process_result_value(masked_last_error)
     Masking-->>Repo: last_error_as_stored
@@ -214,8 +214,8 @@ sequenceDiagram
 - `docs/architecture/tech-stack.md` への変更: なし（既存スタックのみ使用）
 - 既存 feature への波及:
   - directive-repository: §BUG-DRR-001 を RESOLVED に更新（本 PR で実施）
-  - CI (`check_masking_columns.sh`, `test_masking_columns.py`): 既存ファイルに Task 関連 3 カラム追加
-  - storage.md: 逆引き表更新のみ（3 行更新 + 1 行追加）
+  - CI (`check_masking_columns.sh`, `test_masking_columns.py`): 既存ファイルに Task 関連 2 カラム追加（`conversation_messages` は §BUG-TR-002 除外）
+  - storage.md: 逆引き表更新のみ（2 行更新 + 1 行追加、`Conversation.messages[].body_markdown` は据え置き）
 
 ## 外部連携
 
@@ -239,16 +239,16 @@ sequenceDiagram
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|
-| **T1: 内部脅威（DB 直接参照）** | SQLite ファイルへの直接アクセス / DB dump で 3 masking カラムを読み取り | `tasks.last_error`（API key / auth token 混入の可能性）/ `conversation_messages.body_markdown`（subprocess 出力に secret 混入）/ `deliverables.body_markdown`（Agent 出力に secret 混入） | `MaskedText` TypeDecorator で `process_bind_param` 時点でマスキング。DB に raw text が保存されない |
-| **T2: ログ経由漏洩** | SQLAlchemy echo ログ / アプリログに bind param が出力される | 3 masking カラムに混入した secret | `MaskedText` が bind param 生成前にマスキング → ログに masking 済みテキストが流れる |
-| **T3: 実装漏れ（TypeDecorator 未適用）** | 後続 PR が 3 masking カラムのいずれかを `Text` 型に変更 | 3 masking カラムの masking 保証 | CI 三層防衛（grep guard + arch test + storage.md 逆引き表）が自動検出して PR ブロック |
+| **T1: 内部脅威（DB 直接参照）** | SQLite ファイルへの直接アクセス / DB dump で masking カラムを読み取り | `tasks.last_error`（API key / auth token 混入の可能性）/ `deliverables.body_markdown`（Agent 出力に secret 混入）（`conversation_messages.body_markdown` は §BUG-TR-002 凍結済み — 将来追加時に本表に追記） | `MaskedText` TypeDecorator で `process_bind_param` 時点でマスキング。DB に raw text が保存されない |
+| **T2: ログ経由漏洩** | SQLAlchemy echo ログ / アプリログに bind param が出力される | 2 masking カラムに混入した secret（`tasks.last_error` / `deliverables.body_markdown`）| `MaskedText` が bind param 生成前にマスキング → ログに masking 済みテキストが流れる |
+| **T3: 実装漏れ（TypeDecorator 未適用）** | 後続 PR が 2 masking カラムのいずれかを `Text` 型に変更 | 2 masking カラムの masking 保証 | CI 三層防衛（grep guard + arch test + storage.md 逆引き表）が自動検出して PR ブロック |
 
 ### OWASP Top 10 対応
 
 | # | カテゴリ | 対応状況 |
 |---|---------|---------|
 | A01 | Broken Access Control | 該当なし（infrastructure 層、アクセス制御は application / HTTP API 層） |
-| A02 | Cryptographic Failures | **対応**: `tasks.last_error` / `conversation_messages.body_markdown` / `deliverables.body_markdown` を `MaskedText` TypeDecorator でマスキング（AES ではなく `MaskingGateway.mask()` の pattern masking — secret pattern を `<REDACTED>` 化）|
+| A02 | Cryptographic Failures | **対応**: `tasks.last_error` / `deliverables.body_markdown` を `MaskedText` TypeDecorator でマスキング（AES ではなく `MaskingGateway.mask()` の pattern masking — secret pattern を `<REDACTED>` 化）。`conversation_messages.body_markdown` は §BUG-TR-002 凍結済み — 将来追加時に対応 |
 | A03 | Injection | **対応**: SQLAlchemy ORM の parameterized query のみ使用、raw SQL 不使用 |
 | A04 | Insecure Design | **対応**: TypeDecorator 強制 + CI 三層防衛で「マスキング忘れ」を設計レベルで排除 |
 | A05 | Security Misconfiguration | 該当なし（外部接続なし） |
@@ -265,9 +265,7 @@ erDiagram
     rooms ||--o{ tasks : "room_id (CASCADE)"
     directives ||--o{ tasks : "directive_id (CASCADE)"
     tasks ||--o{ task_assigned_agents : "task_id (CASCADE)"
-    tasks ||--o{ conversations : "task_id (CASCADE)"
     tasks ||--o{ deliverables : "task_id (CASCADE)"
-    conversations ||--o{ conversation_messages : "conversation_id (CASCADE)"
     deliverables ||--o{ deliverable_attachments : "deliverable_id (CASCADE)"
 
     tasks {
@@ -287,22 +285,8 @@ erDiagram
         int order_index "NOT NULL"
     }
 
-    conversations {
-        string id PK
-        string task_id FK
-        datetime created_at "NOT NULL"
-    }
-
-    conversation_messages {
-        string id PK
-        string conversation_id FK
-        string speaker_kind "NOT NULL"
-        text body_markdown "MaskedText NOT NULL"
-        datetime timestamp "NOT NULL"
-    }
-
     deliverables {
-        string id PK
+        string id PK "内部識別子・外部参照禁止(§確定)"
         string task_id FK
         string stage_id "NO FK (Aggregate境界 §確定 R1-G)"
         text body_markdown "MaskedText NOT NULL"
@@ -318,6 +302,9 @@ erDiagram
         string mime_type "NOT NULL"
         int size_bytes "NOT NULL"
     }
+
+    %% conversations / conversation_messages テーブルは §BUG-TR-002 凍結済み — Task domain が
+    %% conversations 属性を獲得する将来 PRで追加
 ```
 
 ## エラーハンドリング方針

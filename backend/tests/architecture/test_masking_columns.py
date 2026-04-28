@@ -40,6 +40,8 @@ from bakufu.infrastructure.persistence.sqlite.tables import (
     agent_skills,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     agents,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     audit_log,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    deliverable_attachments,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    deliverables,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     directives,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     empire_agent_refs,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     empire_room_refs,  # noqa: F401  # pyright: ignore[reportUnusedImport]
@@ -48,6 +50,8 @@ from bakufu.infrastructure.persistence.sqlite.tables import (
     pid_registry,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     room_members,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     rooms,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    task_assigned_agents,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    tasks,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     workflow_stages,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     workflow_transitions,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     workflows,  # noqa: F401  # pyright: ignore[reportUnusedImport]
@@ -72,6 +76,12 @@ _MASKING_CONTRACT: list[tuple[str, str, type]] = [
     ("rooms", "prompt_kit_prefix_markdown", MaskedText),
     # Directive Repository (PR #34, detailed-design.md §確定 R1-E).
     ("directives", "text", MaskedText),
+    # Task Repository (PR #35, detailed-design.md §確定 R1-E):
+    # tasks.last_error — BLOCKED 隔離理由(LLM error に secret 混入の可能性).
+    ("tasks", "last_error", MaskedText),
+    # conversation_messages.body_markdown は §BUG-TR-002 凍結済みのため除外。
+    # deliverables.body_markdown — Agent 出力に secret 混入の可能性.
+    ("deliverables", "body_markdown", MaskedText),
 ]
 
 # No-mask contract: §逆引き表「Empire 関連カラム: masking 対象なし」 +
@@ -95,6 +105,13 @@ _NO_MASK_TABLES: list[str] = [
     # Room Repository (PR #33, detailed-design.md §確定 R1-E):
     # room_members carries no secret semantics; agent_id is not masked.
     "room_members",
+    # Task Repository (PR #35, detailed-design.md §確定 R1-E):
+    # task_assigned_agents / deliverable_attachments carry no secret semantics.
+    # tasks / deliverables are registered in _PARTIAL_MASK_TABLES (each has
+    # exactly one masked column). conversations / conversation_messages are
+    # §BUG-TR-002 凍結済みのため除外。
+    "task_assigned_agents",
+    "deliverable_attachments",
 ]
 
 # Partial-mask contract: tables that have **exactly one** masked
@@ -118,6 +135,16 @@ _PARTIAL_MASK_TABLES: list[tuple[str, str]] = [
     # directives.text is the only masked column; target_room_id /
     # created_at / task_id carry no secret semantics.
     ("directives", "text"),
+    # Task Repository (PR #35, detailed-design.md §確定 R1-E):
+    # tasks.last_error is the only masked column; room_id / directive_id /
+    # current_stage_id / status / created_at / updated_at carry no secret
+    # semantics.
+    ("tasks", "last_error"),
+    # conversation_messages.body_markdown は §BUG-TR-002 凍結済みのため除外。
+    # deliverables.body_markdown is the only masked column;
+    # id / task_id / stage_id / committed_by / committed_at carry no secret
+    # semantics.
+    ("deliverables", "body_markdown"),
 ]
 
 

@@ -19,7 +19,7 @@
 | 項目 | 内容 |
 |------|------|
 | 入力 | `AsyncSession`（コンストラクタ引数）、各 method の引数 |
-| 処理 | `find_by_id`: `tasks` SELECT → 不在なら None。存在すれば 5 子テーブルを JOIN / 個別 SELECT して `_from_rows()` で Task 復元（§確定 R1-H 各テーブルの ORDER BY 適用）。`count`: `select(func.count()).select_from(TaskRow)` で SQL `COUNT(*)`。`save`: §確定 R1-B の 9 段階（3 DELETE + tasks UPSERT + 5 INSERT）を順次実行。`count_by_status`: `SELECT COUNT(*) FROM tasks WHERE status = :status`。`count_by_room`: `SELECT COUNT(*) FROM tasks WHERE room_id = :room_id`。`find_blocked`: `SELECT * FROM tasks WHERE status = 'BLOCKED' ORDER BY updated_at DESC, id DESC`（§確定 R1-H）→ 各行を `find_by_id` 同様に子テーブルと組み合わせて Task 復元 |
+| 処理 | `find_by_id`: `tasks` SELECT → 不在なら None。存在すれば 3 子テーブルを個別 SELECT して `_from_rows()` で Task 復元（§確定 R1-H 各テーブルの ORDER BY 適用）。`count`: `select(func.count()).select_from(TaskRow)` で SQL `COUNT(*)`。`save`: §確定 R1-B の 6 段階（2 DELETE + tasks UPSERT + 3 INSERT）を順次実行。`count_by_status`: `SELECT COUNT(*) FROM tasks WHERE status = :status`。`count_by_room`: `SELECT COUNT(*) FROM tasks WHERE room_id = :room_id`。`find_blocked`: `SELECT * FROM tasks WHERE status = 'BLOCKED' ORDER BY updated_at DESC, id DESC`（§確定 R1-H）→ 各行を `find_by_id` 同様に子テーブルと組み合わせて Task 復元 |
 | 出力 | `find_by_id`: `Task \| None`、`count`: `int`、`save`: `None`、`count_by_status`: `int`、`count_by_room`: `int`、`find_blocked`: `list[Task]`（空の場合 `[]`） |
 | エラー時 | SQLAlchemy `IntegrityError`（FK RESTRICT 違反 / NOT NULL 違反 / UNIQUE 違反等）/ `OperationalError` を上位伝播。Repository 内で明示的 `commit` / `rollback` はしない |
 
@@ -28,8 +28,8 @@
 | 項目 | 内容 |
 |------|------|
 | 入力 | directive-repo の 0006 revision（`down_revision="0006_directive_aggregate"` で chain 一直線） |
-| 処理 | `0007_task_aggregate.py` で以下を実行: (a) 6 テーブル作成（tasks / task_assigned_agents / conversations / conversation_messages / deliverables / deliverable_attachments）、(b) INDEX 追加（`tasks.room_id` 単体 / `(tasks.status, tasks.updated_at, tasks.id)` 複合 — §確定 R1-K）、(c) **BUG-DRR-001 closure**: `op.batch_alter_table('directives')` で `fk_directives_task_id`（`directives.task_id → tasks.id` ON DELETE RESTRICT）追加（§確定 R1-C）。各テーブルの FK / UNIQUE 制約は REQ-TR-005 データモデル参照 |
-| 出力 | 6 テーブル + INDEX + FK が SQLite に存在。`directives.task_id` への FK closure 済み |
+| 処理 | `0007_task_aggregate.py` で以下を実行: (a) 4 テーブル作成（tasks / task_assigned_agents / deliverables / deliverable_attachments）、(b) INDEX 追加（`tasks.room_id` 単体 / `(tasks.status, tasks.updated_at, tasks.id)` 複合 — §確定 R1-K）、(c) **BUG-DRR-001 closure**: `op.batch_alter_table('directives')` で `fk_directives_task_id`（`directives.task_id → tasks.id` ON DELETE RESTRICT）追加（§確定 R1-C）。各テーブルの FK / UNIQUE 制約は REQ-TR-005 データモデル参照。`conversations` / `conversation_messages` テーブルは §BUG-TR-002 凍結済みのため除外 |
+| 出力 | 4 テーブル + INDEX + FK が SQLite に存在。`directives.task_id` への FK closure 済み |
 | エラー時 | migration 失敗 → `BakufuMigrationError`、Bootstrap stage 3 で Fail Fast |
 
 ### REQ-TR-004: CI 三層防衛の Task 拡張（**正/負のチェック併用**、directive-repository §確定 E パターン継承）
@@ -37,17 +37,17 @@
 | 項目 | 内容 |
 |------|------|
 | 入力 | `scripts/ci/check_masking_columns.sh`（Layer 1）と `backend/tests/architecture/test_masking_columns.py`（Layer 2）|
-| 処理 | (a) Layer 1 grep guard: `PARTIAL_MASK_FILES` に 3 エントリ追加（`tables/tasks.py:last_error:MaskedText` / `tables/conversation_messages.py:body_markdown:MaskedText` / `tables/deliverables.py:body_markdown:MaskedText`）。正のチェック（MaskedText 必須）と負のチェック（過剰マスキング防止）を各テーブルで実施。(b) Layer 2 arch test: parametrize に 3 行追加（`tasks.last_error` / `conversation_messages.body_markdown` / `deliverables.body_markdown` の `column.type.__class__ is MaskedText` を assert） |
-| 出力 | CI が「3 カラムは MaskedText 必須、その他は masking なし」を物理保証 |
-| エラー時 | 後続 PR が誤って 3 カラムのいずれかを `Text` に変更 → Layer 2 arch test で落下、PR ブロック |
+| 処理 | (a) Layer 1 grep guard: `PARTIAL_MASK_FILES` に 2 エントリ追加（`tables/tasks.py:last_error:MaskedText` / `tables/deliverables.py:body_markdown:MaskedText`）。正のチェック（MaskedText 必須）と負のチェック（過剰マスキング防止）を各テーブルで実施。`conversation_messages.body_markdown` は §BUG-TR-002 凍結済みのため除外。(b) Layer 2 arch test: parametrize に 2 行追加（`tasks.last_error` / `deliverables.body_markdown` の `column.type.__class__ is MaskedText` を assert） |
+| 出力 | CI が「2 カラムは MaskedText 必須、その他は masking なし」を物理保証 |
+| エラー時 | 後続 PR が誤って 2 カラムのいずれかを `Text` に変更 → Layer 2 arch test で落下、PR ブロック |
 
 ### REQ-TR-005: storage.md 逆引き表更新
 
 | 項目 | 内容 |
 |------|------|
 | 入力 | `docs/architecture/domain-model/storage.md` §逆引き表（Directive 残カラム行が最終行） |
-| 処理 | §逆引き表に Task 関連行を追加・更新: (a) `Task.last_error`（`tasks.last_error`）を `（後続）` から **本 PR で配線完了** に更新、(b) `Deliverable.body_markdown`（`deliverables.body_markdown`）を同様に更新、(c) `Conversation.messages[].body_markdown`（`conversation_messages.body_markdown`）を `feature/conversation-repository`（後続）から本 PR で配線完了に更新、(d) Task 残カラム（masking 非対象）を明示追加 |
-| 出力 | storage.md §逆引き表が「Task 関連 3 masking カラムは本 PR で配線完了、Task 残カラムは masking 対象なし」状態 |
+| 処理 | §逆引き表に Task 関連行を追加・更新: (a) `Task.last_error`（`tasks.last_error`）を `（後続）` から **本 PR で配線完了** に更新、(b) `Deliverable.body_markdown`（`deliverables.body_markdown`）を同様に更新、(c) `Conversation.messages[].body_markdown` は §BUG-TR-002 凍結済みのため `feature/conversation-repository`（後続）のまま据え置き、(d) Task 残カラム（masking 非対象）を明示追加 |
+| 出力 | storage.md §逆引き表が「Task 関連 2 masking カラムは本 PR で配線完了、Task 残カラムは masking 対象なし」状態 |
 | エラー時 | 該当なし |
 
 ### REQ-TR-006: directive-repository 詳細設計 §BUG-DRR-001 を closure 済みに更新
@@ -87,7 +87,7 @@
 
 ## データモデル
 
-本 Issue で導入する 6 テーブル + INDEX + FK 群。
+本 Issue で導入する 4 テーブル + INDEX + FK 群。`conversations` / `conversation_messages` テーブルは §BUG-TR-002 凍結済みのため除外。
 
 ### `tasks` テーブル
 
@@ -113,24 +113,6 @@
 | `task_assigned_agents` | `order_index` | `Integer` | NOT NULL（割り当て順序保持） | — |
 | UNIQUE | `(task_id, agent_id)` | — | — | 重複割り当て防止（Aggregate 不変条件と 2 層防衛） |
 
-### `conversations` テーブル
-
-| エンティティ | 属性 | 型 | 制約 | 関連 |
-|-------------|------|---|------|------|
-| `conversations` | `id` | `UUIDStr` | PK, NOT NULL | ConversationId |
-| `conversations` | `task_id` | `UUIDStr` | **FK → `tasks.id` ON DELETE CASCADE, NOT NULL** | 親 Task |
-| `conversations` | `created_at` | `DateTime(timezone=True)` | NOT NULL | UTC 作成時刻 |
-
-### `conversation_messages` テーブル
-
-| エンティティ | 属性 | 型 | 制約 | 関連 |
-|-------------|------|---|------|------|
-| `conversation_messages` | `id` | `UUIDStr` | PK, NOT NULL | MessageId |
-| `conversation_messages` | `conversation_id` | `UUIDStr` | **FK → `conversations.id` ON DELETE CASCADE, NOT NULL** | 親 Conversation |
-| `conversation_messages` | `speaker_kind` | `String(32)` | NOT NULL（'AGENT' / 'SYSTEM' / 'USER' 等） | 発話者種別 |
-| `conversation_messages` | `body_markdown` | **`MaskedText`** | NOT NULL | メッセージ本文（subprocess 出力を含む可能性 → masking 必須） |
-| `conversation_messages` | `timestamp` | `DateTime(timezone=True)` | NOT NULL | UTC 発話時刻 |
-
 ### `deliverables` テーブル
 
 | エンティティ | 属性 | 型 | 制約 | 関連 |
@@ -154,7 +136,7 @@
 | `deliverable_attachments` | `mime_type` | `String(128)` | NOT NULL（ホワイトリスト 7 種） | MIME 種別 |
 | `deliverable_attachments` | `size_bytes` | `Integer` | NOT NULL（0 ≤ x ≤ 10485760） | ファイルサイズ |
 
-**masking 対象カラム**: `tasks.last_error` / `conversation_messages.body_markdown` / `deliverables.body_markdown`（各 `MaskedText`）。その他カラムは masking 対象なし、CI 三層防衛で「対象なし」を明示登録。
+**masking 対象カラム**: `tasks.last_error` / `deliverables.body_markdown`（各 `MaskedText`、2 カラム）。`conversation_messages.body_markdown` は §BUG-TR-002 凍結済みのため除外。その他カラムは masking 対象なし、CI 三層防衛で「対象なし」を明示登録。
 
 ## ユーザー向けメッセージ一覧
 
