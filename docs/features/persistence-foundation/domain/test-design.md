@@ -2,7 +2,7 @@
 
 <!-- feature: persistence-foundation / sub-feature: domain -->
 <!-- 配置先: docs/features/persistence-foundation/domain/test-design.md -->
-<!-- 対象範囲: REQ-PF-001〜010 + REQ-PF-002-A / MSG-PF-001〜008 / 脅威 T1〜T9 / 受入基準 1〜15 / 詳細設計 確定 A〜L (D-1〜D-4 / F の Fail-Secure 3 種 / J の LIFO cleanup / K の空ハンドラ Fail Loud / L の umask) / Schneier 申し送り 4 項目 (#1 / #4 / #5 / #6) + Schneier 重大 4 + 中等 4 のすべてに対する検出力テスト -->
+<!-- 対象範囲: REQ-PF-001〜010 + REQ-PF-002-A / MSG-PF-001〜008 / 脅威 T1〜T9 / 受入基準 1〜12 / 開発者品質基準 Q-1 / Q-2 / Q-3 / 詳細設計 確定 A〜L (D-1〜D-4 / F の Fail-Secure 3 種 / J の LIFO cleanup / K の空ハンドラ Fail Loud / L の umask) / Schneier 申し送り 4 項目 (#1 / #4 / #5 / #6) + Schneier 重大 4 + 中等 4 のすべてに対する検出力テスト -->
 
 本 feature は infrastructure 層の永続化基盤（DataDirResolver / SqliteEngine / SessionFactory / MaskingGateway / Outbox 系 / PidRegistryGC / AttachmentRoot / Bootstrap）に閉じる。Aggregate 別 Repository 本体は範囲外（後続 `feature/{aggregate}-repository` PR 群の責務）。HTTP API / CLI / UI の公開エントリポイントは持たないため、E2E は本 feature 範囲外（後続 `feature/admin-cli` / `feature/http-api` で起票）。
 
@@ -70,9 +70,9 @@
 | REQ-PF-010（**engine.dispose() 保証**、確定 J） | cleanup 中に `engine.dispose()` が必ず呼ばれる（接続 pool / WAL flush の保証）+ 構造化ログが flush される | TC-IT-PF-012-C | 結合 | 異常系 | 内部品質基準 |
 | REQ-PF-010（**umask 0o077 SET**、確定 L、Schneier 中等 1） | Bootstrap 起動後、`bakufu.db-wal` / `bakufu.db-shm` ファイルのモードが 0o600 で作成されている（POSIX、umask 0o077 が WAL/SHM 自動生成時に効く物理保証） | TC-IT-PF-001-A | 結合 | 正常系 | 内部品質基準 |
 | REQ-PF-010（**umask 0o077 SET**、確定 L） | `Bootstrap.run()` の**最初の文**（stage 1 より前）で `os.umask(0o077)` が呼ばれる（mock で `os.umask` の call_args[0][0] == 0o077 を assert） | TC-UT-PF-001-A | ユニット | 正常系 | 内部品質基準 |
-| 確定 I（依存方向） | `domain` 層から `bakufu.infrastructure.*` への import ゼロ件 | TC-CI-PF-001 | CI script | — | #13 |
-| AC-14（lint/typecheck） | `pyright --strict` / `ruff check` | （CI ジョブ） | — | — | 内部品質基準 |
-| AC-15（カバレッジ） | `pytest --cov=bakufu.infrastructure.persistence.sqlite --cov=bakufu.infrastructure.security` | （CI ジョブ） | — | — | 内部品質基準 |
+| 確定 I（依存方向） | `domain` 層から `bakufu.infrastructure.*` への import ゼロ件 | TC-CI-PF-001 | CI script | — | 内部品質基準 |
+| Q-1（lint/typecheck） | `pyright --strict` / `ruff check` | （CI ジョブ） | — | — | 内部品質基準 |
+| Q-2（カバレッジ） | `pytest --cov=bakufu.infrastructure.persistence.sqlite --cov=bakufu.infrastructure.security` | （CI ジョブ） | — | — | 内部品質基準 |
 | MSG-PF-001 | `[FAIL] BAKUFU_DATA_DIR must be an absolute path (got: {value})` | TC-UT-PF-033 | ユニット | 異常系 | #2 |
 | MSG-PF-002 | `[FAIL] SQLite engine initialization failed: {reason}` | TC-IT-PF-034 | 結合 | 異常系 | 内部品質基準 |
 | MSG-PF-003 | `[FAIL] Attachment FS root initialization failed at {path}: {reason}` | TC-IT-PF-029 | 結合 | 異常系 | 内部品質基準 |
@@ -108,7 +108,7 @@
 - **masking 適用順序（確定 A）**: Anthropic 先 → OpenAI 後の順序維持を TC-UT-PF-016 で確認、長さ 8 未満は除外を TC-UT-PF-017 で確認
 - **依存方向（確定 I）**: domain → infrastructure の参照ゼロを TC-CI-PF-001 (CI script) で物理確認
 - **MSG-PF-001〜008 すべて**に静的文字列照合（MSG-PF-008 は Schneier 重大 1 対応で新規追加、TC-IT-PF-007-D で照合）
-- 受入基準 1〜13 すべてに unit/integration ケース（14/15 は CI ジョブ）
+- 受入基準 1〜12 すべてに unit/integration ケース（Q-1/Q-2/Q-3 は CI ジョブ担保）
 - **T1〜T9** すべてに有効性確認ケース（T1〜T5 既存 + T6 マスキング fail-open / T7 トリガ DDL 改ざん / T8 DB 権限異常 / T9 空 handler 起動の 4 件は threat-model.md §A4 への昇格に同期）
 - 確定 A（masking 9 種 + env + home）/ B（**TypeDecorator `process_bind_param` 配線**、§確定 R1-D で event listener 案から反転）/ C（SQLite トリガ）/ **D-1〜D-4（PRAGMA 8 件 + dual connection）** / E（pid_gc 順序）/ **F（Fail-Secure 3 種）** / G（起動シーケンス + INFO ログ）/ H（Schneier 申し送りステータス）/ I（依存方向 CI 検査）/ **J（Bootstrap cleanup LIFO）** / **K（空 handler Fail Loud）** / **L（umask 0o077）**すべてに証拠ケース
 - 孤児要件ゼロ
@@ -157,7 +157,7 @@
 - Bootstrap が起動する FastAPI / WebSocket リスナは段階 8 で「listening」に至るのみで、実 HTTP リクエストを処理する handler は本 PR の範囲外
 - 戦略ガイド §E2E対象の判断「内部API・ライブラリなどエンドユーザー操作がない場合は結合テストで代替可」に従い、E2E は本 feature 範囲外
 - 後続 `feature/admin-cli` / `feature/http-api` が公開 I/F を実装した時点で E2E（`bakufu admin retry-event` 等で実 SQLite に書き込み確認）を起票
-- 受入基準 1〜13 はすべて unit/integration テストで検証可能（14/15 は CI ジョブ）
+- 受入基準 1〜12 はすべて unit/integration テストで検証可能（Q-1/Q-2/Q-3 は CI ジョブ担保）
 
 | テストID | ペルソナ | シナリオ | 操作手順 | 期待結果 |
 |---------|---------|---------|---------|---------|
@@ -313,7 +313,7 @@
 
 ### `extra='forbid'` / frozen など pydantic 規約は本 feature では適用外（infrastructure 層は domain と異なり Pydantic model を持たない、SQLAlchemy ORM が中心）
 
-## CI スクリプト（受入基準 13）
+## CI スクリプト（開発者品質基準 Q-3）
 
 | テストID | 対象 | 種別 | 入力 | 期待結果 |
 |---------|-----|------|------|---------|
@@ -342,8 +342,8 @@
 - **masking 適用順序（確定 A）**: Anthropic → OpenAI 順序を TC-UT-PF-016 で、長さ 8 未満除外を TC-UT-PF-017 で、Fail-Secure フォールバック（確定 F の 3 種）を TC-UT-PF-006-A / B / C で確認（masking が**生データを永続化させない**物理保証）
 - **依存方向（確定 I）**: domain → infrastructure 参照ゼロを TC-CI-PF-001 で確認
 - **MSG-PF-001 〜 008** の各文言が**静的文字列で照合**されている（MSG-PF-008 は Schneier 重大 1 対応で新規追加、TC-IT-PF-007-D で照合）
-- 受入基準 1 〜 13 の各々が**最低 1 件のユニット/結合ケース**で検証されている（E2E 不在のため戦略ガイドの「結合代替可」に従う）
-- 受入基準 14（pyright/ruff）/ 15（カバレッジ 90%）は CI ジョブで担保
+- 受入基準 1 〜 12 の各々が**最低 1 件のユニット/結合ケース**で検証されている（E2E 不在のため戦略ガイドの「結合代替可」に従う）
+- 開発者品質基準 Q-1（pyright/ruff）/ Q-2（カバレッジ 90%）/ Q-3（依存方向 CI 検査）は CI ジョブで担保
 - **T1〜T9** の各脅威に対する対策が**最低 1 件のテストケース**で有効性を確認されている（T6〜T9 は threat-model.md §A4 への昇格に同期）
 - 確定 A〜L すべてに証拠ケース（確定 D-1〜D-4 / F / J / K / L は Schneier 再レビューで新規凍結）
 - C0 目標: `infrastructure/persistence/sqlite/` / `infrastructure/security/` で **90% 以上**（infrastructure 層基準、要件分析書 §非機能要求準拠）

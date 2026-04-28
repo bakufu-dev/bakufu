@@ -1,7 +1,7 @@
 # 基本設計書 — persistence-foundation / domain
 
 > feature: `persistence-foundation` / sub-feature: `domain`
-> 親 spec: [`../feature-spec.md`](../feature-spec.md) §9 受入基準 1〜13
+> 親 spec: [`../feature-spec.md`](../feature-spec.md) §9 受入基準 1〜12 / §10 Q-1〜Q-3
 > 関連: [`docs/design/tech-stack.md`](../../../design/tech-stack.md) §ORM / [`docs/design/domain-model/storage.md`](../../../design/domain-model/storage.md) §シークレットマスキング規則
 
 ## §モジュール契約（機能要件）
@@ -355,7 +355,7 @@ sequenceDiagram
 | A06 | Vulnerable Components | SQLAlchemy 2.x / Alembic / aiosqlite / psutil（pip-audit で監視） |
 | A07 | Auth Failures | 該当なし |
 | A08 | Data Integrity Failures | **適用**: `audit_log` 追記 only + DELETE / UPDATE 拒否トリガ + dual connection で runtime DDL 制限 |
-| A09 | Logging Failures | **適用**: マスキング適用ログ / Outbox `last_error` masking / 起動 8 段階 INFO ログ / 空 handler / 滞留 WARN |
+| A09 | Logging Failures | **適用**: ログに含まれ得る機密情報（API key / OAuth token 等）を `MaskingGateway` で完全置換してから出力。永続化対象カラム: `domain_event_outbox.payload_json`（`MaskedJSONEncoded`）/ `domain_event_outbox.last_error`（`MaskedText`）/ `audit_log.args_json`（`MaskedJSONEncoded`）/ `audit_log.error_text`（`MaskedText`）。マスキング失敗時は `<REDACTED:MASK_ERROR>` で完全置換（Fail-Secure 契約、§確定 R1-H）し生データを書く経路ゼロを保証。対象ログ出力先: `<DATA_DIR>/logs/bakufu.log`（起動 8 段階 INFO）/ SQLAlchemy echo log（DEBUG 時）/ `audit_log` テーブル。空 handler / 滞留 WARN も本層で担保 |
 | A10 | SSRF | 該当なし（外部 URL fetch なし） |
 
 ##### マスキング適用先 → 配線箇所の逆引き
