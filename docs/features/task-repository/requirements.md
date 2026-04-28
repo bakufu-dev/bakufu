@@ -28,7 +28,7 @@
 | 項目 | 内容 |
 |------|------|
 | 入力 | directive-repo の 0006 revision（`down_revision="0006_directive_aggregate"` で chain 一直線） |
-| 処理 | `0007_task_aggregate.py` で以下を実行: (a) 6 テーブル作成（tasks / task_assigned_agents / conversations / conversation_messages / deliverables / deliverable_attachments）、(b) INDEX 追加（`tasks.status` / `tasks.room_id` / `tasks.updated_at`）、(c) **BUG-DRR-001 closure**: `op.batch_alter_table('directives')` で `fk_directives_task_id`（`directives.task_id → tasks.id` ON DELETE RESTRICT）追加（§確定 R1-C）。各テーブルの FK / UNIQUE 制約は REQ-TR-005 データモデル参照 |
+| 処理 | `0007_task_aggregate.py` で以下を実行: (a) 6 テーブル作成（tasks / task_assigned_agents / conversations / conversation_messages / deliverables / deliverable_attachments）、(b) INDEX 追加（`tasks.room_id` 単体 / `(tasks.status, tasks.updated_at, tasks.id)` 複合 — §確定 R1-K）、(c) **BUG-DRR-001 closure**: `op.batch_alter_table('directives')` で `fk_directives_task_id`（`directives.task_id → tasks.id` ON DELETE RESTRICT）追加（§確定 R1-C）。各テーブルの FK / UNIQUE 制約は REQ-TR-005 データモデル参照 |
 | 出力 | 6 テーブル + INDEX + FK が SQLite に存在。`directives.task_id` への FK closure 済み |
 | エラー時 | migration 失敗 → `BakufuMigrationError`、Bootstrap stage 3 で Fail Fast |
 
