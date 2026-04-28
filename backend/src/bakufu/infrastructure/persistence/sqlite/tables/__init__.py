@@ -75,6 +75,23 @@ Task Aggregate (PR #35):
   (no-mask). Metadata only — physical file bytes are ``feature/attachment-
   storage`` scope (§確定 R1-I).
 
+ExternalReviewGate Aggregate (PR #36):
+
+* :mod:`...tables.external_review_gates` — Gate root row. Two masked
+  columns: ``feedback_text`` (MaskedText, §設計決定 ERGR-002) and
+  ``snapshot_body_markdown`` (MaskedText, §確定 R1-E 実適用); both are
+  registered with the CI three-layer defense's *partial-mask* contract.
+  Three indexes (§確定 R1-K): ``ix_external_review_gates_task_id_created``
+  (composite), ``ix_external_review_gates_reviewer_decision`` (composite),
+  ``ix_external_review_gates_decision`` (single-column).
+* :mod:`...tables.external_review_gate_attachments` — snapshot Attachment
+  metadata child rows (no-mask). Business key ``UNIQUE(gate_id, sha256)``;
+  PK is save-internal (uuid4() regenerated on each save).
+* :mod:`...tables.external_review_audit_entries` — AuditEntry child rows.
+  ``comment`` is ``MaskedText`` (§確定 R1-E 実適用); registered with CI
+  three-layer defense *partial-mask* contract pinning exactly one masked
+  column. PK is domain-assigned (AuditEntry.id, not regenerated).
+
 Note: ``conversations`` / ``conversation_messages`` tables are excluded
 (§BUG-TR-002 凍結済み). They will be registered here when Task domain gains
 a ``conversations: list[Conversation]`` attribute.
@@ -114,6 +131,9 @@ from bakufu.infrastructure.persistence.sqlite.tables import (
     empire_agent_refs,
     empire_room_refs,
     empires,
+    external_review_audit_entries,
+    external_review_gate_attachments,
+    external_review_gates,
     outbox,
     pid_registry,
     room_members,
@@ -136,6 +156,9 @@ __all__ = [
     "empire_agent_refs",
     "empire_room_refs",
     "empires",
+    "external_review_audit_entries",
+    "external_review_gate_attachments",
+    "external_review_gates",
     "outbox",
     "pid_registry",
     "room_members",
