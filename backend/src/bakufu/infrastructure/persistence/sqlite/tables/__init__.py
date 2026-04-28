@@ -48,6 +48,14 @@ Room Aggregate (PR #33):
   Defense-in-Depth; ``agent_id`` intentionally has no FK onto
   ``agents.id`` (application-layer responsibility).
 
+Directive Aggregate (PR #34):
+
+* :mod:`...tables.directives` — Directive root row. The ``text`` column
+  is ``MaskedText`` (§確定 R1-E 実適用); the table is registered with
+  the CI three-layer defense's *partial-mask* contract pinning exactly
+  one masked column. ``directives.task_id → tasks.id`` FK is deferred
+  to the task-repository PR (§BUG-DRR-001 申し送り).
+
 Secret-bearing tables declare their columns with
 :class:`MaskedJSONEncoded` / :class:`MaskedText` TypeDecorators
 (defined in :mod:`bakufu.infrastructure.persistence.sqlite.base`) that
@@ -77,6 +85,7 @@ from bakufu.infrastructure.persistence.sqlite.tables import (
     agent_skills,
     agents,
     audit_log,
+    directives,
     empire_agent_refs,
     empire_room_refs,
     empires,
@@ -94,6 +103,7 @@ __all__ = [
     "agent_skills",
     "agents",
     "audit_log",
+    "directives",
     "empire_agent_refs",
     "empire_room_refs",
     "empires",
