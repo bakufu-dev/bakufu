@@ -1,7 +1,7 @@
 # 詳細設計書
 
 > feature: `empire-repository`
-> 関連: [basic-design.md](basic-design.md) / [`docs/features/persistence-foundation/detailed-design.md`](../persistence-foundation/detailed-design.md)
+> 関連: [basic-design.md](basic-design.md) / [`docs/features/persistence-foundation/detailed-design.md`](../../persistence-foundation/detailed-design.md)
 
 ## 記述ルール（必ず守ること）
 
@@ -419,8 +419,8 @@ down_revision: `0001_init_audit_pid_outbox`
 - [Alembic Tutorial](https://alembic.sqlalchemy.org/en/latest/tutorial.html) — migration / revision 管理
 - [Python typing.Protocol](https://docs.python.org/3/library/typing.html#typing.Protocol) — `@runtime_checkable` なしの duck typing
 - [Hexagonal Architecture (Ports and Adapters)](https://alistair.cockburn.us/hexagonal-architecture/) — Repository ポート配置の根拠
-- [`docs/features/persistence-foundation/`](../persistence-foundation/) — M2 永続化基盤（PR #23 マージ済み）
-- [`docs/features/empire/`](../empire/) — Empire domain 設計（PR #15 マージ済み）
-- [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) — Empire 凍結済み設計
-- [`docs/design/domain-model/storage.md`](../../design/domain-model/storage.md) — 逆引き表（本 PR で Empire 行追加）
-- [`docs/design/threat-model.md`](../../design/threat-model.md) — A04 / A08 対応根拠
+- [`docs/features/persistence-foundation/`](../../persistence-foundation/) — M2 永続化基盤（PR #23 マージ済み）
+- [`docs/features/empire/`](../domain/) — Empire domain 設計（PR #15 マージ済み）
+- [`docs/design/domain-model/aggregates.md`](../../../design/domain-model/aggregates.md) — Empire 凍結済み設計
+- [`docs/design/domain-model/storage.md`](../../../design/domain-model/storage.md) — 逆引き表（本 PR で Empire 行追加）
+- [`docs/design/threat-model.md`](../../../design/threat-model.md) — A04 / A08 対応根拠

@@ -1,7 +1,24 @@
 # テスト設計書
 
-<!-- feature 単位で 1 ファイル。requirements.md の REQ-XX-NNN / detailed-design.md の MSG-XX-NNN / requirements-analysis.md の受入基準と T 脅威 を、それぞれ最低 1 件のテストケースで検証する。 -->
+<!-- feature 単位で 1 ファイル。requirements.md の REQ-XX-NNN / detailed-design.md の MSG-XX-NNN / feature-spec.md の受入基準と T 脅威 を、それぞれ最低 1 件のテストケースで検証する。 -->
 <!-- 配置先: docs/features/<feature-name>/test-design.md -->
+
+## 本書の役割
+
+本書は **テストケースで検証可能な単位までトレーサビリティを担保する**。feature-spec.md / requirements.md / detailed-design.md / 脅威モデル の各 ID をマトリクスで結び、孤児要件を作らない。
+
+**書くこと**:
+- REQ-XX-NNN / MSG-XX-NNN / UC-XX-NNN / 受入基準 # / T 脅威 # を実テストケース（TC-E2E / TC-IT / TC-UT）に紐付けるマトリクス
+- 外部 I/O 依存マップ（raw fixture / factory / characterization 状態）
+- 各レベルのテストケース定義
+- カバレッジ基準
+
+**マトリクスの行構成**:
+- feature-spec.md §9 受入基準（観察可能な事象）→ E2E または IT で検証
+- feature-spec.md §10 開発者品質基準（Q-1 / Q-2）→ CI ジョブ担保で個別ケースには下ろさない（マトリクスには「CI ジョブ」とだけ記載）
+- requirements.md §機能要件 REQ-XX-NNN → UT または IT で検証
+- detailed-design.md §MSG 確定文言表 MSG-XX-NNN → 静的文字列照合 UT で検証
+- basic-design.md §脅威モデル T1〜TN → 有効性確認 UT/IT で検証
 
 ## テストマトリクス
 
