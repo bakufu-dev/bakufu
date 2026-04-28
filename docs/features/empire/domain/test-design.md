@@ -101,7 +101,7 @@ Empire / RoomRef / AgentRef は `frozen=True` + `extra='forbid'` のため、イ
 
 **該当なし** — 理由:
 
-- 本 feature は domain 層の純粋ライブラリで、CLI / HTTP API / UI のいずれの公開エントリポイントも持たない（[`requirements.md`](requirements.md) §画面・CLI 仕様 / §API 仕様 で「該当なし」と凍結）
+- 本 feature は domain 層の純粋ライブラリで、CLI / HTTP API / UI のいずれの公開エントリポイントも持たない（[`basic-design.md §モジュール契約`](basic-design.md) §画面・CLI 仕様 / §API 仕様 で「該当なし」と凍結）
 - テスト戦略ガイド §E2E対象の判断「バッチ処理・内部API・ライブラリなどエンドユーザー操作がない場合は結合テストで代替可」に従い、E2E は本 feature 範囲外
 - 後続 feature/http-api（Empire CRUD エンドポイント）/ feature/admin-cli（`bakufu admin empire create` 等）が公開 I/F を実装した時点で E2E を起票する
 

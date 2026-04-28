@@ -89,7 +89,7 @@
 
 **該当なし** — 理由:
 
-- 本 feature は infrastructure 層単独で、CLI / HTTP API / UI のいずれの公開エントリポイントも持たない（[`requirements.md`](requirements.md) §画面・CLI 仕様 / §API 仕様 で「該当なし」と凍結）
+- 本 feature は infrastructure 層単独で、CLI / HTTP API / UI のいずれの公開エントリポイントも持たない（[`basic-design.md §モジュール契約`](basic-design.md) §画面・CLI 仕様 / §API 仕様 で「該当なし」と凍結）
 - Repository は内部 API（Python module-level の Protocol / Class）のみ提供
 - 戦略ガイド §E2E対象の判断「内部 API・ライブラリなどエンドユーザー操作がない場合は結合テストで代替可」に従い、E2E は本 feature 範囲外
 - 後続 `feature/admin-cli`（`bakufu admin empire show` 等）/ `feature/http-api`（Empire CRUD）が公開 I/F を実装した時点で E2E を起票

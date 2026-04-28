@@ -10,13 +10,11 @@ empire/
 ├── system-test-design.md           # 業務概念単位の E2E 検証戦略（受入基準 10, 11）
 ├── README.md                    # 本ファイル（sub-feature 一覧 + マイルストーン）
 ├── domain/                      # M1: Aggregate Root + 不変条件（Issue #8）
-│   ├── requirements.md
-│   ├── basic-design.md
+│   ├── basic-design.md          # §モジュール契約 = 機能要件 REQ-EM-001〜005
 │   ├── detailed-design.md
 │   └── test-design.md
 ├── repository/                  # M2: SQLite 永続化（Issue #25）
-│   ├── requirements.md
-│   ├── basic-design.md
+│   ├── basic-design.md          # §モジュール契約 = 機能要件 REQ-EMR-001〜005
 │   ├── detailed-design.md
 │   └── test-design.md
 ├── http-api/                    # 将来（M3）: REST endpoint
@@ -43,9 +41,9 @@ empire/
 
 - **親 `feature-spec.md`** は最初の sub-feature PR（domain）で凍結し、以降の sub-feature PR では引用のみ
 - 親 ra の更新が必要な場合は、別 PR で先行して直す（[`CLAUDE.md §6`](../../../CLAUDE.md) "設計を変えるべきと判断したら別の設計 PR で先に直す"）
-- sub-feature の 4 ファイル（requirements / basic-design / detailed-design / test-design）は親 ra を引用しつつ、実装契約に集中する
-- **E2E は親 [`system-test-design.md`](system-test-design.md)** だけが扱う。sub-feature の `test-design.md` には E2E を書かない（IT / UT のみ）
-- 各 sub-feature の `requirements.md` 冒頭で **親 ra との依存関係** を明示する（`> 親要求分析: [../feature-spec.md](../feature-spec.md)`）
+- sub-feature の 3 ファイル（basic-design / detailed-design / test-design）は親 spec を引用しつつ、実装契約に集中する。機能要件（REQ-XX-NNN）は basic-design.md §モジュール契約 に統合される
+- **システムテストは親 [`system-test-design.md`](system-test-design.md)** だけが扱う。sub-feature の `test-design.md` には書かない（IT / UT のみ）
+- 各 sub-feature の `basic-design.md §モジュール契約` 冒頭で **親 spec との依存関係** を明示する（`> 親業務仕様: [../feature-spec.md](../feature-spec.md)`）
 
 ## 関連設計書
 

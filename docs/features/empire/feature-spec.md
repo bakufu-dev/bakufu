@@ -178,7 +178,7 @@ E2E（受入基準 10, 11）は [`system-test-design.md`](system-test-design.md)
 
 ## 10. 開発者品質基準（CI 担保、業務要求ではない）
 
-各 sub-feature の `requirements.md`（または `test-design.md` §カバレッジ基準）で個別に管理する。本書では業務要求のみ凍結。
+各 sub-feature の `basic-design.md §モジュール契約` / `test-design.md §カバレッジ基準` で個別に管理する。本書では業務要求のみ凍結。
 
 参考: domain は `domain/empire.py` カバレッジ 95% 以上、repository は実装ファイル群で 90% 以上を目標としているが、これは sub-feature 側の凍結事項。
 

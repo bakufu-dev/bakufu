@@ -92,7 +92,7 @@ class TestAuditEntryStructuralEquality:
         """Two AuditEntry with identical attrs are ``==``."""
         common_id = uuid4()
         actor = uuid4()
-        ts = datetime(2099, 4, 28, 12, 0, 0, tzinfo=UTC)
+        ts = datetime(9999, 1, 1, 0, 0, 0, tzinfo=UTC)
         a = make_audit_entry(
             entry_id=common_id,
             actor_id=actor,
