@@ -30,12 +30,12 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 import pytest
+from bakufu.domain.room.room import Room
 from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
     SqliteRoomRepository,
 )
 from sqlalchemy import text
 
-from bakufu.domain.room.room import Room
 from tests.factories.room import make_prompt_kit, make_room
 
 if TYPE_CHECKING:
@@ -81,9 +81,7 @@ async def _read_persisted_prefix(
     to match ``UUIDStr`` TypeDecorator storage format.
     """
     async with session_factory() as session:
-        stmt = text(
-            "SELECT prompt_kit_prefix_markdown FROM rooms WHERE id = :id"
-        )
+        stmt = text("SELECT prompt_kit_prefix_markdown FROM rooms WHERE id = :id")
         row = (await session.execute(stmt, {"id": room_id.hex})).first()
     assert row is not None, f"rooms row not found for id={room_id}"
     persisted = row[0]
@@ -111,7 +109,7 @@ class TestDiscordTokenMasked:
 
     This is the **primary case** from the test instruction:
     ``prompt_kit_prefix_markdownにDiscord webhook URLを渡した時DB上で
-    <REDACTED:DISCORD_TOKEN>になること（不可逆性確認）``.
+    <REDACTED:DISCORD_TOKEN>になること(不可逆性確認)``.
 
     A prompt-kit prefix that contains a Discord Bot Token embedded in a
     webhook URL must be masked before it hits SQLite disk.
@@ -253,7 +251,10 @@ class TestNoSecretPassthrough:
         get redacted; the masking gateway is not over-aggressive on
         plain text.
         """
-        plain = "あなたはコードレビューを担当する開発者です。丁寧かつ的確にフィードバックを行ってください。"
+        plain = (
+            "あなたはコードレビューを担当する開発者です。"
+            "丁寧かつ的確にフィードバックを行ってください。"
+        )
         room = _make_room_with_prefix(plain, workflow_id=seeded_workflow_id)
         async with session_factory() as session, session.begin():
             await SqliteRoomRepository(session).save(room, seeded_empire_id)
@@ -279,7 +280,7 @@ class TestRoundTripIsIrreversible:
 
     This is the primary irreversibility test specifically requested in
     the task instruction: "Discord webhook URLを渡した時DB上でになること
-    （不可逆性確認）".
+    (不可逆性確認)".
     """
 
     async def test_find_by_id_returns_masked_prefix_markdown(
@@ -289,9 +290,7 @@ class TestRoundTripIsIrreversible:
         seeded_workflow_id: UUID,
     ) -> None:
         """Save raw Discord webhook URL → find_by_id → prefix == masked form."""
-        raw_prefix = (
-            f"Notify via https://discord.com/api/webhooks/12345/{_DISCORD_TOKEN}"
-        )
+        raw_prefix = f"Notify via https://discord.com/api/webhooks/12345/{_DISCORD_TOKEN}"
         room = _make_room_with_prefix(raw_prefix, workflow_id=seeded_workflow_id)
         async with session_factory() as session, session.begin():
             await SqliteRoomRepository(session).save(room, seeded_empire_id)

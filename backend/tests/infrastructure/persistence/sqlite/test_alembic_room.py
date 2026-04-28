@@ -93,10 +93,7 @@ class TestFifthRevisionApplied:
         await run_upgrade_head(empty_engine)
         async with empty_engine.connect() as conn:
             result = await conn.execute(
-                text(
-                    "SELECT name FROM sqlite_master "
-                    "WHERE type='index' AND tbl_name='rooms'"
-                )
+                text("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='rooms'")
             )
             index_names = {row[0] for row in result}
         assert "ix_rooms_empire_id_name" in index_names, (
@@ -119,9 +116,7 @@ class TestFifthRevisionApplied:
         """
         await run_upgrade_head(empty_engine)
         async with empty_engine.connect() as conn:
-            result = await conn.execute(
-                text("PRAGMA foreign_key_list('empire_room_refs')")
-            )
+            result = await conn.execute(text("PRAGMA foreign_key_list('empire_room_refs')"))
             fk_rows = list(result)
         # PRAGMA foreign_key_list returns rows with columns:
         #   id, seq, table, from, to, on_update, on_delete, match
@@ -161,8 +156,7 @@ class TestUpgradeDowngradeIdempotent:
             result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
             tables = {row[0] for row in result}
         assert tables.isdisjoint({"rooms", "room_members"}), (
-            f"[FAIL] rooms/room_members still present after downgrade to base.\n"
-            f"Tables: {tables}"
+            f"[FAIL] rooms/room_members still present after downgrade to base.\nTables: {tables}"
         )
 
         await run_upgrade_head(empty_engine)
@@ -170,8 +164,7 @@ class TestUpgradeDowngradeIdempotent:
             result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
             tables = {row[0] for row in result}
         assert {"rooms", "room_members"}.issubset(tables), (
-            f"[FAIL] rooms/room_members missing after re-upgrade.\n"
-            f"Tables: {tables}"
+            f"[FAIL] rooms/room_members missing after re-upgrade.\nTables: {tables}"
         )
 
 

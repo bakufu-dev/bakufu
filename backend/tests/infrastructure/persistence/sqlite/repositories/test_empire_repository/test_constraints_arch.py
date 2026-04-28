@@ -25,6 +25,9 @@ from bakufu.infrastructure.persistence.sqlite.tables.empires import EmpireRow
 from sqlalchemy import delete, select, text
 
 from tests.factories.empire import make_empire, make_populated_empire
+from tests.infrastructure.persistence.sqlite.repositories.test_empire_repository.conftest import (
+    seed_rooms,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -41,6 +44,7 @@ class TestForeignKeyCascade:
     ) -> None:
         """TC-IT-EMR-013: FK ON DELETE CASCADE empties empire_room_refs / empire_agent_refs."""
         empire = make_populated_empire(n_rooms=2, n_agents=3)
+        await seed_rooms(session_factory, empire.id, [r.room_id for r in empire.rooms])
         async with session_factory() as session, session.begin():
             await SqliteEmpireRepository(session).save(empire)
 
@@ -87,6 +91,9 @@ class TestUniqueConstraintViolation:
             await SqliteEmpireRepository(session).save(empire)
 
         room_id = uuid4()
+        # Alembic 0005 added empire_room_refs.room_id → rooms.id FK (BUG-EMR-001
+        # closure). Seed the room row before inserting into empire_room_refs.
+        await seed_rooms(session_factory, empire.id, [room_id])
         async with session_factory() as session, session.begin():
             await session.execute(
                 text(

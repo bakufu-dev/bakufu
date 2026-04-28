@@ -204,20 +204,14 @@ class TestFindByIdOrderByContract:
             event.remove(sync_engine, "before_cursor_execute", _on_execute)
 
         member_selects = [
-            stmt
-            for stmt in captured
-            if "FROM room_members" in stmt and "SELECT" in stmt.upper()
+            stmt for stmt in captured if "FROM room_members" in stmt and "SELECT" in stmt.upper()
         ]
         assert member_selects, "find_by_id must SELECT from room_members"
-        assert any(
-            "ORDER BY" in stmt.upper() and "agent_id" in stmt for stmt in member_selects
-        ), (
+        assert any("ORDER BY" in stmt.upper() and "agent_id" in stmt for stmt in member_selects), (
             f"[FAIL] find_by_id missing ``ORDER BY agent_id``.\n"
             f"Captured room_members SELECTs: {member_selects}"
         )
-        assert any(
-            "ORDER BY" in stmt.upper() and "role" in stmt for stmt in member_selects
-        ), (
+        assert any("ORDER BY" in stmt.upper() and "role" in stmt for stmt in member_selects), (
             f"[FAIL] find_by_id missing ``ORDER BY role``.\n"
             f"Captured room_members SELECTs: {member_selects}"
         )
@@ -350,7 +344,7 @@ class TestRoundTripEquality:
         # assertion is ORDER BY-aware.
         original_sorted = sorted(room.members, key=lambda m: (str(m.agent_id), m.role.value))
         assert len(restored.members) == len(original_sorted)
-        for got, want in zip(restored.members, original_sorted):
+        for got, want in zip(restored.members, original_sorted, strict=True):
             assert got.agent_id == want.agent_id
             assert got.role == want.role
 
@@ -407,9 +401,7 @@ class TestTxBoundaryRespectedByRepository:
         # 3-step sequence is one logical operation under the caller's UoW.
         async with session_factory() as session:
             member_rows = (
-                await session.execute(
-                    select(RoomMemberRow).where(RoomMemberRow.room_id == room.id)
-                )
+                await session.execute(select(RoomMemberRow).where(RoomMemberRow.room_id == room.id))
             ).all()
         assert member_rows == []
 
