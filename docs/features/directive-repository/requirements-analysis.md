@@ -42,7 +42,7 @@
 - masking 対象カラム: **`directives.text` のみ**（`MaskedText`、directive §確定 G 実適用）
 - save() は `directives` UPSERT のみ（子テーブルなし、empire §確定 B の delete-then-insert パターンを 1 テーブルに縮小適用）
 - count() は SQL `COUNT(*)`（empire §確定 D 踏襲）
-- **Protocol は 5 method**: `find_by_id` / `count` / `save(directive)` / `find_by_room(room_id)` / `find_by_task_id(task_id)`
+- **Protocol は 4 method**: `find_by_id` / `count` / `save(directive)` / `find_by_room(room_id)`（`find_by_task_id` は task-repository PR で method + INDEX + FK closure を**同時**追加 — §確定 R1-D 参照）
 - `save(directive)` は **標準 1 引数パターン**（Directive は `target_room_id` 属性を自身で持つため — [storage.md §Repository save() インターフェース設計パターン](../../architecture/domain-model/storage.md#repository-save-インターフェース設計パターン確定-h-補足) 標準パターン適用）
 - `target_room_id` の DB FK は `rooms.id` への ON DELETE **CASCADE**（Directive は Room が削除されると意味を失う — 委譲先 Room なき Directive は orphan）
 - `task_id` は nullable UUIDStr、**FK は張らない**（0006 時点で `tasks` テーブル未存在 — BUG-EMR-001 パターン、task-repository PR で `op.batch_alter_table` 経由 FK 追加を申し送り）
@@ -57,9 +57,10 @@
 | `target_room_id` FK を ON DELETE SET NULL | `target_room_id` は NOT NULL（Directive は必ず委譲先 Room を持つ）。SET NULL は型違反 |
 | `target_room_id` FK を張らない（参照のみ宣言）| 0006 時点で `rooms` テーブルは 0005 で先行存在済み。FK を張れる前提条件が揃っているのに張らないのは dangling pointer リスク温存。**FK は張れる時に張る** が原則 |
 | `task_id` FK を 0006 で `tasks.id` に張る | 0006 時点で `tasks` テーブル未存在（task-repository は後続 PR）。empire_room_refs と同じ forward reference 問題。task-repository PR で `op.batch_alter_table` 経由 FK 追加（BUG-EMR-001 規約） |
-| `find_by_room` を Protocol に追加せず application 層が全件 SELECT + filter | N+1 / 全件ロードで MVP の数十 Directive は耐えられるが、Room あたり数百 Directive になった場合にメモリ枯渇。INDEX(target_room_id, created_at) と set で効率的に検索する経路を最初から設計 |
-| `find_by_task_id` を Protocol に追加せず application 層が `find_by_id` で辿る | task.directive_id から逆引きするクエリは task-application 層で頻出する。Protocol に明示することで実装者が `find_by_id` 全件ループを書かない |
+| `find_by_room` を Protocol に追加せず application 層が全件 SELECT + filter | N+1 / 全件ロードで MVP の数十 Directive は耐えられるが、Room あたり数百 Directive になった場合にメモリ枯渇。INDEX(target_room_id, created_at) で効率的に検索する経路を最初から設計 |
+| `find_by_task_id` を本 PR の Protocol に追加する | **YAGNI 違反**。task-application も task-repository も未存在（後続 PR）で呼び出し側ゼロ。INDEX も「追加しない（YAGNI）」と同 PR 内で矛盾認定している（「method は今、INDEX は将来」は不整合）。task-repository PR で method + INDEX + FK closure を**同時**追加するのが正しい設計 — §確定 R1-D で凍結 |
 | `save(directive, room_id)` の非対称パターン | Directive は `target_room_id` を自身の属性として持つ（[directive/detailed-design.md §Aggregate Root: Directive](../directive/detailed-design.md) 属性表）。DB 永続化に必要な `target_room_id` を Directive 自身から取れるため非対称パターン不要。[storage.md §確定 H](../../architecture/domain-model/storage.md) 判断ルール参照 |
+| `find_by_room` の ORDER BY を `created_at DESC` 単独 | BUG-EMR-001 規約「複合 key で決定論的順序」に違反。同時刻 Directive で順序非決定的。`created_at DESC, id DESC` とすることで id（PK、一意）を tiebreaker として決定論的順序を保証 |
 | `find_by_room` の ORDER BY を created_at ASC | Room チャネルで「最新 directive を先頭表示」するのが UI / CLI の自然な表示順（最も新しい CEO 指令が先頭、時系列降順）。ASC だと古い directive を先頭に表示する逆順になりユーザー体験が悪い |
 
 ### 重要な選定確定（レビュー指摘 R1 応答）
@@ -109,21 +110,22 @@
 - Task が削除されると「発行元 Directive がある Task が消えた」状態になる。Directive は Task 発行の証跡であり、Task が消えたら Directive の task_id を NULL に戻すのではなく、Task 削除を物理的に拒否する方が audit trail として健全
 - application 層が「Task を削除したい場合は先に Directive の task_id を None に遷移させる」手順を踏む（Fail Fast）
 
-#### 確定 R1-D: `find_by_room` / `find_by_task_id` 追加 method
+#### 確定 R1-D: `find_by_room` 追加 method と `find_by_task_id` 申し送り
+
+**本 PR（0006）スコープ**: `find_by_room` のみ追加（4-method Protocol）。
 
 | method | シグネチャ | 意図 |
 |---|---|---|
-| `find_by_room` | `async def find_by_room(room_id: RoomId) -> list[Directive]` | Room 内 directive 一覧を `created_at DESC` で返却（最新 directive が先頭） |
-| `find_by_task_id` | `async def find_by_task_id(task_id: TaskId) -> Directive \| None` | Task から発行元 Directive を逆引き（task_id UNIQUE ではないが「1 Task に 1 Directive」が domain §確定） |
+| `find_by_room` | `async def find_by_room(room_id: RoomId) -> list[Directive]` | Room 内 directive 一覧を `created_at DESC, id DESC` で返却（BUG-EMR-001 規約: 決定論的順序） |
 
 `find_by_room` の ORDER BY:
-- `created_at DESC` を採用（最新 directive を先頭表示する UI / CLI の自然な表示順）
-- INDEX `(target_room_id, created_at)` が複合 INDEX の左端プリフィックスで `WHERE target_room_id = :room_id` → `ORDER BY created_at DESC` の複合クエリをフルスキャンなしで処理
+- **`created_at DESC, id DESC`** を採用（BUG-EMR-001 規約「複合 key で決定論的順序」適用）
+- `created_at` が同一値の場合、`id`（PK、UUIDv4、一意）を tiebreaker として使用し順序を完全決定論化
+- INDEX `(target_room_id, created_at)` が複合 INDEX の左端プリフィックスで `WHERE target_room_id = :room_id` → `ORDER BY created_at DESC` をカバー。`id` 追加は SQLite が PK lookup で補完
 
-`find_by_task_id` のクエリ:
-- `SELECT id FROM directives WHERE task_id = :task_id LIMIT 1` で DirectiveId 取得 → `find_by_id` 委譲（agent §確定 R1-F 同パターン）
-- `task_id` は nullable かつ INDEX なし（task_id 検索頻度は find_by_room より低く、MVP 数十 Directive では全スキャンで十分）
-- `task_id` への INDEX 追加は task-repository PR で FK closure と同時に検討（YAGNI — 後続 PR の判断）
+**task-repository PR への申し送り（`find_by_task_id`）**:
+- task-repository PR で `find_by_task_id(task_id: TaskId) -> Directive | None` を Protocol に追加、同時に `directives.task_id` への INDEX + FK closure（§確定 R1-C）を一括追加する
+- 「呼び出し側（task-application）が存在しない状態で method + INDEX なし」の矛盾を task-repository PR 時点で解消する（YAGNI 原則 — PR #47 §count_by_empire YAGNI 却下と同論理）
 
 #### 確定 R1-E: CI 三層防衛の Directive 拡張
 
@@ -147,7 +149,7 @@
 | ペルソナ名 | 役割 | 技術レベル | 利用文脈 | 達成したいゴール |
 |-----------|------|-----------|---------|----------------|
 | CEO（リポジトリオーナー） | bakufu システムの directive 発行者 | 非技術者〜中級 | Room チャネルで `$` プレフィックスのメッセージを送信し directive を起票 | 発行した指令が安全に永続化され、後続 Task が生成されること |
-| 実装者（bakufu contributor） | directive-application / task-application 実装担当 | 上級 | DirectiveRepository を使って application 層を実装 | 型安全な 5 method Protocol で Directive を永続化・復元できること |
+| 実装者（bakufu contributor） | directive-application / task-application 実装担当 | 上級 | DirectiveRepository を使って application 層を実装 | 型安全な 4 method Protocol で Directive を永続化・復元できること |
 
 <!-- bakufu システム全体ペルソナは docs/architecture/context.md §4 を参照。-->
 
@@ -168,15 +170,15 @@
 
 | 機能ID | 機能名 | 概要 | 優先度 |
 |--------|-------|------|--------|
-| REQ-DRR-001 | DirectiveRepository Protocol 定義 | `application/ports/directive_repository.py` で `DirectiveRepository(Protocol)` を定義（5 method） | 必須 |
-| REQ-DRR-002 | SqliteDirectiveRepository 実装 | `infrastructure/persistence/sqlite/repositories/directive_repository.py` で SQLAlchemy 2.x async を使用して 5 method を実装 | 必須 |
+| REQ-DRR-001 | DirectiveRepository Protocol 定義 | `application/ports/directive_repository.py` で `DirectiveRepository(Protocol)` を定義（4 method） | 必須 |
+| REQ-DRR-002 | SqliteDirectiveRepository 実装 | `infrastructure/persistence/sqlite/repositories/directive_repository.py` で SQLAlchemy 2.x async を使用して 4 method を実装 | 必須 |
 | REQ-DRR-003 | Alembic 0006 revision | `0006_directive_aggregate.py` で `directives` テーブル追加 + INDEX + FK | 必須 |
 | REQ-DRR-004 | CI 三層防衛の Directive 拡張 | grep guard / arch test / storage.md を Directive テーブルで拡張（正/負のチェック併用） | 必須 |
 | REQ-DRR-005 | storage.md 逆引き表更新 | `directives.text: MaskedText` 行追加 + `directives` 残カラム masking 対象なし明示 | 必須 |
 
 ## Sub-issue 分割計画
 
-該当なし — 理由: 単一テーブル、5 method Protocol、CI 拡張のみで Sub-issue 分割不要。1 PR で完結する規模。
+該当なし — 理由: 単一テーブル、4 method Protocol、CI 拡張のみで Sub-issue 分割不要。1 PR で完結する規模。
 
 | Sub-issue 名 | 紐付く REQ | スコープ | 依存関係 |
 |------------|-----------|---------|---------|
@@ -196,19 +198,18 @@
 
 | # | 基準 | 検証方法 |
 |---|------|---------|
-| 1 | `DirectiveRepository(Protocol)` が 5 method（`find_by_id` / `count` / `save` / `find_by_room` / `find_by_task_id`）を定義している | pyright strict 型チェック |
+| 1 | `DirectiveRepository(Protocol)` が 4 method（`find_by_id` / `count` / `save` / `find_by_room`）を定義している | pyright strict 型チェック |
 | 2 | `SqliteDirectiveRepository` が `DirectiveRepository(Protocol)` を満たす | pyright strict 型チェック |
 | 3 | `find_by_id(directive_id)` が存在する Directive を返し、存在しない場合 None を返す | TC-UT-DRR-001, TC-UT-DRR-002 |
 | 4 | `save(directive)` が `directives` テーブルに正しく永続化し、`find_by_id` で復元できる | TC-UT-DRR-003 |
 | 5 | `directives.text` が DB に保存される際 `MaskedText` によりマスキングされる | TC-IT-DRR-010 |
-| 6 | `find_by_room(room_id)` が当該 Room の Directive 一覧を `created_at DESC` で返す | TC-UT-DRR-004 |
-| 7 | `find_by_task_id(task_id)` が紐付け済み Directive を返し、未紐付けの場合 None を返す | TC-UT-DRR-005 |
-| 8 | `count()` が `directives` テーブルの行数を返す | TC-UT-DRR-006 |
-| 9 | Alembic 0006 が `alembic upgrade head` / `alembic downgrade -1` でエラーなく動作する | TC-IT-DRR-001 |
-| 10 | `rooms.id` FK（ON DELETE CASCADE）が動作し、Room 削除時に Directive が自動削除される | TC-IT-DRR-005 |
-| 11 | `directives.task_id` は nullable で FK なし（0006 時点で tasks テーブル未存在） | Alembic revision 確認 |
-| 12 | CI grep guard が `directives.text` 以外のカラムへの `MaskedText` 追加を検出して失敗する | CI grep guard 実行 |
-| 13 | storage.md §逆引き表に `directives.text: MaskedText` 行が追加されている | ドキュメント確認 |
+| 6 | `find_by_room(room_id)` が当該 Room の Directive 一覧を `created_at DESC, id DESC` で返す（BUG-EMR-001 規約: 同時刻の場合 id で決定論的順序） | TC-UT-DRR-004 |
+| 7 | `count()` が `directives` テーブルの行数を返す | TC-UT-DRR-005 |
+| 8 | Alembic 0006 が `alembic upgrade head` / `alembic downgrade -1` でエラーなく動作する | TC-IT-DRR-001 |
+| 9 | `rooms.id` FK（ON DELETE CASCADE）が動作し、Room 削除時に Directive が自動削除される | TC-IT-DRR-005 |
+| 10 | `directives.task_id` は nullable で FK なし（0006 時点で tasks テーブル未存在） | Alembic revision 確認 |
+| 11 | CI grep guard が `directives.text` 以外のカラムへの `MaskedText` 追加を検出して失敗する | CI grep guard 実行 |
+| 12 | storage.md §逆引き表に `directives.text: MaskedText` 行が追加されている | ドキュメント確認 |
 
 ## 扱うデータと機密レベル
 
