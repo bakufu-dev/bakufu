@@ -181,7 +181,7 @@ bakufu システム全体ペルソナは [`docs/analysis/personas.md`](../../ana
 | 17 | 同 Empire 内で同名 Room を設立しようとすると拒否される（業務ルール R1-8） | UC-RM-007 | TC-E2E-RM-002 |
 | 18 | `PromptKit.prefix_markdown` に webhook URL を含めて永続化すると DB には `<REDACTED:*>` で保存される（業務ルール R1-9） | UC-RM-006 | TC-IT-RR-008-masking（[`repository/test-design.md`](repository/test-design.md)） |
 
-E2E（受入基準 16, 17）は [`system-test-design.md`](system-test-design.md) で詳細凍結。受入基準 1〜14 は domain sub-feature の IT / UT で検証（[`domain/test-design.md`](domain/test-design.md)）。受入基準 18 は repository sub-feature の IT で検証。
+E2E（受入基準 16, 17）は [`system-test-design.md`](system-test-design.md) で詳細凍結。受入基準 1〜14 は domain sub-feature の IT / UT で検証（[`domain/test-design.md`](domain/test-design.md)）。受入基準 18 は repository IT（TC-IT-RR-008）と E2E（TC-E2E-RM-003）の両方で検証。
 
 ## 10. 開発者品質基準（CI 担保、業務要求ではない）
 
