@@ -2,7 +2,7 @@
 
 <!-- feature: agent / sub-feature: repository -->
 <!-- 配置先: docs/features/agent/repository/test-design.md -->
-<!-- 対象範囲: REQ-AGR-001〜005 / 受入基準 1〜12 / 詳細設計 §確定 A〜I / Schneier #3 実適用物理確認 -->
+<!-- 対象範囲: REQ-AGR-001〜005 / feature-spec.md §9 受入基準 #10〜#12 / 詳細設計 §確定 A〜I / Schneier #3 実適用物理確認 -->
 
 本 feature は M2 永続化基盤の上で動く Agent Aggregate Repository。empire-repo (PR #29/#30) / workflow-repo (PR #41) と同じ規約で、**最初から 4 ファイル分割** で test を構成（Norman R-N1 教訓継承）。**`test_masking_persona.py` が Schneier #3 実適用の物理確認を担う本 PR 固有のテストファイル**。
 
@@ -10,27 +10,27 @@
 
 | 要件ID | 実装アーティファクト | テストケースID | テストレベル | 種別 | 受入基準 |
 |--------|-------------------|---------------|------------|------|---------|
-| REQ-AGR-001 | `AgentRepository` Protocol 4 method 定義 | TC-UT-AGR-001 | ユニット | 正常系 | 1, 2 |
-| REQ-AGR-002（save） | `SqliteAgentRepository.save` の delete-then-insert | TC-UT-AGR-002 | ユニット | 正常系 | 3 |
-| REQ-AGR-002（find_by_id ORDER BY） | 子テーブル SELECT の `ORDER BY provider_kind` / `ORDER BY skill_id` | TC-UT-AGR-003 | ユニット | 正常系 | 4 |
-| REQ-AGR-002（count SQL）| `count()` が SQL `COUNT(*)` を発行 | TC-UT-AGR-004 | ユニット | 正常系 | 5 |
-| REQ-AGR-002（find_by_name）| Empire スコープ検索 | TC-UT-AGR-005 | ユニット | 正常系 / 異常系 | 6 |
-| **REQ-AGR-002（masking、§確定 R1-B / H）** | raw `prompt_body` → DB に `<REDACTED:*>` 永続化（**Schneier #3 実適用**）| TC-IT-AGR-006-masking-anthropic / TC-IT-AGR-006-masking-github / TC-IT-AGR-006-masking-roundtrip | 結合 | 正常系 | 7 |
-| REQ-AGR-003（partial unique index）| `is_default=True` 重複で IntegrityError | TC-IT-AGR-007 | 結合 | 異常系 | 8 |
-| REQ-AGR-003（Alembic）| 0004 revision で 3 テーブル + 制約作成 | TC-IT-AGR-008 | 結合 | 正常系 | 9 |
-| REQ-AGR-004（CI Layer 1）| grep guard で `agents.prompt_body` の `MaskedText` 必須 | （CI ジョブ） | — | — | 10 |
-| REQ-AGR-004（CI Layer 2）| arch test parametrize | TC-UT-AGR-009-arch | ユニット | 正常系 | 10 |
-| REQ-AGR-005（storage.md） | §逆引き表更新 | （手動レビュー）| — | — | 10 |
-| AC-11（lint/typecheck）| pyright strict / ruff | （CI ジョブ）| — | — | 11 |
-| AC-12（カバレッジ） | `pytest --cov=bakufu.infrastructure.persistence.sqlite.repositories.agent_repository` | （CI ジョブ）| — | — | 12 |
+| REQ-AGR-001 | `AgentRepository` Protocol 4 method 定義 | TC-UT-AGR-001 | ユニット | 正常系 | 10, 11, 12 |
+| REQ-AGR-002（save） | `SqliteAgentRepository.save` の delete-then-insert | TC-UT-AGR-002 | ユニット | 正常系 | 10 |
+| REQ-AGR-002（find_by_id ORDER BY） | 子テーブル SELECT の `ORDER BY provider_kind` / `ORDER BY skill_id` | TC-UT-AGR-003 | ユニット | 正常系 | 10 |
+| REQ-AGR-002（count SQL）| `count()` が SQL `COUNT(*)` を発行 | TC-UT-AGR-004 | ユニット | 正常系 | — |
+| REQ-AGR-002（find_by_name）| Empire スコープ検索 | TC-UT-AGR-005 | ユニット | 正常系 / 異常系 | 11 |
+| **REQ-AGR-002（masking、§確定 R1-B / H）** | raw `prompt_body` → DB に `<REDACTED:*>` 永続化（**Schneier #3 実適用**）| TC-IT-AGR-006-masking-anthropic / TC-IT-AGR-006-masking-github / TC-IT-AGR-006-masking-roundtrip | 結合 | 正常系 | 12 |
+| REQ-AGR-003（partial unique index）| `is_default=True` 重複で IntegrityError | TC-IT-AGR-007 | 結合 | 異常系 | 11 |
+| REQ-AGR-003（Alembic）| 0004 revision で 3 テーブル + 制約作成 | TC-IT-AGR-008 | 結合 | 正常系 | — |
+| REQ-AGR-004（CI Layer 1）| grep guard で `agents.prompt_body` の `MaskedText` 必須 | （CI ジョブ） | — | — | 12 |
+| REQ-AGR-004（CI Layer 2）| arch test parametrize | TC-UT-AGR-009-arch | ユニット | 正常系 | 12 |
+| REQ-AGR-005（storage.md） | §逆引き表更新 | （手動レビュー）| — | — | 12 |
+| 品質基準（lint/typecheck）| pyright strict / ruff | （CI ジョブ）| — | — | — |
+| 品質基準（カバレッジ） | `pytest --cov=bakufu.infrastructure.persistence.sqlite.repositories.agent_repository` | （CI ジョブ）| — | — | — |
 | 確定 A（テンプレ継承） | empire/workflow §確定 A〜F + §BUG-EMR-001 | TC-UT-AGR-001〜005 全件 | ユニット | — | — |
-| 確定 B（5 段階 save） | DML 順序の物理確認 | TC-UT-AGR-002, TC-UT-AGR-010-sql-order | ユニット | 正常系 | 3 |
-| 確定 C（_to_row / _from_row）| 双方向変換 | TC-UT-AGR-011-roundtrip | ユニット | 正常系 | — |
-| 確定 D（count SQL） | `select(func.count())` の物理確認 | TC-UT-AGR-004 | ユニット | 正常系 | 5 |
-| 確定 E（CI 三層防衛）| 正のチェック + 負のチェック併用 | TC-UT-AGR-009-arch | ユニット | 正常系 | 10 |
-| 確定 F（find_by_name 契約） | Empire スコープで AgentId → find_by_id 委譲 | TC-UT-AGR-005 | ユニット | 正常系 / 異常系 | 6 |
-| 確定 G（partial unique index 二重防衛）| Aggregate 検査 + DB 検査 | TC-IT-AGR-007 | 結合 | 異常系 | 8 |
-| **確定 H（masking 不可逆性）** | masked `prompt_body` 復元時に raw 戻らない | TC-IT-AGR-006-masking-roundtrip | 結合 | 正常系 | 7 |
+| 確定 B（5 段階 save） | DML 順序の物理確認 | TC-UT-AGR-002, TC-UT-AGR-010-sql-order | ユニット | 正常系 | 10 |
+| 確定 C（_to_row / _from_row）| 双方向変換 | TC-UT-AGR-011-roundtrip | ユニット | 正常系 | 10 |
+| 確定 D（count SQL） | `select(func.count())` の物理確認 | TC-UT-AGR-004 | ユニット | 正常系 | — |
+| 確定 E（CI 三層防衛）| 正のチェック + 負のチェック併用 | TC-UT-AGR-009-arch | ユニット | 正常系 | 12 |
+| 確定 F（find_by_name 契約） | Empire スコープで AgentId → find_by_id 委譲 | TC-UT-AGR-005 | ユニット | 正常系 / 異常系 | 11 |
+| 確定 G（partial unique index 二重防衛）| Aggregate 検査 + DB 検査 | TC-IT-AGR-007 | 結合 | 異常系 | 11 |
+| **確定 H（masking 不可逆性）** | masked `prompt_body` 復元時に raw 戻らない | TC-IT-AGR-006-masking-roundtrip | 結合 | 正常系 | 12 |
 | 確定 I（4 ファイル分割） | test_*.py 全ファイル 500 行未満 | （静的確認） | — | — | — |
 
 ## 外部 I/O 依存マップ
@@ -67,7 +67,7 @@
 
 `tests/factories/agent.py` の factory 経由で入力を生成。
 
-### Protocol / CRUD 正常系（test_protocol_crud.py、受入基準 1, 2, 5, 6）
+### Protocol / CRUD 正常系（test_protocol_crud.py）
 
 | テストID | 対象 | 種別 | 入力 | 期待結果 |
 |---------|-----|------|------|---------|
@@ -75,7 +75,7 @@
 | TC-UT-AGR-004 | `count()` SQL 契約 | 正常系 | DB に 5 件 Agent | `count()` の戻り値が 5、SQL ログに `SELECT count(*)` が含まれる、全行ロード経路（`SELECT id FROM agents`）が**ない**ことを SQL ログで assert |
 | TC-UT-AGR-005 | `find_by_name(empire_id, name)` 契約（§確定 F）| 正常系 / 異常系 | (1) DB に `(empire_a, 'agent_a')` の Agent / (2) 不在 / (3) 異 Empire で同 name | (1) Agent を返す / (2) None を返す / (3) None を返す（Empire スコープ）|
 
-### save delete-then-insert（test_save_semantics.py、受入基準 3, 4）
+### save delete-then-insert（test_save_semantics.py）
 
 | テストID | 対象 | 種別 | 入力 | 期待結果 |
 |---------|-----|------|------|---------|
@@ -84,13 +84,13 @@
 | TC-UT-AGR-010-sql-order | save の Tx 境界 | 正常系 | service 側で `async with session.begin()` で囲む | Repository 内では commit/rollback なし、Tx 全体が ATOMIC、半端終了で rollback |
 | TC-UT-AGR-011-roundtrip | `_to_row` / `_from_row` 双方向変換 | 正常系 | AgentFactory（providers / skills 含む）| `_from_row(_to_row(agent))` が元 Agent と構造的等価（Pydantic frozen `==` 判定）|
 
-### 制約 / アーキテクチャ（test_constraints_arch.py、受入基準 8, 10）
+### 制約 / アーキテクチャ（test_constraints_arch.py）
 
 | テストID | 対象 | 種別 | 入力 | 期待結果 |
 |---------|-----|------|------|---------|
 | TC-UT-AGR-009-arch | CI Layer 2 arch test 自身 | 正常系 | `Base.metadata.tables['agents']` の `prompt_body` カラム | `column.type.__class__ is MaskedText` を assert（**正のチェック**）。他カラムは masking なし |
 
-### Schneier #3 実適用専用（test_masking_persona.py、受入基準 7）
+### Schneier #3 実適用専用（test_masking_persona.py、feature-spec.md §9 受入基準 12）
 
 **本 PR の核心テストファイル**。Schneier 申し送り #3 実適用の物理保証。
 
