@@ -16,8 +16,8 @@
 | REQ-ERGR-001 | `ExternalReviewGateRepository` Protocol | `backend/src/bakufu/application/ports/external_review_gate_repository.py` | Repository ポート定義（6 method） |
 | REQ-ERGR-002 | `SqliteExternalReviewGateRepository` | `backend/src/bakufu/infrastructure/persistence/sqlite/repositories/external_review_gate_repository.py` | SQLite 実装、§確定 R1-A〜H 全適用 |
 | REQ-ERGR-003 | Alembic 0008 revision | `backend/alembic/versions/0008_external_review_gate_aggregate.py` | 3 テーブル + INDEX 3 件、`down_revision="0007_task_aggregate"` |
-| REQ-ERGR-004 | CI 三層防衛拡張 Layer 1 | `scripts/ci/check_masking_columns.sh`（既存ファイル更新）| ExternalReviewGate 関連 2 テーブル明示登録 |
-| REQ-ERGR-004 | CI 三層防衛拡張 Layer 2 | `backend/tests/architecture/test_masking_columns.py`（既存ファイル更新）| parametrize に 2 masking カラム追加 |
+| REQ-ERGR-004 | CI 三層防衛拡張 Layer 1 | `scripts/ci/check_masking_columns.sh`（既存ファイル更新）| ExternalReviewGate 3 masking カラム明示登録（snapshot_body_markdown / feedback_text / comment） |
+| REQ-ERGR-004 | CI 三層防衛拡張 Layer 2 | `backend/tests/architecture/test_masking_columns.py`（既存ファイル更新）| parametrize に 3 masking カラム追加 |
 | REQ-ERGR-005 | storage.md 逆引き表更新 | `docs/architecture/domain-model/storage.md`（既存ファイル更新）| ExternalReviewGate 関連行追加・後続表記更新 |
 | 共通 | `tables/external_review_gates.py` | `backend/src/bakufu/infrastructure/persistence/sqlite/tables/` | `external_review_gates` テーブル ORM 定義（snapshot_body_markdown は MaskedText） |
 | 共通 | `tables/external_review_gate_attachments.py` | 同上 | `external_review_gate_attachments` テーブル ORM 定義 |
@@ -226,7 +226,7 @@ sequenceDiagram
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|
-| **T1: 内部脅威（DB 直接参照）** | SQLite ファイルへの直接アクセスで masking カラムを読み取り | `snapshot_body_markdown`（Agent 出力・secret 混入の可能性）/ `audit_entries.comment`（CEO が webhook URL を貼り付け得る） | `MaskedText` TypeDecorator で永続化前にマスキング。DB に raw secret が保存されない |
+| **T1: 内部脅威（DB 直接参照）** | SQLite ファイルへの直接アクセスで masking カラムを読み取り | `snapshot_body_markdown`（Agent 出力・secret 混入の可能性）/ `feedback_text`（CEO コメント・webhook URL 等を貼り付け得る）/ `audit_entries.comment`（CEO が webhook URL を貼り付け得る、`feedback_text` と同一 CEO 入力値） | `MaskedText` TypeDecorator で永続化前にマスキング。DB に raw secret が保存されない |
 | **T2: ログ経由漏洩** | SQLAlchemy echo ログ / アプリログに bind param が出力される | 2 masking カラムに混入した secret | `MaskedText` が bind param 生成前にマスキング → ログに masked テキストが流れる |
 | **T3: 実装漏れ（TypeDecorator 未適用）** | 後続 PR が 2 masking カラムのいずれかを `Text` 型に変更 | 2 masking カラムの masking 保証 | CI 三層防衛（grep guard + arch test + storage.md 逆引き表）が自動検出して PR ブロック |
 | **T4: snapshot の不正改ざん（DB 直接 UPDATE）** | DB を直接操作して snapshot を書き換え | Gate 生成時の deliverable_snapshot 不変性 | snapshot 不変条件は Domain 層（§確定 D 凍結）で保証。Repository は valid な状態のみ保存する契約。DB 直接操作は監査ログ（audit_log テーブル）で検出 |
@@ -236,7 +236,7 @@ sequenceDiagram
 | # | カテゴリ | 対応状況 |
 |---|---------|---------|
 | A01 | Broken Access Control | 該当なし（infrastructure 層、アクセス制御は application / HTTP API 層） |
-| A02 | Cryptographic Failures | **対応**: `snapshot_body_markdown` / `audit_entries.comment` を `MaskedText` TypeDecorator でマスキング（AES ではなく `MaskingGateway.mask()` の pattern masking — secret pattern を `<REDACTED>` 化） |
+| A02 | Cryptographic Failures | **対応**: `snapshot_body_markdown` / `feedback_text` / `audit_entries.comment` の 3 カラムを `MaskedText` TypeDecorator でマスキング（AES ではなく `MaskingGateway.mask()` の pattern masking — secret pattern を `<REDACTED>` 化） |
 | A03 | Injection | **対応**: SQLAlchemy ORM の parameterized query のみ使用、raw SQL 不使用 |
 | A04 | Insecure Design | **対応**: TypeDecorator 強制 + CI 三層防衛で「マスキング忘れ」を設計レベルで排除。snapshot 不変性は Domain 不変条件で保証 |
 | A05 | Security Misconfiguration | 該当なし（外部接続なし） |
@@ -258,7 +258,7 @@ erDiagram
         string stage_id "NO FK (Aggregate境界)"
         string reviewer_id "NO FK (Owner未実装)"
         string decision "PENDING|APPROVED|REJECTED|CANCELLED"
-        text feedback_text "NOT NULL 0-10000chars"
+        text feedback_text "MaskedText NOT NULL"
         string snapshot_stage_id "NOT NULL"
         text snapshot_body_markdown "MaskedText NOT NULL"
         string snapshot_committed_by "NO FK"
@@ -292,7 +292,7 @@ erDiagram
 UNIQUE 制約:
 - `external_review_gate_attachments(gate_id, sha256)`: 同一 Gate 内で同 sha256 の重複参照を禁止（snapshot 凍結後の重複防止）
 
-masking 対象カラム: `external_review_gates.snapshot_body_markdown` / `external_review_audit_entries.comment`（各 MaskedText、§確定 R1-E で CI 三層防衛が物理保証）。
+masking 対象カラム: `external_review_gates.snapshot_body_markdown` / `external_review_gates.feedback_text` / `external_review_audit_entries.comment`（各 MaskedText、§確定 R1-E で CI 三層防衛が物理保証）。
 
 ## エラーハンドリング方針
 

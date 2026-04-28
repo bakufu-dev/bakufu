@@ -79,6 +79,7 @@ Gate Aggregate 復元時の `_from_rows()` 処理の確定ルール:
 | エントリ | チェック対象 |
 |---------|------------|
 | `"tables/external_review_gates.py:snapshot_body_markdown:MaskedText"` | `external_review_gates.snapshot_body_markdown` の `MaskedText` 必須 |
+| `"tables/external_review_gates.py:feedback_text:MaskedText"` | `external_review_gates.feedback_text` の `MaskedText` 必須 |
 | `"tables/external_review_audit_entries.py:comment:MaskedText"` | `external_review_audit_entries.comment` の `MaskedText` 必須 |
 
 負のチェック（過剰マスキング防止）: 各テーブルファイルで上記以外のカラムに `MaskedText` / `MaskedJSONEncoded` が登場しないことも assert する（task-repository §確定 R1-E パターン継承）。
@@ -86,8 +87,9 @@ Gate Aggregate 復元時の `_from_rows()` 処理の確定ルール:
 #### Layer 2: `test_masking_columns.py` 追加 parametrize
 
 ```
-parametrize に追加する 2 行:
+parametrize に追加する 3 行:
   ("external_review_gates", "snapshot_body_markdown", MaskedText)
+  ("external_review_gates", "feedback_text", MaskedText)
   ("external_review_audit_entries", "comment", MaskedText)
 ```
 
@@ -121,7 +123,7 @@ parametrize に追加する 2 行:
 | `stage_id` | `UUIDStr` | NOT NULL（**FK なし** — Workflow Aggregate 境界、§確定 R1-G）| EXTERNAL_REVIEW kind の Stage |
 | `reviewer_id` | `UUIDStr` | NOT NULL（**FK なし** — Owner Aggregate 未実装、§確定 R1-G）| 人間レビュワー（CEO） |
 | `decision` | `String(32)` | NOT NULL | ReviewDecision 4 値（PENDING / APPROVED / REJECTED / CANCELLED） |
-| `feedback_text` | `Text` | NOT NULL | 差し戻し理由・承認コメント（0〜10000 文字 NFC 正規化済み。masking は Issue #36 仕様で 2 カラムに限定、§確定 R1-E 補足参照） |
+| `feedback_text` | **`MaskedText`** | NOT NULL | 差し戻し理由・承認コメント（0〜10000 文字 NFC 正規化済み。CEO 入力経路 → masking 必須、§確定 R1-E 3 カラム確定） |
 | `snapshot_stage_id` | `UUIDStr` | NOT NULL | `deliverable_snapshot.stage_id`（Deliverable VO inline コピー） |
 | `snapshot_body_markdown` | **`MaskedText`** | NOT NULL | `deliverable_snapshot.body_markdown`（masking 必須。Agent 出力 / secret 混入経路） |
 | `snapshot_committed_by` | `UUIDStr` | NOT NULL | `deliverable_snapshot.committed_by`（AgentId、FK なし — Aggregate 境界） |
@@ -129,7 +131,7 @@ parametrize に追加する 2 行:
 | `created_at` | `DateTime(timezone=True)` | NOT NULL | UTC 起票時刻 |
 | `decided_at` | `DateTime(timezone=True)` | NULL（`decision == PENDING` ⇔ NULL）| UTC 判断時刻 |
 
-**masking 対象カラム**: `snapshot_body_markdown`（MaskedText）。その他 11 カラムは masking 対象なし。
+**masking 対象カラム**: `snapshot_body_markdown`（MaskedText）/ `feedback_text`（MaskedText）。その他 10 カラムは masking 対象なし。
 
 ### `external_review_gate_attachments` テーブル
 
@@ -183,14 +185,14 @@ parametrize に追加する 2 行:
 | 根拠 | Owner Aggregate が M2 スコープ外（MVP では CEO = システム唯一オーナーとして UUID 固定運用）。`snapshot_committed_by` は Agent 削除時の CASCADE 危険性（task-repository §設計決定 TR-001 と同論理）。参照整合性は application 層 `GateService.create()` が `OwnerRepository.find_by_id` / `AgentRepository.find_by_id` で保証 |
 | 閉鎖 | FK closure 申し送りなし。この設計決定は **変更しない**（Owner Aggregate 実装時も同方針） |
 
-### §申し送り ERGR-001: `external_review_gates.feedback_text` の masking 追加検討
+### §設計決定 ERGR-002: `external_review_gates.feedback_text` を MaskedText に昇格（セキュリティレビュー対応）
 
 | 項目 | 内容 |
 |---|---|
-| 状態 | **OPEN（将来検討）** |
-| 内容 | external-review-gate domain 設計書 §申し送り #1 は `feedback_text` も masking 対象と示しているが、Issue #36 §masking 対象カラムは 2 カラムと明示している。`feedback_text` の値は `approve` / `reject` / `cancel` の `comment` 引数と同一値であり、`audit_entries.comment` としてマスキング済みで保存される |
-| 解除条件 | CEO が `feedback_text` に secret を直接入力するユースケースが確認された場合、または `audit_entries.comment` と `feedback_text` が異なる値を持つ設計変更が入った場合 |
-| 閉鎖申し送り | `feature/external-review-gate-application` が担当。本 PR での変更不要 |
+| 状態 | **RESOLVED（本 PR で確定）** |
+| 内容 | セキュリティレビュー（PR #53 v1）で `feedback_text` が非マスキング（Text）のままでは T1（DB 直接参照）への保護資産が不完全であることが指摘された。`feedback_text` は `approve` / `reject` / `cancel` の `comment` 引数と同一の CEO 入力値であり、webhook URL / API key が混入し得る経路である。本 PR で `MaskedText` に変更し CI 三層防衛を 3 カラム構成に拡張した |
+| 解除条件 | 解除済み（RESOLVED） |
+| 閉鎖 | 本 PR で確定。external-review-gate domain §申し送り #1 も本 PR で解消済みとして扱う |
 
 ## 出典・参考
 

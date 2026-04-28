@@ -18,7 +18,7 @@ empire-repository（PR #25）で確立したテンプレートパターン（Pro
 - **独立 Aggregate Root**: Task の子ではなく `task_id` で参照のみ（差し戻し後も履歴保持、複数ラウンド対応）
 - **snapshot inline コピー**: `deliverable_snapshot` は Gate 生成時に Deliverable VO を inline コピー（`storage.md §snapshot 凍結方式` で凍結済み）
 - **3 テーブル永続化**: `external_review_gates`（Gate 本体 + snapshot スカラ）/ `external_review_gate_attachments`（snapshot 添付ファイルメタデータ）/ `external_review_audit_entries`（監査ログ）
-- **2 masking カラム**: `external_review_gates.deliverable_snapshot_body_markdown`（MaskedText）/ `external_review_audit_entries.comment`（MaskedText）
+- **3 masking カラム**: `external_review_gates.snapshot_body_markdown`（MaskedText）/ `external_review_gates.feedback_text`（MaskedText）/ `external_review_audit_entries.comment`（MaskedText）
 
 ## 要求一覧
 
@@ -29,7 +29,7 @@ empire-repository（PR #25）で確立したテンプレートパターン（Pro
 | RQ-ERGR-003 | reviewer 視点の PENDING Gate 一覧を取得できる（人間チェックポイント UI） | Must | GateService.find_pending_for_reviewer（後続 Issue） |
 | RQ-ERGR-004 | Task の Gate 履歴を全件取得できる（複数ラウンド対応） | Must | 差し戻し後の再レビュー追跡 |
 | RQ-ERGR-005 | decision 別の Gate 件数を SQL レベルで取得できる（ダッシュボード） | Must | admin 監視後続要件 |
-| RQ-ERGR-006 | `deliverable_snapshot_body_markdown` / `audit_entries.comment` を MaskedText で永続化し、DB に raw secret が保存されないことを CI で物理保証する | Must | MaskingGateway §確定 G（persistence-foundation PR #23 TypeDecorator hook 提供済み）+ external-review-gate §申し送り #1 |
+| RQ-ERGR-006 | `snapshot_body_markdown` / `feedback_text` / `audit_entries.comment` の 3 カラムを MaskedText で永続化し、DB に raw secret が保存されないことを CI で物理保証する | Must | MaskingGateway §確定 G（persistence-foundation PR #23 TypeDecorator hook 提供済み）+ external-review-gate §申し送り #1 |
 | RQ-ERGR-007 | Alembic revision chain に 0008 を追加する（down_revision = "0007_task_aggregate"） | Must | bakufu Bootstrap M2 migration chain 連続性 |
 
 ## §確定事項（先送り撤廃）
@@ -91,20 +91,19 @@ empire §確定 B の 3 method（`find_by_id` / `count` / `save`）に加え、G
 | `find_by_id_all_including_decided` | `find_by_id` で APPROVED / REJECTED / CANCELLED も返る（decision でフィルタしない）。同 method で全状態取得可能 |
 | `find_all_pending` | reviewer を問わず全 PENDING を返す。MVP では CEO 一人が reviewer のため `find_pending_by_reviewer(ceo_id)` で代替可能。multi-reviewer 対応は別 Issue で |
 
-### §確定 R1-E: CI 三層防衛の 2 masking カラム対応
+### §確定 R1-E: CI 三層防衛の 3 masking カラム対応
 
-ExternalReviewGate の 2 masking カラムを CI 三層防衛に登録する:
+ExternalReviewGate の 3 masking カラムを CI 三層防衛に登録する:
 
 | カラム | テーブル | TypeDecorator | Layer 1（grep guard） | Layer 2（arch test） |
 |-------|---------|------------|--------------------|---------------------|
-| `deliverable_snapshot_body_markdown` | `external_review_gates` | `MaskedText` | `tables/external_review_gates.py:deliverable_snapshot_body_markdown:MaskedText` | `external_review_gates.deliverable_snapshot_body_markdown: MaskedText` |
+| `snapshot_body_markdown` | `external_review_gates` | `MaskedText` | `tables/external_review_gates.py:snapshot_body_markdown:MaskedText` | `external_review_gates.snapshot_body_markdown: MaskedText` |
+| `feedback_text` | `external_review_gates` | `MaskedText` | `tables/external_review_gates.py:feedback_text:MaskedText` | `external_review_gates.feedback_text: MaskedText` |
 | `comment` | `external_review_audit_entries` | `MaskedText` | `tables/external_review_audit_entries.py:comment:MaskedText` | `external_review_audit_entries.comment: MaskedText` |
 
-**補足 — `feedback_text` の masking 扱い**: external-review-gate domain 設計書（§申し送り #1）は `feedback_text` もマスキング対象と示しているが、Issue #36 §masking 対象カラムは 2 カラム（snapshot_body_markdown + audit_entries.comment）と明示している。`feedback_text` の値は `approve` / `reject` / `cancel` 呼び出し時の `comment` 引数と同一値であり、`audit_entries.comment` としてマスキング済みで保存される。Issue #36 の仕様に従い本 PR では `feedback_text` を `Text` で永続化し、CI 三層防衛は 2 カラムを保証する。将来 `feedback_text` へのマスキング要件が確定した場合は本設計書を更新して 3 カラムに拡張する。
+**Layer 1（grep guard）**: `scripts/ci/check_masking_columns.sh` の `PARTIAL_MASK_FILES` に 3 エントリ追加（正のチェック: 必須確認 + 負のチェック: 過剰マスキング防止）。
 
-**Layer 1（grep guard）**: `scripts/ci/check_masking_columns.sh` の `PARTIAL_MASK_FILES` に 2 エントリ追加（正のチェック: 必須確認 + 負のチェック: 過剰マスキング防止）。
-
-**Layer 2（arch test）**: `backend/tests/architecture/test_masking_columns.py` の parametrize に 2 行追加（各 `column.type.__class__ is MaskedText` を assert）。
+**Layer 2（arch test）**: `backend/tests/architecture/test_masking_columns.py` の parametrize に 3 行追加（各 `column.type.__class__ is MaskedText` を assert）。
 
 **Layer 3（storage.md）**: `docs/architecture/domain-model/storage.md` §逆引き表を本 PR で更新（§確定 R1-F）。
 
@@ -114,7 +113,8 @@ ExternalReviewGate の 2 masking カラムを CI 三層防衛に登録する:
 
 | 追加行 | 更新内容 |
 |------|---------|
-| `ExternalReviewGate.deliverable_snapshot.body_markdown` | `（後続）` → `feature/external-review-gate-repository`（Issue #36、**本 PR で配線完了**） |
+| `ExternalReviewGate.deliverable_snapshot.body_markdown`（→ `snapshot_body_markdown`） | `（後続）` → `feature/external-review-gate-repository`（Issue #36、**本 PR で配線完了**） |
+| `ExternalReviewGate.feedback_text` | `（後続）` → `feature/external-review-gate-repository`（Issue #36、**本 PR で配線完了**） |
 | `ExternalReviewGate.audit_trail[].comment` | `（後続）` → `feature/external-review-gate-repository`（Issue #36、**本 PR で配線完了**） |
 | ExternalReviewGate 残カラム（masking 非対象） | masking 対象なし。CI Layer 2 で arch test 保証 |
 
@@ -144,7 +144,7 @@ BUG-EMR-001 規約を全子テーブル SELECT に適用する:
 | snapshot attachments 保存方式 | 子テーブル（§確定 R1-C） | JSON カラム inline | GC クエリ単純性 + `deliverable_attachments` との設計一貫性 |
 | `task_id` FK | ON DELETE CASCADE（§確定 R1-G） | ON DELETE RESTRICT / ON DELETE SET NULL | Gate は Task の寿命に従う意味論。RESTRICT は Task 削除前に全 Gate を消す手順が必要で application 層複雑化。SET NULL は `task_id NOT NULL` 制約違反 |
 | save() 段数 | 5 段階（§確定 R1-B） | 3 段階（CASCADE のみ依存） | 明示的 DELETE で Tx 中の状態可視化。INSERT OR REPLACE の CASCADE 副作用に依存しない設計（task-repository §確定 R1-B パターン踏襲） |
-| `feedback_text` masking | 本 PR では Text（Issue #36 仕様準拠） | MaskedText | Issue #36 が 2 カラムと明示。将来拡張が必要な場合は §確定 R1-E 補足参照 |
+| `feedback_text` masking | **MaskedText**（§確定 R1-E 3 カラム確定） | Text のみ | `audit_entries.comment` と同一 CEO 入力経路。DB 直接参照（T1）への保護資産として masking 必須。セキュリティレビュー指摘（PR #53 v1）を受けて本 PR で凍結 |
 
 ## 関連 Issue / PR
 

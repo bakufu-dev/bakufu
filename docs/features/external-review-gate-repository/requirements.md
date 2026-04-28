@@ -37,8 +37,8 @@
 | 項目 | 内容 |
 |------|------|
 | 入力 | `scripts/ci/check_masking_columns.sh`（Layer 1）と `backend/tests/architecture/test_masking_columns.py`（Layer 2） |
-| 処理 | (a) Layer 1 grep guard: `PARTIAL_MASK_FILES` に 2 エントリ追加（`tables/external_review_gates.py:deliverable_snapshot_body_markdown:MaskedText` / `tables/external_review_audit_entries.py:comment:MaskedText`）。正のチェック（MaskedText 必須）と負のチェック（過剰マスキング防止）を各テーブルで実施。(b) Layer 2 arch test: parametrize に 2 行追加（`external_review_gates.deliverable_snapshot_body_markdown` / `external_review_audit_entries.comment` の `column.type.__class__ is MaskedText` を assert） |
-| 出力 | CI が「2 カラムは MaskedText 必須、その他は masking なし」を物理保証 |
+| 処理 | (a) Layer 1 grep guard: `PARTIAL_MASK_FILES` に 3 エントリ追加（`tables/external_review_gates.py:snapshot_body_markdown:MaskedText` / `tables/external_review_gates.py:feedback_text:MaskedText` / `tables/external_review_audit_entries.py:comment:MaskedText`）。正のチェック（MaskedText 必須）と負のチェック（過剰マスキング防止）を各テーブルで実施。(b) Layer 2 arch test: parametrize に 3 行追加（`external_review_gates.snapshot_body_markdown` / `external_review_gates.feedback_text` / `external_review_audit_entries.comment` の `column.type.__class__ is MaskedText` を assert） |
+| 出力 | CI が「3 カラムは MaskedText 必須、その他は masking なし」を物理保証 |
 | エラー時 | 後続 PR が誤って masking カラムを `Text` に変更 → Layer 2 arch test で落下、PR ブロック |
 
 ### REQ-ERGR-005: storage.md 逆引き表更新
@@ -89,7 +89,7 @@
 | `external_review_gates` | `stage_id` | `UUIDStr` | NOT NULL（**FK なし** — §確定 R1-G: Workflow Aggregate 境界） | EXTERNAL_REVIEW kind の Stage |
 | `external_review_gates` | `reviewer_id` | `UUIDStr` | NOT NULL（**FK なし** — Owner Aggregate 未実装、参照のみ） | 人間レビュワー（CEO） |
 | `external_review_gates` | `decision` | `String(32)` | NOT NULL（4 値: PENDING / APPROVED / REJECTED / CANCELLED） | 判断結果 |
-| `external_review_gates` | `feedback_text` | `Text` | NOT NULL（0〜10000 文字、NFC 正規化済み）| 差し戻し理由・承認コメント |
+| `external_review_gates` | `feedback_text` | **`MaskedText`** | NOT NULL（0〜10000 文字、NFC 正規化済み）| 差し戻し理由・承認コメント（CEO 入力経路 → masking 必須） |
 | `external_review_gates` | `snapshot_stage_id` | `UUIDStr` | NOT NULL | `deliverable_snapshot.stage_id`（Deliverable VO inline コピー） |
 | `external_review_gates` | `snapshot_body_markdown` | **`MaskedText`** | NOT NULL | `deliverable_snapshot.body_markdown`（masking 必須。snapshot 生成時点でマスキング済み本文）|
 | `external_review_gates` | `snapshot_committed_by` | `UUIDStr` | NOT NULL | `deliverable_snapshot.committed_by`（AgentId） |
@@ -98,6 +98,7 @@
 | `external_review_gates` | `decided_at` | `DateTime(timezone=True)` | NULL（`decision == PENDING` ⇔ NULL） | UTC 判断時刻 |
 | INDEX | `(reviewer_id, decision)` | 非 UNIQUE | — | `find_pending_by_reviewer` の WHERE reviewer_id + decision フィルタ最適化 |
 | INDEX | `(task_id, created_at)` | 非 UNIQUE | — | `find_by_task_id` の WHERE task_id フィルタ + ORDER BY created_at 最適化 |
+| INDEX | `decision` | 非 UNIQUE | — | `count_by_decision` の WHERE decision フィルタ最適化（§確定 R1-K） |
 
 ### `external_review_gate_attachments` テーブル
 
@@ -122,7 +123,7 @@
 | `external_review_audit_entries` | `comment` | **`MaskedText`** | NOT NULL（0〜2000 文字、NFC 正規化済み）| 操作コメント（CEO 入力経路 → masking 必須） |
 | `external_review_audit_entries` | `occurred_at` | `DateTime(timezone=True)` | NOT NULL | UTC 発生時刻 |
 
-**masking 対象カラム**: `external_review_gates.snapshot_body_markdown` / `external_review_audit_entries.comment`（各 `MaskedText`、2 カラム）。その他カラムは masking 対象なし、CI 三層防衛で「対象なし」を明示登録。
+**masking 対象カラム**: `external_review_gates.snapshot_body_markdown` / `external_review_gates.feedback_text` / `external_review_audit_entries.comment`（各 `MaskedText`、3 カラム）。その他カラムは masking 対象なし、CI 三層防衛で「対象なし」を明示登録。
 
 ## ユーザー向けメッセージ一覧
 
