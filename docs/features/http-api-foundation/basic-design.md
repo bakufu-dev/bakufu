@@ -192,7 +192,7 @@ sequenceDiagram
 | A05 | Security Misconfiguration | CORS 明示設定。デフォルト loopback。`BAKUFU_RELOAD=false` 本番既定 |
 | A06 | Vulnerable Components | pyproject.toml pin + pip-audit CI（既存）|
 | A07 | Auth Failures | MVP 対象外（シングルユーザー loopback 前提）|
-| A08 | Data Integrity Failures | IntegrityError → HTTP 409 変換。UoW は application service 層が `async with session.begin()` で管理 |
+| A08 | Data Integrity Failures | IntegrityError → HTTP 409 変換（`CONFLICT`=UNIQUE違反 / `DEPENDENCY`=FK違反 に分離）。UoW は **router handler 層**が `async with session.begin():` で管理（service / repository は commit しない — §確定 B、ユースケース2 step6 参照）|
 | A09 | Logging Failures | 500 時はスタックトレースを stdout に出力。response body には含めない |
 | A10 | SSRF | 該当なし — 理由: 外部通信なし（本 feature スコープ）|
 
