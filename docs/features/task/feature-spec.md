@@ -222,7 +222,7 @@ CEO directive 由来の `last_error` / Agent 成果物の `body_markdown` に we
 
 | # | 基準 | 紐付く UC | 検証方法 |
 |---|------|---------|---------|
-| 1 | `Task(id, room_id, directive_id, current_stage_id, deliverables={}, status=PENDING, assigned_agent_ids=[], created_at, updated_at, last_error=None)` で valid な Task が構築される | UC-TS-001 | TC-UT-TS-001（[`domain/test-design.md`](domain/test-design.md)） |
+| 1 | 担当エージェントなし・成果物なし・エラー情報なしの初期状態（PENDING）で有効な Task が作成でき、room / directive / 現在の Stage と関連付けられる（業務ルール R1-1） | UC-TS-001 | TC-UT-TS-001（[`domain/test-design.md`](domain/test-design.md)） |
 | 2 | TaskStatus 6 種すべての状態で構築可能（永続化からの復元経路、ただし `status=BLOCKED` のときは `last_error` 必須） | UC-TS-001 | TC-UT-TS-002 |
 | 3 | `assign(agent_ids)` で PENDING → IN_PROGRESS 遷移、`assigned_agent_ids` 更新 | UC-TS-002 | TC-UT-TS-003 |
 | 4 | state machine に定義されない遷移（例: DONE 状態からの再割り当て）を要求した場合、拒否される（業務ルール R1-2） | UC-TS-002〜007 | TC-UT-TS-004 |
@@ -233,7 +233,7 @@ CEO directive 由来の `last_error` / Agent 成果物の `body_markdown` に we
 | 9 | 同一エージェントを重複して割り当てることはできない（業務ルール R1-4） | UC-TS-002 | TC-UT-TS-009 |
 | 10 | BLOCKED 以外の状態で Task にエラー情報が残存している場合、整合性エラーとして拒否される（業務ルール R1-5） | UC-TS-001〜007 | TC-UT-TS-010 |
 | 11 | 業務ルール違反のエラーメッセージに Discord webhook URL が含まれていた場合、`<REDACTED:DISCORD_WEBHOOK>` として伏字化される（domain 層での多層防御、受入基準 17 の repository 層マスキングとは独立） | UC-TS-001〜007 | TC-UT-TS-011 |
-| 12 | `Deliverable(stage_id, body_markdown, attachments, committed_by, committed_at)` で valid な VO が構築される | UC-TS-003 | TC-UT-TS-012 |
+| 12 | Agent が Stage の成果物（本文・添付ファイル・提出者・提出日時）を提出でき、有効な Deliverable として記録される（業務ルール R1-6） | UC-TS-003 | TC-UT-TS-012 |
 | 13 | sha256 / filename / mime_type / size_bytes を指定して有効な Attachment が構築できる。ファイル名のパストラバーサル（../）・不正 MIME 型等のサニタイズ規則違反は拒否される（業務ルール R1-10） | UC-TS-003 | TC-UT-TS-013 |
 | 14 | 業務ルール違反のエラーメッセージには次に取るべき行動の案内（Next: ...）が含まれる | UC-TS-001〜007 | TC-UT-TS-046〜052（[`domain/test-design.md`](domain/test-design.md)） |
 | 16 | Task の状態がアプリ再起動跨ぎで永続化される（status / deliverables / assigned_agent_ids / last_error が再起動後に構造的等価で復元） | UC-TS-008 | TC-E2E-TS-001（[`system-test-design.md`](system-test-design.md)） |
