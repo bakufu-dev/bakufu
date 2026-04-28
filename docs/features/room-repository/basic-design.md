@@ -13,8 +13,8 @@
 
 | 機能 ID | モジュール | ディレクトリ | 責務 |
 |--------|----------|------------|------|
-| REQ-RR-001 | `RoomRepository` Protocol | `backend/src/bakufu/application/ports/room_repository.py` | Repository ポート定義（4 method、empire-repo の 3 method + agent-repo §R1-C の `find_by_name`、§確定 F） |
-| REQ-RR-002 | `SqliteRoomRepository` | `backend/src/bakufu/infrastructure/persistence/sqlite/repositories/room_repository.py` | SQLite 実装、§確定 A〜F |
+| REQ-RR-001 | `RoomRepository` Protocol | `backend/src/bakufu/application/ports/room_repository.py` | Repository ポート定義（4 method、empire-repo の 3 method + agent-repo §R1-C の `find_by_name`、§確定 R1-F） |
+| REQ-RR-002 | `SqliteRoomRepository` | `backend/src/bakufu/infrastructure/persistence/sqlite/repositories/room_repository.py` | SQLite 実装、§確定 R1-A〜F |
 | REQ-RR-003 | Alembic 0005 revision | `backend/alembic/versions/0005_room_aggregate.py` | 2 テーブル + UNIQUE + INDEX + FK 3 件追加、`down_revision="0004_agent_aggregate"`、`empire_room_refs.room_id` FK closure 同梱 |
 | REQ-RR-004 | CI 三層防衛拡張 Layer 1 | `scripts/ci/check_masking_columns.sh`（既存ファイル更新）| Room 2 テーブル明示登録、`rooms.prompt_kit_prefix_markdown` の `MaskedText` 必須を assert（正のチェック）|
 | REQ-RR-004 | CI 三層防衛拡張 Layer 2 | `backend/tests/architecture/test_masking_columns.py`（既存ファイル更新）| parametrize に Room 2 テーブル追加 |
@@ -113,7 +113,7 @@ classDiagram
 - domain ↔ row 変換は `_to_row()` / `_from_row()` の private method（empire-repo §確定 C）
 - `save()` は同一 Tx 内で 2 テーブル delete-then-insert（empire-repo §確定 B、Room では 3 段階手順）
 - 呼び出し側 service が `async with session.begin():` で UoW 境界を管理
-- **`find_by_name(empire_id, name)` は第 4 method**、Empire スコープ検索（agent §R1-C 継承、§確定 F）
+- **`find_by_name(empire_id, name)` は第 4 method**、Empire スコープ検索（agent §R1-C 継承、§確定 R1-F）
 - `Room` Aggregate は `empire_id` を直接保持しないが、Repository row 上では正規化のため `empire_id` カラムを持つ（room §確定で凍結された結合関係、後述）
 
 ##### `Room` Aggregate に `empire_id` を含めない理由（room domain 設計の継承）
@@ -126,7 +126,7 @@ room/detailed-design.md L41-49 で `Room` Aggregate Root の属性に `empire_id
 
 そのため、**rows 層では `rooms.empire_id` カラムを持つが Aggregate `Room` には属性として現れない**。`_to_row` は `Empire` Aggregate から `rooms` を取り出した呼び出し元 service が引数で `empire_id` を渡す形（後述シーケンス図 L141-144）。
 
-詳細は [detailed-design.md §確定 H](detailed-design.md) で `_to_row(room, empire_id)` 契約として凍結する。
+詳細は [detailed-design.md §確定 R1-H](detailed-design.md) で `_to_row(room, empire_id)` 契約として凍結する。
 
 ## 処理フロー
 
@@ -137,7 +137,7 @@ room/detailed-design.md L41-49 で `Room` Aggregate Root の属性に `empire_id
 3. application 層が `WorkflowRepository.find_by_id(workflow_id)` で Workflow 存在検証（不在なら `WorkflowNotFoundError`）
 4. `Room(id=uuid4(), workflow_id=workflow_id, name=name, description=description, prompt_kit=prompt_kit, members=[], archived=False)` を構築（pre-validate）
 5. service が `async with session.begin():` で UoW 境界を開く
-6. service が `RoomRepository.save(room, empire_id=empire_id)` を呼ぶ（**`empire_id` 引数経由**、§確定 H）
+6. service が `RoomRepository.save(room, empire_id=empire_id)` を呼ぶ（**`empire_id` 引数経由**、§確定 R1-H）
 7. `SqliteRoomRepository.save(room, empire_id)` が以下を順次実行（同一 Tx 内、3 段階）:
    - `_to_row(room, empire_id)` で `rooms_row` / `member_rows` に分離
    - rooms UPSERT（`prompt_kit_prefix_markdown` は `MaskedText` 経由で `MaskingGateway.mask()` 適用、room §確定 G 実適用）
@@ -154,11 +154,11 @@ room/detailed-design.md L41-49 で `Room` Aggregate Root の属性に `empire_id
    - `_from_row(room_row, member_rows)` で Room 復元（**`prompt_kit_prefix_markdown` は masked 文字列のまま** で `PromptKit` 構築、不可逆性、申し送り）
 3. valid な Room を返却（pre-validate 通過）
 
-### ユースケース 3: Room の Empire 内一意検索（find_by_name 経路、§確定 F）
+### ユースケース 3: Room の Empire 内一意検索（find_by_name 経路、§確定 R1-F）
 
 1. application 層 `EmpireService.establish_room()` 内で `RoomRepository.find_by_name(empire_id, name)` を呼ぶ
 2. `SqliteRoomRepository.find_by_name(empire_id, name)`:
-   - `SELECT id FROM rooms WHERE empire_id = :empire_id AND name = :name LIMIT 1`（**INDEX(empire_id, name)** が効く、§確定 F）
+   - `SELECT id FROM rooms WHERE empire_id = :empire_id AND name = :name LIMIT 1`（**INDEX(empire_id, name)** が効く、§確定 R1-F）
    - 不在なら None
    - 存在すれば `find_by_id(found_id)` を呼んで子テーブル含めて Room を復元
 3. application 層が結果で重複判定（None → 新規作成可、Room → 409）
@@ -304,7 +304,7 @@ erDiagram
 UNIQUE 制約 / INDEX:
 
 - `room_members(room_id, agent_id, role)` UNIQUE: 同 Room 内で `(agent_id, role)` 重複禁止（**§確定 R1-D 二重防衛**）
-- `rooms(empire_id, name)` 非 UNIQUE INDEX: `find_by_name` の Empire スコープ検索に使用（**§確定 F**）
+- `rooms(empire_id, name)` 非 UNIQUE INDEX: `find_by_name` の Empire スコープ検索に使用（**§確定 R1-F**）
 - `empire_room_refs.room_id → rooms.id` FK CASCADE: **§確定 R1-C**、BUG-EMR-001 close（`op.batch_alter_table` 経由）
 
 masking 対象カラム: `rooms.prompt_kit_prefix_markdown` のみ（`MaskedText`、§確定 R1-E）。CI 三層防衛で物理保証。

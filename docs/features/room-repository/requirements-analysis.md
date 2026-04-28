@@ -44,7 +44,7 @@
 - find_by_id 子テーブル SELECT は `ORDER BY agent_id, role`（§Known Issues §BUG-EMR-001 規約、複合 key で決定論的順序）
 - save() は delete-then-insert で 2 テーブル（empire-repo §確定 B 踏襲、3 段階手順: rooms UPSERT + room_members DELETE/INSERT）
 - count() は SQL `COUNT(*)`（empire-repo §確定 D 踏襲）
-- **Protocol は 4 method**: `find_by_id` / `count` / `save(room, empire_id)` / `find_by_name(empire_id, name)`（empire-repo の 3 method + agent-repo §R1-C の `find_by_name` §確定 F）
+- **Protocol は 4 method**: `find_by_id` / `count` / `save(room, empire_id)` / `find_by_name(empire_id, name)`（empire-repo の 3 method + agent-repo §R1-C の `find_by_name` §確定 R1-F）
 - `workflow_id` の DB FK は `workflows.id` への ON DELETE **RESTRICT**（Workflow は Room の参照先であって所有者ではない、CASCADE は Room を勝手に消す）
 - `empire_room_refs.room_id → rooms.id` FK を `op.batch_alter_table` 経由で追加（SQLite ALTER TABLE ADD CONSTRAINT 制約への対応、empire-repo BUG-EMR-001 closure）
 
@@ -262,7 +262,7 @@ storage.md §逆引き表の既存 `PromptKit.prefix_markdown` 行（persistence
 
 | 機能ID | 機能名 | 概要 | 優先度 |
 |--------|-------|------|--------|
-| REQ-RR-001 | RoomRepository Protocol 定義 | `application/ports/room_repository.py` で **4 method**（find_by_id / count / `save(room, empire_id)` / find_by_name）を `async def` で宣言（§確定 F）| 必須 |
+| REQ-RR-001 | RoomRepository Protocol 定義 | `application/ports/room_repository.py` で **4 method**（find_by_id / count / `save(room, empire_id)` / find_by_name）を `async def` で宣言（§確定 R1-F）| 必須 |
 | REQ-RR-002 | SqliteRoomRepository 実装 | `infrastructure/persistence/sqlite/repositories/room_repository.py` で SQLite 実装、§確定 R1-A〜F を満たす | 必須 |
 | REQ-RR-003 | Alembic 0005 revision | `0005_room_aggregate.py` で 2 テーブル + UNIQUE(room_id, agent_id, role) + INDEX(empire_id, name) + workflow_id FK RESTRICT 追加、`down_revision="0004_agent_aggregate"`、**`empire_room_refs.room_id → rooms.id` FK closure を `op.batch_alter_table` で追加**（BUG-EMR-001 close） | 必須 |
 | REQ-RR-004 | CI 三層防衛の Room 拡張 | Layer 1 grep guard（rooms.prompt_kit_prefix_markdown 行に `MaskedText` 必須、正のチェック）+ Layer 2 arch test + Layer 3 storage.md 更新 | 必須 |
