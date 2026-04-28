@@ -1,7 +1,7 @@
 # 基本設計書
 
 > feature: `empire`
-> 関連: [requirements.md](requirements.md) / [`docs/design/domain-model/aggregates.md`](../../../design/domain-model/aggregates.md) §Empire
+> 関連: [basic-design.md §モジュール契約](basic-design.md) / [`docs/design/domain-model/aggregates.md`](../../../design/domain-model/aggregates.md) §Empire
 
 ## 記述ルール（必ず守ること）
 
@@ -33,6 +33,76 @@
         └── domain/
             └── test_empire.py           # 新規: ユニットテスト
 ```
+
+## モジュール契約（機能要件）
+
+本 sub-feature が提供するモジュールの入出力契約を凍結する。各 REQ-EM-NNN は親 [`feature-spec.md §5`](../feature-spec.md) ユースケース UC-EM-NNN と 1:1 または N:1 で対応する（孤児要件を作らない）。
+
+### REQ-EM-001: Empire 構築
+
+| 項目 | 内容 |
+|---|---|
+| 入力 | `id: EmpireId`（UUIDv4）、`name: str`（1〜80 文字） |
+| 処理 | 入力（id / name）を業務ルール R1-1（[`../feature-spec.md §7`](../feature-spec.md)）に照らして検査 → 通過時のみ Empire を新規構築（rooms / agents は空の状態で構築） |
+| 出力 | `Empire` インスタンス（rooms / agents が空の状態） |
+| エラー時 | 業務ルール R1-1 違反（name 範囲外）で `EmpireInvariantViolation` を raise（MSG-EM-001） |
+
+### REQ-EM-002: Agent 採用
+
+| 項目 | 内容 |
+|---|---|
+| 入力 | `agent_ref: AgentRef`（`agent_id`, `name`, `role` を含む VO） |
+| 処理 | 既採用一覧と照らして `agent_id` の重複（業務ルール R1-2）および容量上限（業務ルール R1-6）を検査 → 通過時のみ採用。実装方針は [`detailed-design.md §確定 A`](detailed-design.md) |
+| 出力 | `agent_ref.agent_id` + 更新された Empire |
+| エラー時 | 業務ルール R1-2 違反（`agent_id` 重複）または R1-6 違反（容量超過）で `EmpireInvariantViolation`（MSG-EM-002 / MSG-EM-005）を raise。失敗時、元の Empire は変化しない（pre-validate 方式の保証） |
+
+### REQ-EM-003: Room 設立
+
+| 項目 | 内容 |
+|---|---|
+| 入力 | `room_ref: RoomRef`（`room_id`, `name`, `archived=False` で初期化済み） |
+| 処理 | 既設立一覧と照らして `room_id` の重複（業務ルール R1-3）および容量上限（業務ルール R1-6）を検査 → 通過時のみ設立 |
+| 出力 | `room_ref.room_id` + 更新された Empire |
+| エラー時 | 業務ルール R1-3 違反または R1-6 違反で `EmpireInvariantViolation`（MSG-EM-003 / MSG-EM-005）を raise |
+
+### REQ-EM-004: Room アーカイブ
+
+| 項目 | 内容 |
+|---|---|
+| 入力 | `room_id: RoomId` |
+| 処理 | 既設立一覧から該当する Room を検索 → 見つかれば archived フラグを立てた状態に置換した新 Empire を返す（業務ルール R1-4 により物理削除はしない、履歴保持） |
+| 出力 | 更新された Empire |
+| エラー時 | `room_id` が既設立一覧に存在しない場合 `EmpireInvariantViolation`（MSG-EM-004） |
+
+### REQ-EM-005: 不変条件検査
+
+| 項目 | 内容 |
+|---|---|
+| 入力 | Empire インスタンス（コンストラクタ末尾 / 状態変更ふるまい末尾で自動呼び出し） |
+| 処理 | 以下を検査: ① name 範囲（業務ルール R1-1）② `agent_id` の重複なし（R1-2）③ `room_id` の重複なし（R1-3）④ 採用済み一覧 / 設立済み一覧の容量上限（R1-6） |
+| 出力 | None（検査通過） |
+| エラー時 | いずれか違反で `EmpireInvariantViolation` を raise（kind フィールドに違反種別） |
+
+## ユーザー向けメッセージ一覧
+
+| ID | 種別 | メッセージ（要旨） | 表示条件 |
+|---|---|---|---|
+| MSG-EM-001 | エラー（境界値） | Empire name は 1〜80 文字 | `name` が長さ違反 |
+| MSG-EM-002 | エラー（重複） | Agent {name} はすでに採用済み | `hire_agent` で `agent_id` 重複 |
+| MSG-EM-003 | エラー（重複） | Room {name} はすでに設立済み | `establish_room` で `room_id` 重複 |
+| MSG-EM-004 | エラー（参照エラー） | Room {room_id} が Empire 内に存在しない | `archive_room` で未登録 ID |
+| MSG-EM-005 | エラー（一般） | Empire 不変条件違反: {detail} | 上記以外の不変条件違反 |
+
+各メッセージの確定文言は [`detailed-design.md §MSG 確定文言表`](detailed-design.md) で凍結する。
+
+## 依存関係
+
+| 区分 | 依存 | バージョン方針 | 備考 |
+|---|---|---|---|
+| ランタイム | Python 3.12+ | pyproject.toml | 既存 |
+| Python 依存 | pydantic v2 / pyright (strict) / ruff / pytest / pytest-cov | pyproject.toml | 既存（[`tech-stack.md`](../../../design/tech-stack.md)） |
+| Node 依存 | 該当なし | — | 本 feature はバックエンド単独 |
+| 外部サービス | 該当なし | — | domain 層のため外部通信なし |
 
 ## クラス設計（概要）
 

@@ -201,7 +201,7 @@ class TestFindBlocked:
         room_id, directive_id = seeded_task_context
 
         # Pin a shared updated_at so the tiebreaker kicks in.
-        fixed_ts = datetime(2099, 4, 28, 12, 0, 0, tzinfo=UTC)
+        fixed_ts = datetime(9999, 1, 1, 0, 0, 0, tzinfo=UTC)
 
         # UUID hex: "ffffffff..." > "00000000..." lexicographically.
         id_high = UUID("ffffffff-ffff-4000-8000-000000000001")

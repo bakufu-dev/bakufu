@@ -1,7 +1,7 @@
 # 基本設計書
 
 > feature: `empire-repository`
-> 関連: [requirements.md](requirements.md) / [`docs/features/persistence-foundation/`](../../persistence-foundation/) / [`docs/features/empire/`](../domain/)
+> 関連: [basic-design.md §モジュール契約](basic-design.md) / [`docs/features/persistence-foundation/`](../../persistence-foundation/) / [`docs/features/empire/`](../domain/)
 
 ## 記述ルール（必ず守ること）
 
@@ -61,6 +61,77 @@
     └── features/
         └── empire-repository/                        # 本 feature 設計書 4 本
 ```
+
+## モジュール契約（機能要件）
+
+本 sub-feature が提供するモジュールの入出力契約を凍結する。各 REQ-EMR-NNN は親 [`feature-spec.md §5`](../feature-spec.md) ユースケース UC-EM-NNN と 1:1 または N:1 で対応する（孤児要件を作らない）。
+
+### REQ-EMR-001: EmpireRepository Protocol 定義
+
+| 項目 | 内容 |
+|---|---|
+| 入力 | 該当なし（Protocol 定義のため抽象） |
+| 処理 | `application/ports/empire_repository.py` で `EmpireRepository(Protocol)` を定義。3 メソッド: `find_by_id` / `count` / `save`。すべて `async def` |
+| 出力 | Protocol 定義（`@runtime_checkable` なし） |
+| エラー時 | 該当なし |
+
+### REQ-EMR-002: SqliteEmpireRepository 実装
+
+| 項目 | 内容 |
+|---|---|
+| 入力 | `AsyncSession`（コンストラクタ引数）、各メソッドに応じた引数 |
+| 処理 | `find_by_id`: `empires` + `empire_room_refs` + `empire_agent_refs` を JOIN。`save`: §確定 R1-B の delete-then-insert 戦略 |
+| 出力 | `find_by_id`: `Empire | None`、`count`: `int`、`save`: `None` |
+| エラー時 | SQLAlchemy `IntegrityError` → application 層に伝播 |
+
+### REQ-EMR-003: Alembic 2nd revision
+
+| 項目 | 内容 |
+|---|---|
+| 入力 | M2 永続化基盤の initial revision |
+| 処理 | `0002_empire_aggregate.py` で 3 テーブル追加 |
+| 出力 | 3 テーブル + INDEX が SQLite に存在 |
+| エラー時 | migration 失敗 → `BakufuMigrationError` |
+
+### REQ-EMR-004: CI 三層防衛の Empire 拡張
+
+| 項目 | 内容 |
+|---|---|
+| 入力 | M2 永続化基盤の Layer 1 / Layer 2 |
+| 処理 | grep guard / arch test に Empire 3 テーブル追加、masking 対象なし assert |
+| 出力 | CI が「masking 対象なし」を物理保証 |
+| エラー時 | 後続 PR で `MaskedText` 誤指定 → CI ブロック |
+
+### REQ-EMR-005: storage.md 逆引き表更新
+
+| 項目 | 内容 |
+|---|---|
+| 入力 | `docs/design/domain-model/storage.md` |
+| 処理 | §逆引き表に「Empire 関連カラム: masking 対象なし」行を追加 |
+| 出力 | 行が追加された状態 |
+| エラー時 | 該当なし |
+
+## データモデル
+
+3 テーブル + 関連 INDEX。詳細は [`detailed-design.md §データ構造（永続化キー）`](detailed-design.md)。
+
+| エンティティ | 主要属性 |
+|---|---|
+| `empires` | `id` (PK, UUIDStr) / `name` (String(80)) |
+| `empire_room_refs` | `empire_id` FK / `room_id` / `name` / `archived` / UNIQUE(empire_id, room_id) |
+| `empire_agent_refs` | `empire_id` FK / `agent_id` / `name` / `role` / UNIQUE(empire_id, agent_id) |
+
+**masking 対象カラム**: なし（CI 三層防衛で物理保証）
+
+## 依存関係
+
+| 区分 | 依存 | 備考 |
+|---|---|---|
+| ランタイム | Python 3.12+ | 既存 |
+| Python 依存 | SQLAlchemy 2.x / Alembic | 既存 |
+| ドメイン | `Empire` / `EmpireId` / `RoomRef` / `AgentRef` | 既存 |
+| インフラ | `Base` / `UUIDStr` / `AsyncSession` | 既存 |
+| 外部サービス | 該当なし | infrastructure 層のため外部通信なし |
 
 ## クラス設計（概要）
 
