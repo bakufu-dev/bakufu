@@ -63,7 +63,7 @@ empire / workflow の test-design.md と同じ規約を踏襲（外部 I/O ゼ�
 | MSG-AG-004 | `[FAIL] Duplicate provider_kind: {kind}` | TC-UT-AG-033 | ユニット | 異常系 | （文言照合） |
 | MSG-AG-005 | `[FAIL] Persona.prompt_body must be 0-10000 characters (got {length})` | TC-UT-AG-034 | ユニット | 異常系 | （文言照合） |
 | MSG-AG-006 | `[FAIL] provider_kind not registered: {kind}` | TC-UT-AG-035 | ユニット | 異常系 | 6 |
-| MSG-AG-007 | `[FAIL] Skill already added: skill_id={skill_id}` | TC-UT-AG-036 | ユニット | 異常系 | 8 |
+| MSG-AG-007 | `[FAIL] Skill already added: skill_id={skill_id}` | TC-UT-AG-036 | ユニット | 異常系 | 7 |
 | MSG-AG-008 | `[FAIL] Skill not found in agent: skill_id={skill_id}` | TC-UT-AG-037 | ユニット | 異常系 | （文言照合） |
 | 品質基準（lint/typecheck） | `pyright --strict` / `ruff check` | （CI ジョブ） | — | — | — |
 | 品質基準（カバレッジ） | `pytest --cov=bakufu.domain.agent` | （CI ジョブ） | — | — | — |

@@ -2,7 +2,7 @@
 
 <!-- feature: agent / sub-feature: repository -->
 <!-- 配置先: docs/features/agent/repository/test-design.md -->
-<!-- 対象範囲: REQ-AGR-001〜005 / feature-spec.md §9 受入基準 #10〜#12 / 詳細設計 §確定 A〜I / Schneier #3 実適用物理確認 -->
+<!-- 対象範囲: REQ-AGR-001〜005 / feature-spec.md §9 受入基準 #10〜#13 / 詳細設計 §確定 A〜I / Schneier #3 実適用物理確認 -->
 
 本 feature は M2 永続化基盤の上で動く Agent Aggregate Repository。empire-repo (PR #29/#30) / workflow-repo (PR #41) と同じ規約で、**最初から 4 ファイル分割** で test を構成（Norman R-N1 教訓継承）。**`test_masking_persona.py` が Schneier #3 実適用の物理確認を担う本 PR 固有のテストファイル**。
 
@@ -16,7 +16,7 @@
 | REQ-AGR-002（count SQL）| `count()` が SQL `COUNT(*)` を発行 | TC-UT-AGR-004 | ユニット | 正常系 | — |
 | REQ-AGR-002（find_by_name）| Empire スコープ検索 | TC-UT-AGR-005 | ユニット | 正常系 / 異常系 | 11 |
 | **REQ-AGR-002（masking、§確定 R1-B / H）** | raw `prompt_body` → DB に `<REDACTED:*>` 永続化（**Schneier #3 実適用**）| TC-IT-AGR-006-masking-anthropic / TC-IT-AGR-006-masking-github / TC-IT-AGR-006-masking-roundtrip | 結合 | 正常系 | 12 |
-| REQ-AGR-003（partial unique index）| `is_default=True` 重複で IntegrityError | TC-IT-AGR-007 | 結合 | 異常系 | 11 |
+| REQ-AGR-003（partial unique index）| `is_default=True` 重複で IntegrityError | TC-IT-AGR-007 | 結合 | 異常系 | 13 |
 | REQ-AGR-003（Alembic）| 0004 revision で 3 テーブル + 制約作成 | TC-IT-AGR-008 | 結合 | 正常系 | — |
 | REQ-AGR-004（CI Layer 1）| grep guard で `agents.prompt_body` の `MaskedText` 必須 | （CI ジョブ） | — | — | 12 |
 | REQ-AGR-004（CI Layer 2）| arch test parametrize | TC-UT-AGR-009-arch | ユニット | 正常系 | 12 |
@@ -29,7 +29,7 @@
 | 確定 D（count SQL） | `select(func.count())` の物理確認 | TC-UT-AGR-004 | ユニット | 正常系 | — |
 | 確定 E（CI 三層防衛）| 正のチェック + 負のチェック併用 | TC-UT-AGR-009-arch | ユニット | 正常系 | 12 |
 | 確定 F（find_by_name 契約） | Empire スコープで AgentId → find_by_id 委譲 | TC-UT-AGR-005 | ユニット | 正常系 / 異常系 | 11 |
-| 確定 G（partial unique index 二重防衛）| Aggregate 検査 + DB 検査 | TC-IT-AGR-007 | 結合 | 異常系 | 11 |
+| 確定 G（partial unique index 二重防衛）| Aggregate 検査 + DB 検査 | TC-IT-AGR-007 | 結合 | 異常系 | 13 |
 | **確定 H（masking 不可逆性）** | masked `prompt_body` 復元時に raw 戻らない | TC-IT-AGR-006-masking-roundtrip | 結合 | 正常系 | 12 |
 | 確定 I（4 ファイル分割） | test_*.py 全ファイル 500 行未満 | （静的確認） | — | — | — |
 

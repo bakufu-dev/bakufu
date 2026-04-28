@@ -168,8 +168,9 @@ bakufu システム全体ペルソナは [`docs/analysis/personas.md`](../../ana
 | 10 | 採用した Agent の状態がアプリ再起動跨ぎで保持される（業務ルール R1-7） | UC-AG-006 | TC-E2E-AG-001（[`system-test-design.md`](system-test-design.md)） |
 | 11 | 同 Empire 内で同名 Agent を採用しようとすると拒否される（業務ルール R1-6） | UC-AG-007 | TC-E2E-AG-002 |
 | 12 | `Persona.prompt_body` に API key を含めて永続化すると DB には `<REDACTED:*>` で保存される（業務ルール R1-8）| UC-AG-006 | TC-IT-AGR-006-masking（[`repository/test-design.md`](repository/test-design.md)） |
+| 13 | `agent_providers` テーブルへの直接挿入で `is_default=True` を 1 Agent あたり 2 件以上書き込もうとすると DB が拒否する（業務ルール R1-2 の Repository 層二重防衛 — domain 層検査の迂回路封鎖）| UC-AG-005 | TC-IT-AGR-007（[`repository/test-design.md`](repository/test-design.md)） |
 
-E2E（受入基準 10, 11）は [`system-test-design.md`](system-test-design.md) で詳細凍結。受入基準 1〜9 は domain sub-feature の IT / UT で検証（[`domain/test-design.md`](domain/test-design.md)）。受入基準 12 は repository sub-feature の IT で検証。
+E2E（受入基準 10, 11）は [`system-test-design.md`](system-test-design.md) で詳細凍結。受入基準 1〜9 は domain sub-feature の IT / UT で検証（[`domain/test-design.md`](domain/test-design.md)）。受入基準 12, 13 は repository sub-feature の IT で検証。
 
 ## 10. 開発者品質基準（CI 担保、業務要求ではない）
 
