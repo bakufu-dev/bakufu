@@ -45,6 +45,8 @@ from bakufu.infrastructure.persistence.sqlite.tables import (
     empires,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     outbox,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     pid_registry,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    room_members,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    rooms,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     workflow_stages,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     workflow_transitions,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     workflows,  # noqa: F401  # pyright: ignore[reportUnusedImport]
@@ -64,6 +66,9 @@ _MASKING_CONTRACT: list[tuple[str, str, type]] = [
     # Agent Repository (PR #32, detailed-design.md §確定 H + Schneier
     # 申し送り #3 实適用).
     ("agents", "prompt_body", MaskedText),
+    # Room Repository (PR #33, detailed-design.md §確定 R1-E +
+    # room §確定 G 実適用).
+    ("rooms", "prompt_kit_prefix_markdown", MaskedText),
 ]
 
 # No-mask contract: §逆引き表「Empire 関連カラム: masking 対象なし」 +
@@ -84,6 +89,9 @@ _NO_MASK_TABLES: list[str] = [
     # categories; only agents.prompt_body is masked.
     "agent_providers",
     "agent_skills",
+    # Room Repository (PR #33, detailed-design.md §確定 R1-E):
+    # room_members carries no secret semantics; agent_id is not masked.
+    "room_members",
 ]
 
 # Partial-mask contract: tables that have **exactly one** masked
@@ -98,6 +106,11 @@ _PARTIAL_MASK_TABLES: list[tuple[str, str]] = [
     # agents.prompt_body is the only masked column; persona-adjacent
     # scalar fields stay un-masked.
     ("agents", "prompt_body"),
+    # Room Repository (PR #33, detailed-design.md §確定 R1-E):
+    # rooms.prompt_kit_prefix_markdown is the only masked column (room
+    # §確定 G 実適用); other columns (name / description / archived) stay
+    # un-masked.
+    ("rooms", "prompt_kit_prefix_markdown"),
 ]
 
 

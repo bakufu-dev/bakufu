@@ -89,6 +89,10 @@ readonly NO_MASK_FILES=(
     # semantics.
     "${TABLES_DIR}/agent_providers.py"
     "${TABLES_DIR}/agent_skills.py"
+    # Room Repository (PR #33): only rooms.prompt_kit_prefix_markdown is
+    # masked (room §確定 G 実適用); the room_members side table carries no
+    # secret semantics.
+    "${TABLES_DIR}/room_members.py"
 )
 
 for file in "${NO_MASK_FILES[@]}"; do
@@ -124,6 +128,10 @@ done
 readonly PARTIAL_MASK_FILES=(
     "${TABLES_DIR}/workflow_stages.py:notify_channels_json:MaskedJSONEncoded"
     "${TABLES_DIR}/agents.py:prompt_body:MaskedText"
+    # Room Repository (PR #33, detailed-design.md §確定 R1-E):
+    # rooms.prompt_kit_prefix_markdown だけが MaskedText (room §確定 G 実適用)、
+    # 他カラムは String / Boolean / Text に閉じる。
+    "${TABLES_DIR}/rooms.py:prompt_kit_prefix_markdown:MaskedText"
 )
 
 for entry in "${PARTIAL_MASK_FILES[@]}"; do
