@@ -94,11 +94,11 @@ readonly NO_MASK_FILES=(
     # secret semantics.
     "${TABLES_DIR}/room_members.py"
     # Task Repository (PR #35, detailed-design.md §確定 R1-E):
-    # task_assigned_agents / conversations / deliverable_attachments carry no
-    # secret semantics. tasks / conversation_messages / deliverables are
-    # registered in PARTIAL_MASK_FILES (each has exactly one masked column).
+    # task_assigned_agents / deliverable_attachments carry no secret semantics.
+    # tasks / deliverables are registered in PARTIAL_MASK_FILES (each has exactly
+    # one masked column). conversations / conversation_messages are §BUG-TR-002
+    # 凍結済みのため除外。
     "${TABLES_DIR}/task_assigned_agents.py"
-    "${TABLES_DIR}/conversations.py"
     "${TABLES_DIR}/deliverable_attachments.py"
 )
 
@@ -147,9 +147,8 @@ readonly PARTIAL_MASK_FILES=(
     # tasks.last_error だけが MaskedText（BLOCKED 隔離理由に secret 混入の可能性）、
     # 他カラムは UUIDStr / String / UTCDateTime に閉じる。
     "${TABLES_DIR}/tasks.py:last_error:MaskedText"
-    # conversation_messages.body_markdown だけが MaskedText（subprocess 出力に secret 混入）、
-    # 他カラムは UUIDStr / String / UTCDateTime に閉じる。
-    "${TABLES_DIR}/conversation_messages.py:body_markdown:MaskedText"
+    # conversation_messages.body_markdown は §BUG-TR-002 凍結済みのため除外。
+    # Task domain に conversations 属性追加後、将来の PR で追記する。
     # deliverables.body_markdown だけが MaskedText（Agent 出力に secret 混入）、
     # 他カラムは UUIDStr / UTCDateTime に閉じる。
     "${TABLES_DIR}/deliverables.py:body_markdown:MaskedText"

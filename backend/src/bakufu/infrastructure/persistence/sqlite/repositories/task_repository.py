@@ -1,34 +1,33 @@
 """SQLite adapter for :class:`bakufu.application.ports.TaskRepository`.
 
-Implements the §確定 R1-B 9-step save flow over six tables
-(``tasks`` / ``task_assigned_agents`` / ``conversations`` /
-``conversation_messages`` / ``deliverables`` / ``deliverable_attachments``):
+Implements the §確定 R1-B 6-step save flow over four tables
+(``tasks`` / ``task_assigned_agents`` / ``deliverables`` /
+``deliverable_attachments``):
 
 1. ``DELETE FROM deliverables WHERE task_id = :id`` — CASCADE removes
    ``deliverable_attachments`` automatically.
-2. ``DELETE FROM conversations WHERE task_id = :id`` — CASCADE removes
-   ``conversation_messages`` automatically.
-3. ``DELETE FROM task_assigned_agents WHERE task_id = :id`` — no CASCADE,
+2. ``DELETE FROM task_assigned_agents WHERE task_id = :id`` — no CASCADE,
    direct DELETE.
-4. ``tasks`` UPSERT (id-conflict → ``current_stage_id`` + ``status`` +
+3. ``tasks`` UPSERT (id-conflict → ``current_stage_id`` + ``status`` +
    ``last_error`` + ``updated_at`` update; ``room_id``, ``directive_id``,
    and ``created_at`` are intentionally **not** updated — Task ownership
    and origin never change after creation).
-5. ``INSERT INTO task_assigned_agents`` — one row per AgentId with
+4. ``INSERT INTO task_assigned_agents`` — one row per AgentId with
    ``order_index`` = list position (0-indexed).
-6. ``INSERT INTO conversations`` — per Conversation in ``task.conversations``
-   (currently empty: Task domain model has no ``conversations`` attribute).
-7. ``INSERT INTO conversation_messages`` — per Message per Conversation
-   (currently empty, same reason).
-8. ``INSERT INTO deliverables`` — one row per Deliverable in
+5. ``INSERT INTO deliverables`` — one row per Deliverable in
    ``task.deliverables.values()``. A fresh ``uuid4()`` PK is generated for
    each row on every save (DELETE-then-INSERT pattern guarantees no PK
    collision).
-9. ``INSERT INTO deliverable_attachments`` — one row per Attachment per
-   Deliverable, linked via the ``deliverable_id`` FK generated in step 8.
+6. ``INSERT INTO deliverable_attachments`` — one row per Attachment per
+   Deliverable, linked via the ``deliverable_id`` FK generated in step 5.
+
+``conversations`` / ``conversation_messages`` tables are excluded from this
+flow (§BUG-TR-002 凍結済み): Task Aggregate currently has no
+``conversations`` attribute. These tables will be added in the future PR
+that introduces ``Task.conversations: list[Conversation]``.
 
 The repository **never** calls ``session.commit()`` / ``session.rollback()``:
-the caller-side service runs ``async with session.begin():`` so all 9 steps
+the caller-side service runs ``async with session.begin():`` so all 6 steps
 stay in one transaction (empire-repo §確定 B Tx 境界の責務分離).
 
 ``save(task)`` uses the **standard 1-argument pattern** (§確定 R1-F):
@@ -65,12 +64,6 @@ from bakufu.domain.value_objects import (
     TaskId,
     TaskStatus,
 )
-from bakufu.infrastructure.persistence.sqlite.tables.conversation_messages import (
-    ConversationMessageRow,
-)
-from bakufu.infrastructure.persistence.sqlite.tables.conversations import (
-    ConversationRow,
-)
 from bakufu.infrastructure.persistence.sqlite.tables.deliverable_attachments import (
     DeliverableAttachmentRow,
 )
@@ -88,9 +81,9 @@ class SqliteTaskRepository:
         self._session = session
 
     async def find_by_id(self, task_id: TaskId) -> Task | None:
-        """SELECT tasks row + 5 child tables, hydrate via :meth:`_from_rows`.
+        """SELECT tasks row + 3 child tables, hydrate via :meth:`_from_rows`.
 
-        Returns ``None`` when the tasks row is absent. On success, all five
+        Returns ``None`` when the tasks row is absent. On success, all three
         child tables are queried with their §確定 R1-H ORDER BY clauses so
         the hydrated Aggregate is deterministic.
         """
@@ -113,11 +106,6 @@ class SqliteTaskRepository:
             .scalars()
             .all()
         )
-
-        # conversations / conversation_messages: schema exists for future use;
-        # Task domain model currently has no ``conversations`` attribute.
-        conv_rows: list[Any] = []
-        msg_rows: list[Any] = []
 
         # §確定 R1-H: ORDER BY stage_id ASC (UNIQUE per task, deterministic).
         deliv_rows = list(
@@ -146,9 +134,7 @@ class SqliteTaskRepository:
             ).scalars():
                 attach_rows_by_deliv.setdefault(row.deliverable_id, []).append(row)
 
-        return self._from_rows(
-            task_row, agent_rows, conv_rows, msg_rows, deliv_rows, attach_rows_by_deliv
-        )
+        return self._from_rows(task_row, agent_rows, deliv_rows, attach_rows_by_deliv)
 
     async def count(self) -> int:
         """``SELECT COUNT(*) FROM tasks``.
@@ -160,31 +146,24 @@ class SqliteTaskRepository:
         return (await self._session.execute(select(func.count()).select_from(TaskRow))).scalar_one()
 
     async def save(self, task: Task) -> None:
-        """Persist ``task`` via the §確定 R1-B 9-step delete-then-insert.
+        """Persist ``task`` via the §確定 R1-B 6-step delete-then-insert.
 
         The caller is responsible for the surrounding
         ``async with session.begin():`` block; failures propagate untouched
         so the Unit-of-Work boundary in the application service can rollback
         cleanly (empire-repo §確定 B 踏襲).
         """
-        task_row, agent_rows, conv_rows, msg_rows, deliv_rows, attach_rows = self._to_rows(task)
+        task_row, agent_rows, deliv_rows, attach_rows = self._to_rows(task)
 
         # Step 1: DELETE deliverables — CASCADE removes deliverable_attachments.
         await self._session.execute(delete(DeliverableRow).where(DeliverableRow.task_id == task.id))
 
-        # Step 2: DELETE conversations — CASCADE removes conversation_messages.
-        # Currently a no-op (Task has no conversations), but executed to maintain
-        # the §確定 R1-B ordering contract and clean any future-loaded rows.
-        await self._session.execute(
-            delete(ConversationRow).where(ConversationRow.task_id == task.id)
-        )
-
-        # Step 3: DELETE task_assigned_agents (no CASCADE, direct DELETE).
+        # Step 2: DELETE task_assigned_agents (no CASCADE, direct DELETE).
         await self._session.execute(
             delete(TaskAssignedAgentRow).where(TaskAssignedAgentRow.task_id == task.id)
         )
 
-        # Step 4: tasks UPSERT.
+        # Step 3: tasks UPSERT.
         # room_id / directive_id / created_at are excluded from DO UPDATE —
         # Task ownership and origin are immutable after creation.
         upsert_stmt = sqlite_insert(TaskRow).values(task_row)
@@ -199,24 +178,15 @@ class SqliteTaskRepository:
         )
         await self._session.execute(upsert_stmt)
 
-        # Step 5: INSERT task_assigned_agents.
+        # Step 4: INSERT task_assigned_agents.
         if agent_rows:
             await self._session.execute(insert(TaskAssignedAgentRow), agent_rows)
 
-        # Steps 6-7: INSERT conversations + conversation_messages.
-        # Currently empty: Task domain model has no ``conversations`` attribute.
-        # The branch executes once the Conversation domain type is added and
-        # _to_rows() starts returning non-empty conv_rows / msg_rows.
-        if conv_rows:
-            await self._session.execute(insert(ConversationRow), conv_rows)
-            if msg_rows:
-                await self._session.execute(insert(ConversationMessageRow), msg_rows)
-
-        # Step 8: INSERT deliverables.
+        # Step 5: INSERT deliverables.
         if deliv_rows:
             await self._session.execute(insert(DeliverableRow), deliv_rows)
 
-        # Step 9: INSERT deliverable_attachments.
+        # Step 6: INSERT deliverable_attachments.
         if attach_rows:
             await self._session.execute(insert(DeliverableAttachmentRow), attach_rows)
 
@@ -287,11 +257,8 @@ class SqliteTaskRepository:
         list[dict[str, Any]],
         list[dict[str, Any]],
         list[dict[str, Any]],
-        list[dict[str, Any]],
-        list[dict[str, Any]],
     ]:
-        """Convert ``task`` to ``(task_row, agent_rows, conv_rows, msg_rows,
-        deliv_rows, attach_rows)``.
+        """Convert ``task`` to ``(task_row, agent_rows, deliv_rows, attach_rows)``.
 
         SQLAlchemy ``Row`` objects are avoided so the domain layer never
         gains an accidental dependency on the SQLAlchemy type hierarchy.
@@ -306,12 +273,13 @@ class SqliteTaskRepository:
         Deliverable PKs: ``deliverables.id`` has no domain-level identity
         (the Aggregate identifies Deliverables by ``stage_id``). A fresh
         ``uuid4()`` is generated for each deliverable row on every save.
-        Because steps 1→8 are DELETE-then-INSERT, there is never a PK
+        Because steps 1→5 are DELETE-then-INSERT, there is never a PK
         collision. The same fresh UUID is used as ``deliverable_id`` in the
         corresponding attachment rows built in the same call.
 
-        ``conv_rows`` / ``msg_rows`` are always ``[]``: the Task domain model
-        has no ``conversations`` attribute yet (§確定 R1-J future wiring).
+        ``conversations`` / ``conversation_messages`` rows are excluded
+        (§BUG-TR-002 凍結済み): Task domain currently has no ``conversations``
+        attribute.
         """
         task_row: dict[str, Any] = {
             "id": task.id,
@@ -333,11 +301,6 @@ class SqliteTaskRepository:
             }
             for idx, agent_id in enumerate(task.assigned_agent_ids)
         ]
-
-        # conversations / messages: empty until Task gains a ``conversations``
-        # attribute (§確定 R1-J future wiring point).
-        conv_rows: list[dict[str, Any]] = []
-        msg_rows: list[dict[str, Any]] = []
 
         deliv_rows: list[dict[str, Any]] = []
         attach_rows: list[dict[str, Any]] = []
@@ -370,14 +333,12 @@ class SqliteTaskRepository:
                     }
                 )
 
-        return task_row, agent_rows, conv_rows, msg_rows, deliv_rows, attach_rows
+        return task_row, agent_rows, deliv_rows, attach_rows
 
     def _from_rows(
         self,
         task_row: TaskRow,
         agent_rows: list[TaskAssignedAgentRow],
-        conv_rows: list[Any],
-        msg_rows: list[Any],
         deliv_rows: list[DeliverableRow],
         attach_rows_by_deliv: dict[UUID, list[DeliverableAttachmentRow]],
     ) -> Task:
@@ -394,18 +355,12 @@ class SqliteTaskRepository:
         tz-aware ``datetime``; ``MaskedText`` returns the already-masked
         string. No defensive wrapping (e.g. ``UUID(row.id)``) needed.
 
-        ``conv_rows`` / ``msg_rows`` are accepted for forward-API
-        compatibility (§確定 R1-J) but are not used because :class:`Task`
-        has no ``conversations`` field yet.
-
         §確定 R1-J §不可逆性: ``last_error`` and deliverable
         ``body_markdown`` carry the already-masked text from disk. Both
         fields accept any string within the length cap so the masked form
         constructs cleanly; LLM-facing dispatch must apply its own
         masked-prompt guard (``feature/llm-adapter`` scope).
         """
-        del conv_rows, msg_rows  # not used until Task gains conversations
-
         # §確定 R1-H: agent_rows already sorted order_index ASC by the caller.
         assigned_agent_ids = [row.agent_id for row in agent_rows]
 

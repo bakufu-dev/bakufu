@@ -1,20 +1,17 @@
-"""Task Repository: MaskedText wiring on 3 columns (TC-IT-TR-020-masking-*).
+"""Task Repository: MaskedText wiring on 2 columns (TC-IT-TR-020-masking-*).
 
-REQ-TR-004 / §確定 G 実適用 — tasks.last_error / deliverables.body_markdown /
-conversation_messages.body_markdown are all ``MaskedText`` columns.
+REQ-TR-004 / §確定 G 実適用 — tasks.last_error / deliverables.body_markdown
+are ``MaskedText`` columns.
+
+``conversation_messages.body_markdown`` is excluded (§BUG-TR-002 凍結済み):
+Task domain currently has no ``conversations`` attribute. Tests for
+``conversation_messages.body_markdown`` will be added when that attribute is
+introduced.
 
 **Task §確定 G 実適用の物理保証**:
-3 columns must never let secret tokens reach SQLite. Each is verified via
+2 columns must never let secret tokens reach SQLite. Each is verified via
 **raw SQL SELECT** so the observation bypasses ``MaskedText.process_result_value``
 and confirms the literal bytes on disk.
-
-conversation_messages cannot be tested via ``SqliteTaskRepository.save()``
-because ``Task`` domain model has no ``conversations`` attribute yet.
-To exercise the ``MaskedText`` TypeDecorator on ``body_markdown`` without
-bypassing the TypeDecorator itself, rows are inserted via SQLAlchemy Core
-``insert(ConversationMessageRow).values(...)`` — the same path
-``process_bind_param`` fires for, per the TypeDecorator-trust principle
-(base.py §MaskedText docstring, PR #23 BUG-PF-001 fix).
 
 Per ``docs/features/task-repository/test-design.md`` TC-IT-TR-020-masking-*.
 Issue #35 — M2 0007.
@@ -22,7 +19,6 @@ Issue #35 — M2 0007.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
@@ -30,11 +26,7 @@ import pytest
 from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
     SqliteTaskRepository,
 )
-from bakufu.infrastructure.persistence.sqlite.tables.conversation_messages import (
-    ConversationMessageRow,
-)
-from bakufu.infrastructure.persistence.sqlite.tables.conversations import ConversationRow
-from sqlalchemy import insert, text
+from sqlalchemy import text
 
 from tests.factories.task import (
     make_blocked_task,
@@ -103,24 +95,6 @@ async def _read_deliverable_body(
     if row is None:
         raise AssertionError(f"deliverables row not found for task_id={task_id}")
     return row[0]
-
-
-async def _read_conv_msg_body(
-    session_factory: async_sessionmaker[AsyncSession],
-    conv_msg_id: UUID,
-) -> str:
-    """Fetch conversation_messages.body_markdown literal bytes by message id."""
-    async with session_factory() as session:
-        row = (
-            await session.execute(
-                text("SELECT body_markdown FROM conversation_messages WHERE id = :id"),
-                {"id": conv_msg_id.hex},
-            )
-        ).first()
-    assert row is not None, f"conversation_messages row not found for id={conv_msg_id}"
-    body = row[0]
-    assert isinstance(body, str)
-    return body
 
 
 # ---------------------------------------------------------------------------
@@ -316,126 +290,26 @@ class TestDeliverableBodyMarkdownGitHubPatMasked:
 
 
 # ---------------------------------------------------------------------------
-# TC-IT-TR-020-masking-conv-msg: conversation_messages.body_markdown Anthropic key
+# TC-IT-TR-020-masking-2columns: simultaneous masking (2 columns at once)
 #
-# Task domain model has no conversations attribute → insert via SQLAlchemy Core.
-# TypeDecorator (MaskedText.process_bind_param) fires for Core insert() too —
-# this is the PR #23 BUG-PF-001 fix guarantee.
+# §BUG-TR-002 凍結済みのため conversation_messages は除外。
+# tasks.last_error (Discord) + deliverables.body_markdown (GitHub PAT) のみ。
 # ---------------------------------------------------------------------------
-class TestConversationMessageBodyMarkdownMasked:
-    """TC-IT-TR-020-masking-conv-msg: Anthropic key in body_markdown redacted via Core insert."""
-
-    async def _insert_conv_msg(
-        self,
-        session_factory: async_sessionmaker[AsyncSession],
-        task_id: UUID,
-        body_markdown: str,
-    ) -> UUID:
-        """Insert conversation + message rows via SQLAlchemy Core insert().
-
-        Returns the message id for subsequent raw-SQL lookup.
-        Uses TypeDecorator path (Core insert) — same path production code
-        will use when Task gains a conversations attribute.
-        """
-        conv_id = uuid4()
-        msg_id = uuid4()
-        now = datetime.now(UTC)
-
-        async with session_factory() as session, session.begin():
-            await session.execute(
-                insert(ConversationRow).values(
-                    {
-                        "id": conv_id,
-                        "task_id": task_id,
-                        "created_at": now,
-                    }
-                )
-            )
-            await session.execute(
-                insert(ConversationMessageRow).values(
-                    {
-                        "id": msg_id,
-                        "conversation_id": conv_id,
-                        "speaker_kind": "SYSTEM",
-                        "body_markdown": body_markdown,
-                        "timestamp": now,
-                    }
-                )
-            )
-        return msg_id
-
-    async def test_anthropic_key_in_body_markdown_redacted(
-        self,
-        session_factory: async_sessionmaker[AsyncSession],
-        seeded_task_context: tuple[UUID, UUID],
-    ) -> None:
-        """Raw-SQL SELECT shows <REDACTED:ANTHROPIC_KEY>; raw key absent from disk.
-
-        Verifies MaskedText.process_bind_param fires for Core insert()
-        path (BUG-PF-001 closure — TypeDecorator enforces masking regardless
-        of call path).
-        """
-        room_id, directive_id = seeded_task_context
-        task = make_task(room_id=room_id, directive_id=directive_id)
-        async with session_factory() as session, session.begin():
-            await SqliteTaskRepository(session).save(task)
-
-        body = (
-            f"Claude API呼び出し完了。Key: ANTHROPIC_API_KEY={_ANTHROPIC_TOKEN}\nリクエスト成功。"
-        )
-        msg_id = await self._insert_conv_msg(session_factory, task.id, body)
-        persisted = await _read_conv_msg_body(session_factory, msg_id)
-
-        assert _ANTHROPIC_SENTINEL in persisted, (
-            f"[FAIL] conversation_messages.body_markdown missing Anthropic sentinel.\n"
-            f"Persisted: {persisted!r}"
-        )
-        assert _ANTHROPIC_TOKEN not in persisted, (
-            f"[FAIL] Raw Anthropic API key leaked into conversation_messages.body_markdown.\n"
-            f"BUG-PF-001 TypeDecorator Core insert path guarantee violated.\n"
-            f"Persisted: {persisted!r}"
-        )
-
-    async def test_plain_conv_msg_body_is_passthrough(
-        self,
-        session_factory: async_sessionmaker[AsyncSession],
-        seeded_task_context: tuple[UUID, UUID],
-    ) -> None:
-        """conversation_messages.body_markdown without secrets stored unchanged."""
-        room_id, directive_id = seeded_task_context
-        task = make_task(room_id=room_id, directive_id=directive_id)
-        async with session_factory() as session, session.begin():
-            await SqliteTaskRepository(session).save(task)
-
-        plain_body = "エージェントがタスクを実行しました。問題なし。"
-        msg_id = await self._insert_conv_msg(session_factory, task.id, plain_body)
-        persisted = await _read_conv_msg_body(session_factory, msg_id)
-
-        assert persisted == plain_body, (
-            f"[FAIL] plain conversation_messages.body_markdown was modified.\n"
-            f"Expected: {plain_body!r}\nGot: {persisted!r}"
-        )
-
-
-# ---------------------------------------------------------------------------
-# TC-IT-TR-020-masking-3columns: simultaneous masking (all 3 columns at once)
-# ---------------------------------------------------------------------------
-class TestThreeColumnSimultaneousMasking:
-    """TC-IT-TR-020-masking-3columns: all 3 MaskedText columns redacted simultaneously.
+class TestTwoColumnSimultaneousMasking:
+    """TC-IT-TR-020-masking-2columns: 2 MaskedText columns redacted simultaneously.
 
     One Task with:
-      * tasks.last_error       → Discord token
-      * deliverables.body_markdown → GitHub PAT
-      * conversation_messages.body_markdown → Anthropic key
-    All 3 must be redacted in a single save / insert cycle.
+      * tasks.last_error            → Discord token
+      * deliverables.body_markdown  → GitHub PAT
+    Both must be redacted in a single save cycle.
     """
 
-    async def test_all_three_masked_text_columns_redacted_simultaneously(
+    async def test_two_masked_text_columns_redacted_simultaneously(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
-        """Discord + Anthropic + GitHub all redacted across 3 separate MaskedText columns."""
+        """Discord + GitHub both redacted across 2 separate MaskedText columns."""
         room_id, directive_id = seeded_task_context
         stage_id = uuid4()
 
@@ -454,50 +328,20 @@ class TestThreeColumnSimultaneousMasking:
         async with session_factory() as session, session.begin():
             await SqliteTaskRepository(session).save(blocked)
 
-        # Insert conversation message with Anthropic key
-        conv_body = f"ANTHROPIC_API_KEY={_ANTHROPIC_TOKEN} — response OK"
-        conv_id = uuid4()
-        msg_id = uuid4()
-        now = datetime.now(UTC)
-        async with session_factory() as session, session.begin():
-            await session.execute(
-                insert(ConversationRow).values(
-                    {"id": conv_id, "task_id": blocked.id, "created_at": now}
-                )
-            )
-            await session.execute(
-                insert(ConversationMessageRow).values(
-                    {
-                        "id": msg_id,
-                        "conversation_id": conv_id,
-                        "speaker_kind": "SYSTEM",
-                        "body_markdown": conv_body,
-                        "timestamp": now,
-                    }
-                )
-            )
-
-        # Verify all 3 columns via raw SQL
+        # Verify both columns via raw SQL
         persisted_last_error = await _read_last_error(session_factory, blocked.id)
         persisted_deliv = await _read_deliverable_body(session_factory, blocked.id)
-        persisted_msg = await _read_conv_msg_body(session_factory, msg_id)
 
         # tasks.last_error — Discord
         assert persisted_last_error is not None
         assert _DISCORD_SENTINEL in persisted_last_error, (
-            "[FAIL] tasks.last_error missing Discord sentinel in 3-column test."
+            "[FAIL] tasks.last_error missing Discord sentinel in 2-column test."
         )
         assert _DISCORD_TOKEN not in persisted_last_error
 
         # deliverables.body_markdown — GitHub
         assert persisted_deliv is not None
         assert _GITHUB_SENTINEL in persisted_deliv, (
-            "[FAIL] deliverables.body_markdown missing GitHub sentinel in 3-column test."
+            "[FAIL] deliverables.body_markdown missing GitHub sentinel in 2-column test."
         )
         assert _GITHUB_TOKEN not in persisted_deliv
-
-        # conversation_messages.body_markdown — Anthropic
-        assert _ANTHROPIC_SENTINEL in persisted_msg, (
-            "[FAIL] conversation_messages.body_markdown missing Anthropic sentinel."
-        )
-        assert _ANTHROPIC_TOKEN not in persisted_msg

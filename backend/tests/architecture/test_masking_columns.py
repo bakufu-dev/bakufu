@@ -40,8 +40,6 @@ from bakufu.infrastructure.persistence.sqlite.tables import (
     agent_skills,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     agents,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     audit_log,  # noqa: F401  # pyright: ignore[reportUnusedImport]
-    conversation_messages,  # noqa: F401  # pyright: ignore[reportUnusedImport]
-    conversations,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     deliverable_attachments,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     deliverables,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     directives,  # noqa: F401  # pyright: ignore[reportUnusedImport]
@@ -81,8 +79,7 @@ _MASKING_CONTRACT: list[tuple[str, str, type]] = [
     # Task Repository (PR #35, detailed-design.md §確定 R1-E):
     # tasks.last_error — BLOCKED 隔離理由(LLM error に secret 混入の可能性).
     ("tasks", "last_error", MaskedText),
-    # conversation_messages.body_markdown — subprocess 出力に secret 混入の可能性.
-    ("conversation_messages", "body_markdown", MaskedText),
+    # conversation_messages.body_markdown は §BUG-TR-002 凍結済みのため除外。
     # deliverables.body_markdown — Agent 出力に secret 混入の可能性.
     ("deliverables", "body_markdown", MaskedText),
 ]
@@ -109,11 +106,11 @@ _NO_MASK_TABLES: list[str] = [
     # room_members carries no secret semantics; agent_id is not masked.
     "room_members",
     # Task Repository (PR #35, detailed-design.md §確定 R1-E):
-    # task_assigned_agents / conversations / deliverable_attachments carry
-    # no secret semantics. tasks / conversation_messages / deliverables are
-    # registered in _PARTIAL_MASK_TABLES (each has exactly one masked column).
+    # task_assigned_agents / deliverable_attachments carry no secret semantics.
+    # tasks / deliverables are registered in _PARTIAL_MASK_TABLES (each has
+    # exactly one masked column). conversations / conversation_messages are
+    # §BUG-TR-002 凍結済みのため除外。
     "task_assigned_agents",
-    "conversations",
     "deliverable_attachments",
 ]
 
@@ -143,10 +140,7 @@ _PARTIAL_MASK_TABLES: list[tuple[str, str]] = [
     # current_stage_id / status / created_at / updated_at carry no secret
     # semantics.
     ("tasks", "last_error"),
-    # conversation_messages.body_markdown is the only masked column;
-    # id / conversation_id / speaker_kind / timestamp carry no secret
-    # semantics.
-    ("conversation_messages", "body_markdown"),
+    # conversation_messages.body_markdown は §BUG-TR-002 凍結済みのため除外。
     # deliverables.body_markdown is the only masked column;
     # id / task_id / stage_id / committed_by / committed_at carry no secret
     # semantics.

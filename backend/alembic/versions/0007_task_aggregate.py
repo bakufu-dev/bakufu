@@ -1,6 +1,6 @@
-"""Task Aggregate tables: tasks + 5 child tables; BUG-DRR-001 FK closure.
+"""Task Aggregate tables: tasks + 3 child tables; BUG-DRR-001 FK closure.
 
-Adds the six tables that back :class:`SqliteTaskRepository`:
+Adds the four tables that back :class:`SqliteTaskRepository`:
 
 * ``tasks`` (id PK + room_id FK CASCADE + directive_id FK CASCADE +
   current_stage_id NOT NULL (no FK, Aggregate boundary §確定 R1-G) +
@@ -11,10 +11,6 @@ Adds the six tables that back :class:`SqliteTaskRepository`:
 * ``task_assigned_agents`` (composite PK (task_id, agent_id) + FK CASCADE on
   task_id + NO FK on agent_id per §設計決定 TR-001 + UNIQUE(task_id, agent_id)
   Defense-in-Depth).
-* ``conversations`` (id PK + task_id FK CASCADE + created_at NOT NULL).
-* ``conversation_messages`` (id PK + conversation_id FK CASCADE +
-  speaker_kind String(32) NOT NULL + body_markdown MaskedText NOT NULL +
-  timestamp UTCDateTime NOT NULL).
 * ``deliverables`` (id PK + task_id FK CASCADE + stage_id NOT NULL (no FK,
   Aggregate boundary) + body_markdown MaskedText NOT NULL + committed_by
   NOT NULL (no FK) + committed_at UTCDateTime NOT NULL +
@@ -23,6 +19,11 @@ Adds the six tables that back :class:`SqliteTaskRepository`:
   String(64) NOT NULL + filename String(255) NOT NULL + mime_type
   String(128) NOT NULL + size_bytes Integer NOT NULL +
   UNIQUE(deliverable_id, sha256)).
+
+``conversations`` / ``conversation_messages`` tables are excluded (§BUG-TR-002
+凍結済み): Task Aggregate currently has no ``conversations`` attribute. These
+tables will be added in the future migration that wires up
+``Task.conversations: list[Conversation]``.
 
 Also closes BUG-DRR-001 FK申し送り:
 
@@ -120,38 +121,6 @@ def upgrade() -> None:
         sa.UniqueConstraint("task_id", "agent_id", name="uq_task_assigned_agents"),
     )
 
-    # ---- conversations table -----------------------------------------------
-    op.create_table(
-        "conversations",
-        sa.Column("id", sa.CHAR(32), primary_key=True, nullable=False),
-        sa.Column(
-            "task_id",
-            sa.CHAR(32),
-            sa.ForeignKey("tasks.id", ondelete="CASCADE"),
-            nullable=False,
-        ),
-        # UTCDateTime TypeDecorator stores ISO-8601 text.
-        sa.Column("created_at", sa.Text(), nullable=False),
-    )
-
-    # ---- conversation_messages table ---------------------------------------
-    op.create_table(
-        "conversation_messages",
-        sa.Column("id", sa.CHAR(32), primary_key=True, nullable=False),
-        sa.Column(
-            "conversation_id",
-            sa.CHAR(32),
-            sa.ForeignKey("conversations.id", ondelete="CASCADE"),
-            nullable=False,
-        ),
-        sa.Column("speaker_kind", sa.String(32), nullable=False),
-        # body_markdown: MaskedText serialises as TEXT. The Python-side
-        # TypeDecorator does the masking gate (§確定 R1-E).
-        sa.Column("body_markdown", sa.Text(), nullable=False),
-        # UTCDateTime TypeDecorator stores ISO-8601 text.
-        sa.Column("timestamp", sa.Text(), nullable=False),
-    )
-
     # ---- deliverables table ------------------------------------------------
     op.create_table(
         "deliverables",
@@ -227,11 +196,9 @@ def downgrade() -> None:
 
     # 2. Drop child tables (CASCADE dependency order: deepest first).
     op.drop_table("deliverable_attachments")
-    op.drop_table("conversation_messages")
 
     # 3. Drop mid-level child tables.
     op.drop_table("deliverables")
-    op.drop_table("conversations")
     op.drop_table("task_assigned_agents")
 
     # 4. Drop indexes before dropping root table.

@@ -6,8 +6,9 @@ Real Alembic upgrade/downgrade against a real SQLite file plus chain
 integrity check that makes sure 0001→…→0007 chain stays linear.
 
 Also verifies:
-* 6 tables created: tasks / task_assigned_agents / conversations /
-  conversation_messages / deliverables / deliverable_attachments.
+* 4 tables created: tasks / task_assigned_agents / deliverables /
+  deliverable_attachments (conversations / conversation_messages は §BUG-TR-002
+  凍結済みのため除外).
 * 2 indexes: ix_tasks_room_id / ix_tasks_status_updated_id (§確定 R1-K).
 * tasks FK constraints: room_id → rooms CASCADE, directive_id → directives CASCADE.
 * BUG-DRR-001 FK closure: directives.task_id → tasks.id present at HEAD (0007).
@@ -65,14 +66,14 @@ def _alembic_config() -> Config:
 # ---------------------------------------------------------------------------
 # TC-IT-TR-001: 0007 creates 6 task tables (受入基準 §確定 R1-B)
 # ---------------------------------------------------------------------------
-class TestSeventhRevisionSixTablesPresent:
-    """TC-IT-TR-001: alembic upgrade head adds the 6 Task-aggregate tables."""
+class TestSeventhRevisionFourTablesPresent:
+    """TC-IT-TR-001: alembic upgrade head adds the 4 Task-aggregate tables."""
 
-    async def test_six_task_tables_present_after_upgrade(
+    async def test_four_task_tables_present_after_upgrade(
         self,
         empty_engine: AsyncEngine,
     ) -> None:
-        """6 task tables exist after upgrade head."""
+        """4 task tables exist after upgrade head (§BUG-TR-002: conversations excluded)."""
         await run_upgrade_head(empty_engine)
         async with empty_engine.connect() as conn:
             result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
@@ -81,8 +82,6 @@ class TestSeventhRevisionSixTablesPresent:
         expected = {
             "tasks",
             "task_assigned_agents",
-            "conversations",
-            "conversation_messages",
             "deliverables",
             "deliverable_attachments",
         }
@@ -90,6 +89,13 @@ class TestSeventhRevisionSixTablesPresent:
             f"[FAIL] Missing task aggregate tables after upgrade head.\n"
             f"Missing: {expected - tables}\n"
             f"Tables found: {tables}"
+        )
+        # Verify §BUG-TR-002: conversations / conversation_messages must NOT exist yet.
+        assert "conversations" not in tables, (
+            "[FAIL] conversations table exists but §BUG-TR-002 requires it to be excluded."
+        )
+        assert "conversation_messages" not in tables, (
+            "[FAIL] conversation_messages table exists but §BUG-TR-002 requires it to be excluded."
         )
 
 
@@ -252,8 +258,6 @@ class TestUpgradeDowngradeIdempotent:
         expected = {
             "tasks",
             "task_assigned_agents",
-            "conversations",
-            "conversation_messages",
             "deliverables",
             "deliverable_attachments",
         }
