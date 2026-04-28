@@ -92,17 +92,31 @@ bakufu は **Vモデル工程強制**。実装に進む前に、必ず設計書 
 
 設計 PR を先に通してオーナー承認を得てから、実装 PR を起こす。実装中に設計書の更新が必要なら別 PR で先行して直す。
 
-### 3.2 Vモデル 5 ファイルの起こし方
+### 3.2 Vモデル設計書の起こし方（階層化テンプレート）
 
-`docs/features/_template/` をコピーして `docs/features/<feature-name>/` に置く。各ファイルを順に書く：
+`docs/_template/` の Vモデル全体構造テンプレートをベースに、新規 feature を起票する:
 
-| 順 | ファイル | 役割 |
-|----|----|----|
-| 1 | `requirements-analysis.md` | 人間の要求・痛点・ペルソナ・議論結果・確定事項・機能一覧・受入基準 |
-| 2 | `requirements.md` | 機能要件（REQ ID 付き）・CLI/API/UI 仕様・データモデル・MSG（ユーザー向けメッセージ）・依存関係 |
-| 3 | `basic-design.md` | モジュール構成・クラス設計（mermaid）・処理フロー・シーケンス図・脅威モデル・エラーハンドリング方針 |
-| 4 | `detailed-design.md` | 構造契約の詳細・MSG 確定文言・キー構造表・API エンドポイント詳細・確定事項（先送り撤廃） |
-| 5 | `test-design.md` | テストマトリクス・外部 I/O 依存マップ・E2E / 結合 / ユニットテストケース・カバレッジ基準 |
+```bash
+# 業務概念名でリネーム
+cp -r 'docs/_template/features/<feature-name>' docs/features/<your-feature-name>
+
+# sub-feature をリネーム（実装レイヤー別: domain / repository / http-api / ui）
+cd docs/features/<your-feature-name>
+mv '<sub-feature>' domain    # 実装レイヤーに応じて
+```
+
+階層構造（業務概念 + sub-feature の 2 階層）:
+
+| 階層 | 順 | ファイル | 役割 |
+|----|----|----|----|
+| 階層 1（システム全体） | — | `docs/{analysis,requirements,design,acceptance-tests}/` | 業務要求 / 要件 / 基本設計 / 受入テスト戦略（[`docs/_template/process.md`](docs/_template/process.md) 参照） |
+| 階層 2（feature 業務概念） | 1 | `feature-spec.md` | 業務仕様（要件定義 業務観点、UC-XX-NNN / 業務ルール R1-X / 受入基準） |
+| 階層 2 | 2 | `system-test-design.md` | システムテスト戦略 |
+| 階層 3（sub-feature モジュール） | 3 | `<sub>/basic-design.md` | モジュール基本設計（§モジュール契約 = 機能要件 REQ-XX-NNN） |
+| 階層 3 | 4 | `<sub>/detailed-design.md` | モジュール詳細設計（構造契約・MSG 確定文言） |
+| 階層 3 | 5 | `<sub>/test-design.md` | テスト設計（結合 + UT） |
+
+開発プロセス（工程ガイド）は [`docs/_template/process.md`](docs/_template/process.md) を参照（Vモデル ライフサイクル / 内部レビューゲート / 設計 PR と実装 PR の分割）。
 
 ### 3.3 着手すべき最初の feature
 
