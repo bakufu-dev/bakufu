@@ -160,7 +160,7 @@
 | 工程 | 詳細設計 |
 | 種別 | 正常系 |
 | 操作 | エラーコード定数（または文字列リテラル）の値を確認 |
-| 期待結果 | `"HTTP_404"` 形式 / `"VALIDATION_ERROR"` / `"CONFLICT_DUPLICATE"` / `"CONFLICT_FK"` / `"INTERNAL_ERROR"` が大文字スネークケース ASCII |
+| 期待結果 | `"HTTP_404"` 形式 / `"VALIDATION_ERROR"` / `"CONFLICT"` / `"DEPENDENCY"` / `"INTERNAL_ERROR"` が大文字スネークケース ASCII |
 
 ---
 

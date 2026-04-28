@@ -46,7 +46,7 @@
 | REQ-HAF-002 | `app.state` 未初期化時（lifespan 未実行）→ AttributeError → HTTP 500 | TC-IT-HAF-006 | 結合 | 異常系 | 3 |
 | REQ-HAF-003 | `HTTPException` → `{"error":{"code":"HTTP_<status>","message":...}}` 変換 | TC-E2E-HAF-005, TC-IT-HAF-011 | E2E / 結合 | 正常系 | 3 |
 | REQ-HAF-003 | `RequestValidationError` → HTTP 422 + `{"error":{"code":"VALIDATION_ERROR",...}}` | TC-E2E-HAF-004, TC-IT-HAF-012 | E2E / 結合 | 異常系 | 3 |
-| REQ-HAF-003 | `IntegrityError` → HTTP 409 + `{"error":{"code":"CONFLICT_DUPLICATE" or "CONFLICT_FK",...}}` | TC-IT-HAF-013 | 結合 | 異常系 | 3 |
+| REQ-HAF-003 | `IntegrityError` → HTTP 409 + `{"error":{"code":"CONFLICT" or "DEPENDENCY",...}}` | TC-IT-HAF-013 | 結合 | 異常系 | 3 |
 | REQ-HAF-003 | 未捕捉 `Exception` → HTTP 500 + `{"error":{"code":"INTERNAL_ERROR","message":"Internal server error"}}` | TC-IT-HAF-014 | 結合 | 異常系 | 3 |
 | REQ-HAF-003（T4 防御） | HTTP 500 レスポンス body にスタックトレースが含まれない | TC-IT-HAF-015 | 結合 | 異常系 | 3 |
 | REQ-HAF-004 | `PaginatedResponse[T]` 4 フィールド（items / total / offset / limit） | TC-UT-HAF-001 | ユニット | 正常系 | — |
@@ -63,7 +63,7 @@
 | REQ-HAF-007 | `service.save()` が `commit()` を呼ばない（§確定 R1-H） | TC-UT-HAF-011 | ユニット | 正常系 | — |
 | REQ-HAF-007 | `service.find_all(offset, limit)` → `(items, total)` tuple（§確定 F） | TC-UT-HAF-012, TC-IT-HAF-016 | ユニット / 結合 | 正常系 | — |
 | REQ-HAF-007 | service が `Sqlite*Repository` 具象型でなく Repository Protocol に依存する | TC-UT-HAF-013 | ユニット | 正常系 | — |
-| §確定 E | `HTTP_xxx` / `VALIDATION_ERROR` / `CONFLICT_DUPLICATE` / `CONFLICT_FK` / `INTERNAL_ERROR` のコード体系 | TC-UT-HAF-014 | ユニット | 正常系 | 3 |
+| §確定 E | `HTTP_xxx` / `VALIDATION_ERROR` / `CONFLICT` / `DEPENDENCY` / `INTERNAL_ERROR` のコード体系 | TC-UT-HAF-014 | ユニット | 正常系 | 3 |
 | MSG-HAF-001 | `[FAIL] Internal server error` 文言確認（HTTP 500） | TC-IT-HAF-014 | 結合 | 異常系 | 3 |
 | MSG-HAF-002 | `[FAIL] Validation error:` 文言確認（HTTP 422） | TC-IT-HAF-012 | 結合 | 異常系 | 3 |
 | MSG-HAF-003 | `[FAIL] Conflict:` 文言確認（HTTP 409）+ コード分離確認 | TC-IT-HAF-013 | 結合 | 異常系 | 3 |

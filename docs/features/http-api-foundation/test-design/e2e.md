@@ -229,7 +229,7 @@
 | 種別 | 異常系 |
 | 前提条件 | ① UNIQUE 制約違反を誘発するテスト用ルート / ② FK 違反を誘発するテスト用ルート |
 | 操作 | ①②それぞれへリクエスト |
-| 期待結果 | ① HTTP 409 / `code` が `"CONFLICT_DUPLICATE"` / ② HTTP 409 / `code` が `"CONFLICT_FK"` / いずれも `message` に `"[FAIL] Conflict:"` を含む |
+| 期待結果 | ① HTTP 409 / `code` が `"CONFLICT"` / ② HTTP 409 / `code` が `"DEPENDENCY"` / いずれも `message` に `"[FAIL] Conflict:"` を含む |
 
 ---
 
