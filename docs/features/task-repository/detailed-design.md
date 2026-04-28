@@ -30,7 +30,7 @@
 
 | method | シグネチャ | 戻り値 | 処理の要点 |
 |--------|---------|-------|-----------|
-| `find_by_id` | `(task_id: TaskId) -> Task \| None` | `Task \| None` | tasks 1 行 SELECT → 不在は None。存在すれば 5 子テーブルを個別 SELECT（§確定 R1-H ORDER BY 各テーブル適用）→ `_from_rows()` |
+| `find_by_id` | `(task_id: TaskId) -> Task \| None` | `Task \| None` | tasks 1 行 SELECT → 不在は None。存在すれば 3 子テーブルを個別 SELECT（§確定 R1-H ORDER BY 各テーブル適用）→ `_from_rows()` |
 | `count` | `() -> int` | `int` | `select(func.count()).select_from(TaskRow)` |
 | `save` | `(task: Task) -> None` | `None` | `_to_rows()` → §確定 R1-B 6 段階 DELETE+UPSERT+INSERT |
 | `count_by_status` | `(status: TaskStatus) -> int` | `int` | `SELECT COUNT(*) FROM tasks WHERE status = :status` |

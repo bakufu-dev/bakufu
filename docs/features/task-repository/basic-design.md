@@ -32,7 +32,7 @@
 ├── backend/
 │   ├── alembic/
 │   │   └── versions/
-│   │       └── 0007_task_aggregate.py                          # 新規: 6 テーブル + INDEX + BUG-DRR-001 FK closure
+│   │       └── 0007_task_aggregate.py                          # 新規: 4 テーブル + INDEX + BUG-DRR-001 FK closure（§BUG-TR-002凍結済み）
 │   ├── src/
 │   │   └── bakufu/
 │   │       ├── application/

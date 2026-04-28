@@ -21,7 +21,7 @@ empire-repository（PR #25）で確立したテンプレートパターン（Pro
 | 要求 ID | 要求文 | 優先度 | 出典 |
 |--------|-------|-------|------|
 | RQ-TR-001 | Task Aggregate を SQLite に永続化・復元できる | Must | Task Aggregate PR #42 後続課題 |
-| RQ-TR-002 | 6 テーブルにまたがる save() を DB 整合性を保ちながら原子的に実行できる | Must | Task の複合ドメインモデル（tasks + 5 子テーブル） |
+| RQ-TR-002 | 4 テーブルにまたがる save() を DB 整合性を保ちながら原子的に実行できる（§BUG-TR-002凍結済み） | Must | Task の複合ドメインモデル（tasks + 3 子テーブル） |
 | RQ-TR-003 | BLOCKED 状態の Task 一覧を取得できる（障害隔離用） | Must | Task.block() + TaskService 要件（後続 Issue #38） |
 | RQ-TR-004 | Room スコープ・ステータス別の Task 件数を取得できる | Must | Room ダッシュボード後続要件（後続 HTTP API） |
 | RQ-TR-005 | `directives.task_id → tasks.id` FK 未追加（BUG-DRR-001）を closure する | Must | directive-repository PR #50 §BUG-DRR-001 申し送り |
