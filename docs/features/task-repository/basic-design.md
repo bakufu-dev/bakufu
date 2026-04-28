@@ -66,7 +66,7 @@
 │           └── test_masking_columns.py                         # 既存更新: Task 関連 2 カラム parametrize 追加
 ├── scripts/
 │   └── ci/
-│       └── check_masking_columns.sh                            # 既存更新: Task 関連 3 エントリ追加
+│       └── check_masking_columns.sh                            # 既存更新: Task 関連 2 エントリ追加（§BUG-TR-002凍結済みのため conversation_messages 除外）
 └── docs/
     ├── architecture/
     │   └── domain-model/
