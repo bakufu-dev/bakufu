@@ -141,18 +141,46 @@ def make_populated_room(
     room_id: UUID | None = None,
     leader_agent_id: UUID | None = None,
     developer_agent_id: UUID | None = None,
+    workflow_id: UUID | None = None,
 ) -> Room:
     """Build a Room with one LEADER + one DEVELOPER membership.
 
     Useful for TC-IT-RM-001 / 002 round-trip scenarios that exercise add /
     remove / update / archive transitions over a non-empty member list.
+
+    ``workflow_id`` is forwarded to :func:`make_room` so infrastructure
+    integration tests can pass the seeded workflow FK target.
     """
     return make_room(
         room_id=room_id,
+        workflow_id=workflow_id,
         members=[
             make_leader_membership(agent_id=leader_agent_id),
             make_agent_membership(agent_id=developer_agent_id, role=Role.DEVELOPER),
         ],
+    )
+
+
+def make_room_with_secret_prompt_kit(
+    *,
+    room_id: UUID | None = None,
+    prefix_markdown: str,
+    workflow_id: UUID | None = None,
+) -> Room:
+    """Build a Room whose PromptKit carries a secret-bearing ``prefix_markdown``.
+
+    Used by infrastructure tests that verify ``MaskedText`` redacts the
+    embedded secret before the row hits SQLite (§確定 R1-J 不可逆性凍結).
+
+    The caller is responsible for passing a ``prefix_markdown`` that
+    contains a token matching one of the masking gateway's regex patterns
+    so the round-trip is non-identity (raw → masked).
+    """
+    kit = make_prompt_kit(prefix_markdown=prefix_markdown)
+    return make_room(
+        room_id=room_id,
+        workflow_id=workflow_id,
+        prompt_kit=kit,
     )
 
 
@@ -165,4 +193,5 @@ __all__ = [
     "make_populated_room",
     "make_prompt_kit",
     "make_room",
+    "make_room_with_secret_prompt_kit",
 ]

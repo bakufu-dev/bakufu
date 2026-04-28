@@ -35,6 +35,27 @@ Agent Aggregate (PR #32):
   Defense-in-Depth "exactly one default provider per Agent" floor.
 * :mod:`...tables.agent_skills` — SkillRef child rows (no-mask).
 
+Room Aggregate (PR #33):
+
+* :mod:`...tables.rooms` — Room root row. The
+  ``prompt_kit_prefix_markdown`` column is ``MaskedText`` (room
+  §確定 G 実適用); the table is registered with the CI three-layer
+  defense's *partial-mask* contract pinning exactly one masked column.
+  ``empire_room_refs.room_id → rooms.id`` FK is closed in Alembic
+  0005 (BUG-EMR-001 closure).
+* :mod:`...tables.room_members` — AgentMembership child rows (no-mask).
+  Composite PK + explicit ``UniqueConstraint`` for §確定 R1-D
+  Defense-in-Depth; ``agent_id`` intentionally has no FK onto
+  ``agents.id`` (application-layer responsibility).
+
+Directive Aggregate (PR #34):
+
+* :mod:`...tables.directives` — Directive root row. The ``text`` column
+  is ``MaskedText`` (§確定 R1-E 実適用); the table is registered with
+  the CI three-layer defense's *partial-mask* contract pinning exactly
+  one masked column. ``directives.task_id → tasks.id`` FK is deferred
+  to the task-repository PR (§BUG-DRR-001 申し送り).
+
 Secret-bearing tables declare their columns with
 :class:`MaskedJSONEncoded` / :class:`MaskedText` TypeDecorators
 (defined in :mod:`bakufu.infrastructure.persistence.sqlite.base`) that
@@ -64,11 +85,14 @@ from bakufu.infrastructure.persistence.sqlite.tables import (
     agent_skills,
     agents,
     audit_log,
+    directives,
     empire_agent_refs,
     empire_room_refs,
     empires,
     outbox,
     pid_registry,
+    room_members,
+    rooms,
     workflow_stages,
     workflow_transitions,
     workflows,
@@ -79,11 +103,14 @@ __all__ = [
     "agent_skills",
     "agents",
     "audit_log",
+    "directives",
     "empire_agent_refs",
     "empire_room_refs",
     "empires",
     "outbox",
     "pid_registry",
+    "room_members",
+    "rooms",
     "workflow_stages",
     "workflow_transitions",
     "workflows",

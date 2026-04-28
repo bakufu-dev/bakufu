@@ -192,3 +192,49 @@ class TestBackIndexHasAgentRows:
             "from the Agent row directly. Required by agent-repository "
             "§確定 H (partial-mask テンプレート)."
         )
+
+
+class TestBackIndexHasDirectiveRows:
+    """TC-DOC-DRR-001: §逆引き表 includes Directive partial-mask + no-mask entries.
+
+    Directive Repository PR (#34): ``directives.text`` is the **only**
+    masked column (directive §確定 G 実適用), with the remaining columns
+    (id / target_room_id / created_at / task_id) registered as no-mask.
+    """
+
+    def test_directives_text_masked_text_row_present(self, storage_md_text: str) -> None:
+        """TC-DOC-DRR-001a: §逆引き表 declares MaskedText on directives.text.
+
+        The line must co-locate ``directives.text`` (or ``Directive.text``)
+        and ``MaskedText`` so an operator sees the redaction policy directly.
+        """
+        co_located_lines = [
+            line
+            for line in storage_md_text.splitlines()
+            if (
+                "directives" in line
+                and "MaskedText" in line
+            )
+        ]
+        assert co_located_lines, (
+            "storage.md §逆引き表 must contain at least one line that "
+            "co-locates 'directives' and 'MaskedText' per "
+            "directive-repository §確定 G 実適用 (Issue #34)."
+        )
+
+    def test_directive_no_mask_row_present(self, storage_md_text: str) -> None:
+        """TC-DOC-DRR-001b: §逆引き表 declares Directive remaining columns no-mask.
+
+        id / target_room_id / created_at / task_id carry no secret semantics
+        and are registered as 'masking 対象なし' so over-masking is prevented.
+        """
+        co_located_lines = [
+            line
+            for line in storage_md_text.splitlines()
+            if "Directive" in line and "masking 対象なし" in line
+        ]
+        assert co_located_lines, (
+            "storage.md §逆引き表 must contain at least one line that "
+            "co-locates 'Directive' and 'masking 対象なし' per "
+            "directive-repository §確定 R1-E (partial-mask テンプレート, Issue #34)."
+        )

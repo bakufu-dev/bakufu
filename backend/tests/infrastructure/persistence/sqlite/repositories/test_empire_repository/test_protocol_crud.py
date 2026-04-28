@@ -26,6 +26,9 @@ from bakufu.infrastructure.persistence.sqlite.tables.empires import EmpireRow
 from sqlalchemy import select
 
 from tests.factories.empire import make_empire, make_populated_empire
+from tests.infrastructure.persistence.sqlite.repositories.test_empire_repository.conftest import (
+    seed_rooms,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -148,6 +151,9 @@ class TestSaveInsertsAllThreeTables:
     ) -> None:
         """TC-IT-EMR-005: 2 rooms + 3 agents land in their respective side tables."""
         empire = make_populated_empire(n_rooms=2, n_agents=3)
+        # Alembic 0005 added empire_room_refs.room_id → rooms.id FK (BUG-EMR-001
+        # closure). Seed rooms rows before save() so the FK resolves.
+        await seed_rooms(session_factory, empire.id, [r.room_id for r in empire.rooms])
         async with session_factory() as session, session.begin():
             await SqliteEmpireRepository(session).save(empire)
 
