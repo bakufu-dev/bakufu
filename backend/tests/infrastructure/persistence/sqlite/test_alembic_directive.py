@@ -314,32 +314,39 @@ class TestCascadeDeleteOnRoomDeletion:
 # ---------------------------------------------------------------------------
 # TC-IT-DRR-006: §BUG-DRR-001 — task_id FK does NOT exist at 0006 (受入基準 11)
 # ---------------------------------------------------------------------------
-class TestBugDrr001TaskIdFkAbsent:
-    """TC-IT-DRR-006: PRAGMA foreign_key_list('directives') has no tasks FK.
+class TestBugDrr001TaskIdFkClosure:
+    """TC-IT-DRR-006: BUG-DRR-001 closure confirmed — directives.task_id FK now present.
 
-    §BUG-DRR-001 (BUG-EMR-001 パターン): tasks table does not exist at
-    0006 level. The FK closure (directives.task_id → tasks.id) is deferred
-    to the task-repository PR via op.batch_alter_table('directives').
+    §BUG-DRR-001 (BUG-EMR-001 パターン): was OPEN at 0006 level (tasks table did
+    not exist). Alembic revision 0007_task_aggregate closed this by adding
+    ``fk_directives_task_id`` (``directives.task_id → tasks.id`` ON DELETE RESTRICT)
+    via ``op.batch_alter_table('directives')``.
 
-    This test physically confirms the 0006 forward-reference problem is
-    handled correctly (no FK at this revision level).
+    This test physically confirms the closure: at HEAD (0007), the FK IS present.
+    TC-IT-TR-008 in test_alembic_task.py is the canonical closure test; this test
+    confirms the directive side is consistent with that assertion.
     """
 
-    async def test_task_id_fk_not_present_in_directives(
+    async def test_task_id_fk_present_in_directives_at_head(
         self,
         empty_engine: AsyncEngine,
     ) -> None:
-        """PRAGMA foreign_key_list('directives') has no reference to 'tasks'."""
+        """PRAGMA foreign_key_list('directives') has reference to 'tasks' at HEAD.
+
+        BUG-DRR-001 closure: 0007_task_aggregate added the FK via batch_alter_table.
+        At upgrade head (0007), directives.task_id → tasks.id FK must exist.
+        """
         await run_upgrade_head(empty_engine)
         async with empty_engine.connect() as conn:
             result = await conn.execute(text("PRAGMA foreign_key_list('directives')"))
             fk_rows = list(result)
         # PRAGMA foreign_key_list columns: id, seq, table, from, to, ...
         referenced_tables = {row[2] for row in fk_rows}
-        assert "tasks" not in referenced_tables, (
-            f"[FAIL] directives has an unexpected FK to 'tasks' at 0006 level.\n"
-            f"§BUG-DRR-001 申し送り: this FK must be added in the task-repository PR "
-            f"via op.batch_alter_table('directives') after the tasks table exists.\n"
+        assert "tasks" in referenced_tables, (
+            f"[FAIL] directives.task_id FK to 'tasks' missing at HEAD level.\n"
+            f"BUG-DRR-001 closure requires 0007_task_aggregate to add FK via "
+            f"op.batch_alter_table('directives') + create_foreign_key('fk_directives_task_id', "
+            f"'tasks', ['task_id'], ['id'], ondelete='RESTRICT').\n"
             f"FK references found: {referenced_tables}"
         )
 

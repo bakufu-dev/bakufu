@@ -296,12 +296,27 @@ class TestSaveAfterLinkTask:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """directive.link_task(task_id) → save → find_by_id returns updated task_id."""
+        """directive.link_task(task_id) → save → find_by_id returns updated task_id.
+
+        BUG-DRR-001 closure (0007): directives.task_id → tasks.id RESTRICT FK
+        is now active. A real tasks row must exist before setting directive.task_id.
+        """
+        from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
+            SqliteTaskRepository,
+        )
+
+        from tests.factories.task import make_task
+
         original = make_directive(target_room_id=seeded_room_id, task_id=None)
         async with session_factory() as session, session.begin():
             await SqliteDirectiveRepository(session).save(original)
 
-        new_task_id = uuid4()
+        # BUG-DRR-001 closure: save a real Task referencing this Directive first.
+        real_task = make_task(room_id=seeded_room_id, directive_id=original.id)
+        async with session_factory() as session, session.begin():
+            await SqliteTaskRepository(session).save(real_task)
+
+        new_task_id = real_task.id
         updated = original.link_task(new_task_id)  # type: ignore[arg-type]
         async with session_factory() as session, session.begin():
             await SqliteDirectiveRepository(session).save(updated)
@@ -410,7 +425,19 @@ class TestLifecycleIntegration:
         assert len(results) == 3
 
         # Step 3: link_task → re-save
-        new_task_id = uuid4()
+        # BUG-DRR-001 closure (0007): directives.task_id → tasks.id RESTRICT FK.
+        # Must save a real Task referencing d1 before setting directive.task_id.
+        from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
+            SqliteTaskRepository,
+        )
+
+        from tests.factories.task import make_task
+
+        task_for_d1 = make_task(room_id=seeded_room_id, directive_id=d1.id)
+        async with session_factory() as session, session.begin():
+            await SqliteTaskRepository(session).save(task_for_d1)
+
+        new_task_id = task_for_d1.id
         d1_updated = d1.link_task(new_task_id)  # type: ignore[arg-type]
         async with session_factory() as session, session.begin():
             await SqliteDirectiveRepository(session).save(d1_updated)
