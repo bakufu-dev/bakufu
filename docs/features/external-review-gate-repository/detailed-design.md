@@ -97,7 +97,7 @@ parametrize に追加する 3 行:
 
 #### Layer 3: storage.md 逆引き表（REQ-ERGR-005 で実施済み）
 
-`docs/architecture/domain-model/storage.md` §逆引き表の更新は REQ-ERGR-005 で実施済み（本 PR 設計書と同一コミット）。
+`docs/design/domain-model/storage.md` §逆引き表の更新は REQ-ERGR-005 で実施済み（本 PR 設計書と同一コミット）。
 
 ### §確定 R1-K: INDEX 設計の根拠
 
@@ -203,5 +203,5 @@ parametrize に追加する 3 行:
 - [`docs/features/empire-repository/detailed-design.md`](../empire-repository/detailed-design.md) §確定 A〜F — テンプレート真実源
 - [`docs/features/task-repository/detailed-design.md`](../task-repository/detailed-design.md) — 直近テンプレート（多段階子テーブル、masking 対象あり）
 - [`docs/features/external-review-gate/detailed-design.md`](../external-review-gate/detailed-design.md) — Domain 凍結済み設計（§確定 A〜K、§申し送り #1〜#2）
-- [`docs/architecture/domain-model/storage.md`](../../architecture/domain-model/storage.md) §snapshot 凍結方式 — inline コピー設計の凍結源
-- [`docs/architecture/threat-model.md`](../../architecture/threat-model.md) — A02 / A04 / A08 / A09 対応根拠
+- [`docs/design/domain-model/storage.md`](../../design/domain-model/storage.md) §snapshot 凍結方式 — inline コピー設計の凍結源
+- [`docs/design/threat-model.md`](../../design/threat-model.md) — A02 / A04 / A08 / A09 対応根拠

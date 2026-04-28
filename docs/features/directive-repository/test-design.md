@@ -166,7 +166,7 @@ raw SELECT で `directives.text` の物理格納値を確認し、`MaskedText.pr
 | テストID | 対象 | 使用 fixture | 前提条件 | 操作 | 期待結果 |
 |---------|-----|--------------|---------|------|---------|
 | TC-UT-DRR-arch | Layer 2: `tests/architecture/test_masking_columns.py` の Directive parametrize 拡張 | `Base.metadata` | M2 永続化基盤の arch test に masking 検証構造あり | parametrize に `("directives", "text", MaskedText)` を追加。`column.type.__class__ is MaskedText` を assert、他カラムは Masked* 不在を assert | pass（`directives.text` は `MaskedText`、他 4 カラムは masking なし）。後続 PR が誤って `text` を `Text` に変更した瞬間に落下して PR ブロック |
-| TC-DOC-DRR-001 | storage.md §逆引き表 Directive 行存在（受入基準 13）| repo root | `docs/architecture/domain-model/storage.md` 編集済み | `tests/docs/test_storage_md_back_index.py` で Directive 行検証 | `directives.text: MaskedText`（directive §確定 G 実適用）行が §逆引き表に存在。`directives` 残カラム（id / target_room_id / created_at / task_id）が masking 対象なしとして登録 |
+| TC-DOC-DRR-001 | storage.md §逆引き表 Directive 行存在（受入基準 13）| repo root | `docs/design/domain-model/storage.md` 編集済み | `tests/docs/test_storage_md_back_index.py` で Directive 行検証 | `directives.text: MaskedText`（directive §確定 G 実適用）行が §逆引き表に存在。`directives` 残カラム（id / target_room_id / created_at / task_id）が masking 対象なしとして登録 |
 
 ### Lifecycle 統合シナリオ
 

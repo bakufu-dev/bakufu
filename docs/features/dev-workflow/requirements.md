@@ -264,4 +264,4 @@
 | GitHub Actions | `actions/checkout@v4` | 既存利用 | 既存 | — |
 | CONTRIBUTING / README | 既存 Markdown | — | — | §REQ-DW-010 で更新 |
 
-**配布バイナリ（bakufu 本体）への影響**: 本 feature のツールは **すべて開発者ツールチェーンに閉じる**。`backend/` / `frontend/` の build artifact および `uv.lock` / `pnpm-lock.yaml` の本番依存には一切混入しない（dev dependency にのみ追加）。よってドメインモデル設計書 (`docs/architecture/domain-model.md`) とは独立な領域として扱う。
+**配布バイナリ（bakufu 本体）への影響**: 本 feature のツールは **すべて開発者ツールチェーンに閉じる**。`backend/` / `frontend/` の build artifact および `uv.lock` / `pnpm-lock.yaml` の本番依存には一切混入しない（dev dependency にのみ追加）。よってドメインモデル設計書 (`docs/design/domain-model.md`) とは独立な領域として扱う。

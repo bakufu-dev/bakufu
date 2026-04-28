@@ -1,7 +1,7 @@
 # 基本設計書
 
 > feature: `agent`
-> 関連: [requirements.md](requirements.md) / [`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) §Agent
+> 関連: [requirements.md](requirements.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Agent
 
 ## 記述ルール（必ず守ること）
 
@@ -147,8 +147,8 @@ sequenceDiagram
 
 ## アーキテクチャへの影響
 
-- `docs/architecture/domain-model.md` への変更: なし
-- `docs/architecture/tech-stack.md` への変更: なし
+- `docs/design/domain-model.md` への変更: なし
+- `docs/design/tech-stack.md` への変更: なし
 - 既存 feature への波及: なし。後続 `feature/room` は `AgentMembership` を介して Agent を参照するが、本 feature 範囲では参照されない（非対称）
 
 ## 外部連携
@@ -173,11 +173,11 @@ sequenceDiagram
 
 ### 脅威モデル
 
-本 feature 範囲では以下の 2 件。詳細な信頼境界は [`docs/architecture/threat-model.md`](../../architecture/threat-model.md)。
+本 feature 範囲では以下の 2 件。詳細な信頼境界は [`docs/design/threat-model.md`](../../design/threat-model.md)。
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|
-| **T1: Persona.prompt_body 経由の prompt injection** | UI / API から悪意ある自然言語 prompt を投入 → Conversation・Deliverable に伝搬 | LLM Agent の整合性 / 他 Agent の Conversation | Agent ドメイン内ではサニタイズせず、永続化前の単一ゲートウェイ（[`storage.md`](../../architecture/domain-model/storage.md) §シークレットマスキング規則）で secret を伏字化。LLM 出力を直接 shell 実行する経路は提供しない（`threat-model.md` §A2） |
+| **T1: Persona.prompt_body 経由の prompt injection** | UI / API から悪意ある自然言語 prompt を投入 → Conversation・Deliverable に伝搬 | LLM Agent の整合性 / 他 Agent の Conversation | Agent ドメイン内ではサニタイズせず、永続化前の単一ゲートウェイ（[`storage.md`](../../design/domain-model/storage.md) §シークレットマスキング規則）で secret を伏字化。LLM 出力を直接 shell 実行する経路は提供しない（`threat-model.md` §A2） |
 | **T2: 不正な ProviderConfig による LLM Adapter 誤動作** | 存在しない `provider_kind` / `model` 名で Agent を構築 → LLM Adapter が落ちる | Agent / Adapter の整合性 | Pydantic enum で `provider_kind` を Fail Fast 拒否。`model` 文字列は LLM Adapter 側でホワイトリスト検証（別 feature 責務） |
 
 ### OWASP Top 10 対応

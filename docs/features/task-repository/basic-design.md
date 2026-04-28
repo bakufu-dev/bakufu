@@ -18,7 +18,7 @@
 | REQ-TR-003 | Alembic 0007 revision | `backend/alembic/versions/0007_task_aggregate.py` | 4 テーブル + INDEX + BUG-DRR-001 FK closure、`down_revision="0006_directive_aggregate"`（`conversations`/`conversation_messages` は §BUG-TR-002 凍結済みのため除外） |
 | REQ-TR-004 | CI 三層防衛拡張 Layer 1 | `scripts/ci/check_masking_columns.sh`（既存ファイル更新）| Task 関連 2 テーブル明示登録（`conversation_messages` は §BUG-TR-002 除外） |
 | REQ-TR-004 | CI 三層防衛拡張 Layer 2 | `backend/tests/architecture/test_masking_columns.py`（既存ファイル更新）| parametrize に Task 関連 2 カラム追加 |
-| REQ-TR-005 | storage.md 逆引き表更新 | `docs/architecture/domain-model/storage.md`（既存ファイル更新）| Task 関連行追加・後続表記を本 PR 配線完了に更新 |
+| REQ-TR-005 | storage.md 逆引き表更新 | `docs/design/domain-model/storage.md`（既存ファイル更新）| Task 関連行追加・後続表記を本 PR 配線完了に更新 |
 | REQ-TR-006 | directive-repository §BUG-DRR-001 更新 | `docs/features/directive-repository/detailed-design.md`（既存ファイル更新）| status OPEN → RESOLVED |
 | 共通 | `tables/tasks.py` | `backend/src/bakufu/infrastructure/persistence/sqlite/tables/` | `tasks` テーブル ORM 定義（last_error は MaskedText） |
 | 共通 | `tables/task_assigned_agents.py` | 同上 | `task_assigned_agents` テーブル ORM 定義 |
@@ -210,8 +210,8 @@ sequenceDiagram
 
 ## アーキテクチャへの影響
 
-- `docs/architecture/domain-model/storage.md` への変更: §逆引き表に Task 関連行追加・後続表記更新（本 PR で実施）
-- `docs/architecture/tech-stack.md` への変更: なし（既存スタックのみ使用）
+- `docs/design/domain-model/storage.md` への変更: §逆引き表に Task 関連行追加・後続表記更新（本 PR で実施）
+- `docs/design/tech-stack.md` への変更: なし（既存スタックのみ使用）
 - 既存 feature への波及:
   - directive-repository: §BUG-DRR-001 を RESOLVED に更新（本 PR で実施）
   - CI (`check_masking_columns.sh`, `test_masking_columns.py`): 既存ファイルに Task 関連 2 カラム追加（`conversation_messages` は §BUG-TR-002 除外）

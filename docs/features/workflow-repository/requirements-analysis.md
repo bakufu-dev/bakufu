@@ -2,7 +2,7 @@
 
 > feature: `workflow-repository`
 > Issue: [#31 feat(workflow-repository): Workflow SQLite Repository (M2, 0003)](https://github.com/bakufu-dev/bakufu/issues/31)
-> 凍結済み設計: [`docs/features/empire-repository/`](../empire-repository/) **§確定 A〜F + §Known Issues §BUG-EMR-001 規約**（テンプレート真実源、必読）/ [`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) §Workflow / [`docs/features/workflow/`](../workflow/) （domain 設計済み、PR #16 マージ済み）
+> 凍結済み設計: [`docs/features/empire-repository/`](../empire-repository/) **§確定 A〜F + §Known Issues §BUG-EMR-001 規約**（テンプレート真実源、必読）/ [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Workflow / [`docs/features/workflow/`](../workflow/) （domain 設計済み、PR #16 マージ済み）
 
 ## 人間の要求
 
@@ -14,7 +14,7 @@
 
 ### 現状の痛点
 
-1. **M2 永続化基盤（PR #23）+ empire-repository（PR #29 / #30）が完了したが、Workflow Aggregate の永続化がない**。`mvp-scope.md` 受入基準 #8「再起動後も Empire / Room / Agent / Task / Gate の状態が SQLite から復元される」のうち Workflow 永続化が宙に浮いている
+1. **M2 永続化基盤（PR #23）+ empire-repository（PR #29 / #30）が完了したが、Workflow Aggregate の永続化がない**。`requirements/acceptance-criteria.md` 受入基準 #8「再起動後も Empire / Room / Agent / Task / Gate の状態が SQLite から復元される」のうち Workflow 永続化が宙に浮いている
 2. M2 後続 Repository 5 件（agent / room / directive / task / external-review-gate）は Workflow テーブルへの参照（`rooms.workflow_id` FK）を必要とする。**workflow-repository を最初に積まないと後続 Repository PR の Alembic revision で FK が張れない**
 3. M3 HTTP API は Workflow CRUD endpoint を必要とする（CEO が Workflow プリセットを選択して Room を編成する MVP 受入基準 #2）。Repository が揃わないと M3 着手不可
 
@@ -96,7 +96,7 @@ empire-repository #25 の以下の確定をすべて本 PR に継承する:
 4. **実装**: ファイル配置・命名規則は本 PR を雛形にできる
 5. **テスト**: 本 PR の test 構造（`test_protocol_crud.py` / `test_save_semantics.py` / `test_constraints_arch.py`）を踏襲
 
-bakufu システム全体のペルソナは [`docs/architecture/context.md`](../../architecture/context.md) §4 を参照。
+bakufu システム全体のペルソナは [`docs/analysis/personas.md`](../../analysis/personas.md) を参照。
 
 ## 前提条件・制約
 
@@ -136,7 +136,7 @@ bakufu システム全体のペルソナは [`docs/architecture/context.md`](../
 | 可用性 | M2 永続化基盤の上に乗る、追加要件なし |
 | 保守性 | pyright strict pass / ruff 警告ゼロ / カバレッジ 90% 以上（empire-repo 実績水準） |
 | 可搬性 | M2 と同じ |
-| セキュリティ | `notify_channels_json` の Discord webhook token を `MaskedJSONEncoded` で永続化前マスキング。Schneier 申し送り #6 の実適用、Workflow 経路でも masking 強制ゲートウェイが機能することを CI 三層防衛で物理保証。詳細は [`threat-model.md`](../../architecture/threat-model.md) §A2 / §T1 |
+| セキュリティ | `notify_channels_json` の Discord webhook token を `MaskedJSONEncoded` で永続化前マスキング。Schneier 申し送り #6 の実適用、Workflow 経路でも masking 強制ゲートウェイが機能することを CI 三層防衛で物理保証。詳細は [`threat-model.md`](../../design/threat-model.md) §A2 / §T1 |
 
 ## 受入基準
 

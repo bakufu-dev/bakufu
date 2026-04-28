@@ -1,7 +1,7 @@
 # 要件定義書
 
 > feature: `external-review-gate`
-> 関連: [requirements-analysis.md](requirements-analysis.md) / [`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) §ExternalReviewGate / [`storage.md`](../../architecture/domain-model/storage.md) §snapshot 凍結方式 / [`docs/features/task/`](../task/) （PR #42 §確定 A-2 連携先）
+> 関連: [requirements-analysis.md](requirements-analysis.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §ExternalReviewGate / [`storage.md`](../../design/domain-model/storage.md) §snapshot 凍結方式 / [`docs/features/task/`](../task/) （PR #42 §確定 A-2 連携先）
 
 ## 機能要件
 
@@ -87,7 +87,7 @@
 
 ## データモデル
 
-`docs/architecture/domain-model/aggregates.md` §ExternalReviewGate および `value-objects.md` §AuditEntry の凍結済み定義に従う。本 feature では新規 VO として `AuditEntry` を実体化、`ReviewDecision` / `AuditAction` enum を追加する（`Deliverable` は task PR #42 で実体化済み）。
+`docs/design/domain-model/aggregates.md` §ExternalReviewGate および `value-objects.md` §AuditEntry の凍結済み定義に従う。本 feature では新規 VO として `AuditEntry` を実体化、`ReviewDecision` / `AuditAction` enum を追加する（`Deliverable` は task PR #42 で実体化済み）。
 
 | エンティティ | 属性 | 型 | 制約 | 関連 |
 |-------------|------|---|------|------|

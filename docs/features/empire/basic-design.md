@@ -1,7 +1,7 @@
 # 基本設計書
 
 > feature: `empire`
-> 関連: [requirements.md](requirements.md) / [`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) §Empire
+> 関連: [requirements.md](requirements.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Empire
 
 ## 記述ルール（必ず守ること）
 
@@ -128,8 +128,8 @@ sequenceDiagram
 
 ## アーキテクチャへの影響
 
-- `docs/architecture/domain-model.md` への変更: なし（凍結済み設計に従う実装のみ）
-- `docs/architecture/tech-stack.md` への変更: なし
+- `docs/design/domain-model.md` への変更: なし（凍結済み設計に従う実装のみ）
+- `docs/design/tech-stack.md` への変更: なし
 - 既存 feature への波及: `dev-workflow` 以外まだ存在しないため波及なし。ただし後続 `feature/agent` / `feature/workflow` / `feature/room` は Empire を参照しないため影響なし（Empire 側が他 Aggregate の参照型を持つ非対称構造）
 
 ## 外部連携
@@ -154,7 +154,7 @@ sequenceDiagram
 
 ### 脅威モデル
 
-本 feature は domain 層のため、ほぼすべての攻撃面は HTTP API レイヤ / 添付配信レイヤで対処される（[`docs/architecture/threat-model.md`](../../architecture/threat-model.md) 参照）。本 feature 範囲では以下の 2 件に絞る。
+本 feature は domain 層のため、ほぼすべての攻撃面は HTTP API レイヤ / 添付配信レイヤで対処される（[`docs/design/threat-model.md`](../../design/threat-model.md) 参照）。本 feature 範囲では以下の 2 件に絞る。
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|
@@ -178,7 +178,7 @@ sequenceDiagram
 
 ## ER 図
 
-該当なし — 理由: 本 feature は domain 層のみで永続化スキーマは含まない。Empire の永続化は `feature/persistence` で扱う。永続化スキーマの方針は [`docs/architecture/domain-model.md`](../../architecture/domain-model.md) §残課題 を参照。
+該当なし — 理由: 本 feature は domain 層のみで永続化スキーマは含まない。Empire の永続化は `feature/persistence` で扱う。永続化スキーマの方針は [`docs/design/domain-model.md`](../../design/domain-model.md) §残課題 を参照。
 
 ```mermaid
 erDiagram

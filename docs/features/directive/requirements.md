@@ -1,7 +1,7 @@
 # 要件定義書
 
 > feature: `directive`
-> 関連: [requirements-analysis.md](requirements-analysis.md) / [`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) §Directive
+> 関連: [requirements-analysis.md](requirements-analysis.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Directive
 
 ## 機能要件
 
@@ -60,7 +60,7 @@
 
 ## データモデル
 
-`docs/architecture/domain-model/aggregates.md` §Directive の凍結済み定義に従う。本 feature では新規 VO は追加しない（`DirectiveId` は既存）。
+`docs/design/domain-model/aggregates.md` §Directive の凍結済み定義に従う。本 feature では新規 VO は追加しない（`DirectiveId` は既存）。
 
 | エンティティ | 属性 | 型 | 制約 | 関連 |
 |-------------|------|---|------|------|

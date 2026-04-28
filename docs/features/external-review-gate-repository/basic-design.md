@@ -18,7 +18,7 @@
 | REQ-ERGR-003 | Alembic 0008 revision | `backend/alembic/versions/0008_external_review_gate_aggregate.py` | 3 テーブル + INDEX 3 件、`down_revision="0007_task_aggregate"` |
 | REQ-ERGR-004 | CI 三層防衛拡張 Layer 1 | `scripts/ci/check_masking_columns.sh`（既存ファイル更新）| ExternalReviewGate 3 masking カラム明示登録（snapshot_body_markdown / feedback_text / comment） |
 | REQ-ERGR-004 | CI 三層防衛拡張 Layer 2 | `backend/tests/architecture/test_masking_columns.py`（既存ファイル更新）| parametrize に 3 masking カラム追加 |
-| REQ-ERGR-005 | storage.md 逆引き表更新 | `docs/architecture/domain-model/storage.md`（既存ファイル更新）| ExternalReviewGate 関連行追加・後続表記更新 |
+| REQ-ERGR-005 | storage.md 逆引き表更新 | `docs/design/domain-model/storage.md`（既存ファイル更新）| ExternalReviewGate 関連行追加・後続表記更新 |
 | 共通 | `tables/external_review_gates.py` | `backend/src/bakufu/infrastructure/persistence/sqlite/tables/` | `external_review_gates` テーブル ORM 定義（snapshot_body_markdown は MaskedText） |
 | 共通 | `tables/external_review_gate_attachments.py` | 同上 | `external_review_gate_attachments` テーブル ORM 定義 |
 | 共通 | `tables/external_review_audit_entries.py` | 同上 | `external_review_audit_entries` テーブル ORM 定義（comment は MaskedText） |
@@ -197,8 +197,8 @@ sequenceDiagram
 
 ## アーキテクチャへの影響
 
-- `docs/architecture/domain-model/storage.md` への変更: §逆引き表に ExternalReviewGate 関連行追加（本 PR で実施）
-- `docs/architecture/tech-stack.md` への変更: なし（既存スタックのみ使用）
+- `docs/design/domain-model/storage.md` への変更: §逆引き表に ExternalReviewGate 関連行追加（本 PR で実施）
+- `docs/design/tech-stack.md` への変更: なし（既存スタックのみ使用）
 - 既存 feature への波及:
   - CI (`check_masking_columns.sh`, `test_masking_columns.py`): 既存ファイルに 3 masking カラム追加
   - storage.md: 逆引き表更新（2 行更新 + 1 行追加）

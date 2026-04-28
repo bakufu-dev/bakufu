@@ -45,7 +45,7 @@
 
 | 項目 | 内容 |
 |------|------|
-| 入力 | `docs/architecture/domain-model/storage.md` §逆引き表（empire-repo PR #25 で Empire 行追加済み） |
+| 入力 | `docs/design/domain-model/storage.md` §逆引き表（empire-repo PR #25 で Empire 行追加済み） |
 | 処理 | §逆引き表に「Workflow 関連カラム」3 行を追加: (a) `workflow_stages.notify_channels_json: MaskedJSONEncoded`（webhook token マスキング、Schneier #6 実適用）、(b) `workflows` / `workflow_transitions` は masking 対象なし |
 | 出力 | storage.md §逆引き表に Workflow 関連 3 行が追加された状態 |
 | エラー時 | 該当なし（ドキュメント更新） |

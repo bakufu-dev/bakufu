@@ -4,7 +4,7 @@
 
 ## 確定 A: マスキング 9 種正規表現 + 環境変数 + ホームパス
 
-[`storage.md`](../../../architecture/domain-model/storage.md) §マスキング対象パターン の表を本 feature の `masking.py` に**そのまま**実装する。改変・追加は本 Issue では行わない（追加が必要な場合は別 Issue で `storage.md` 更新 + 同期 PR）。
+[`storage.md`](../../../design/domain-model/storage.md) §マスキング対象パターン の表を本 feature の `masking.py` に**そのまま**実装する。改変・追加は本 Issue では行わない（追加が必要な場合は別 Issue で `storage.md` 更新 + 同期 PR）。
 
 ### 9 種の正規表現（凍結）
 

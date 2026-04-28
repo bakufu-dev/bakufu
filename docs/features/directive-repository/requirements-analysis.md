@@ -2,7 +2,7 @@
 
 > feature: `directive-repository`
 > Issue: [#34 feat(directive-repository): Directive SQLite Repository (M2, 0006)](https://github.com/bakufu-dev/bakufu/issues/34)
-> 関連: [`docs/features/empire-repository/`](../empire-repository/) **テンプレート真実源**（§確定 A〜F + §Known Issues §BUG-EMR-001 規約） / [`docs/features/room-repository/`](../room-repository/) **直近テンプレート**（masking 対象あり版 + find_by_name 系拡張パターン） / [`docs/features/directive/`](../directive/) （domain 設計済み、PR #24 マージ済み） / [`docs/architecture/domain-model/storage.md`](../../architecture/domain-model/storage.md) §逆引き表（`Directive.text: MaskedText` 行追加対象）
+> 関連: [`docs/features/empire-repository/`](../empire-repository/) **テンプレート真実源**（§確定 A〜F + §Known Issues §BUG-EMR-001 規約） / [`docs/features/room-repository/`](../room-repository/) **直近テンプレート**（masking 対象あり版 + find_by_name 系拡張パターン） / [`docs/features/directive/`](../directive/) （domain 設計済み、PR #24 マージ済み） / [`docs/design/domain-model/storage.md`](../../design/domain-model/storage.md) §逆引き表（`Directive.text: MaskedText` 行追加対象）
 
 ## 人間の要求
 
@@ -43,7 +43,7 @@
 - save() は `directives` UPSERT のみ（子テーブルなし、empire §確定 B の delete-then-insert パターンを 1 テーブルに縮小適用）
 - count() は SQL `COUNT(*)`（empire §確定 D 踏襲）
 - **Protocol は 4 method**: `find_by_id` / `count` / `save(directive)` / `find_by_room(room_id)`（`find_by_task_id` は task-repository PR で method + INDEX + FK closure を**同時**追加 — §確定 R1-D 参照）
-- `save(directive)` は **標準 1 引数パターン**（Directive は `target_room_id` 属性を自身で持つため — [storage.md §Repository save() インターフェース設計パターン](../../architecture/domain-model/storage.md#repository-save-インターフェース設計パターン確定-h-補足) 標準パターン適用）
+- `save(directive)` は **標準 1 引数パターン**（Directive は `target_room_id` 属性を自身で持つため — [storage.md §Repository save() インターフェース設計パターン](../../design/domain-model/storage.md#repository-save-インターフェース設計パターン確定-h-補足) 標準パターン適用）
 - `target_room_id` の DB FK は `rooms.id` への ON DELETE **CASCADE**（Directive は Room が削除されると意味を失う — 委譲先 Room なき Directive は orphan）
 - `task_id` は nullable UUIDStr、**FK は張らない**（0006 時点で `tasks` テーブル未存在 — BUG-EMR-001 パターン、task-repository PR で `op.batch_alter_table` 経由 FK 追加を申し送り）
 - INDEX: `(target_room_id, created_at)` 非 UNIQUE（`find_by_room` の Room スコープ検索 + created_at ソートに複合 INDEX）
@@ -59,7 +59,7 @@
 | `task_id` FK を 0006 で `tasks.id` に張る | 0006 時点で `tasks` テーブル未存在（task-repository は後続 PR）。empire_room_refs と同じ forward reference 問題。task-repository PR で `op.batch_alter_table` 経由 FK 追加（BUG-EMR-001 規約） |
 | `find_by_room` を Protocol に追加せず application 層が全件 SELECT + filter | N+1 / 全件ロードで MVP の数十 Directive は耐えられるが、Room あたり数百 Directive になった場合にメモリ枯渇。INDEX(target_room_id, created_at) で効率的に検索する経路を最初から設計 |
 | `find_by_task_id` を本 PR の Protocol に追加する | **YAGNI 違反**。task-application も task-repository も未存在（後続 PR）で呼び出し側ゼロ。INDEX も「追加しない（YAGNI）」と同 PR 内で矛盾認定している（「method は今、INDEX は将来」は不整合）。task-repository PR で method + INDEX + FK closure を**同時**追加するのが正しい設計 — §確定 R1-D で凍結 |
-| `save(directive, room_id)` の非対称パターン | Directive は `target_room_id` を自身の属性として持つ（[directive/detailed-design.md §Aggregate Root: Directive](../directive/detailed-design.md) 属性表）。DB 永続化に必要な `target_room_id` を Directive 自身から取れるため非対称パターン不要。[storage.md §確定 H](../../architecture/domain-model/storage.md) 判断ルール参照 |
+| `save(directive, room_id)` の非対称パターン | Directive は `target_room_id` を自身の属性として持つ（[directive/detailed-design.md §Aggregate Root: Directive](../directive/detailed-design.md) 属性表）。DB 永続化に必要な `target_room_id` を Directive 自身から取れるため非対称パターン不要。[storage.md §確定 H](../../design/domain-model/storage.md) 判断ルール参照 |
 | `find_by_room` の ORDER BY を `created_at DESC` 単独 | BUG-EMR-001 規約「複合 key で決定論的順序」に違反。同時刻 Directive で順序非決定的。`created_at DESC, id DESC` とすることで id（PK、一意）を tiebreaker として決定論的順序を保証 |
 | `find_by_room` の ORDER BY を created_at ASC | Room チャネルで「最新 directive を先頭表示」するのが UI / CLI の自然な表示順（最も新しい CEO 指令が先頭、時系列降順）。ASC だと古い directive を先頭に表示する逆順になりユーザー体験が悪い |
 
@@ -75,7 +75,7 @@
 | empire §確定 D | `count()` は SQL `COUNT(*)` 限定 |
 | empire §確定 E | CI 三層防衛 Layer 1 + Layer 2 + Layer 3 全部に Directive テーブル明示登録 |
 | workflow §確定 E（正のチェック）| `directives.text` の `MaskedText` 必須を grep + arch test で物理保証 |
-| room §確定 R1-A（save パターン） | `save(directive: Directive)` 標準 1 引数（[storage.md §確定 H](../../architecture/domain-model/storage.md) 判断ルール適用） |
+| room §確定 R1-A（save パターン） | `save(directive: Directive)` 標準 1 引数（[storage.md §確定 H](../../design/domain-model/storage.md) 判断ルール適用） |
 
 #### 確定 R1-B: `target_room_id` FK 方向と ON DELETE 挙動
 
@@ -133,7 +133,7 @@
 |---|---|
 | Layer 1（grep guard） | `scripts/ci/check_masking_columns.sh` に `tables/directives.py` の `text` カラム宣言行に `MaskedText` 必須（正のチェック）+ `text` 以外のカラムに `MaskedText` / `MaskedJSONEncoded` が登場しない（過剰マスキング防止、負のチェック）を追加 |
 | Layer 2（arch test） | `backend/tests/architecture/test_masking_columns.py` の parametrize に `directives` テーブル追加、`directives.text` の `column.type.__class__ is MaskedText` を assert |
-| Layer 3（storage.md） | `docs/architecture/domain-model/storage.md` §逆引き表に `directives.text: MaskedText`（feature/directive-repository 実適用）行を追加 |
+| Layer 3（storage.md） | `docs/design/domain-model/storage.md` §逆引き表に `directives.text: MaskedText`（feature/directive-repository 実適用）行を追加 |
 
 #### 確定 R1-F: storage.md §逆引き表更新
 
@@ -151,7 +151,7 @@
 | CEO（リポジトリオーナー） | bakufu システムの directive 発行者 | 非技術者〜中級 | Room チャネルで `$` プレフィックスのメッセージを送信し directive を起票 | 発行した指令が安全に永続化され、後続 Task が生成されること |
 | 実装者（bakufu contributor） | directive-application / task-application 実装担当 | 上級 | DirectiveRepository を使って application 層を実装 | 型安全な 4 method Protocol で Directive を永続化・復元できること |
 
-<!-- bakufu システム全体ペルソナは docs/architecture/context.md §4 を参照。-->
+<!-- bakufu システム全体ペルソナは docs/analysis/personas.md を参照。-->
 
 ## 前提条件・制約
 

@@ -2,7 +2,7 @@
 
 > feature: `external-review-gate-repository`
 > Issue: [#36 feat(external-review-gate-repository): ExternalReviewGate SQLite Repository (M2, 0008)](https://github.com/bakufu-dev/bakufu/issues/36)
-> 関連: [`docs/features/empire-repository/`](../empire-repository/) **テンプレート真実源**（§確定 A〜F + §Known Issues §BUG-EMR-001 規約） / [`docs/features/task-repository/`](../task-repository/) **直近テンプレート**（多段階子テーブル + masking 対象カラムあり版） / [`docs/features/external-review-gate/`](../external-review-gate/) （domain 設計済み、PR #46 マージ済み） / [`docs/architecture/domain-model/storage.md`](../../architecture/domain-model/storage.md) §snapshot 凍結方式（inline コピー、sha256 参照）
+> 関連: [`docs/features/empire-repository/`](../empire-repository/) **テンプレート真実源**（§確定 A〜F + §Known Issues §BUG-EMR-001 規約） / [`docs/features/task-repository/`](../task-repository/) **直近テンプレート**（多段階子テーブル + masking 対象カラムあり版） / [`docs/features/external-review-gate/`](../external-review-gate/) （domain 設計済み、PR #46 マージ済み） / [`docs/design/domain-model/storage.md`](../../design/domain-model/storage.md) §snapshot 凍結方式（inline コピー、sha256 参照）
 
 ## 記述ルール（必ず守ること）
 
@@ -105,11 +105,11 @@ ExternalReviewGate の 3 masking カラムを CI 三層防衛に登録する:
 
 **Layer 2（arch test）**: `backend/tests/architecture/test_masking_columns.py` の parametrize に 3 行追加（各 `column.type.__class__ is MaskedText` を assert）。
 
-**Layer 3（storage.md）**: `docs/architecture/domain-model/storage.md` §逆引き表を本 PR で更新（§確定 R1-F）。
+**Layer 3（storage.md）**: `docs/design/domain-model/storage.md` §逆引き表を本 PR で更新（§確定 R1-F）。
 
 ### §確定 R1-F: storage.md 逆引き表の更新内容
 
-`docs/architecture/domain-model/storage.md` §逆引き表に追加・更新する行:
+`docs/design/domain-model/storage.md` §逆引き表に追加・更新する行:
 
 | 追加行 | 更新内容 |
 |------|---------|

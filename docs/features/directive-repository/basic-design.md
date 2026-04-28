@@ -18,7 +18,7 @@
 | REQ-DRR-003 | Alembic 0006 revision | `backend/alembic/versions/0006_directive_aggregate.py` | 1 テーブル + INDEX + FK 1 件追加、`down_revision="0005_room_aggregate"` |
 | REQ-DRR-004 | CI 三層防衛拡張 Layer 1 | `scripts/ci/check_masking_columns.sh`（既存ファイル更新）| Directive テーブル明示登録、`directives.text` の `MaskedText` 必須を assert（正のチェック）|
 | REQ-DRR-004 | CI 三層防衛拡張 Layer 2 | `backend/tests/architecture/test_masking_columns.py`（既存ファイル更新）| parametrize に Directive テーブル追加 |
-| REQ-DRR-005 | storage.md 逆引き表更新 | `docs/architecture/domain-model/storage.md`（既存ファイル更新）| Directive 関連 2 行追加 |
+| REQ-DRR-005 | storage.md 逆引き表更新 | `docs/design/domain-model/storage.md`（既存ファイル更新）| Directive 関連 2 行追加 |
 | 共通 | tables/directives.py | `backend/src/bakufu/infrastructure/persistence/sqlite/tables/` | 新規 1 ファイル（text は MaskedText、directive §確定 G 実適用） |
 
 ```
@@ -175,8 +175,8 @@ sequenceDiagram
 
 ## アーキテクチャへの影響
 
-- `docs/architecture/domain-model/storage.md` への変更: §逆引き表に `directives.text: MaskedText` 行追加（本 PR で実施）
-- `docs/architecture/tech-stack.md` への変更: なし（既存スタックのみ使用）
+- `docs/design/domain-model/storage.md` への変更: §逆引き表に `directives.text: MaskedText` 行追加（本 PR で実施）
+- `docs/design/tech-stack.md` への変更: なし（既存スタックのみ使用）
 - 既存 feature への波及:
   - empire-repository: なし（BUG-EMR-001 は room-repository PR #47 で close 済み）
   - CI (`check_masking_columns.sh`, `test_masking_columns.py`): 既存ファイルに Directive テーブル追加

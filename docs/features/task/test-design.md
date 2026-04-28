@@ -266,7 +266,7 @@ backend/
 
 **Schneier 申し送り（前 PR レビューより継承 + 本 PR 固有）**:
 
-- **`Task.last_error` の secret マスキング**: 本 feature では文字列保持のみ。永続化前マスキング規則（[`storage.md`](../../architecture/domain-model/storage.md) §シークレットマスキング規則 / §逆引き表 既登録）の適用は `feature/task-repository` 責務として明示申し送り（detailed-design §データ構造（永続化キー）に `MaskedText` 列指定済）
+- **`Task.last_error` の secret マスキング**: 本 feature では文字列保持のみ。永続化前マスキング規則（[`storage.md`](../../design/domain-model/storage.md) §シークレットマスキング規則 / §逆引き表 既登録）の適用は `feature/task-repository` 責務として明示申し送り（detailed-design §データ構造（永続化キー）に `MaskedText` 列指定済）
 - **`Deliverable.body_markdown` の secret マスキング**: 同上、Task aggregate 経由で持つ Deliverable VO の body_markdown は永続化前マスキング対象（既存 storage.md §逆引き表登録）
 - **本 feature 固有の申し送り**:
   - `current_stage_id` / `transition_id` / `next_stage_id` の Workflow 内存在検証 / `agent_ids` の Room.members 内検証 / Stage.kind=EXTERNAL_REVIEW 検証 / `by_agent_id` ∈ assigned_agent_ids 検証 — すべて `TaskService` 系 application 層責務（確定 K の責務分離マトリクス 5 件）。`feature/task-application` 実装時に MSG-TS-010 + 5 件の参照整合性検査を漏れなく実装する申し送り

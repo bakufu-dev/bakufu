@@ -160,7 +160,7 @@
 
 | テストID | 対象モジュール連携 | 使用 fixture | 前提条件 | 操作 | 期待結果 |
 |---------|------------------|--------------|---------|------|---------|
-| TC-DOC-EMR-001 | storage.md §逆引き表に Empire 行存在 | repo root | `docs/architecture/domain-model/storage.md` 編集済み | `grep -E '^\| Empire' docs/architecture/domain-model/storage.md` を実行 | 「Empire 関連カラム: masking 対象なし」を示す行がヒット（後続 Repository PR が同様の行を追加するテンプレート） |
+| TC-DOC-EMR-001 | storage.md §逆引き表に Empire 行存在 | repo root | `docs/design/domain-model/storage.md` 編集済み | `grep -E '^\| Empire' docs/design/domain-model/storage.md` を実行 | 「Empire 関連カラム: masking 対象なし」を示す行がヒット（後続 Repository PR が同様の行を追加するテンプレート） |
 
 ### シングルトン強制責務分離（確定 D）
 

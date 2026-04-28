@@ -36,7 +36,7 @@ class AgentMembership(BaseModel):
     ``joined_at`` per-role lets the UI surface "joined as LEADER on X, then
     added REVIEWER on Y" naturally.
 
-    Stored under ``docs/architecture/domain-model/value-objects.md`` §AgentMembership;
+    Stored under ``docs/design/domain-model/value-objects.md`` §AgentMembership;
     Room is the only feature that composes this VO today.
     """
 
@@ -66,7 +66,7 @@ class PromptKit(BaseModel):
 
     The persistence layer applies secret masking to ``prefix_markdown``
     *before* it lands in the SQLite ``rooms`` row — see
-    ``docs/architecture/domain-model/storage.md`` §シークレットマスキング規則.
+    ``docs/design/domain-model/storage.md`` §シークレットマスキング規則.
     The aggregate keeps the raw user input so the UI can read it back
     unchanged; the masking gateway is **only** at the persistence boundary.
     """

@@ -1,7 +1,7 @@
 # 基本設計書
 
 > feature: `persistence-foundation`
-> 関連: [requirements.md](requirements.md) / [`tech-stack.md`](../../architecture/tech-stack.md) §ORM / [`storage.md`](../../architecture/domain-model/storage.md) §シークレットマスキング規則
+> 関連: [requirements.md](requirements.md) / [`tech-stack.md`](../../design/tech-stack.md) §ORM / [`storage.md`](../../design/domain-model/storage.md) §シークレットマスキング規則
 
 ## 記述ルール（必ず守ること）
 
@@ -208,7 +208,7 @@ classDiagram
 1. クラッシュにより `bakufu_pid_registry` に孤児 PID が残存、`domain_event_outbox` に `DISPATCHING` 行が残存
 2. 再起動時の Bootstrap で:
 3. (4) `PidRegistryGC` が `psutil.create_time()` と `started_at` を比較し、一致なら子孫を SIGTERM → SIGKILL → DELETE
-4. (6) `OutboxDispatcher` 起動後、polling SQL の `(DISPATCHING AND updated_at < now() - 5min)` 条件で **`DISPATCHING` のまま放置された行を強制再取得**（[`events-and-outbox.md`](../../architecture/domain-model/events-and-outbox.md) §Dispatcher の動作）
+4. (6) `OutboxDispatcher` 起動後、polling SQL の `(DISPATCHING AND updated_at < now() - 5min)` 条件で **`DISPATCHING` のまま放置された行を強制再取得**（[`events-and-outbox.md`](../../design/domain-model/events-and-outbox.md) §Dispatcher の動作）
 
 ### ユースケース 5: マスキングの永続化前適用（TypeDecorator `process_bind_param` 経路）
 
@@ -285,10 +285,10 @@ sequenceDiagram
 
 ## アーキテクチャへの影響
 
-- `docs/architecture/domain-model.md` への変更: モジュール配置案の `infrastructure/persistence/sqlite/` 配下が本 Issue で実体化される（モジュール配置案そのものは凍結済みで変更不要）
-- `docs/architecture/tech-stack.md` への変更: なし（SQLAlchemy 2.x / Alembic は既存確定）
-- `docs/architecture/domain-model/storage.md` への変更: なし（マスキング規則は既存確定で本 Issue は配線実装のみ）
-- `docs/architecture/domain-model/events-and-outbox.md` への変更: §`domain_event_outbox` の `payload_json` / `last_error` マスキングが SQLAlchemy TypeDecorator (`MaskedJSONEncoded` / `MaskedText`) の `process_bind_param` で **Core / ORM 両経路で強制ゲートウェイ化**される旨を反映（旧 listener 案は PR #23 BUG-PF-001 で反転却下）
+- `docs/design/domain-model.md` への変更: モジュール配置案の `infrastructure/persistence/sqlite/` 配下が本 Issue で実体化される（モジュール配置案そのものは凍結済みで変更不要）
+- `docs/design/tech-stack.md` への変更: なし（SQLAlchemy 2.x / Alembic は既存確定）
+- `docs/design/domain-model/storage.md` への変更: なし（マスキング規則は既存確定で本 Issue は配線実装のみ）
+- `docs/design/domain-model/events-and-outbox.md` への変更: §`domain_event_outbox` の `payload_json` / `last_error` マスキングが SQLAlchemy TypeDecorator (`MaskedJSONEncoded` / `MaskedText`) の `process_bind_param` で **Core / ORM 両経路で強制ゲートウェイ化**される旨を反映（旧 listener 案は PR #23 BUG-PF-001 で反転却下）
 - 既存 feature への波及: なし。empire / workflow / agent / room の domain 層は本 Issue を import しない（依存方向: domain ← infrastructure）
 
 ## 外部連携
@@ -313,7 +313,7 @@ sequenceDiagram
 
 ### 脅威モデル
 
-詳細な信頼境界は [`docs/architecture/threat-model.md`](../../architecture/threat-model.md)。本 feature 範囲では以下の **9 件**（Schneier 重大 4 + 中等 4 + 軽微 1 を脅威モデルに昇格）:
+詳細な信頼境界は [`docs/design/threat-model.md`](../../design/threat-model.md)。本 feature 範囲では以下の **9 件**（Schneier 重大 4 + 中等 4 + 軽微 1 を脅威モデルに昇格）:
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|
@@ -344,7 +344,7 @@ sequenceDiagram
 
 ##### マスキング適用先 → 配線箇所の逆引き
 
-[`storage.md`](../../architecture/domain-model/storage.md) §適用先 → 配線箇所の逆引き表 を参照。新規 Aggregate Repository PR は本表に行を追加する責務（masking 対象カラムが `MaskedJSONEncoded` / `MaskedText` 以外の型で永続化される PR は CI grep guard で自動却下 + コードレビューでも却下）。
+[`storage.md`](../../design/domain-model/storage.md) §適用先 → 配線箇所の逆引き表 を参照。新規 Aggregate Repository PR は本表に行を追加する責務（masking 対象カラムが `MaskedJSONEncoded` / `MaskedText` 以外の型で永続化される PR は CI grep guard で自動却下 + コードレビューでも却下）。
 
 ## ER 図
 

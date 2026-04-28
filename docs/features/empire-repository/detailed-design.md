@@ -196,7 +196,7 @@ Empire のシングルトン制約（bakufu インスタンスにつき 1 件）
 
 ##### Layer 3: storage.md 逆引き表更新（REQ-EMR-005）
 
-`docs/architecture/domain-model/storage.md` §逆引き表に「Empire 関連カラム: masking 対象なし」行を追加（後続 Repository PR が誤って `MaskedText` を Empire に追加しないテンプレート）。
+`docs/design/domain-model/storage.md` §逆引き表に「Empire 関連カラム: masking 対象なし」行を追加（後続 Repository PR が誤って `MaskedText` を Empire に追加しないテンプレート）。
 
 ##### 後続 Repository PR のテンプレート責務
 
@@ -421,6 +421,6 @@ down_revision: `0001_init_audit_pid_outbox`
 - [Hexagonal Architecture (Ports and Adapters)](https://alistair.cockburn.us/hexagonal-architecture/) — Repository ポート配置の根拠
 - [`docs/features/persistence-foundation/`](../persistence-foundation/) — M2 永続化基盤（PR #23 マージ済み）
 - [`docs/features/empire/`](../empire/) — Empire domain 設計（PR #15 マージ済み）
-- [`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) — Empire 凍結済み設計
-- [`docs/architecture/domain-model/storage.md`](../../architecture/domain-model/storage.md) — 逆引き表（本 PR で Empire 行追加）
-- [`docs/architecture/threat-model.md`](../../architecture/threat-model.md) — A04 / A08 対応根拠
+- [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) — Empire 凍結済み設計
+- [`docs/design/domain-model/storage.md`](../../design/domain-model/storage.md) — 逆引き表（本 PR で Empire 行追加）
+- [`docs/design/threat-model.md`](../../design/threat-model.md) — A04 / A08 対応根拠

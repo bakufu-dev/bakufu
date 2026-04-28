@@ -18,7 +18,7 @@
 | REQ-RR-003 | Alembic 0005 revision | `backend/alembic/versions/0005_room_aggregate.py` | 2 テーブル + UNIQUE + INDEX + FK 3 件追加、`down_revision="0004_agent_aggregate"`、`empire_room_refs.room_id` FK closure 同梱 |
 | REQ-RR-004 | CI 三層防衛拡張 Layer 1 | `scripts/ci/check_masking_columns.sh`（既存ファイル更新）| Room 2 テーブル明示登録、`rooms.prompt_kit_prefix_markdown` の `MaskedText` 必須を assert（正のチェック）|
 | REQ-RR-004 | CI 三層防衛拡張 Layer 2 | `backend/tests/architecture/test_masking_columns.py`（既存ファイル更新）| parametrize に Room 2 テーブル追加 |
-| REQ-RR-005 | storage.md 逆引き表更新 | `docs/architecture/domain-model/storage.md`（既存ファイル更新）| Room 関連 2 行追加（既存 `PromptKit.prefix_markdown` 行を本 PR で実適用済みに更新） |
+| REQ-RR-005 | storage.md 逆引き表更新 | `docs/design/domain-model/storage.md`（既存ファイル更新）| Room 関連 2 行追加（既存 `PromptKit.prefix_markdown` 行を本 PR で実適用済みに更新） |
 | REQ-RR-006 | empire-repo BUG-EMR-001 close 同期 | `docs/features/empire-repository/detailed-design.md`（既存ファイル更新）| §Known Issues §BUG-EMR-001 + §`empire_room_refs` テーブル §FK を張らない理由 を更新 |
 | 共通 | tables/rooms.py / room_members.py | `backend/src/bakufu/infrastructure/persistence/sqlite/tables/` | 新規 2 ファイル |
 
@@ -211,11 +211,11 @@ sequenceDiagram
 
 ## アーキテクチャへの影響
 
-- `docs/architecture/domain-model.md` への変更: なし
-- `docs/architecture/domain-model/storage.md` への変更: **§逆引き表に Room 関連 2 行追加 + 既存 `PromptKit.prefix_markdown` 行を本 PR で実適用済みに更新**（§確定 R1-G、本 PR で同一コミット）
-- `docs/architecture/domain-model/aggregates.md` への変更: なし（Room §定義は既存 PR #22 で凍結済み）
-- `docs/architecture/migration-plan.md` への変更: なし（Room の Postgres 移行論点は本 PR 範囲外、ただし `op.batch_alter_table` の SQLite 特化挙動は将来の Postgres 移行時に Postgres ネイティブ ALTER TABLE で代替可能なため migration-plan.md §TODO-MIG-NNN への追記は不要）
-- `docs/architecture/tech-stack.md` への変更: なし
+- `docs/design/domain-model.md` への変更: なし
+- `docs/design/domain-model/storage.md` への変更: **§逆引き表に Room 関連 2 行追加 + 既存 `PromptKit.prefix_markdown` 行を本 PR で実適用済みに更新**（§確定 R1-G、本 PR で同一コミット）
+- `docs/design/domain-model/aggregates.md` への変更: なし（Room §定義は既存 PR #22 で凍結済み）
+- `docs/design/migration-plan.md` への変更: なし（Room の Postgres 移行論点は本 PR 範囲外、ただし `op.batch_alter_table` の SQLite 特化挙動は将来の Postgres 移行時に Postgres ネイティブ ALTER TABLE で代替可能なため migration-plan.md §TODO-MIG-NNN への追記は不要）
+- `docs/design/tech-stack.md` への変更: なし
 - 既存 feature への波及:
   - `feature/persistence-foundation`（PR #23）の `MaskedText` TypeDecorator + room §確定 G hook 構造の上に乗る、本 PR で実適用配線
   - `feature/empire-repository`（PR #29 / #30）+ `feature/workflow-repository`（PR #41）+ `feature/agent-repository`（PR #45）テンプレート踏襲
@@ -244,7 +244,7 @@ sequenceDiagram
 
 ### 脅威モデル
 
-詳細な信頼境界は [`docs/architecture/threat-model.md`](../../architecture/threat-model.md)。本 feature 範囲では以下の 4 件。
+詳細な信頼境界は [`docs/design/threat-model.md`](../../design/threat-model.md)。本 feature 範囲では以下の 4 件。
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|
@@ -262,7 +262,7 @@ sequenceDiagram
 | A03 | Injection | **適用**: SQLAlchemy ORM 経由で SQL injection 防御。raw SQL は使わない |
 | A04 | Insecure Design | **適用**: Repository ポート分離 + delete-then-insert + DB UNIQUE(room_id, agent_id, role) + FK RESTRICT による多層防衛 |
 | A05 | Security Misconfiguration | M2 永続化基盤の PRAGMA 強制の上に乗る |
-| A06 | Vulnerable Components | SQLAlchemy 2.x / Alembic / aiosqlite — persistence-foundation PR #23 で pip-audit 確認済み（本 PR で新規依存なし）。**CVE-2025-6965（SQLite < 3.50.2）**: 本システムは SQLAlchemy ORM 経由のみ SQL を発行（A03 の raw SQL 禁止）しており、外部入力から SQL を inject する攻撃前提が物理遮断されるため直接の悪用経路なし。デプロイ環境の SQLite バージョンは **>= 3.50.2** を ops 要件とし、`docs/architecture/tech-stack.md` に制約を追記する |
+| A06 | Vulnerable Components | SQLAlchemy 2.x / Alembic / aiosqlite — persistence-foundation PR #23 で pip-audit 確認済み（本 PR で新規依存なし）。**CVE-2025-6965（SQLite < 3.50.2）**: 本システムは SQLAlchemy ORM 経由のみ SQL を発行（A03 の raw SQL 禁止）しており、外部入力から SQL を inject する攻撃前提が物理遮断されるため直接の悪用経路なし。デプロイ環境の SQLite バージョンは **>= 3.50.2** を ops 要件とし、`docs/design/tech-stack.md` に制約を追記する |
 | A07 | Auth Failures | 該当なし |
 | A08 | Data Integrity Failures | **適用**: foreign_keys ON + ON DELETE CASCADE/RESTRICT で参照整合性、Tx 原子性、UNIQUE(room_id, agent_id, role) で member 二重防衛、empire_room_refs FK closure で Empire ↔ Room 整合性物理保証 |
 | A09 | Logging Failures | **適用**: `rooms.prompt_kit_prefix_markdown` のマスキングにより SQL ログ / 監査ログ経路で webhook token 漏洩なし（room §確定 G 実適用の二次効果）|

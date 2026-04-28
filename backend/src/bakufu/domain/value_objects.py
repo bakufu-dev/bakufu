@@ -1,7 +1,7 @@
 """Shared domain value objects and ID types.
 
 This module hosts identifiers, enums, and reference VOs that other Aggregates
-in the bakufu domain depend on. Per ``docs/architecture/domain-model/value-objects.md``,
+in the bakufu domain depend on. Per ``docs/design/domain-model/value-objects.md``,
 ID types are conceptually distinct UUIDv4 values; they are exposed as PEP 695
 ``type`` aliases over ``UUID`` to keep the surface minimal and Pydantic
 serialization unambiguous. Future features may refine them via ``NewType``
@@ -93,7 +93,7 @@ external-review-gate detailed-design §確定 R1-A."""
 class Role(StrEnum):
     """Roles an :class:`AgentRef` can take.
 
-    Mirrors the canonical list in ``docs/architecture/domain-model/value-objects.md``.
+    Mirrors the canonical list in ``docs/design/domain-model/value-objects.md``.
     Stored as ``str`` (StrEnum) so SQLite/JSON serialization is trivial in later
     persistence features without wrappers.
     """
@@ -204,7 +204,7 @@ class AuditAction(StrEnum):
     (``VIEWED`` from ``record_view`` plus ``APPROVED`` / ``REJECTED``
     / ``CANCELLED`` mirroring the decision transitions); the
     remaining six values frozen in
-    ``docs/architecture/domain-model/value-objects.md`` §列挙型一覧
+    ``docs/design/domain-model/value-objects.md`` §列挙型一覧
     (``RETRIED`` / ``ADMIN_RETRY_TASK`` / ``ADMIN_CANCEL_TASK`` /
     ``ADMIN_RETRY_EVENT`` / ``ADMIN_LIST_BLOCKED`` /
     ``ADMIN_LIST_DEAD_LETTERS``) join when the Admin CLI feature

@@ -45,7 +45,7 @@
 
 | 項目 | 内容 |
 |------|------|
-| 入力 | `docs/architecture/domain-model/storage.md` §逆引き表（Directive 残カラム行が最終行） |
+| 入力 | `docs/design/domain-model/storage.md` §逆引き表（Directive 残カラム行が最終行） |
 | 処理 | §逆引き表に Task 関連行を追加・更新: (a) `Task.last_error`（`tasks.last_error`）を `（後続）` から **本 PR で配線完了** に更新、(b) `Deliverable.body_markdown`（`deliverables.body_markdown`）を同様に更新、(c) `Conversation.messages[].body_markdown` は §BUG-TR-002 凍結済みのため `feature/conversation-repository`（後続）のまま据え置き、(d) Task 残カラム（masking 非対象）を明示追加 |
 | 出力 | storage.md §逆引き表が「Task 関連 2 masking カラムは本 PR で配線完了、Task 残カラムは masking 対象なし」状態 |
 | エラー時 | 該当なし |

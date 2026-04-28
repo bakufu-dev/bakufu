@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_STORAGE_MD = _REPO_ROOT / "docs" / "architecture" / "domain-model" / "storage.md"
+_STORAGE_MD = _REPO_ROOT / "docs" / "design" / "domain-model" / "storage.md"
 
 
 @pytest.fixture(scope="module")
@@ -25,7 +25,7 @@ def storage_md_text() -> str:
     """Read storage.md once per module (the file is small)."""
     assert _STORAGE_MD.is_file(), (
         f"storage.md missing at {_STORAGE_MD}; the §逆引き表 lives there per "
-        f"docs/architecture/domain-model/storage.md."
+        f"docs/design/domain-model/storage.md."
     )
     return _STORAGE_MD.read_text(encoding="utf-8")
 

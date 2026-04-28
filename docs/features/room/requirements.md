@@ -1,7 +1,7 @@
 # 要件定義書
 
 > feature: `room`
-> 関連: [requirements-analysis.md](requirements-analysis.md) / [`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) §Room
+> 関連: [requirements-analysis.md](requirements-analysis.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Room
 
 ## 機能要件
 
@@ -87,7 +87,7 @@
 
 ## データモデル
 
-`docs/architecture/domain-model/aggregates.md` §Room の凍結済み定義に従う。本 feature では `PromptKit` VO の属性確定（[`value-objects.md`](../../architecture/domain-model/value-objects.md) に追記）を行う。
+`docs/design/domain-model/aggregates.md` §Room の凍結済み定義に従う。本 feature では `PromptKit` VO の属性確定（[`value-objects.md`](../../design/domain-model/value-objects.md) に追記）を行う。
 
 | エンティティ | 属性 | 型 | 制約 | 関連 |
 |-------------|------|---|------|------|

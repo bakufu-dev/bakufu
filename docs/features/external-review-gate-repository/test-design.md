@@ -38,7 +38,7 @@
 | **6** | Alembic 0008 revision が 3 テーブル（`external_review_gates` / `external_review_gate_attachments` / `external_review_audit_entries`）と INDEX 3 件（`task_id_created` / `reviewer_decision` / `decision`）を作成し、upgrade/downgrade が idempotent | TC-IT-ERGR-001 / 002 / 003 / 005 |
 | **7** | `external_review_gates.task_id` FK ON DELETE CASCADE が機能する（Task 削除で Gate が自動削除）| TC-IT-ERGR-007 |
 | **8** | `reviewer_id` / `snapshot_committed_by` が FK を持たない（§設計決定 ERGR-001: Aggregate 境界、Owner Aggregate 未実装）| TC-IT-ERGR-008 |
-| **9** | `docs/architecture/domain-model/storage.md` §逆引き表に ExternalReviewGate 関連行（3 masking カラム含む）が存在する | TC-DOC-ERGR-001 |
+| **9** | `docs/design/domain-model/storage.md` §逆引き表に ExternalReviewGate 関連行（3 masking カラム含む）が存在する | TC-DOC-ERGR-001 |
 
 ## テストマトリクス
 
@@ -213,7 +213,7 @@
 | テストID | 対象 | 使用 fixture | 前提条件 | 操作 | 期待結果 |
 |---------|-----|--------------|---------|------|---------|
 | TC-UT-ERGR-arch | Layer 2: `tests/architecture/test_masking_columns.py` の ExternalReviewGate parametrize 拡張（**3 カラム**）| `Base.metadata` | M2 永続化基盤の arch test に masking 検証構造あり | parametrize に `("external_review_gates", "snapshot_body_markdown", MaskedText)` / `("external_review_gates", "feedback_text", MaskedText)` / `("external_review_audit_entries", "comment", MaskedText)` を追加 | pass（3 カラムは MaskedText、その他カラムは masking なし）。後続 PR が誤ってカラム型を変更した瞬間に落下して PR ブロック |
-| TC-DOC-ERGR-001 | storage.md §逆引き表 ExternalReviewGate 行存在（受入基準 9）| repo root | `docs/architecture/domain-model/storage.md` 編集済み（本 PR で実施）| `tests/docs/test_storage_md_back_index.py` で ExternalReviewGate 行検証 | (a) `external_review_gates.snapshot_body_markdown: MaskedText` が §逆引き表に存在、(b) `external_review_gates.feedback_text: MaskedText` が存在、(c) `external_review_audit_entries.comment: MaskedText` が存在、(d) ExternalReviewGate 残カラム（masking 対象なし）行が存在 |
+| TC-DOC-ERGR-001 | storage.md §逆引き表 ExternalReviewGate 行存在（受入基準 9）| repo root | `docs/design/domain-model/storage.md` 編集済み（本 PR で実施）| `tests/docs/test_storage_md_back_index.py` で ExternalReviewGate 行検証 | (a) `external_review_gates.snapshot_body_markdown: MaskedText` が §逆引き表に存在、(b) `external_review_gates.feedback_text: MaskedText` が存在、(c) `external_review_audit_entries.comment: MaskedText` が存在、(d) ExternalReviewGate 残カラム（masking 対象なし）行が存在 |
 
 ### Lifecycle 統合シナリオ
 

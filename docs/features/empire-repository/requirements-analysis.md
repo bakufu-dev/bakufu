@@ -2,7 +2,7 @@
 
 > feature: `empire-repository`
 > Issue: [#25 feat(empire-repository): Empire SQLite Repository (M2)](https://github.com/bakufu-dev/bakufu/issues/25)
-> 凍結済み設計: [`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) §Empire / [`docs/features/persistence-foundation/requirements-analysis.md`](../persistence-foundation/requirements-analysis.md) §確定 R1-D（TypeDecorator 採用 + CI 三層防衛）/ [`docs/features/empire/`](../empire/) （domain 設計済み）
+> 凍結済み設計: [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Empire / [`docs/features/persistence-foundation/requirements-analysis.md`](../persistence-foundation/requirements-analysis.md) §確定 R1-D（TypeDecorator 採用 + CI 三層防衛）/ [`docs/features/empire/`](../empire/) （domain 設計済み）
 
 ## 人間の要求
 
@@ -14,7 +14,7 @@
 
 ### 現状の痛点
 
-1. M2 永続化基盤（PR #23）が完了したが、**Aggregate 別 Repository が一切実装されていない**。`mvp-scope.md` 受入基準 #8「再起動後も Empire / Room / Agent / Task / Gate の状態が SQLite から復元される」を満たす経路が存在しない
+1. M2 永続化基盤（PR #23）が完了したが、**Aggregate 別 Repository が一切実装されていない**。`requirements/acceptance-criteria.md` 受入基準 #8「再起動後も Empire / Room / Agent / Task / Gate の状態が SQLite から復元される」を満たす経路が存在しない
 2. 後続 Repository PR（workflow / agent / room / directive / task / external-review-gate）は **Repository 実装パターンの真実源**を必要としている。最初の PR が確立しないと 6 件の PR 並列着手で実装方針が分散する
 3. M3 HTTP API は全 Aggregate の Repository を前提とする（`POST /empires` / `GET /empires/{id}` 等）。Repository が揃わないと M3 着手不可
 
@@ -156,7 +156,7 @@ Empire テーブル群（`empires` / `empire_room_refs` / `empire_agent_refs`）
 - ジャーニー 4: ファイル配置・命名規則が機械的に follow できる
 - ジャーニー 5: テスト構造が `test_empire_repository.py` を雛形にできる
 
-bakufu システム全体のペルソナは [`docs/architecture/context.md`](../../architecture/context.md) §4 を参照。
+bakufu システム全体のペルソナは [`docs/analysis/personas.md`](../../analysis/personas.md) を参照。
 
 ## 前提条件・制約
 
@@ -196,7 +196,7 @@ bakufu システム全体のペルソナは [`docs/architecture/context.md`](../
 | 可用性 | M2 永続化基盤（WAL モード + crash safety + masking gateway）の上に乗る、追加要件なし |
 | 保守性 | pyright strict pass / ruff 警告ゼロ / カバレッジ 90% 以上（基盤に近いコードのため高カバレッジ目標、persistence-foundation 実績水準） |
 | 可搬性 | M2 と同じ（POSIX 限定機能なし、純 SQLAlchemy） |
-| セキュリティ | Empire には masking 対象カラムなし。CI 三層防衛で「対象なし」を明示登録（後続 Repository PR の漏れ防止）。詳細は [`threat-model.md`](../../architecture/threat-model.md) §A4 |
+| セキュリティ | Empire には masking 対象カラムなし。CI 三層防衛で「対象なし」を明示登録（後続 Repository PR の漏れ防止）。詳細は [`threat-model.md`](../../design/threat-model.md) §A4 |
 
 ## 受入基準
 

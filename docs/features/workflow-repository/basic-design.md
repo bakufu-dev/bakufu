@@ -18,7 +18,7 @@
 | REQ-WFR-003 | Alembic 0003 revision | `backend/alembic/versions/0003_workflow_aggregate.py` | 3 テーブル + UNIQUE 制約 + INDEX 追加、`down_revision="0002_empire_aggregate"` |
 | REQ-WFR-004 | CI 三層防衛拡張（Layer 1） | `scripts/ci/check_masking_columns.sh`（既存ファイル更新） | Workflow 3 テーブル明示登録、`notify_channels_json` の `MaskedJSONEncoded` 必須を assert |
 | REQ-WFR-004 | CI 三層防衛拡張（Layer 2） | `backend/tests/architecture/test_masking_columns.py`（既存ファイル更新） | parametrize に Workflow 3 テーブル追加 |
-| REQ-WFR-005 | storage.md 逆引き表更新 | `docs/architecture/domain-model/storage.md`（既存ファイル更新） | Workflow 関連 3 行追加 |
+| REQ-WFR-005 | storage.md 逆引き表更新 | `docs/design/domain-model/storage.md`（既存ファイル更新） | Workflow 関連 3 行追加 |
 | 共通 | tables/workflows.py / workflow_stages.py / workflow_transitions.py | `backend/src/bakufu/infrastructure/persistence/sqlite/tables/` | 新規 3 ファイル |
 
 ```
@@ -177,9 +177,9 @@ sequenceDiagram
 
 ## アーキテクチャへの影響
 
-- `docs/architecture/domain-model.md` への変更: なし（モジュール配置案は概念定義済み、本 PR で実体化）
-- `docs/architecture/domain-model/storage.md` への変更: **§逆引き表に Workflow 関連 3 行追加**（§確定 R1-E、本 PR で同一コミット）
-- `docs/architecture/tech-stack.md` への変更: なし
+- `docs/design/domain-model.md` への変更: なし（モジュール配置案は概念定義済み、本 PR で実体化）
+- `docs/design/domain-model/storage.md` への変更: **§逆引き表に Workflow 関連 3 行追加**（§確定 R1-E、本 PR で同一コミット）
+- `docs/design/tech-stack.md` への変更: なし
 - 既存 feature への波及:
   - `feature/persistence-foundation`（PR #23）の上に乗る
   - `feature/empire-repository`（PR #29 / #30）テンプレート踏襲
@@ -207,7 +207,7 @@ sequenceDiagram
 
 ### 脅威モデル
 
-詳細な信頼境界は [`docs/architecture/threat-model.md`](../../architecture/threat-model.md)。本 feature 範囲では以下の 2 件。
+詳細な信頼境界は [`docs/design/threat-model.md`](../../design/threat-model.md)。本 feature 範囲では以下の 2 件。
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|

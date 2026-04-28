@@ -18,7 +18,7 @@
 | REQ-AGR-003 | Alembic 0004 revision | `backend/alembic/versions/0004_agent_aggregate.py` | 3 テーブル + UNIQUE + partial unique index 追加、`down_revision="0003_workflow_aggregate"` |
 | REQ-AGR-004 | CI 三層防衛拡張 Layer 1 | `scripts/ci/check_masking_columns.sh`（既存ファイル更新）| Agent 3 テーブル明示登録、`agents.prompt_body` の `MaskedText` 必須を assert（正のチェック）|
 | REQ-AGR-004 | CI 三層防衛拡張 Layer 2 | `backend/tests/architecture/test_masking_columns.py`（既存ファイル更新）| parametrize に Agent 3 テーブル追加 |
-| REQ-AGR-005 | storage.md 逆引き表更新 | `docs/architecture/domain-model/storage.md`（既存ファイル更新）| Agent 関連 2 行追加（既存 `Persona.prompt_body` 行を本 PR で実適用済みに更新） |
+| REQ-AGR-005 | storage.md 逆引き表更新 | `docs/design/domain-model/storage.md`（既存ファイル更新）| Agent 関連 2 行追加（既存 `Persona.prompt_body` 行を本 PR で実適用済みに更新） |
 | 共通 | tables/agents.py / agent_providers.py / agent_skills.py | `backend/src/bakufu/infrastructure/persistence/sqlite/tables/` | 新規 3 ファイル |
 
 ```
@@ -200,10 +200,10 @@ sequenceDiagram
 
 ## アーキテクチャへの影響
 
-- `docs/architecture/domain-model.md` への変更: なし
-- `docs/architecture/domain-model/storage.md` への変更: **§逆引き表に Agent 関連 2 行追加 + 既存 `Persona.prompt_body` 行を本 PR で実適用済みに更新**（§確定 R1-E、本 PR で同一コミット）
-- `docs/architecture/migration-plan.md` への変更: なし（Agent は Postgres 移行論点なし、本 Aggregate の FK 構造に循環なし）
-- `docs/architecture/tech-stack.md` への変更: なし
+- `docs/design/domain-model.md` への変更: なし
+- `docs/design/domain-model/storage.md` への変更: **§逆引き表に Agent 関連 2 行追加 + 既存 `Persona.prompt_body` 行を本 PR で実適用済みに更新**（§確定 R1-E、本 PR で同一コミット）
+- `docs/design/migration-plan.md` への変更: なし（Agent は Postgres 移行論点なし、本 Aggregate の FK 構造に循環なし）
+- `docs/design/tech-stack.md` への変更: なし
 - 既存 feature への波及:
   - `feature/persistence-foundation`（PR #23）の `MaskedText` TypeDecorator + Schneier #3 hook 構造の上に乗る、本 PR で実適用配線
   - `feature/empire-repository`（PR #29 / #30）+ `feature/workflow-repository`（PR #41）テンプレート踏襲
@@ -231,7 +231,7 @@ sequenceDiagram
 
 ### 脅威モデル
 
-詳細な信頼境界は [`docs/architecture/threat-model.md`](../../architecture/threat-model.md)。本 feature 範囲では以下の 3 件。
+詳細な信頼境界は [`docs/design/threat-model.md`](../../design/threat-model.md)。本 feature 範囲では以下の 3 件。
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|

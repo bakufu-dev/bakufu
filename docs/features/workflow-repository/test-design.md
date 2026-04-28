@@ -191,7 +191,7 @@
 
 | テストID | 対象モジュール連携 | 使用 fixture | 前提条件 | 操作 | 期待結果 |
 |---------|------------------|--------------|---------|------|---------|
-| TC-DOC-WFR-001 | storage.md §逆引き表に Workflow 行存在 | repo root | `docs/architecture/domain-model/storage.md` 編集済み | `storage.md` 内に "Workflow" を含む行で「`MaskedJSONEncoded`」または「partial mask」相当の宣言、および「masking 対象なし」を含む Workflow 行（workflows / workflow_transitions）の存在を確認 | partial-mask の 1 行 + no-mask 2 行が co-located（後続 Repository PR が同様の行を追加するテンプレート） |
+| TC-DOC-WFR-001 | storage.md §逆引き表に Workflow 行存在 | repo root | `docs/design/domain-model/storage.md` 編集済み | `storage.md` 内に "Workflow" を含む行で「`MaskedJSONEncoded`」または「partial mask」相当の宣言、および「masking 対象なし」を含む Workflow 行（workflows / workflow_transitions）の存在を確認 | partial-mask の 1 行 + no-mask 2 行が co-located（後続 Repository PR が同様の行を追加するテンプレート） |
 
 ## ユニットテストケース
 

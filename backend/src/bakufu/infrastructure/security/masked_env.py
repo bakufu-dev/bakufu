@@ -10,7 +10,7 @@ Why an allow-list (vs. "every env var")?
 Some environment variables hold benign data (``PATH``, ``HOME``,
 ``LANG``). Including them all would over-redact CLI output / audit
 text and make troubleshooting impossible. The allow-list is the same
-list ``docs/architecture/domain-model/storage.md`` froze, with one
+list ``docs/design/domain-model/storage.md`` froze, with one
 substitution: ``BAKUFU_DB_KEY`` is removed (MVP doesn't ship SQLCipher;
 see Confirmation in ``masking.md``) and ``BAKUFU_DISCORD_BOT_TOKEN`` is
 added in its place because the Discord notifier path keeps it as a

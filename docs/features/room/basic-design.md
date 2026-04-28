@@ -1,7 +1,7 @@
 # 基本設計書
 
 > feature: `room`
-> 関連: [requirements.md](requirements.md) / [`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) §Room
+> 関連: [requirements.md](requirements.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Room
 
 ## 記述ルール（必ず守ること）
 
@@ -159,10 +159,10 @@ sequenceDiagram
 
 ## アーキテクチャへの影響
 
-- `docs/architecture/domain-model.md` への変更: なし（`mermaid classDiagram` の Room は既存）
-- `docs/architecture/domain-model/value-objects.md` への変更: **`PromptKit` VO の属性確定（§確定 R1-E）を追記**
-- `docs/architecture/domain-model/storage.md` への変更: **§シークレットマスキング規則 §適用先一覧に `Room.prompt_kit.prefix_markdown` を追記**
-- `docs/architecture/tech-stack.md` への変更: なし
+- `docs/design/domain-model.md` への変更: なし（`mermaid classDiagram` の Room は既存）
+- `docs/design/domain-model/value-objects.md` への変更: **`PromptKit` VO の属性確定（§確定 R1-E）を追記**
+- `docs/design/domain-model/storage.md` への変更: **§シークレットマスキング規則 §適用先一覧に `Room.prompt_kit.prefix_markdown` を追記**
+- `docs/design/tech-stack.md` への変更: なし
 - 既存 feature への波及: なし。empire / workflow / agent は本 feature を import しない（依存方向は room → agent / workflow / empire ではなく、各 Aggregate 独立）
 
 ## 外部連携
@@ -187,11 +187,11 @@ sequenceDiagram
 
 ### 脅威モデル
 
-本 feature 範囲では以下の 2 件。詳細な信頼境界は [`docs/architecture/threat-model.md`](../../architecture/threat-model.md)。
+本 feature 範囲では以下の 2 件。詳細な信頼境界は [`docs/design/threat-model.md`](../../design/threat-model.md)。
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|
-| **T1: PromptKit.prefix_markdown 経由の secret 漏洩** | UI / API から PromptKit に webhook URL / API key を貼り付け → DB 永続化 → ログ・監査経路へ流出 | OAuth トークン / Discord webhook token / API key | Aggregate 内ではマスキングしない（生入力を保持して UI で読み返す経路を確保）。**永続化前の単一ゲートウェイ**（[`storage.md`](../../architecture/domain-model/storage.md) §シークレットマスキング規則）で適用。本 PR で適用先一覧に PromptKit.prefix_markdown を追記する |
+| **T1: PromptKit.prefix_markdown 経由の secret 漏洩** | UI / API から PromptKit に webhook URL / API key を貼り付け → DB 永続化 → ログ・監査経路へ流出 | OAuth トークン / Discord webhook token / API key | Aggregate 内ではマスキングしない（生入力を保持して UI で読み返す経路を確保）。**永続化前の単一ゲートウェイ**（[`storage.md`](../../design/domain-model/storage.md) §シークレットマスキング規則）で適用。本 PR で適用先一覧に PromptKit.prefix_markdown を追記する |
 | **T2: PromptKit / Room.name に Discord webhook URL が混入した状態で `RoomInvariantViolation` を raise** | 不正入力で例外発生 → 例外 message / detail に Discord webhook URL がそのまま埋め込まれログ / Discord 通知に流出 | Discord webhook token | `RoomInvariantViolation` の `__init__` で `mask_discord_webhook` + `mask_discord_webhook_in` を `super().__init__` 前に強制適用。agent / workflow と同パターン（多層防御） |
 
 ### OWASP Top 10 対応

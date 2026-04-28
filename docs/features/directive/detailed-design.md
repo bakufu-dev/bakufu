@@ -1,7 +1,7 @@
 # 詳細設計書
 
 > feature: `directive`
-> 関連: [basic-design.md](basic-design.md) / [`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) §Directive
+> 関連: [basic-design.md](basic-design.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Directive
 
 ## 記述ルール（必ず守ること）
 
@@ -272,8 +272,8 @@ UI 側でも入力時マスキングを実装するが、本 Aggregate 層では
 - [Pydantic v2 — model_validator / model_validate](https://docs.pydantic.dev/latest/concepts/validators/) — pre-validate 方式の実装根拠
 - [Pydantic v2 — frozen models](https://docs.pydantic.dev/latest/concepts/models/) — 不変モデルの挙動
 - [Unicode Standard Annex #15: Unicode Normalization Forms](https://unicode.org/reports/tr15/) — NFC 正規化の仕様根拠
-- [`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) — Directive 凍結済み設計
-- [`docs/architecture/domain-model/storage.md`](../../architecture/domain-model/storage.md) — シークレットマスキング規則（`Directive.text` の Repository 永続化時に適用、`feature/directive-repository` で配線）
-- [`docs/architecture/threat-model.md`](../../architecture/threat-model.md) — A02 / A04 / A09 対応根拠
+- [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) — Directive 凍結済み設計
+- [`docs/design/domain-model/storage.md`](../../design/domain-model/storage.md) — シークレットマスキング規則（`Directive.text` の Repository 永続化時に適用、`feature/directive-repository` で配線）
+- [`docs/design/threat-model.md`](../../design/threat-model.md) — A02 / A04 / A09 対応根拠
 - [`docs/features/agent/detailed-design.md`](../agent/detailed-design.md) §確定 D / E — 名前正規化パイプラインの先例
 - [`docs/features/room/detailed-design.md`](../room/detailed-design.md) §確定 I — 例外型統一規約 + MSG 2 行構造の先例

@@ -16,8 +16,11 @@
 # GitHub 設定・CI ワークフロー
 /.github/                       @kkm-horikawa
 
-# アーキテクチャ設計書（設計責任者）
-/docs/architecture/             @kkm-horikawa
+# Vモデル工程設計書（設計責任者）
+/docs/analysis/                 @kkm-horikawa
+/docs/requirements/             @kkm-horikawa
+/docs/design/                   @kkm-horikawa
+/docs/acceptance-tests/         @kkm-horikawa
 
 # feature 単位の V モデル設計書
 /docs/features/                 @kkm-horikawa

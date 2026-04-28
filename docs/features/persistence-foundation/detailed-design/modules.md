@@ -100,7 +100,7 @@
 | `mask(value: str)` | str | str | 起動時に compile 済みの正規表現 + 環境変数辞書を順次適用 |
 | `mask_in(obj: object)` | dict / list / str / int / None | 同型 | dict / list を再帰走査、str に対して `mask()` を適用 |
 
-**適用順序（厳守、[`storage.md`](../../../architecture/domain-model/storage.md) §適用順序）**:
+**適用順序（厳守、[`storage.md`](../../../design/domain-model/storage.md) §適用順序）**:
 
 1. **環境変数値の伏字化**（最も具体的）— 起動時 `_load_env_patterns()` が実施
 2. **正規表現パターンマッチ**（9 種、[`masking.md`](masking.md) §確定 A の表）
@@ -120,7 +120,7 @@
 
 **`BAKUFU_DB_KEY` を削除した理由**（Schneier 中等 2 対応）:
 
-- MVP では SQLite at-rest 暗号化（SQLCipher 等）を採用しない方針（[`mvp-scope.md`](../../../architecture/mvp-scope.md) §含めない機能 §「OAuth トークン暗号化保存 ... SQLite 暗号化は Sub-issue C 相当の Phase 2 で対応」）
+- MVP では SQLite at-rest 暗号化（SQLCipher 等）を採用しない方針（[`functional-scope.md`](../../../requirements/functional-scope.md) §含めない機能 §「OAuth トークン暗号化保存 ... SQLite 暗号化は Sub-issue C 相当の Phase 2 で対応」）
 - 「実は何にも使ってない env を masking 対象として列挙している」状態は混乱の元
 - 漏洩時の対応は **OS file mode 0600 + OS ユーザー隔離** に頼る（threat-model.md §T5 / §T6）
 - Phase 2 で SQLCipher を導入する際に再度 masking 対象に追加し、設計書 1 箇所（本書）で確定する
@@ -145,7 +145,7 @@
 | ORDER BY | `next_attempt_at ASC` | backoff 設計どおりの公平な順序 |
 | LIMIT | `batch_size`（既定 50） | 1 サイクル当たりの上限 |
 
-実装は SQLAlchemy 2.x の `select(OutboxRow)` + `where(or_(...))` + `order_by(...)` + `limit(...)` で構築する。raw SQL は使わない（[`tech-stack.md`](../../../architecture/tech-stack.md) §ORM 確定方針による）。具体的なクエリ構築は実装 PR で行う（本書では構造契約のみ）。
+実装は SQLAlchemy 2.x の `select(OutboxRow)` + `where(or_(...))` + `order_by(...)` + `limit(...)` で構築する。raw SQL は使わない（[`tech-stack.md`](../../../design/tech-stack.md) §ORM 確定方針による）。具体的なクエリ構築は実装 PR で行う（本書では構造契約のみ）。
 
 **backoff スケジュール**:
 

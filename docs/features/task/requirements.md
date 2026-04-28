@@ -1,7 +1,7 @@
 # 要件定義書
 
 > feature: `task`
-> 関連: [requirements-analysis.md](requirements-analysis.md) / [`docs/architecture/domain-model/aggregates.md`](../../architecture/domain-model/aggregates.md) §Task / [`storage.md`](../../architecture/domain-model/storage.md) §Deliverable / §Attachment
+> 関連: [requirements-analysis.md](requirements-analysis.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Task / [`storage.md`](../../design/domain-model/storage.md) §Deliverable / §Attachment
 
 ## 機能要件
 
@@ -126,7 +126,7 @@
 | 項目 | 内容 |
 |------|------|
 | 入力 | `Deliverable(stage_id, body_markdown, attachments, committed_by, committed_at)` / `Attachment(sha256, filename, mime_type, size_bytes)` |
-| 処理 | Pydantic v2 BaseModel + frozen + extra='forbid'。`Attachment` は `field_validator` で sha256 形式（64 hex 小文字）/ filename サニタイズ（[`storage.md`](../../architecture/domain-model/storage.md) §filename サニタイズ規則）/ MIME ホワイトリスト（同 §MIME タイプ検証）/ size_bytes ≤ 10MiB を検査 |
+| 処理 | Pydantic v2 BaseModel + frozen + extra='forbid'。`Attachment` は `field_validator` で sha256 形式（64 hex 小文字）/ filename サニタイズ（[`storage.md`](../../design/domain-model/storage.md) §filename サニタイズ規則）/ MIME ホワイトリスト（同 §MIME タイプ検証）/ size_bytes ≤ 10MiB を検査 |
 | 出力 | valid な `Deliverable` / `Attachment` インスタンス（frozen） |
 | エラー時 | `pydantic.ValidationError`（型違反、サニタイズ違反、ホワイトリスト違反、サイズ超過） |
 
@@ -167,7 +167,7 @@
 
 ## データモデル
 
-`docs/architecture/domain-model/aggregates.md` §Task および `storage.md` §Deliverable / §Attachment の凍結済み定義に従う。本 feature では新規 VO として `Deliverable` / `Attachment` を実体化、`TaskStatus` / `LLMErrorKind` enum を追加する（`TaskId` は既存）。
+`docs/design/domain-model/aggregates.md` §Task および `storage.md` §Deliverable / §Attachment の凍結済み定義に従う。本 feature では新規 VO として `Deliverable` / `Attachment` を実体化、`TaskStatus` / `LLMErrorKind` enum を追加する（`TaskId` は既存）。
 
 | エンティティ | 属性 | 型 | 制約 | 関連 |
 |-------------|------|---|------|------|

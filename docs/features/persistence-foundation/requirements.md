@@ -1,7 +1,7 @@
 # 要件定義書
 
 > feature: `persistence-foundation`
-> 関連: [requirements-analysis.md](requirements-analysis.md) / [`docs/architecture/tech-stack.md`](../../architecture/tech-stack.md) §ORM
+> 関連: [requirements-analysis.md](requirements-analysis.md) / [`docs/design/tech-stack.md`](../../design/tech-stack.md) §ORM
 
 ## 機能要件
 
@@ -72,7 +72,7 @@
 | 項目 | 内容 |
 |------|------|
 | 入力 | 任意の文字列 / dict / list（再帰的に走査される） |
-| 処理 | 適用順序を厳守（[`storage.md`](../../architecture/domain-model/storage.md) §適用順序）: (1) 起動時に `os.environ` から `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` / `GH_TOKEN` / `GITHUB_TOKEN` / `OAUTH_CLIENT_SECRET` / `BAKUFU_DISCORD_BOT_TOKEN` の値（長さ 8 以上）をパターン辞書化 → 完全一致を `<REDACTED:ENV:<KEY>>` 化、(2) 9 種正規表現（Anthropic / OpenAI / GitHub PAT / GitHub fine-grained PAT / AWS Access / AWS Secret / Slack / Discord bot / Bearer）を順次適用、(3) `$HOME` 絶対パスを `<HOME>` 置換。**注**: `BAKUFU_DB_KEY` は MVP では SQLCipher 等の at-rest 暗号化を採用しないため削除（Schneier 中等 2 対応、YAGNI / 不要な攻撃面の事前排除）。代わりに `BAKUFU_DISCORD_BOT_TOKEN` を masking 対象に追加（threat-model.md §資産 で明記済みの高機密 token） |
+| 処理 | 適用順序を厳守（[`storage.md`](../../design/domain-model/storage.md) §適用順序）: (1) 起動時に `os.environ` から `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` / `GH_TOKEN` / `GITHUB_TOKEN` / `OAUTH_CLIENT_SECRET` / `BAKUFU_DISCORD_BOT_TOKEN` の値（長さ 8 以上）をパターン辞書化 → 完全一致を `<REDACTED:ENV:<KEY>>` 化、(2) 9 種正規表現（Anthropic / OpenAI / GitHub PAT / GitHub fine-grained PAT / AWS Access / AWS Secret / Slack / Discord bot / Bearer）を順次適用、(3) `$HOME` 絶対パスを `<HOME>` 置換。**注**: `BAKUFU_DB_KEY` は MVP では SQLCipher 等の at-rest 暗号化を採用しないため削除（Schneier 中等 2 対応、YAGNI / 不要な攻撃面の事前排除）。代わりに `BAKUFU_DISCORD_BOT_TOKEN` を masking 対象に追加（threat-model.md §資産 で明記済みの高機密 token） |
 | 出力 | masking 適用済みの文字列（または再帰的に適用済みの dict / list） |
 | エラー時 | **Fail-Secure 契約**（detailed-design §確定 F）: 内部例外発生時も**生データを返す経路はゼロ**。`mask` の予期せぬ例外 → `<REDACTED:MASK_ERROR>` で完全置換、`mask_in` の容量超過 → `<REDACTED:MASK_OVERFLOW>` で完全置換、想定外型 → `str()` 化後 `mask` 適用。環境変数辞書ロード失敗時は **Fail Fast**（`BakufuConfigError(MSG-PF-008)`、起動拒否）|
 
@@ -85,7 +85,7 @@
 | 出力 | masking 後の値が永続化される（生 secret が DB 行に到達する経路ゼロ） |
 | エラー時 | **Fail-Secure 契約**（detailed-design §確定 F）: `process_bind_param` 内で masking 例外が発生した場合、対象フィールドを `<REDACTED:MASK_ERROR>` / `<REDACTED:MASK_OVERFLOW>` で**完全置換**してから返す。**生データを返す経路はゼロ**。「上書きをスキップして INSERT / UPDATE をそのまま走らせる」旧 fail-open 経路は**廃止**。詳細は [`detailed-design/masking.md`](detailed-design/masking.md) §確定 F の Fail-Secure フォールバック表 |
 | 配線方式の決定経緯 | 旧設計（event listener 採用）は §確定 R1-D で**反転却下**。SQLAlchemy 2.x の Core `insert(table).values({...})` の inline values は ORM mapper を経由しないため `before_insert` listener が発火せず、raw SQL 経路で生 secret が永続化される脱出経路が残ることを TC-IT-PF-020（旧 xfail strict=True）で確認。リーナス commit `4b882bf` で TypeDecorator に切替え、TC-IT-PF-020 PASSED で物理保証 |
-| 「属性追加時の漏れ」物理保証 | (1) CI grep guard（masking 対象カラム名の宣言行に `Masked*` 型必須）、(2) アーキテクチャテスト（SQLAlchemy metadata からカラム型を検証）、(3) [`storage.md`](../../architecture/domain-model/storage.md) §逆引き表の運用ルール — の 3 層で物理保証（§確定 R1-D 補強条項） |
+| 「属性追加時の漏れ」物理保証 | (1) CI grep guard（masking 対象カラム名の宣言行に `Masked*` 型必須）、(2) アーキテクチャテスト（SQLAlchemy metadata からカラム型を検証）、(3) [`storage.md`](../../design/domain-model/storage.md) §逆引き表の運用ルール — の 3 層で物理保証（§確定 R1-D 補強条項） |
 
 ### REQ-PF-007: Outbox Dispatcher 骨格
 

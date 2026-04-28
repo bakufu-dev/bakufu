@@ -105,7 +105,7 @@ dead-letter Outbox イベントの発見と再投入は同様に `bakufu admin l
 | 同時実行数 | MVP では Backend プロセスあたり同時 subprocess 数を **1**（シリアル実行）に制限。並列化は Phase 2 |
 
 シリアル実行を採用する理由：
-- MVP の検証対象は「Vモデル工程と外部レビューゲートの正しさ」であり、並列性は Out of Scope（mvp-scope.md §非スコープに明記）
+- MVP の検証対象は「Vモデル工程と外部レビューゲートの正しさ」であり、並列性は Out of Scope（requirements/functional-scope.md §非スコープに明記）
 - 並列実行は git worktree 分離が前提となり、Phase 2 で `Workspace` Aggregate を別途設計する
 
 ##### subprocess の環境変数ハンドリング

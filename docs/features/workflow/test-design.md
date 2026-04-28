@@ -117,7 +117,7 @@ empire の test-design.md（`docs/features/empire/test-design.md`）と同じ規
 `_meta.synthetic = True` は empire 流の **`tests/factories/workflow.py` モジュールスコープ `WeakValueDictionary[int, BaseModel]` レジストリ + `id(instance)` をキーに `is_synthetic()` で判定** 方式を踏襲する。frozen + `extra='forbid'` を尊重してインスタンスに属性追加は試みない。本番コード（`backend/src/bakufu/`）からは `tests/factories/workflow.py` を import しない（CI で `tests/` から `src/` への向きのみ許可）。
 
 **V モデル開発室の正規ペイロード**:
-詳細設計 §確定 D の payload 形式に従い、[`docs/architecture/domain-model/transactions.md`](../../architecture/domain-model/transactions.md) の V モデル開発室レンダリング例（13 Stage / 15 Transition）を **JSON ファイル**として `tests/fixtures/v_model_workflow.json` に固定する。これは外部 I/O fixture ではなく **設計書のレンダリング例の凍結** であり、characterization の対象外（実観測が不要、仕様書がソース）。
+詳細設計 §確定 D の payload 形式に従い、[`docs/design/domain-model/transactions.md`](../../design/domain-model/transactions.md) の V モデル開発室レンダリング例（13 Stage / 15 Transition）を **JSON ファイル**として `tests/fixtures/v_model_workflow.json` に固定する。これは外部 I/O fixture ではなく **設計書のレンダリング例の凍結** であり、characterization の対象外（実観測が不要、仕様書がソース）。
 
 ## E2E テストケース
 

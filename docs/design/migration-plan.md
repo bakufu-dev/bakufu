@@ -38,7 +38,7 @@
 ## 着手ガイド（M5+ 起票時の手順）
 
 1. 本ファイルの TODO リストを総ざらいし、影響範囲を見積もる
-2. `docs/architecture/migration-plan.md` を本ファイルとして拡張（PoC / 段階的移行手順 / dual-write 期間 / cutover）
+2. `docs/design/migration-plan.md` を本ファイルとして拡張（PoC / 段階的移行手順 / dual-write 期間 / cutover）
 3. 各 TODO に対し、流入元の設計書（`docs/features/{feature-name}/detailed-design.md` §確定 X）を**同一 PR で更新**して RESOLVED 化
 4. Alembic revision を SQLite / Postgres dialect 分岐 or Postgres-only branch で発行
 5. CI で SQLite + Postgres 両方の test suite を走らせる経路を追加（本 ファイル + tech-stack.md と同期）
@@ -49,4 +49,4 @@
 - [Alembic — Multiple Database Support](https://alembic.sqlalchemy.org/en/latest/branches.html) — dialect 分岐の根拠
 - [`docs/features/workflow-repository/detailed-design.md`](../features/workflow-repository/detailed-design.md) §確定 J — TODO-MIG-001 の流入元
 - [`docs/features/persistence-foundation/`](../features/persistence-foundation/) — M2 永続化基盤（SQLite 凍結）
-- [`docs/architecture/tech-stack.md`](tech-stack.md) — DB 採用根拠（Phase 1 SQLite）
+- [`docs/design/tech-stack.md`](tech-stack.md) — DB 採用根拠（Phase 1 SQLite）

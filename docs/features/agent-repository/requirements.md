@@ -45,7 +45,7 @@
 
 | 項目 | 内容 |
 |------|------|
-| 入力 | `docs/architecture/domain-model/storage.md` §逆引き表（既存 `Persona.prompt_body` 行は persistence-foundation #23 で「`feature/agent-repository`（後続）」と表記） |
+| 入力 | `docs/design/domain-model/storage.md` §逆引き表（既存 `Persona.prompt_body` 行は persistence-foundation #23 で「`feature/agent-repository`（後続）」と表記） |
 | 処理 | §逆引き表に Agent 関連 2 行追加: (a) `agents.prompt_body: MaskedText`（Schneier #3 **実適用**、persistence-foundation #23 で hook 構造提供済みを本 PR で配線）、(b) `agents` 残カラム + `agent_providers` 全カラム + `agent_skills` 全カラムは masking 対象なし。既存の `Persona.prompt_body` 行は本 PR で**実適用済み**を明示するよう更新 |
 | 出力 | storage.md §逆引き表が「Agent 関連の masking 対象は `agents.prompt_body` のみ、Schneier #3 実適用済み」状態 |
 | エラー時 | 該当なし |

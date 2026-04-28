@@ -45,7 +45,7 @@
 
 | 項目 | 内容 |
 |------|------|
-| 入力 | `docs/architecture/domain-model/storage.md` §逆引き表（既存 `PromptKit.prefix_markdown` 行は persistence-foundation #23 で「`feature/room-repository`（後続）」と表記） |
+| 入力 | `docs/design/domain-model/storage.md` §逆引き表（既存 `PromptKit.prefix_markdown` 行は persistence-foundation #23 で「`feature/room-repository`（後続）」と表記） |
 | 処理 | §逆引き表に Room 関連 2 行追加: (a) `rooms.prompt_kit_prefix_markdown: MaskedText`（room §確定 G **実適用**、persistence-foundation #23 で hook 構造提供済みを本 PR で配線）、(b) `rooms` 残カラム + `room_members` 全カラムは masking 対象なし。既存の `PromptKit.prefix_markdown` 行は本 PR で**実適用済み**を明示するよう更新 |
 | 出力 | storage.md §逆引き表が「Room 関連の masking 対象は `rooms.prompt_kit_prefix_markdown` のみ、room §確定 G 実適用済み」状態 |
 | エラー時 | 該当なし |
@@ -110,7 +110,7 @@
 
 ##### `room_members.agent_id` に FK を張らない根拠
 
-room §確定（[aggregates.md §Room](../../architecture/domain-model/aggregates.md) L36 / [room/detailed-design.md L66](../room/detailed-design.md)）で「`members[*].agent_id` が指す Agent の存在は application 層 `RoomService.add_member` が `AgentRepository.find_by_id` で確認」と application 層責務として凍結済み。DB FK を張ると application 層の MSG-RR-NNN を出す前に IntegrityError が raise されてユーザー voice が崩れる（agent §R1-B / 本 §R1-F INDEX 設計と同論理）。
+room §確定（[aggregates.md §Room](../../design/domain-model/aggregates.md) L36 / [room/detailed-design.md L66](../room/detailed-design.md)）で「`members[*].agent_id` が指す Agent の存在は application 層 `RoomService.add_member` が `AgentRepository.find_by_id` で確認」と application 層責務として凍結済み。DB FK を張ると application 層の MSG-RR-NNN を出す前に IntegrityError が raise されてユーザー voice が崩れる（agent §R1-B / 本 §R1-F INDEX 設計と同論理）。
 
 加えて、Agent Aggregate は archived=True 状態でも row が残る（room §確定）。FK CASCADE は危険（archived agent がいる Room の members が勝手に削除される）、RESTRICT も Room 編成時の柔軟性を損なう。**FK を張らず application 層検査のみに統一**が正解。
 
