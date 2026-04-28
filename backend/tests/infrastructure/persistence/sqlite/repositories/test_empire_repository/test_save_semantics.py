@@ -20,6 +20,9 @@ from bakufu.infrastructure.persistence.sqlite.tables.empire_room_refs import (
 from sqlalchemy import select
 
 from tests.factories.empire import make_empire, make_populated_empire, make_room_ref
+from tests.infrastructure.persistence.sqlite.repositories.test_empire_repository.conftest import (
+    seed_rooms,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -36,6 +39,14 @@ class TestSaveDeleteThenInsert:
     ) -> None:
         """TC-IT-EMR-006: 2 rooms → 1 room is reflected as 1 row in empire_room_refs."""
         original = make_populated_empire(n_rooms=2, n_agents=3)
+        # Create the replacement room ref upfront so we can seed it before save.
+        replacement_room = make_room_ref(name="残った部屋")
+
+        # Alembic 0005 added empire_room_refs.room_id → rooms.id FK (BUG-EMR-001
+        # closure). Seed all room_ids that will ever appear in empire_room_refs.
+        all_room_ids = [r.room_id for r in original.rooms] + [replacement_room.room_id]
+        await seed_rooms(session_factory, original.id, all_room_ids)
+
         async with session_factory() as session, session.begin():
             await SqliteEmpireRepository(session).save(original)
 
@@ -43,7 +54,7 @@ class TestSaveDeleteThenInsert:
         replacement = make_empire(
             empire_id=original.id,
             name=original.name,
-            rooms=[make_room_ref(name="残った部屋")],
+            rooms=[replacement_room],
             agents=list(original.agents),
         )
         async with session_factory() as session, session.begin():
@@ -86,6 +97,7 @@ class TestRoundTripStructuralEquality:
     ) -> None:
         """TC-IT-EMR-007: round-trip preserves Empire identity + membership in ORDER BY order."""
         empire = make_populated_empire(n_rooms=2, n_agents=3)
+        await seed_rooms(session_factory, empire.id, [r.room_id for r in empire.rooms])
         async with session_factory() as session, session.begin():
             await SqliteEmpireRepository(session).save(empire)
 
@@ -122,6 +134,7 @@ class TestRoundTripStructuralEquality:
     ) -> None:
         """TC-UT-EMR-003: ``_to_row`` → save + find_by_id (≡ ``_from_row``) preserves equality."""
         empire = make_populated_empire(n_rooms=2, n_agents=3)
+        await seed_rooms(session_factory, empire.id, [r.room_id for r in empire.rooms])
         async with session_factory() as session, session.begin():
             await SqliteEmpireRepository(session).save(empire)
 
@@ -175,6 +188,7 @@ class TestSaveSqlOrder:
         event.listen(sync_engine, "before_cursor_execute", _on_execute)
         try:
             empire = make_populated_empire(n_rooms=2, n_agents=3)
+            await seed_rooms(session_factory, empire.id, [r.room_id for r in empire.rooms])
             async with session_factory() as session, session.begin():
                 await SqliteEmpireRepository(session).save(empire)
         finally:

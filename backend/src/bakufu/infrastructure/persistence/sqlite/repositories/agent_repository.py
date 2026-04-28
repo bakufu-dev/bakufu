@@ -40,7 +40,6 @@ template:
 from __future__ import annotations
 
 from typing import Any
-from uuid import UUID
 
 from sqlalchemy import delete, func, insert, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -264,15 +263,15 @@ class SqliteAgentRepository:
         ]
         skills = [
             SkillRef(
-                skill_id=_uuid(row.skill_id),
+                skill_id=row.skill_id,
                 name=row.name,
                 path=row.path,
             )
             for row in skill_rows
         ]
         return Agent(
-            id=_uuid(agent_row.id),
-            empire_id=_uuid(agent_row.empire_id),
+            id=agent_row.id,
+            empire_id=agent_row.empire_id,
             name=agent_row.name,
             role=Role(agent_row.role),
             persona=persona,
@@ -280,19 +279,6 @@ class SqliteAgentRepository:
             skills=skills,
             archived=agent_row.archived,
         )
-
-
-def _uuid(value: UUID | str) -> UUID:
-    """Coerce a row value to :class:`uuid.UUID`.
-
-    SQLAlchemy's UUIDStr TypeDecorator already returns ``UUID``
-    instances on ``process_result_value``, but defensive coercion lets
-    raw-SQL hydration paths route through the same code without an
-    extra ``isinstance`` ladder at every call site.
-    """
-    if isinstance(value, UUID):
-        return value
-    return UUID(value)
 
 
 __all__ = ["SqliteAgentRepository"]

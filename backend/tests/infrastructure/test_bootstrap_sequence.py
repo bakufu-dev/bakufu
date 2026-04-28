@@ -43,21 +43,24 @@ class TestBootstrapHappyPath:
         boot = Bootstrap(migration_runner=run_upgrade_head)
         with caplog.at_level(logging.INFO):
             await boot.run()
+        try:
+            # Stage logs trace the documented 0→8 ordering.
+            info_messages = [r.getMessage() for r in caplog.records if r.levelname == "INFO"]
+            for stage in range(1, 8):
+                assert any(f"Bootstrap stage {stage}/8" in m for m in info_messages), (
+                    f"missing stage {stage} INFO log"
+                )
 
-        # Stage logs trace the documented 0→8 ordering.
-        info_messages = [r.getMessage() for r in caplog.records if r.levelname == "INFO"]
-        for stage in range(1, 8):
-            assert any(f"Bootstrap stage {stage}/8" in m for m in info_messages), (
-                f"missing stage {stage} INFO log"
-            )
+            # The DB file + schema exist after Bootstrap returns.
+            db_path = _bakufu_data_dir / "bakufu.db"
+            assert db_path.exists()
 
-        # The DB file + schema exist after Bootstrap returns.
-        db_path = _bakufu_data_dir / "bakufu.db"
-        assert db_path.exists()
-
-        # And the attachments directory was prepared in stage 5.
-        attachments_dir = _bakufu_data_dir / "attachments"
-        assert attachments_dir.is_dir()
+            # And the attachments directory was prepared in stage 5.
+            attachments_dir = _bakufu_data_dir / "attachments"
+            assert attachments_dir.is_dir()
+        finally:
+            if boot.app_engine is not None:
+                await boot.app_engine.dispose()
 
 
 class TestStageFailFast:
@@ -113,9 +116,14 @@ class TestStage4NonFatal:
         boot = Bootstrap(migration_runner=run_upgrade_head)
         with caplog.at_level(logging.WARNING):
             await boot.run()
-
-        warn_messages = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
-        assert any("Bootstrap stage 4/8" in m and "continuing startup" in m for m in warn_messages)
+        try:
+            warn_messages = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+            assert any(
+                "Bootstrap stage 4/8" in m and "continuing startup" in m for m in warn_messages
+            )
+        finally:
+            if boot.app_engine is not None:
+                await boot.app_engine.dispose()
 
 
 class TestEmptyHandlerRegistryWarn:
@@ -130,8 +138,12 @@ class TestEmptyHandlerRegistryWarn:
         boot = Bootstrap(migration_runner=run_upgrade_head)
         with caplog.at_level(logging.WARNING):
             await boot.run()
-        warn_messages = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
-        assert any("No event handlers registered" in m for m in warn_messages)
+        try:
+            warn_messages = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+            assert any("No event handlers registered" in m for m in warn_messages)
+        finally:
+            if boot.app_engine is not None:
+                await boot.app_engine.dispose()
 
 
 class TestUmaskAtStage0:
@@ -150,8 +162,12 @@ class TestUmaskAtStage0:
         boot = Bootstrap(migration_runner=run_upgrade_head)
         with caplog.at_level(logging.INFO):
             await boot.run()
-        info_messages = [r.getMessage() for r in caplog.records if r.levelname == "INFO"]
-        assert any("Bootstrap stage 0/8: umask set to 0o077" in m for m in info_messages)
+        try:
+            info_messages = [r.getMessage() for r in caplog.records if r.levelname == "INFO"]
+            assert any("Bootstrap stage 0/8: umask set to 0o077" in m for m in info_messages)
+        finally:
+            if boot.app_engine is not None:
+                await boot.app_engine.dispose()
 
     async def test_db_file_has_secure_mode(
         self,
@@ -164,11 +180,15 @@ class TestUmaskAtStage0:
             pytest.skip("POSIX-only file mode bits")
         boot = Bootstrap(migration_runner=run_upgrade_head)
         await boot.run()
-        db_path = _bakufu_data_dir / "bakufu.db"
-        mode = db_path.stat().st_mode & 0o777
-        # 0o600 is the strict goal; 0o644 here would mean umask was not
-        # applied. Allow exact 0o600 only.
-        assert mode == 0o600
+        try:
+            db_path = _bakufu_data_dir / "bakufu.db"
+            mode = db_path.stat().st_mode & 0o777
+            # 0o600 is the strict goal; 0o644 here would mean umask was not
+            # applied. Allow exact 0o600 only.
+            assert mode == 0o600
+        finally:
+            if boot.app_engine is not None:
+                await boot.app_engine.dispose()
 
 
 class TestFullDbContractAfterBootstrap:
@@ -184,14 +204,17 @@ class TestFullDbContractAfterBootstrap:
 
         engine = boot.app_engine
         assert engine is not None
-        async with engine.connect() as conn:
-            tables_result = await conn.execute(
-                text("SELECT name FROM sqlite_master WHERE type='table'")
-            )
-            tables = {row[0] for row in tables_result}
-            triggers_result = await conn.execute(
-                text("SELECT name FROM sqlite_master WHERE type='trigger'")
-            )
-            triggers = {row[0] for row in triggers_result}
-        assert {"audit_log", "bakufu_pid_registry", "domain_event_outbox"}.issubset(tables)
-        assert {"audit_log_no_delete", "audit_log_update_restricted"}.issubset(triggers)
+        try:
+            async with engine.connect() as conn:
+                tables_result = await conn.execute(
+                    text("SELECT name FROM sqlite_master WHERE type='table'")
+                )
+                tables = {row[0] for row in tables_result}
+                triggers_result = await conn.execute(
+                    text("SELECT name FROM sqlite_master WHERE type='trigger'")
+                )
+                triggers = {row[0] for row in triggers_result}
+            assert {"audit_log", "bakufu_pid_registry", "domain_event_outbox"}.issubset(tables)
+            assert {"audit_log_no_delete", "audit_log_update_restricted"}.issubset(triggers)
+        finally:
+            await engine.dispose()
