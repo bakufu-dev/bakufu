@@ -120,7 +120,7 @@
 
 **`BAKUFU_DB_KEY` を削除した理由**（Schneier 中等 2 対応）:
 
-- MVP では SQLite at-rest 暗号化（SQLCipher 等）を採用しない方針（[`functional-scope.md`](../../../requirements/functional-scope.md) §含めない機能 §「OAuth トークン暗号化保存 ... SQLite 暗号化は Sub-issue C 相当の Phase 2 で対応」）
+- MVP では SQLite at-rest 暗号化（SQLCipher 等）を採用しない方針（`functional-scope.md` §含めない機能）。OAuth トークン暗号化保存・SQLite 暗号化は Phase 2 対応
 - 「実は何にも使ってない env を masking 対象として列挙している」状態は混乱の元
 - 漏洩時の対応は **OS file mode 0600 + OS ユーザー隔離** に頼る（threat-model.md §T5 / §T6）
 - Phase 2 で SQLCipher を導入する際に再度 masking 対象に追加し、設計書 1 箇所（本書）で確定する
@@ -212,4 +212,4 @@
 |----|----|----|----|
 | `Bootstrap.run()` | なし | None | 起動シーケンス 8 段階を順次実行、各段階失敗で `sys.exit(1)`。`try / finally` で stage 6/7 task の cleanup（[`bootstrap.md`](bootstrap.md) §確定 J） |
 
-8 段階の実装は requirements-analysis.md §確定 R1-C の順序通り。各段階の前後でログを出力（masking 適用済み）。詳細は [`bootstrap.md`](bootstrap.md)。
+8 段階の実装は [`../feature-spec.md`](../feature-spec.md) §確定 R1-C の順序通り。各段階の前後でログを出力（masking 適用済み）。詳細は [`bootstrap.md`](bootstrap.md)。

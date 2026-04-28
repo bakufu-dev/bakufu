@@ -1,7 +1,23 @@
-# 基本設計書
+# 基本設計書 — persistence-foundation / domain
 
-> feature: `persistence-foundation`
-> 関連: [requirements.md](requirements.md) / [`tech-stack.md`](../../design/tech-stack.md) §ORM / [`storage.md`](../../design/domain-model/storage.md) §シークレットマスキング規則
+> feature: `persistence-foundation` / sub-feature: `domain`
+> 親 spec: [`../feature-spec.md`](../feature-spec.md) §9 受入基準 1〜13
+> 関連: [`docs/design/tech-stack.md`](../../../design/tech-stack.md) §ORM / [`docs/design/domain-model/storage.md`](../../../design/domain-model/storage.md) §シークレットマスキング規則
+
+## §モジュール契約（機能要件）
+
+| 要件ID | 概要 | 入力 | 処理 | 出力 | エラー時 | 親 spec 参照 |
+|--------|------|------|------|------|---------|-------------|
+| REQ-PF-001 | データルート解決 | 環境変数 `BAKUFU_DATA_DIR`（`os.environ`）、OS 種別 | `BAKUFU_DATA_DIR` が設定されていれば絶対パス検証 → 未設定時は OS 別既定 → `Path.resolve()` で正規化 → singleton 保持 | `pathlib.Path`（絶対パス、解決済み） | 相対パス / NULL バイト / `..` を含む値 → `BakufuConfigError(MSG-PF-001)` Fail Fast | §9 AC#1, AC#2 |
+| REQ-PF-002 | SQLite engine 初期化 | REQ-PF-001 の DATA_DIR | async engine 生成 + 接続イベントで PRAGMA 8 件 SET（§確定 R1-E）+ DB ファイル権限検出・警告・修復（§確定 R1-F） | `AsyncEngine`（singleton） | engine 生成失敗 / PRAGMA 失敗 → `BakufuConfigError(MSG-PF-002)` | §9 AC#3 |
+| REQ-PF-003 | AsyncSession factory | REQ-PF-002 の engine | `async_sessionmaker(engine, expire_on_commit=False, autoflush=False)` で factory 構築 | `async_sessionmaker[AsyncSession]` | session 内例外 → `session.begin()` が自動 rollback、上位に伝播 | —（内部基盤） |
+| REQ-PF-004 | Alembic 初回 migration | REQ-PF-002 の engine | `alembic upgrade head` 相当を起動時実行。初回 revision: `audit_log` / `bakufu_pid_registry` / `domain_event_outbox` の 3 テーブル + 2 トリガ | 3 テーブル + 2 トリガが SQLite に存在する状態 | migration 失敗 → `BakufuMigrationError(MSG-PF-004)` | §9 AC#4, AC#5 |
+| REQ-PF-005 | マスキング単一ゲートウェイ | 任意の文字列 / dict / list | 適用順序: (1) 環境変数値の完全一致置換 → (2) 9 種正規表現適用 → (3) `$HOME` 絶対パスを `<HOME>` 置換 | masking 適用済みの文字列 / dict / list | 内部例外 → `<REDACTED:MASK_ERROR>` で完全置換（Fail-Secure、§確定 R1-H）。env 辞書ロード失敗 → `BakufuConfigError(MSG-PF-008)` Fail Fast | §9 AC#6 |
+| REQ-PF-006 | SQLAlchemy TypeDecorator 配線 | masking 対象カラムへの bind parameter（INSERT / UPDATE、Core / ORM 両経路） | `MaskedJSONEncoded` / `MaskedText` の `process_bind_param` フックが発火 → `MaskingGateway.mask_in()` / `mask()` を呼び出し masking 後の値を返す | masking 後の値が永続化（生 secret が DB 行に到達する経路ゼロ） | `process_bind_param` 内例外 → `<REDACTED:LISTENER_ERROR>` で完全置換（Fail-Secure） | §9 AC#7 |
+| REQ-PF-007 | Outbox Dispatcher 骨格 | `domain_event_outbox` テーブルの状態 | 1 秒間隔で polling SQL: `PENDING AND next_attempt_at <= now` OR `DISPATCHING AND updated_at < now - 5min` 行を取得 → Handler 解決 → 実行 → 成功 / 失敗状態更新 → 5 回失敗で DEAD_LETTER + `OutboxDeadLettered` 別行追記 | Outbox 行の状態遷移 | Handler 例外 → attempt_count + 1 + backoff + last_error 記録（masking 適用）。Dispatcher 例外 → WARN、次サイクルで再試行 | §9 AC#8, AC#9 |
+| REQ-PF-008 | pid_registry 起動時 GC | `bakufu_pid_registry` テーブルの全 PID 行 | 各行の PID を `psutil.Process()` で取得 → `create_time()` を `started_at` と比較 → 一致なら子孫 SIGTERM → 5 秒 grace → SIGKILL → DELETE。不一致（PID 再利用）→ DELETE のみ | 孤児プロセスが kill された状態 + テーブル整合状態 | `psutil.NoSuchProcess` → DELETE のみ。`psutil.AccessDenied` → WARN + 行残し | §9 AC#10 |
+| REQ-PF-009 | アタッチメント FS ルート初期化 | REQ-PF-001 の DATA_DIR | `<DATA_DIR>/attachments/` を `mkdir(parents=True, exist_ok=True)` で作成 + POSIX で `0700` 強制 + 24h 周期 GC スケジューラ起動 | アタッチメントディレクトリが正しい権限で存在する状態 | 作成失敗 → 例外 raise、プロセス終了 | §9 AC#11 |
+| REQ-PF-010 | 起動シーケンス凍結 | プロセス起動時の環境 | §確定 R1-C の 8 段階を `main.py` で順次実行。各段階失敗時 Fail Fast（段階 4 のみ非 fatal / WARN）| Backend が正常起動した状態 | 各段階で例外 → プロセス終了（exit 非 0）、後続段階は走らない | §9 AC#12 |
 
 ## 記述ルール（必ず守ること）
 
@@ -218,7 +234,7 @@ classDiagram
 4. `MaskedText.process_bind_param(last_error, dialect)` が `MaskingGateway.mask(last_error)` で文字列に masking 適用 → bind value として返す
 5. SQLAlchemy が masking 後の値で実 INSERT を発行（生 secret は DB 行に到達しない）
 
-**配線方式の決定経緯**: 旧設計（`event.listens_for(target, 'before_insert')`）は PR #23 BUG-PF-001 で反転却下。Core `insert(table).values({...})` の inline values は ORM mapper を経由しないため `before_insert` listener が発火せず、raw SQL 経路で生 secret が永続化される脱出経路が残ることを TC-IT-PF-020（旧 xfail strict=True）で確認。リーナス commit `4b882bf` で TypeDecorator に切替え、TC-IT-PF-020 PASSED で物理保証。詳細は [`detailed-design/triggers.md`](detailed-design/triggers.md) §確定 B / [`requirements-analysis.md`](requirements-analysis.md) §確定 R1-D。
+**配線方式の決定経緯**: 旧設計（`event.listens_for(target, 'before_insert')`）は PR #23 BUG-PF-001 で反転却下。Core `insert(table).values({...})` の inline values は ORM mapper を経由しないため `before_insert` listener が発火せず、raw SQL 経路で生 secret が永続化される脱出経路が残ることを TC-IT-PF-020（旧 xfail strict=True）で確認。リーナス commit `4b882bf` で TypeDecorator に切替え、TC-IT-PF-020 PASSED で物理保証。詳細は [`detailed-design/triggers.md`](detailed-design/triggers.md) §確定 B / [`../feature-spec.md`](../feature-spec.md) §確定 R1-D。
 
 ## シーケンス図
 
