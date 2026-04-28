@@ -1,13 +1,27 @@
-# 基本設計書
+# 基本設計書 — directive / repository
 
-> feature: `directive-repository`
-> 関連: [requirements.md](requirements.md) / [`docs/features/empire-repository/`](../empire-repository/) **テンプレート真実源** / [`docs/features/room-repository/`](../room-repository/) **直近テンプレート** / [`docs/features/directive/`](../directive/)
+> feature: `directive`
+> sub-feature: `repository`
+> 親 spec: [`../feature-spec.md`](../feature-spec.md) §9 受入基準 10, 11
+> 関連: [`docs/features/empire-repository/`](../../empire-repository/) **テンプレート真実源** / [`docs/features/room-repository/`](../../room-repository/) **直近テンプレート** / [`../domain/basic-design.md`](../domain/basic-design.md)
 
 ## 記述ルール（必ず守ること）
 
 基本設計に**疑似コード・サンプル実装（python/ts/sh/yaml 等の言語コードブロック）を書かない**。
 ソースコードと二重管理になりメンテナンスコストしか生まない。
 必要なのは構造契約（クラス・モジュール・データの関係）であり、実装の細部は [detailed-design.md](detailed-design.md) で凍結する。
+
+## §モジュール契約（機能要件）
+
+本 sub-feature が実装すべき機能要件は以下の通り（親 [`../feature-spec.md`](../feature-spec.md) §9 受入基準 10, 11 を repository 実装観点で展開）。
+
+| 要件 ID | 概要 | 入力 | 処理 | 出力 | エラー時 |
+|---------|------|------|------|------|---------|
+| REQ-DRR-001 | DirectiveRepository Protocol 定義 | — | `typing.Protocol` で 4 method（`find_by_id` / `count` / `save` / `find_by_room`）を定義 | Protocol クラス | — |
+| REQ-DRR-002 | SqliteDirectiveRepository 実装 | SQLite + AsyncSession | `find_by_id` / `count` / `save`（UPSERT）/ `find_by_room`（ORDER BY created_at DESC, id DESC） | Directive インスタンス / list / None | SQLAlchemy IntegrityError / OperationalError は上位伝播 |
+| REQ-DRR-003 | Alembic 0006 revision | — | `directives` テーブル + INDEX + FK 1 件（rooms→directives CASCADE） | DDL 適用済み DB | — |
+| REQ-DRR-004 | CI 三層防衛拡張（Layer 1 + 2） | — | `directives.text` の `MaskedText` 必須を grep + arch test で物理保証 | CI pass | CI 落下 |
+| REQ-DRR-005 | storage.md 逆引き表更新 | — | `docs/design/domain-model/storage.md` §逆引き表に `directives.text: MaskedText` 行追加 | 更新済み storage.md | — |
 
 ## モジュール構成
 
@@ -58,11 +72,11 @@
 │   └── ci/
 │       └── check_masking_columns.sh                    # 既存更新: Directive テーブル明示登録
 └── docs/
-    ├── architecture/
+    ├── design/
     │   └── domain-model/
     │       └── storage.md                              # 既存更新: 逆引き表に Directive 行追加
     └── features/
-        └── directive-repository/                       # 本 feature 設計書 4 本
+        └── directive/                                  # 本 feature 設計書群
 ```
 
 ## クラス設計（概要）
@@ -220,7 +234,7 @@ sequenceDiagram
 | A06 | Vulnerable Components | SQLAlchemy 2.x / Alembic を pyproject.toml で pin。CVE-2025-6965（SQLite < 3.50.2 メモリ破壊、CVSS 7.2-9.8）: SQLAlchemy ORM parameterized query 経由で直接 SQL 注入攻撃前提を物理遮断 + SQLite >= 3.50.2 ops 要件（tech-stack.md 凍結、room-repository PR #47 で確立済み）|
 | A07 | Auth Failures | 該当なし（Repository 層、認証は別 feature） |
 | A08 | Data Integrity Failures | **対応**: FK 制約（target_room_id → rooms.id CASCADE）+ 型制約 + NOT NULL で整合性保証 |
-| A09 | Logging Failures | **対応**: `MaskedText` により bind param 生成前にマスキング → SQLAlchemy echo ログに masked テキストが流れる |
+| A09 | Logging Failures | **対応**: `directives.text`（API key / webhook token を含み得る）を `MaskedText` でマスキングしてから bind param を生成するため、SQLAlchemy echo ログ / 監査ログ経路でも raw secret が漏洩しない |
 | A10 | SSRF | 該当なし（外部通信なし）|
 
 ## ER 図

@@ -1,7 +1,9 @@
-# 詳細設計書
+# 詳細設計書 — directive / domain
 
 > feature: `directive`
-> 関連: [basic-design.md](basic-design.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Directive
+> sub-feature: `domain`
+> 親 spec: [`../feature-spec.md`](../feature-spec.md)
+> 関連: [basic-design.md](basic-design.md) / [`docs/design/domain-model/aggregates.md`](../../../design/domain-model/aggregates.md) §Directive
 
 ## 記述ルール（必ず守ること）
 
@@ -125,7 +127,7 @@ empire / workflow / agent / room と同じパターン。`model_copy(update=...)
 | `task_id == new_task_id`（同じ TaskId で再リンク） | `DirectiveInvariantViolation(kind='task_already_linked')` | 例外 |
 | `task_id == 既存有効 TaskId（new_task_id と異なる）` | `DirectiveInvariantViolation(kind='task_already_linked')` | 例外 |
 
-冪等性は持たない — 「同じ TaskId で 2 回 link_task を呼んでも OK」という設計を採用すると `_validate_task_link_immutable` の不変条件が複雑化する。**1 回のみ許可、2 回目は常に Fail Fast** の clear cut な契約を採用する（再リンクが必要な業務シナリオは MVP 範囲では存在しない、Phase 2 でも別 Directive 発行で対応する）。
+冪等性は持たない — **1 回のみ許可、2 回目は常に Fail Fast** の clear cut な契約を採用する。
 
 ### 確定 E: `DirectiveInvariantViolation` の webhook auto-mask
 
@@ -155,10 +157,6 @@ UI 側でも入力時マスキングを実装するが、本 Aggregate 層では
 | 型違反 / 必須欠落 | `pydantic.ValidationError` | Pydantic 型バリデーション（`mode='after'` より前） | — |
 | application 層の参照整合性違反 | `RoomNotFoundError` / `WorkflowNotFoundError` / `DirectiveNotFoundError` | `DirectiveService` / `RoomService` | — |
 
-##### `link_task` ふるまいの例外型確定
-
-`task_id` の型違反（None or UUIDv4 以外）は **Pydantic 型バリデーション**で `pydantic.ValidationError`（MSG-DR-003）。`link_task` 入口に到達する時点では既に valid な TaskId として渡される。`link_task` 内では `_validate_task_link_immutable` が `DirectiveInvariantViolation(kind='task_already_linked')`（MSG-DR-002）のみ raise する。
-
 ##### MSG ID と例外型の対応（凍結）
 
 | MSG ID | 例外型 | kind |
@@ -175,9 +173,9 @@ UI 側でも入力時マスキングを実装するが、本 Aggregate 層では
 
 1. `text = raw_text if raw_text.startswith('$') else '$' + raw_text` で `$` プレフィックス正規化
 2. `RoomRepository.find_by_id(target_room_id)` で Room 取得（不在なら `RoomNotFoundError(MSG-DR-004)` を Fail Fast）
-3. Room の `archived == True` 検証（archived Room への directive 発行は禁止 — 本 PR スコープ外、`feature/directive-repository` または `feature/directive-application` で凍結）
+3. Room の `archived == True` 検証（archived Room への directive 発行は禁止 — 本 PR スコープ外、`feature/directive-application` で凍結）
 4. `WorkflowRepository.find_by_id(room.workflow_id)` で Workflow 取得（不在なら `WorkflowNotFoundError(MSG-DR-005)`）
-5. `Directive(...)` 構築 + `DirectiveRepository.save(directive)`
+5. Directive 構築 + `DirectiveRepository.save(directive)`
 6. 同一 Tx 内で Task 構築 → `TaskRepository.save(task)` → `directive.link_task(task.id)` → `DirectiveRepository.save(updated_directive)`
 
 ドメイン層の Directive はこの呼び出し前提で「自身では `target_room_id` の存在を検証しない」契約。
@@ -206,19 +204,19 @@ UI 側でも入力時マスキングを実装するが、本 Aggregate 層では
 - Task は別 Aggregate Root のため、Directive 内で Task インスタンスを直接生成すると 1 Tx で 2 Aggregate 更新になる
 - Aggregate Root のトランザクション境界（1 Tx で 1 Aggregate）を破壊する
 
-`DirectiveService.issue()` の application 層が Task を生成し、Directive には `link_task(task_id)` で「生成済み Task の id を紐付ける」責務だけを残すことで、Aggregate 凝集境界を保つ。これは workflow の `Stage` 内 Entity が Workflow Aggregate に閉じ、Task との関係は別 Aggregate 経由で結ばれる設計と同方針。
+`DirectiveService.issue()` の application 層が Task を生成し、Directive には `link_task(task_id)` で「生成済み Task の id を紐付ける」責務だけを残すことで、Aggregate 凝集境界を保つ。
 
 ### なぜ `task_id` を List にしないか
 
-`aggregates.md` §Directive で「task_id: TaskId | None — 生成された Task（未着手なら None）」と単一参照で凍結済み。複数 Task は別 Directive で発行する設計（CEO が 2 つの directive を発行すれば Task が 2 件生成される）。MVP 範囲で「1 Directive → N Task」の業務シナリオは存在しない（YAGNI）。
+`aggregates.md` §Directive で「task_id: TaskId | None — 生成された Task（未着手なら None）」と単一参照で凍結済み。複数 Task は別 Directive で発行する設計。MVP 範囲で「1 Directive → N Task」の業務シナリオは存在しない（YAGNI）。
 
 ### なぜ `created_at` を引数で受け取るか
 
-`datetime.now(timezone.utc)` を Aggregate 内で自動生成すると freezegun 等での test 制御が必要になる。application 層で生成して引数渡しすることで Aggregate 自体は時刻に依存しない pure data になり、test 容易性が向上（`Directive(id=..., text=..., target_room_id=..., created_at=fixed_datetime, task_id=None)` で固定時刻を渡せる）。
+`datetime.now(timezone.utc)` を Aggregate 内で自動生成すると freezegun 等での test 制御が必要になる。application 層で生成して引数渡しすることで Aggregate 自体は時刻に依存しない pure data になり、test 容易性が向上。
 
 ### なぜ `task_id` 再リンクを冪等にしないか
 
-「同じ TaskId で 2 回 link_task を呼んでも OK」という冪等設計は `_validate_task_link_immutable` の検査ロジックを複雑化する（既存 task_id と新 task_id を比較して同一なら no-op、異なれば Fail Fast）。**1 回のみ許可、2 回目は常に Fail Fast** の clear cut な契約のほうが構造が単純で、再リンクが必要な業務シナリオは存在しない（CEO が再発行したい場合は新規 Directive を発行する設計）。
+**1 回のみ許可、2 回目は常に Fail Fast** の clear cut な契約のほうが構造が単純で、再リンクが必要な業務シナリオは存在しない（CEO が再発行したい場合は新規 Directive を発行する設計）。
 
 ## ユーザー向けメッセージの確定文言
 
@@ -247,11 +245,11 @@ UI 側でも入力時マスキングを実装するが、本 Aggregate 層では
 - **i18n 入口**: Phase 2 で UI 側 i18n を入れる際、`MSG-DR-NNN.failure` / `MSG-DR-NNN.next` の 2 キー × 言語数で翻訳テーブルが作れる
 - **検証可能性**: test-design.md の TC-UT-DR-NNN で `assert "Next:" in str(exc)` を含めることで「hint 必須」を CI で物理保証する
 
-メッセージは ASCII 範囲（プレースホルダ `{...}` は f-string 形式）。日本語化は UI 側 i18n（Phase 2）。本 feature の例外メッセージは英語固定。
+メッセージは ASCII 範囲（プレースホルダ `{...}` は f-string 形式）。日本語化は UI 側 i18n（将来）。本 feature の例外メッセージは英語固定。
 
 ## データ構造（永続化キー）
 
-該当なし — 理由: 本 feature は domain 層のみで永続化スキーマは含まない。永続化は `feature/directive-repository` で扱う（M2 永続化基盤完了後）。
+該当なし — 理由: 本 sub-feature は domain 層のみで永続化スキーマは含まない。永続化は `repository` sub-feature で扱う。
 
 参考の概形:
 
@@ -265,15 +263,15 @@ UI 側でも入力時マスキングを実装するが、本 Aggregate 層では
 
 ## API エンドポイント詳細
 
-該当なし — 理由: 本 feature は domain 層のみ。API は `feature/http-api` で凍結する。
+該当なし — 理由: 本 sub-feature は domain 層のみ。API は `directive/http-api/` sub-feature（将来）で凍結する。
 
 ## 出典・参考
 
 - [Pydantic v2 — model_validator / model_validate](https://docs.pydantic.dev/latest/concepts/validators/) — pre-validate 方式の実装根拠
 - [Pydantic v2 — frozen models](https://docs.pydantic.dev/latest/concepts/models/) — 不変モデルの挙動
 - [Unicode Standard Annex #15: Unicode Normalization Forms](https://unicode.org/reports/tr15/) — NFC 正規化の仕様根拠
-- [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) — Directive 凍結済み設計
-- [`docs/design/domain-model/storage.md`](../../design/domain-model/storage.md) — シークレットマスキング規則（`Directive.text` の Repository 永続化時に適用、`feature/directive-repository` で配線）
-- [`docs/design/threat-model.md`](../../design/threat-model.md) — A02 / A04 / A09 対応根拠
-- [`docs/features/agent/detailed-design.md`](../agent/detailed-design.md) §確定 D / E — 名前正規化パイプラインの先例
-- [`docs/features/room/detailed-design.md`](../room/detailed-design.md) §確定 I — 例外型統一規約 + MSG 2 行構造の先例
+- [`docs/design/domain-model/aggregates.md`](../../../design/domain-model/aggregates.md) — Directive 凍結済み設計
+- [`docs/design/domain-model/storage.md`](../../../design/domain-model/storage.md) — シークレットマスキング規則（`Directive.text` の Repository 永続化時に適用、`repository` sub-feature で配線）
+- [`docs/design/threat-model.md`](../../../design/threat-model.md) — A02 / A04 / A09 対応根拠
+- [`docs/features/agent/detailed-design.md`](../../agent/detailed-design.md) §確定 D / E — 名前正規化パイプラインの先例
+- [`docs/features/room/detailed-design.md`](../../room/detailed-design.md) §確定 I — 例外型統一規約 + MSG 2 行構造の先例
