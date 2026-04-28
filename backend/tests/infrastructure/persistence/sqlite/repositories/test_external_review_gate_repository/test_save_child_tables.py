@@ -138,7 +138,9 @@ class TestSaveChildTableSemantics:
                     {"id": gate.id.hex},
                 )
             ).first()
-        assert row[0] == 1, f"[FAIL] UPSERT produced {row[0]} rows, expected 1."
+        assert row is not None and row[0] == 1, (
+            f"[FAIL] UPSERT produced {row[0] if row else 'None'} rows, expected 1."
+        )
 
 
 # ---------------------------------------------------------------------------

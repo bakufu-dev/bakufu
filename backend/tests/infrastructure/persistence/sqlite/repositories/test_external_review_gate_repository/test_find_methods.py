@@ -132,7 +132,7 @@ class TestFindPendingByReviewerSqlLog:
                 sync_engine = sync_engine.sync_engine  # type: ignore[union-attr]
 
             @event.listens_for(sync_engine, "before_cursor_execute")
-            def _capture(conn, cursor, statement, params, context, executemany):  # type: ignore[no-untyped-def]
+            def _capture(conn, cursor, statement: str, params, context, executemany):  # type: ignore[no-untyped-def]
                 sql_log.append(statement.upper())
 
             await SqliteExternalReviewGateRepository(session).find_pending_by_reviewer(reviewer_id)

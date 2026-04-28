@@ -140,7 +140,7 @@ class TestExternalReviewGateForeignKey:
         await run_upgrade_head(empty_engine)
         async with empty_engine.connect() as conn:
             result = await conn.execute(text("PRAGMA foreign_key_list('external_review_gates')"))
-            fk_list = [dict(row._mapping) for row in result]
+            fk_list = [dict(row) for row in result.mappings()]
 
         tasks_fks = [fk for fk in fk_list if fk.get("table") == "tasks"]
         assert len(tasks_fks) >= 1, (
@@ -338,7 +338,7 @@ class TestTaskCascadeDeletesGate:
                     {"id": gate_id},
                 )
             ).first()
-        assert row[0] == 1, "[FAIL] Gate row not inserted."
+        assert row is not None and row[0] == 1, "[FAIL] Gate row not inserted."
 
         # Delete task — CASCADE should remove gate
         async with empty_engine.begin() as conn:
@@ -353,7 +353,9 @@ class TestTaskCascadeDeletesGate:
                     {"id": gate_id},
                 )
             ).first()
-        assert row[0] == 0, "[FAIL] Gate row still exists after CASCADE DELETE of parent Task."
+        assert row is not None and row[0] == 0, (
+            "[FAIL] Gate row still exists after CASCADE DELETE of parent Task."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -370,7 +372,7 @@ class TestAggregrateBoundaryNoForeignKeys:
         await run_upgrade_head(empty_engine)
         async with empty_engine.connect() as conn:
             result = await conn.execute(text("PRAGMA foreign_key_list('external_review_gates')"))
-            fk_list = [dict(row._mapping) for row in result]
+            fk_list = [dict(row) for row in result.mappings()]
 
         referenced_tables = {fk.get("table") for fk in fk_list}
         # The only FK must be tasks (CASCADE). Owner / Agent Aggregate tables must not appear.
@@ -390,7 +392,7 @@ class TestAggregrateBoundaryNoForeignKeys:
         await run_upgrade_head(empty_engine)
         async with empty_engine.connect() as conn:
             result = await conn.execute(text("PRAGMA foreign_key_list('external_review_gates')"))
-            fk_list = [dict(row._mapping) for row in result]
+            fk_list = [dict(row) for row in result.mappings()]
 
         referenced_tables = {fk.get("table") for fk in fk_list}
         assert referenced_tables == {"tasks"}, (
