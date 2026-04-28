@@ -88,7 +88,7 @@ class TestFrozenStructuralEquality:
         common_task = uuid4()
         common_stage = uuid4()
         common_reviewer = uuid4()
-        ts = datetime(2026, 4, 28, 12, 0, 0, tzinfo=UTC)
+        ts = datetime(2099, 4, 28, 12, 0, 0, tzinfo=UTC)
         # Reuse the same Deliverable so both Gates share an identical
         # snapshot — equality requires snapshot equality.
         from tests.factories.task import make_deliverable

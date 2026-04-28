@@ -267,7 +267,7 @@ class TestFindByRoomTiebreaker:
         and this assertion will intermittently fail.
         """
         # Use a fixed identical timestamp so created_at cannot differentiate.
-        shared_ts = datetime(2026, 4, 28, 12, 0, 0, tzinfo=UTC)
+        shared_ts = datetime(2099, 4, 28, 12, 0, 0, tzinfo=UTC)
 
         d1 = make_directive(target_room_id=seeded_room_id, created_at=shared_ts)
         d2 = make_directive(target_room_id=seeded_room_id, created_at=shared_ts)
