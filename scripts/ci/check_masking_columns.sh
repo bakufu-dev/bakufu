@@ -100,6 +100,14 @@ readonly NO_MASK_FILES=(
     # 凍結済みのため除外。
     "${TABLES_DIR}/task_assigned_agents.py"
     "${TABLES_DIR}/deliverable_attachments.py"
+    # ExternalReviewGate Repository (PR #36, detailed-design.md §確定 R1-E):
+    # external_review_gate_attachments carries no secret semantics — file
+    # metadata (sha256 / filename / mime_type / size_bytes) is content-
+    # addressing with no Schneier #6 secret category.
+    # external_review_gates / external_review_audit_entries are registered in
+    # PARTIAL_MASK_FILES (masked columns: snapshot_body_markdown + feedback_text
+    # and comment respectively).
+    "${TABLES_DIR}/external_review_gate_attachments.py"
 )
 
 for file in "${NO_MASK_FILES[@]}"; do
@@ -120,18 +128,25 @@ done
 
 # Layer 1-C: 過剰マスキング防止 ─ partially-masked テーブルで指定の
 # カラム以外に Masked* が混入していないこと。各ファイルに対し
-# 「許可カラムが期待型で 1 つ宣言されている」+「他カラムに Masked* が
+# 「許可カラムが期待型でそれぞれ宣言されている」+「他カラムに Masked* が
 # 一切登場しない」の両方を assert する。
+#
+# 1 ファイルに複数の許可カラムを登録できる（ExternalReviewGate #36 から導入）。
+# ループが同一ファイルの全エントリを集約してから照合するため、
+# 許可カラムが 1 本でも 2 本以上でも正しく動作する。
 #
 # 登録されている partial-mask テーブル:
 #   * Workflow Repository (PR #31, detailed-design.md §確定 E):
-#     workflow_stages.notify_channels_json だけが MaskedJSONEncoded、
-#     他カラムは JSONEncoded / String / Text に閉じる。
+#     workflow_stages.notify_channels_json だけが MaskedJSONEncoded。
 #   * Agent Repository (PR #32, detailed-design.md §確定 E):
-#     agents.prompt_body だけが MaskedText、他カラムは String / Boolean
-#     に閉じる。Schneier 申し送り #3 实適用の grep 物理保証層。
+#     agents.prompt_body だけが MaskedText。Schneier 申し送り #3 实適用。
+#   * ExternalReviewGate Repository (PR #36, detailed-design.md §確定 R1-E):
+#     external_review_gates は snapshot_body_markdown + feedback_text の 2 本が
+#     MaskedText（§設計決定 ERGR-002 対応で feedback_text を追加）。
+#     external_review_audit_entries.comment だけが MaskedText。
 #
 # フォーマット: "<file>:<allowed_column>:<expected_type>"
+# 同一 <file> に複数エントリを追加することで許可カラムセットを拡張できる。
 readonly PARTIAL_MASK_FILES=(
     "${TABLES_DIR}/workflow_stages.py:notify_channels_json:MaskedJSONEncoded"
     "${TABLES_DIR}/agents.py:prompt_body:MaskedText"
@@ -152,39 +167,80 @@ readonly PARTIAL_MASK_FILES=(
     # deliverables.body_markdown だけが MaskedText（Agent 出力に secret 混入）、
     # 他カラムは UUIDStr / UTCDateTime に閉じる。
     "${TABLES_DIR}/deliverables.py:body_markdown:MaskedText"
+    # ExternalReviewGate Repository (PR #36, detailed-design.md §確定 R1-E,
+    # §設計決定 ERGR-002): external_review_gates は 2 本の MaskedText カラムを持つ。
+    # snapshot_body_markdown — Agent 出力に secret 混入の可能性。
+    "${TABLES_DIR}/external_review_gates.py:snapshot_body_markdown:MaskedText"
+    # feedback_text — CEO review comment; approve/reject/cancel 入力経路が
+    # webhook URL / API key を含む可能性（§設計決定 ERGR-002）。
+    "${TABLES_DIR}/external_review_gates.py:feedback_text:MaskedText"
+    # external_review_audit_entries.comment だけが MaskedText（CEO 入力経路）、
+    # 他カラムは UUIDStr / String / UTCDateTime に閉じる。
+    "${TABLES_DIR}/external_review_audit_entries.py:comment:MaskedText"
 )
 
-for entry in "${PARTIAL_MASK_FILES[@]}"; do
-    IFS=':' read -r file allowed expected_type <<< "$entry"
+# Collect unique file paths from PARTIAL_MASK_FILES.
+_partial_files=()
+for _entry in "${PARTIAL_MASK_FILES[@]}"; do
+    IFS=':' read -r _f _col _typ <<< "$_entry"
+    _already_seen=false
+    for _seen in "${_partial_files[@]}"; do
+        [[ "$_seen" == "$_f" ]] && _already_seen=true && break
+    done
+    [[ "$_already_seen" == false ]] && _partial_files+=("$_f")
+done
 
-    if [[ ! -f "$file" ]]; then
+for _file in "${_partial_files[@]}"; do
+    if [[ ! -f "$_file" ]]; then
+        # ファイル未作成（後続 PR が追加予定）。スキップ。
         continue
     fi
 
-    # All Masked* column declarations on this file. The allowed
-    # column must appear exactly once with the expected type and
-    # nothing else may carry a Masked* TypeDecorator.
-    masked_decls=$(grep -nE "^\s*[A-Za-z_][A-Za-z0-9_]*\s*:\s*Mapped.*Masked(JSONEncoded|Text)" \
-        "$file" || true)
+    # Build allowed (col:type) pairs for this file from all entries.
+    _allowed_pairs=()
+    for _entry in "${PARTIAL_MASK_FILES[@]}"; do
+        IFS=':' read -r _entry_file _col _typ <<< "$_entry"
+        [[ "$_entry_file" == "$_file" ]] && _allowed_pairs+=("${_col}:${_typ}")
+    done
 
-    if [[ -z "$masked_decls" ]]; then
-        echo "[FAIL] partial-mask table file is missing the expected" >&2
-        echo "       ${expected_type} column declaration: $file" >&2
-        echo "       Next: declare ${allowed} with ${expected_type} per" >&2
+    # Get all Masked* column declarations in this file.
+    _masked_decls=$(grep -nE "^\s*[A-Za-z_][A-Za-z0-9_]*\s*:\s*Mapped.*Masked(JSONEncoded|Text)" \
+        "$_file" || true)
+
+    if [[ -z "$_masked_decls" ]]; then
+        echo "[FAIL] partial-mask table file is missing all expected Masked* declarations: $_file" >&2
+        for _pair in "${_allowed_pairs[@]}"; do
+            _col="${_pair%%:*}"
+            _typ="${_pair##*:}"
+            echo "       Next: declare ${_col} with ${_typ} per" >&2
+        done
         echo "       docs/architecture/domain-model/storage.md §逆引き表." >&2
         violations=$((violations + 1))
         continue
     fi
 
-    while IFS= read -r line; do
-        [[ -z "$line" ]] && continue
+    # Check that each masked declaration is for an allowed column.
+    while IFS= read -r _line; do
+        [[ -z "$_line" ]] && continue
 
-        # Reject masking on a column other than the allowed one.
-        if [[ "$line" != *"${allowed}"* ]]; then
-            echo "[FAIL] partial-mask table file declares Masked* on a" >&2
-            echo "       column other than '${allowed}': $file" >&2
-            echo "       ${line}" >&2
-            echo "       Next: only '${allowed}' is registered as masked in" >&2
+        _matched_pair=""
+        for _pair in "${_allowed_pairs[@]}"; do
+            _col="${_pair%%:*}"
+            if [[ "$_line" == *"${_col}"* ]]; then
+                _matched_pair="$_pair"
+                break
+            fi
+        done
+
+        if [[ -z "$_matched_pair" ]]; then
+            _allowed_names=""
+            for _pair in "${_allowed_pairs[@]}"; do
+                _allowed_names+="'${_pair%%:*}' "
+            done
+            echo "[FAIL] partial-mask table file declares Masked* on an" >&2
+            echo "       unexpected column: $_file" >&2
+            echo "       ${_line}" >&2
+            echo "       Next: only ${_allowed_names}registered as masked in" >&2
             echo "       docs/architecture/domain-model/storage.md §逆引き表;" >&2
             echo "       move the masking to the correct column or update §逆引き表." >&2
             violations=$((violations + 1))
@@ -192,15 +248,30 @@ for entry in "${PARTIAL_MASK_FILES[@]}"; do
         fi
 
         # Allowed column must use the expected TypeDecorator.
-        if [[ "$line" != *"$expected_type"* ]]; then
-            echo "[FAIL] partial-mask column '${allowed}' uses the wrong Masked*" >&2
-            echo "       TypeDecorator (expected ${expected_type}): $file" >&2
-            echo "       ${line}" >&2
-            echo "       Next: switch ${allowed} to mapped_column(${expected_type}, ...) per" >&2
+        _col="${_matched_pair%%:*}"
+        _expected_type="${_matched_pair##*:}"
+        if [[ "$_line" != *"$_expected_type"* ]]; then
+            echo "[FAIL] partial-mask column '${_col}' uses the wrong Masked*" >&2
+            echo "       TypeDecorator (expected ${_expected_type}): $_file" >&2
+            echo "       ${_line}" >&2
+            echo "       Next: switch ${_col} to mapped_column(${_expected_type}, ...) per" >&2
             echo "       docs/architecture/domain-model/storage.md §逆引き表." >&2
             violations=$((violations + 1))
         fi
-    done <<< "$masked_decls"
+    done <<< "$_masked_decls"
+
+    # Check that all required allowed columns are present in the file.
+    for _pair in "${_allowed_pairs[@]}"; do
+        _col="${_pair%%:*}"
+        _expected_type="${_pair##*:}"
+        if ! grep -qE "^\s*${_col}\s*:\s*Mapped.*${_expected_type}" "$_file"; then
+            echo "[FAIL] partial-mask required column '${_col}' with ${_expected_type}" >&2
+            echo "       missing from: $_file" >&2
+            echo "       Next: declare ${_col} with mapped_column(${_expected_type}, ...) per" >&2
+            echo "       docs/architecture/domain-model/storage.md §逆引き表." >&2
+            violations=$((violations + 1))
+        fi
+    done
 done
 
 if [[ "$violations" -gt 0 ]]; then

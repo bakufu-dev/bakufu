@@ -46,6 +46,9 @@ from bakufu.infrastructure.persistence.sqlite.tables import (
     empire_agent_refs,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     empire_room_refs,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     empires,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    external_review_audit_entries,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    external_review_gate_attachments,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    external_review_gates,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     outbox,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     pid_registry,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     room_members,  # noqa: F401  # pyright: ignore[reportUnusedImport]
@@ -82,6 +85,16 @@ _MASKING_CONTRACT: list[tuple[str, str, type]] = [
     # conversation_messages.body_markdown は §BUG-TR-002 凍結済みのため除外。
     # deliverables.body_markdown — Agent 出力に secret 混入の可能性.
     ("deliverables", "body_markdown", MaskedText),
+    # ExternalReviewGate Repository (PR #36, detailed-design.md §確定 R1-E,
+    # §設計決定 ERGR-002):
+    # external_review_gates.snapshot_body_markdown — Agent 出力に secret 混入.
+    ("external_review_gates", "snapshot_body_markdown", MaskedText),
+    # external_review_gates.feedback_text — CEO review comment; approve /
+    # reject / cancel input paths can carry webhook URLs / API keys.
+    ("external_review_gates", "feedback_text", MaskedText),
+    # external_review_audit_entries.comment — CEO-authored free-form text;
+    # same secret-bearing input path as feedback_text.
+    ("external_review_audit_entries", "comment", MaskedText),
 ]
 
 # No-mask contract: §逆引き表「Empire 関連カラム: masking 対象なし」 +
@@ -112,6 +125,11 @@ _NO_MASK_TABLES: list[str] = [
     # §BUG-TR-002 凍結済みのため除外。
     "task_assigned_agents",
     "deliverable_attachments",
+    # ExternalReviewGate Repository (PR #36, detailed-design.md §確定 R1-E):
+    # external_review_gate_attachments carries no secret semantics — file
+    # metadata (sha256 / filename / mime_type / size_bytes) carries no
+    # Schneier #6 secret categories.
+    "external_review_gate_attachments",
 ]
 
 # Partial-mask contract: tables that have **exactly one** masked
@@ -145,6 +163,27 @@ _PARTIAL_MASK_TABLES: list[tuple[str, str]] = [
     # id / task_id / stage_id / committed_by / committed_at carry no secret
     # semantics.
     ("deliverables", "body_markdown"),
+    # ExternalReviewGate Repository (PR #36, detailed-design.md §確定 R1-E):
+    # external_review_audit_entries.comment is the only masked column;
+    # id / gate_id / actor_id / action / occurred_at carry no secret semantics.
+    ("external_review_audit_entries", "comment"),
+]
+
+# Dual-mask contract: tables that have **exactly two** masked columns.
+# Used to catch both under-masking (a required masked column was removed)
+# and over-masking (a non-secret column was accidentally masked).
+#
+# ExternalReviewGate Repository (PR #36, detailed-design.md §確定 R1-E +
+# §設計決定 ERGR-002): external_review_gates requires exactly two masked
+# columns (snapshot_body_markdown for Agent-authored content and
+# feedback_text for CEO-authored review comments).
+#
+# Format: ``(table_name, frozenset_of_allowed_column_names)``.
+_DUAL_MASK_TABLES: list[tuple[str, frozenset[str]]] = [
+    (
+        "external_review_gates",
+        frozenset({"snapshot_body_markdown", "feedback_text"}),
+    ),
 ]
 
 
@@ -259,4 +298,47 @@ class TestPartialMaskContract:
             f"Next: only '{allowed_column}' is registered as masked in "
             f"docs/architecture/domain-model/storage.md §逆引き表; either "
             f"revert the extra Masked* type or update the §逆引き表 entry first."
+        )
+
+
+class TestDualMaskContract:
+    """Tables registered as 'dual mask' must mask exactly two named columns.
+
+    ExternalReviewGate Repository (PR #36) introduces the 'dual mask'
+    pattern: ``external_review_gates`` has two secret-bearing columns
+    (``snapshot_body_markdown`` for Agent output and ``feedback_text`` for
+    CEO review comments). Both are required; neither may be removed or
+    supplemented with a third masked column without updating §逆引き表.
+
+    A future PR that masks an additional column or removes one must update
+    §逆引き表 first; otherwise this assertion fires.
+    """
+
+    @pytest.mark.parametrize(
+        ("table_name", "allowed_columns"),
+        _DUAL_MASK_TABLES,
+        ids=[tbl for tbl, _ in _DUAL_MASK_TABLES],
+    )
+    def test_table_has_only_allowed_masked_columns(
+        self,
+        table_name: str,
+        allowed_columns: frozenset[str],
+    ) -> None:
+        """Assert exactly the allowed masked columns, no more, no less."""
+        table = Base.metadata.tables.get(table_name)
+        assert table is not None, (
+            f"table {table_name!r} missing from Base.metadata; "
+            f"check that tables/{table_name}.py is imported in tables/__init__.py"
+        )
+        masked_columns = sorted(
+            col.name
+            for col in table.columns
+            if isinstance(col.type, MaskedJSONEncoded | MaskedText)
+        )
+        assert masked_columns == sorted(allowed_columns), (
+            f"[FAIL] {table_name} masking surface should be exactly "
+            f"{sorted(allowed_columns)}, got {masked_columns}.\n"
+            f"Next: only {sorted(allowed_columns)} are registered as masked in "
+            f"docs/architecture/domain-model/storage.md §逆引き表; either "
+            f"revert extra Masked* types or update the §逆引き表 entry first."
         )
