@@ -1,8 +1,8 @@
-# テスト設計書
+# テスト設計書 — dev-workflow / domain
 
-<!-- feature: dev-workflow -->
-<!-- 配置先: docs/features/dev-workflow/test-design.md -->
-<!-- 対象範囲: REQ-DW-001〜018 / MSG-DW-001〜014 / 脅威 T1〜T9 / 受入基準 1〜17 -->
+<!-- feature: dev-workflow / sub-feature: domain -->
+<!-- 配置先: docs/features/dev-workflow/domain/test-design.md -->
+<!-- 対象範囲: REQ-DW-001〜018 / MSG-DW-001〜014 / 脅威 T1〜T9 / 受入基準 1〜13 / 開発者品質基準 Q-1〜Q-6 -->
 
 本 feature はランタイムコードを追加せず、設定ファイル（`lefthook.yml` / `justfile`）とシェル/PowerShell スクリプト（`scripts/setup.sh` / `scripts/setup.ps1` / `scripts/ci/audit-pin-sync.sh`）、CI ワークフロー（`.github/workflows/*.yml` 5 本）と文書（`CONTRIBUTING.md`）で構成される。テスト粒度は「ユニット＝設定/スクリプトの単体契約」「結合＝レシピ/フック間連携」「E2E＝ペルソナシナリオ」で定義する。
 
@@ -24,12 +24,12 @@
 | REQ-DW-012 | `lefthook.yml::fail_text` 全箇所 | TC-UT-005 | ユニット | 正常系 | 11 |
 | REQ-DW-013 | `lefthook.yml::pre-commit.audit-secrets` + `justfile::audit-secrets` | TC-IT-007, TC-UT-012 | 結合/ユニット | 異常系 | 12 |
 | REQ-DW-014 | `scripts/setup.ps1` PS7 検査 | TC-IT-008 | 結合 | 異常系 | 13 |
-| REQ-DW-015 | `scripts/setup.{sh,ps1}` SHA256 検証 | TC-IT-009, TC-UT-013 | 結合/ユニット | 異常系 | 14 |
-| REQ-DW-016 | `.github/CODEOWNERS` | TC-UT-006 | ユニット | 正常系 | 15 |
-| REQ-DW-017 | `CONTRIBUTING.md §Secret 混入時の緊急対応` | TC-UT-007 | ユニット | 正常系 | 16 |
-| REQ-DW-018 | `lefthook.yml::commit-msg.no-ai-footer` + `justfile::commit-msg-no-ai-footer` | TC-IT-010, TC-UT-014〜016 | 結合/ユニット | 異常系/正常系 | 17 |
-| REQ-DW-006（追加契約） | `scripts/ci/audit-pin-sync.sh` | TC-UT-008, TC-UT-009 | ユニット | 正常系/異常系 | — |
-| T9 補助 | ピン定数 upstream 同期 | TC-UT-017 | ユニット | 正常系 | — |
+| REQ-DW-015 | `scripts/setup.{sh,ps1}` SHA256 検証 | TC-IT-009, TC-UT-013 | 結合/ユニット | 異常系 | Q-1 |
+| REQ-DW-016 | `.github/CODEOWNERS` | TC-UT-006 | ユニット | 正常系 | Q-2 |
+| REQ-DW-017 | `CONTRIBUTING.md §Secret 混入時の緊急対応` | TC-UT-007 | ユニット | 正常系 | Q-3 |
+| REQ-DW-018 | `lefthook.yml::commit-msg.no-ai-footer` + `justfile::commit-msg-no-ai-footer` | TC-IT-010, TC-UT-014〜016 | 結合/ユニット | 異常系/正常系 | Q-4 |
+| REQ-DW-006（追加契約） | `scripts/ci/audit-pin-sync.sh` | TC-UT-008, TC-UT-009 | ユニット | 正常系/異常系 | 内部品質基準 |
+| T9 補助 | ピン定数 upstream 同期 | TC-UT-017 | ユニット | 正常系 | 内部品質基準 |
 | REQ-DW-002（typecheck 新規） | `lefthook.yml::pre-commit.typecheck` + `justfile::typecheck` | TC-IT-011, TC-UT-018 | 結合/ユニット | 異常系 | 2, 11 |
 
 ## 外部I/O依存マップ
@@ -54,7 +54,7 @@
 
 ## E2Eテストケース
 
-「開発者ペルソナの受入基準 1〜17 をブラックボックスで検証する」層。DB 直接確認・内部状態参照・テスト用裏口は禁止。本 feature は CLI/Git 操作が主なので、**bash/pwsh スクリプト + 実コミット発行**で検証する。証跡として stdout/stderr/exit code と `.git/hooks/` 内の生成物を保存する。
+「開発者ペルソナの受入基準 1〜13 をブラックボックスで検証する」層。DB 直接確認・内部状態参照・テスト用裏口は禁止。本 feature は CLI/Git 操作が主なので、**bash/pwsh スクリプト + 実コミット発行**で検証する。証跡として stdout/stderr/exit code と `.git/hooks/` 内の生成物を保存する。
 
 | テストID | ペルソナ | シナリオ | 操作手順 | 期待結果 |
 |---------|---------|---------|---------|---------|
@@ -66,8 +66,8 @@
 | TC-E2E-006 | 鎌田 大樹 | `setup.sh` の 2 回連続実行で差分が発生しない（受入基準 6） | 1 回目 setup → 2 回目 setup を連続実行 | 2 回目も exit 0、`[SKIP] <tool> は既にインストール済みです` を 5 ツール（uv / just / convco / lefthook / gitleaks）で表示 |
 | TC-E2E-007 | Windows 開発者（非 PowerShell 7） | PowerShell 5.1 起動で即 Fail Fast（受入基準 13） | Windows 10 21H2 既定 `powershell.exe` で `.\scripts\setup.ps1` | exit 非 0、MSG-DW-011 表示、`winget install Microsoft.PowerShell` 案内 |
 | TC-E2E-008 | 鎌田 大樹 | secret 混入コミットを pre-commit が遮断（受入基準 12） | AWS access key 形式（`AKIA` + 16 文字 + 40 桁 secret）の擬似値（AWS 公式 example: `AKIAIOSFODNN7EXAMPLE` を踏襲）を staged → `git commit` | exit 非 0、MSG-DW-010 表示、gitleaks 側 stdout に file:line 出力 |
-| TC-E2E-009 | 鎌田 大樹 | SHA256 改ざんバイナリを setup が拒否（受入基準 14） | setup.sh 冒頭のピン定数を意図的に 1 文字ズラして再実行（対象ツール未導入状態で） | exit 非 0、MSG-DW-012 表示、一時ファイル削除 |
-| TC-E2E-010 | Agent-C（Claude Code） | AI 生成フッター付きコミットを commit-msg が遮断（受入基準 17、3 パターン） | 3 ケース個別: (a) `🤖 Generated with [Claude Code](...)` (b) `Co-Authored-By: Claude <noreply@anthropic.com>` (c) `Co-Authored-By: Claude Opus 4.7 <...>` | 3 ケースとも exit 非 0、MSG-DW-013 stderr 表示 |
+| TC-E2E-009 | 鎌田 大樹 | SHA256 改ざんバイナリを setup が拒否（Q-1） | setup.sh 冒頭のピン定数を意図的に 1 文字ズラして再実行（対象ツール未導入状態で） | exit 非 0、MSG-DW-012 表示、一時ファイル削除 |
+| TC-E2E-010 | Agent-C（Claude Code） | AI 生成フッター付きコミットを commit-msg が遮断（Q-4、3 パターン） | 3 ケース個別: (a) `🤖 Generated with [Claude Code](...)` (b) `Co-Authored-By: Claude <noreply@anthropic.com>` (c) `Co-Authored-By: Claude Opus 4.7 <...>` | 3 ケースとも exit 非 0、MSG-DW-013 stderr 表示 |
 | TC-E2E-011 | Agent-C 境界（body 位置の Claude 言及） | `Claude Shannon` を body 位置で引用した正規コミット | `feat(x): cite Claude Shannon in info theory` | exit 0 でコミット成功（P3 の `Co-Authored-By:` 接頭辞必須契約） |
 | TC-E2E-012 | 鎌田 大樹 | typecheck 違反コミットを pre-commit が遮断（受入基準 2, 11） | Python に未定義変数 / TS に型不整合を入れる | exit 非 0、MSG-DW-014 表示 |
 
@@ -101,7 +101,7 @@
 | TC-UT-004 | `CONTRIBUTING.md` / `README.md` | 正常系 | Markdown 目次 | §開発環境セットアップに `bash scripts/setup.sh` / `pwsh scripts/setup.ps1` 1 ステップ表記 + §AI 生成フッターの禁止節の存在 |
 | TC-UT-005 | `lefthook.yml::fail_text` 全 7 箇所 | 正常系 | YAML + 文字列照合 | 7 箇所（fmt-check/lint/typecheck/audit-secrets/test/convco/no-ai-footer）全てが MSG-DW-001/002/014/010/003/004/013 確定文言と文字単位で一致、`{variables}` / `{files}` 等の動的展開が含まれない（T7 対策） |
 | TC-UT-006 | `.github/CODEOWNERS` | 正常系 | grep | `/lefthook.yml` / `/justfile` / `/scripts/setup.sh` / `/scripts/setup.ps1` / `/scripts/ci/` の 5 パスが `@kkm-horikawa` 所有で登録 |
-| TC-UT-007 | `CONTRIBUTING.md §Secret 混入時の緊急対応` | 正常系 | Markdown 節抽出 + 3 項目 grep | (a) 該当キーを発行元で即 revoke (b) **`git filter-repo --path <file> --invert-paths` の具体コマンド + feature ブランチ限定 force-push + `main`/`develop` への force-push 禁止の明記** (c) **GitHub Support への cache purge 依頼と secret scanning alert の resolve の明記** — 3 項目全てが存在（受入基準 16） |
+| TC-UT-007 | `CONTRIBUTING.md §Secret 混入時の緊急対応` | 正常系 | Markdown 節抽出 + 3 項目 grep | (a) 該当キーを発行元で即 revoke (b) **`git filter-repo --path <file> --invert-paths` の具体コマンド + feature ブランチ限定 force-push + `main`/`develop` への force-push 禁止の明記** (c) **GitHub Support への cache purge 依頼と secret scanning alert の resolve の明記** — 3 項目全てが存在（Q-3） |
 | TC-UT-008 | `audit-pin-sync.sh` positive | 正常系 | setup.sh / setup.ps1 が同期済み | exit 0、`[OK] pin 定数の sh/ps1 同期を確認しました（30 件）`（5 ツール × 5 プラットフォーム + 5 VERSION）|
 | TC-UT-009 | `audit-pin-sync.sh` negative | 異常系 | 30 定数の 1 箇所を意図的に乖離 | exit 1、`[FAIL] <VAR> が setup.sh / setup.ps1 で乖離しています` / 2 ファイルの値が diff 表示 |
 | TC-UT-010 | `justfile::fmt-check` 単体 | 異常系 | format 違反 factory（Python + TS 両方） | exit 非 0（`ruff format --check` / `biome format` の exit code を集約） |
@@ -120,7 +120,7 @@
 
 - REQ-DW-001〜018 の各要件が最低 1 件のテストケース（ユニット/結合/E2E のいずれか）で検証されている
 - MSG-DW-001〜014 の 14 文言が全て静的文字列で照合されている（TC-UT-005 + TC-E2E 各種）
-- 受入基準 1〜17 の各々が最低 1 件の E2E テストケースで検証されている
+- 受入基準 1〜13 の各々が最低 1 件の E2E テストケースで検証されている（Q-1〜Q-6 は domain/test-design.md §結合/ユニットテストケースで網羅）
 - T1〜T9 の各脅威に対する対策が最低 1 件のテストケースで有効性を確認されている
 
 ## 人間が動作確認できるタイミング
