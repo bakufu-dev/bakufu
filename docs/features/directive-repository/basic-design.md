@@ -13,7 +13,7 @@
 
 | 機能 ID | モジュール | ディレクトリ | 責務 |
 |--------|----------|------------|------|
-| REQ-DRR-001 | `DirectiveRepository` Protocol | `backend/src/bakufu/application/ports/directive_repository.py` | Repository ポート定義（5 method、empire-repo の 3 method + §確定 R1-D の `find_by_room` / `find_by_task_id`） |
+| REQ-DRR-001 | `DirectiveRepository` Protocol | `backend/src/bakufu/application/ports/directive_repository.py` | Repository ポート定義（4 method、empire-repo の 3 method + §確定 R1-D の `find_by_room`。`find_by_task_id` は task-repository PR で申し送り） |
 | REQ-DRR-002 | `SqliteDirectiveRepository` | `backend/src/bakufu/infrastructure/persistence/sqlite/repositories/directive_repository.py` | SQLite 実装、§確定 R1-A〜F |
 | REQ-DRR-003 | Alembic 0006 revision | `backend/alembic/versions/0006_directive_aggregate.py` | 1 テーブル + INDEX + FK 1 件追加、`down_revision="0005_room_aggregate"` |
 | REQ-DRR-004 | CI 三層防衛拡張 Layer 1 | `scripts/ci/check_masking_columns.sh`（既存ファイル更新）| Directive テーブル明示登録、`directives.text` の `MaskedText` 必須を assert（正のチェック）|
@@ -33,7 +33,7 @@
 │   │   └── bakufu/
 │   │       ├── application/
 │   │       │   └── ports/
-│   │       │       └── directive_repository.py         # 新規: Protocol（5 method）
+│   │       │       └── directive_repository.py         # 新規: Protocol（4 method）
 │   │       └── infrastructure/
 │   │           └── persistence/
 │   │               └── sqlite/
@@ -50,7 +50,7 @@
 │       │                   ├── __init__.py
 │       │                   ├── test_protocol_crud.py
 │       │                   ├── test_find_by_room.py
-│       │                   ├── test_find_by_task_id.py
+│       │                   ├── test_find_by_room_ordering.py  # ORDER BY created_at DESC, id DESC 決定論性テスト
 │       │                   └── test_masking_text.py    # directive §確定 G 実適用専用テスト
 │       └── architecture/
 │           └── test_masking_columns.py                 # 既存更新: Directive テーブル parametrize 追加
@@ -75,7 +75,6 @@ classDiagram
         +async count() int
         +async save(directive) None
         +async find_by_room(room_id) list~Directive~
-        +async find_by_task_id(task_id) Directive | None
     }
     class SqliteDirectiveRepository {
         +session: AsyncSession
@@ -83,7 +82,6 @@ classDiagram
         +async count() int
         +async save(directive) None
         +async find_by_room(room_id) list~Directive~
-        +async find_by_task_id(task_id) Directive | None
         -_to_row(directive) DirectiveRow
         -_from_row(directive_row) Directive
     }
@@ -137,19 +135,12 @@ classDiagram
 ### ユースケース 3: Room 内 directive 一覧取得（find_by_room）
 
 1. application 層（後続 directive-application）が `DirectiveRepository.find_by_room(room_id)` を呼び出す
-2. `SELECT * FROM directives WHERE target_room_id = :room_id ORDER BY created_at DESC` で `DirectiveRow` 一覧取得
+2. `SELECT * FROM directives WHERE target_room_id = :room_id ORDER BY created_at DESC, id DESC` で `DirectiveRow` 一覧取得（BUG-EMR-001 規約: 複合 key で決定論的順序、`id` が tiebreaker）
 3. INDEX(target_room_id, created_at) が複合クエリを最適化
 4. 各行を `_from_row()` で `Directive` に変換
 5. `list[Directive]` 返却（空の場合 `[]`）
 
-### ユースケース 4: Task から Directive 逆引き（find_by_task_id）
-
-1. application 層（後続 task-application）が `DirectiveRepository.find_by_task_id(task_id)` を呼び出す
-2. `SELECT id FROM directives WHERE task_id = :task_id LIMIT 1` で DirectiveId 取得
-3. 不在: `None` 返却
-4. 存在: `find_by_id(directive_id)` に委譲して `Directive` 返却
-
-### ユースケース 5: Directive の task_id 更新（save after link_task）
+### ユースケース 4: Directive の task_id 更新（save after link_task）
 
 1. application 層が `directive.link_task(task_id)` で新 Directive インスタンスを取得
 2. `DirectiveRepository.save(updated_directive)` を呼び出す
@@ -174,10 +165,10 @@ sequenceDiagram
     Repo-->>App: None
 
     App->>Repo: find_by_room(room_id)
-    Repo->>DB: SELECT * FROM directives WHERE target_room_id=? ORDER BY created_at DESC
+    Repo->>DB: SELECT * FROM directives WHERE target_room_id=? ORDER BY created_at DESC, id DESC
     DB-->>Repo: rows
     Repo->>Masking: process_result_value(masked_text)
-    Masking-->>Repo: original_text
+    Masking-->>Repo: masked_text_as_stored
     Repo->>Repo: _from_row(row) for each row
     Repo-->>App: list[Directive]
 ```
@@ -226,7 +217,7 @@ sequenceDiagram
 | A03 | Injection | **対応**: SQLAlchemy ORM の parameterized query のみ使用、raw SQL 不使用 |
 | A04 | Insecure Design | **対応**: TypeDecorator 強制 + CI 三層防衛で「マスキング忘れ」を設計レベルで排除 |
 | A05 | Security Misconfiguration | 該当なし（外部接続なし） |
-| A06 | Vulnerable Components | SQLAlchemy 2.x / Alembic を pyproject.toml で pin |
+| A06 | Vulnerable Components | SQLAlchemy 2.x / Alembic を pyproject.toml で pin。CVE-2025-6965（SQLite < 3.50.2 メモリ破壊、CVSS 7.2-9.8）: SQLAlchemy ORM parameterized query 経由で直接 SQL 注入攻撃前提を物理遮断 + SQLite >= 3.50.2 ops 要件（tech-stack.md 凍結、room-repository PR #47 で確立済み）|
 | A07 | Auth Failures | 該当なし（Repository 層、認証は別 feature） |
 | A08 | Data Integrity Failures | **対応**: FK 制約（target_room_id → rooms.id CASCADE）+ 型制約 + NOT NULL で整合性保証 |
 | A09 | Logging Failures | **対応**: `MaskedText` により bind param 生成前にマスキング → SQLAlchemy echo ログに masked テキストが流れる |
@@ -250,7 +241,7 @@ erDiagram
 
     directives {
         string id PK
-        MaskedText text "NOT NULL"
+        text MaskedText "NOT NULL"
         string target_room_id FK
         datetime created_at "NOT NULL"
         string task_id "NULL (FK申し送り)"

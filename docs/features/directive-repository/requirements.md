@@ -10,7 +10,7 @@
 | 項目 | 内容 |
 |------|------|
 | 入力 | 該当なし（Protocol 定義） |
-| 処理 | `application/ports/directive_repository.py` で `DirectiveRepository(Protocol)` を定義。**5 method**（empire-repo の 3 method + §確定 R1-D の `find_by_room` / `find_by_task_id`）: `find_by_id(directive_id: DirectiveId) -> Directive \| None` / `count() -> int` / `save(directive: Directive) -> None` / `find_by_room(room_id: RoomId) -> list[Directive]` / `find_by_task_id(task_id: TaskId) -> Directive \| None`。すべて `async def`、`@runtime_checkable` なし |
+| 処理 | `application/ports/directive_repository.py` で `DirectiveRepository(Protocol)` を定義。**4 method**（empire-repo の 3 method + §確定 R1-D の `find_by_room`）: `find_by_id(directive_id: DirectiveId) -> Directive \| None` / `count() -> int` / `save(directive: Directive) -> None` / `find_by_room(room_id: RoomId) -> list[Directive]`。すべて `async def`、`@runtime_checkable` なし。`find_by_task_id` は task-repository PR で method + INDEX + FK closure を同時追加（§確定 R1-D 申し送り） |
 | 出力 | Protocol 定義。pyright strict で `SqliteDirectiveRepository` が満たすことを型レベル検証 |
 | エラー時 | 該当なし |
 
@@ -19,8 +19,8 @@
 | 項目 | 内容 |
 |------|------|
 | 入力 | `AsyncSession`（コンストラクタ引数）、各 method の引数 |
-| 処理 | `find_by_id`: `directives` SELECT → 不在なら None。存在すれば `_from_row()` で Directive 復元（子テーブルなし、flat な 1 行 SELECT）。`count`: `select(func.count()).select_from(DirectiveRow)` で SQL `COUNT(*)`。`save`: `directives` UPSERT のみ（子テーブルなし、1 テーブル 1 行の INSERT OR REPLACE / merge）。`find_by_room`: `SELECT * FROM directives WHERE target_room_id = :room_id ORDER BY created_at DESC` で DirectiveRow 一覧取得 → 各行を `_from_row()` で Directive に変換して返却。`find_by_task_id`: `SELECT id FROM directives WHERE task_id = :task_id LIMIT 1` で DirectiveId 取得 → `find_by_id` 委譲（§確定 R1-D 同パターン） |
-| 出力 | `find_by_id` / `find_by_task_id`: `Directive \| None`、`count`: `int`、`save`: `None`、`find_by_room`: `list[Directive]`（空の場合 `[]`） |
+| 処理 | `find_by_id`: `directives` SELECT → 不在なら None。存在すれば `_from_row()` で Directive 復元（子テーブルなし、flat な 1 行 SELECT）。`count`: `select(func.count()).select_from(DirectiveRow)` で SQL `COUNT(*)`。`save`: `directives` UPSERT のみ（子テーブルなし、1 テーブル 1 行の INSERT OR REPLACE / merge）。`find_by_room`: `SELECT * FROM directives WHERE target_room_id = :room_id ORDER BY created_at DESC, id DESC` で DirectiveRow 一覧取得（BUG-EMR-001 規約: 複合 key で決定論的順序、`id` が tiebreaker）→ 各行を `_from_row()` で Directive に変換して返却 |
+| 出力 | `find_by_id`: `Directive \| None`、`count`: `int`、`save`: `None`、`find_by_room`: `list[Directive]`（空の場合 `[]`） |
 | エラー時 | SQLAlchemy `IntegrityError`（FK RESTRICT 違反 / NOT NULL 違反等）/ `OperationalError` を上位伝播。Repository 内で明示的 `commit` / `rollback` はしない |
 
 ### REQ-DRR-003: Alembic 0006 revision
