@@ -177,13 +177,13 @@ LLM subprocess の stdout / stderr、Outbox の `payload_json` / `last_error`、
 
 | カラム / フィールド | テーブル | 配線モジュール（後続 PR） | TypeDecorator 種別 | 担当 PR |
 |---|---|---|---|---|
-| `Conversation.messages[].body_markdown` | `conversation_messages` | `infrastructure/persistence/sqlite/tables/conversation_messages.py` | `MaskedText` | `feature/conversation-repository`（後続） |
-| `Deliverable.body_markdown` | `deliverables` | `tables/deliverables.py` | `MaskedText` | `feature/task-repository`（後続） |
+| `Conversation.messages[].body_markdown` | `conversation_messages` | `infrastructure/persistence/sqlite/tables/conversation_messages.py` | `MaskedText` | `feature/task-repository`（Issue #35、**task §確定 G 実適用**、会話履歴は Task Aggregate 子構造として task-repository が永続化、persistence-foundation #23 で hook 構造提供 → 本 PR で配線完了） |
+| `Deliverable.body_markdown` | `deliverables` | `tables/deliverables.py` | `MaskedText` | `feature/task-repository`（Issue #35、**task §確定 G 実適用**、persistence-foundation #23 で hook 構造提供 → 本 PR で配線完了） |
 | `domain_event_outbox.payload_json` | `domain_event_outbox` | `tables/outbox.py` | `MaskedJSONEncoded` | **本 PR（`feature/persistence-foundation`）** |
 | `domain_event_outbox.last_error` | `domain_event_outbox` | `tables/outbox.py` | `MaskedText` | **本 PR** |
 | `audit_log.args_json` | `audit_log` | `tables/audit_log.py` | `MaskedJSONEncoded` | **本 PR** |
 | `audit_log.error_text` | `audit_log` | `tables/audit_log.py` | `MaskedText` | **本 PR** |
-| `Task.last_error` | `tasks` | `tables/tasks.py` | `MaskedText` | `feature/task-repository`（後続） |
+| `Task.last_error` | `tasks` | `tables/tasks.py` | `MaskedText` | `feature/task-repository`（Issue #35、**task §確定 G 実適用**、persistence-foundation #23 で hook 構造提供 → 本 PR で配線完了） |
 | `Persona.prompt_body` | `agents` | `tables/agents.py` | `MaskedText` | `feature/agent-repository`（Issue #32、**Schneier 申し送り #3 実適用済み**、persistence-foundation #23 で hook 構造提供 → 本 PR で配線完了） |
 | `PromptKit.prefix_markdown` | `rooms` | `tables/rooms.py` | `MaskedText` | `feature/room-repository`（Issue #33、**room §確定 G 実適用済み**、persistence-foundation #23 で hook 構造提供 → 本 PR で配線完了） |
 | `bakufu_pid_registry.cmd` | `bakufu_pid_registry` | `tables/pid_registry.py` | `MaskedText` | **本 PR** |
@@ -195,6 +195,7 @@ LLM subprocess の stdout / stderr、Outbox の `payload_json` / `last_error`、
 | **Room 残カラム（`rooms` の `prompt_kit_prefix_markdown` 以外 / `room_members` 全カラム）** | 同左 | `tables/rooms.py` / `tables/room_members.py` | **masking 対象なし**（`UUIDStr` / `String` / `Boolean` / `DateTime` のみ。`rooms.prompt_kit_prefix_markdown` 以外のカラムが secret 6 種に該当しないことを CI Layer 2 で arch test で保証、過剰マスキング防止） | `feature/room-repository`（Issue #33） |
 | `Directive.text` | `directives` | `tables/directives.py` | **`MaskedText`** | `feature/directive-repository`（Issue #34、**directive §確定 G 実適用**、persistence-foundation #23 で hook 構造提供 → 本 PR で配線完了） |
 | **Directive 残カラム（`directives` の `text` 以外）** | `directives` | `tables/directives.py` | **masking 対象なし**（`UUIDStr` / `DateTime` のみ。`directives.text` 以外のカラムが secret 6 種に該当しないことを CI Layer 2 で arch test で保証、過剰マスキング防止） | `feature/directive-repository`（Issue #34） |
+| **Task 残カラム（`tasks` の `last_error` 以外 / `task_assigned_agents` 全カラム / `conversations` 全カラム / `conversation_messages` の `body_markdown` 以外 / `deliverables` の `body_markdown` 以外 / `deliverable_attachments` 全カラム）** | 同左 6 テーブル | `tables/tasks.py` / `tables/task_assigned_agents.py` / `tables/conversations.py` / `tables/conversation_messages.py` / `tables/deliverables.py` / `tables/deliverable_attachments.py` | **masking 対象なし**（`UUIDStr` / `String` / `Integer` / `DateTime` のみ。3 masking カラム以外が secret 6 種に該当しないことを CI Layer 2 で arch test で保証、過剰マスキング防止） | `feature/task-repository`（Issue #35） |
 
 ##### 逆引き表の運用ルール
 
