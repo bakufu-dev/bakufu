@@ -1,13 +1,75 @@
-# 基本設計書
+# 基本設計書 — agent / domain
 
-> feature: `agent`
-> 関連: [requirements.md](requirements.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Agent
+> feature: `agent`（業務概念）/ sub-feature: `domain`
+> 親業務仕様: [`../feature-spec.md`](../feature-spec.md)
+> 関連 Issue: [#10 feat(agent): Agent Aggregate Root (M1)](https://github.com/bakufu-dev/bakufu/issues/10)
+> 凍結済み設計: [`docs/design/domain-model/aggregates.md`](../../../design/domain-model/aggregates.md) §Agent
 
 ## 記述ルール（必ず守ること）
 
 基本設計に**疑似コード・サンプル実装（python/ts/sh/yaml 等の言語コードブロック）を書かない**。
 ソースコードと二重管理になりメンテナンスコストしか生まない。
 必要なのは構造契約（クラス・モジュール・データの関係）であり、実装の細部は [detailed-design.md](detailed-design.md) で凍結する。
+
+## §モジュール契約（機能要件）
+
+本 sub-feature が満たすべき機能要件（入力 / 処理 / 出力 / エラー時）を凍結する。業務根拠は [`../feature-spec.md §9 受入基準`](../feature-spec.md) を参照。
+
+### REQ-AG-001: Agent 構築
+
+| 項目 | 内容 |
+|------|------|
+| 入力 | `id: AgentId`、`name: str`（1〜40）、`persona: Persona`、`role: Role`、`providers: list[ProviderConfig]`（1 件以上）、`skills: list[SkillRef]`（0 件以上、デフォルト []）|
+| 処理 | Pydantic 型バリデーション → `model_validator(mode='after')` で不変条件検査 → 通過時のみ Agent を返す |
+| 出力 | `Agent` インスタンス（frozen、`archived=False`）|
+| エラー時 | `AgentInvariantViolation` を raise。MSG-AG-001〜005 |
+
+### REQ-AG-002: Provider 切替
+
+| 項目 | 内容 |
+|------|------|
+| 入力 | 現 Agent + `provider_kind: ProviderKind` |
+| 処理 | 1) providers 内で `provider_kind` が一致するエントリを探す 2) 見つからなければ raise（MSG-AG-006） 3) 全 providers の `is_default` を再計算（対象を True、他を False） 4) 仮 Agent を `model_validate(updated_dict)` で再構築（不変条件検査） 5) 通過時のみ仮 Agent を返す |
+| 出力 | 更新された Agent（新インスタンス） |
+| エラー時 | provider_kind 未登録なら `AgentInvariantViolation`（MSG-AG-006）|
+
+### REQ-AG-003: Skill 追加
+
+| 項目 | 内容 |
+|------|------|
+| 入力 | 現 Agent + `skill_ref: SkillRef` |
+| 処理 | 現 `skills` に追加した新リストを構築 → 仮 Agent を再構築 → 不変条件検査 |
+| 出力 | 更新された Agent |
+| エラー時 | 同一 `skill_id` 重複で `AgentInvariantViolation`（MSG-AG-007）|
+
+### REQ-AG-004: Skill 削除
+
+| 項目 | 内容 |
+|------|------|
+| 入力 | 現 Agent + `skill_id: SkillId` |
+| 処理 | 1) `skills` から該当 SkillRef を除外した新リストを構築 2) 該当が存在しなければ raise（MSG-AG-008） 3) 仮 Agent を再構築・検査 |
+| 出力 | 更新された Agent |
+| エラー時 | `skill_id` 未登録で `AgentInvariantViolation` |
+
+### REQ-AG-005: アーカイブ
+
+| 項目 | 内容 |
+|------|------|
+| 入力 | 現 Agent |
+| 処理 | `archived=True` に更新した仮 Agent を再構築 |
+| 出力 | 更新された Agent（新インスタンス） |
+| エラー時 | 既に `archived=True` の Agent に `archive()` を呼ぶと冪等で同じ状態を返す（エラーにしない） |
+
+### REQ-AG-006: 不変条件検査
+
+| 項目 | 内容 |
+|------|------|
+| 入力 | Agent インスタンス（コンストラクタ末尾 / 状態変更ふるまい末尾で自動呼び出し） |
+| 処理 | `model_validator(mode='after')` で: ①`name` 1〜40 文字 ②`providers` 内 `is_default == True` が 1 件のみ ③`providers` 内 `provider_kind` の重複なし ④`skills` 内 `skill_id` の重複なし |
+| 出力 | None |
+| エラー時 | いずれか違反で `AgentInvariantViolation`（kind に違反種別） |
+
+---
 
 ## モジュール構成
 
@@ -116,7 +178,7 @@ classDiagram
 3. `Agent.model_validate(updated_dict)` で**新インスタンス**を再構築（既に `archived=True` の Agent に対しても同手順を踏む、冪等）
 4. 不変条件検査（`model_validator(mode='after')`）が走り、通過時のみ新 Agent を返す
 
-**返り値は常に新 `Agent` インスタンス**（同状態でも別オブジェクト）。Pydantic v2 frozen + `model_validate` 経路の必然で、呼び出し側は `agent = agent.archive()` のように参照を差し替える。冪等性は「結果状態の同値性」として担保する（オブジェクト同一性ではない）。詳細は [detailed-design.md](detailed-design.md) §確定 D。
+**返り値は常に新 `Agent` インスタンス**（同状態でも別オブジェクト）。詳細は [detailed-design.md](detailed-design.md) §確定 D。
 
 ## シーケンス図
 
@@ -173,11 +235,11 @@ sequenceDiagram
 
 ### 脅威モデル
 
-本 feature 範囲では以下の 2 件。詳細な信頼境界は [`docs/design/threat-model.md`](../../design/threat-model.md)。
+本 feature 範囲では以下の 2 件。詳細な信頼境界は [`docs/design/threat-model.md`](../../../design/threat-model.md)。
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|
-| **T1: Persona.prompt_body 経由の prompt injection** | UI / API から悪意ある自然言語 prompt を投入 → Conversation・Deliverable に伝搬 | LLM Agent の整合性 / 他 Agent の Conversation | Agent ドメイン内ではサニタイズせず、永続化前の単一ゲートウェイ（[`storage.md`](../../design/domain-model/storage.md) §シークレットマスキング規則）で secret を伏字化。LLM 出力を直接 shell 実行する経路は提供しない（`threat-model.md` §A2） |
+| **T1: Persona.prompt_body 経由の prompt injection** | UI / API から悪意ある自然言語 prompt を投入 → Conversation・Deliverable に伝搬 | LLM Agent の整合性 / 他 Agent の Conversation | Agent ドメイン内ではサニタイズせず、永続化前の単一ゲートウェイ（`storage.md` §シークレットマスキング規則）で secret を伏字化。LLM 出力を直接 shell 実行する経路は提供しない（`threat-model.md` §A2） |
 | **T2: 不正な ProviderConfig による LLM Adapter 誤動作** | 存在しない `provider_kind` / `model` 名で Agent を構築 → LLM Adapter が落ちる | Agent / Adapter の整合性 | Pydantic enum で `provider_kind` を Fail Fast 拒否。`model` 文字列は LLM Adapter 側でホワイトリスト検証（別 feature 責務） |
 
 ### OWASP Top 10 対応
@@ -197,31 +259,7 @@ sequenceDiagram
 
 ## ER 図
 
-該当なし — 理由: 本 feature は domain 層のみで永続化スキーマは含まない。永続化は `feature/persistence` で扱う。参考の概形:
-
-```mermaid
-erDiagram
-    AGENT {
-        string id PK
-        string name
-        string role
-        boolean archived
-    }
-    PROVIDER_CONFIG {
-        string agent_id FK
-        string provider_kind
-        string model
-        boolean is_default
-    }
-    SKILL_REF {
-        string agent_id FK
-        string skill_id
-        string name
-        string path
-    }
-    AGENT ||--|{ PROVIDER_CONFIG : has
-    AGENT ||--o{ SKILL_REF : has
-```
+該当なし — 理由: 本 sub-feature は domain 層のみで永続化スキーマは含まない。永続化は [`repository/`](../repository/) sub-feature で扱う。
 
 ## エラーハンドリング方針
 
@@ -230,3 +268,15 @@ erDiagram
 | `AgentInvariantViolation` | application 層で catch、HTTP API 層で 400 / 422 にマッピング（別 feature） | MSG-AG-001 〜 008 |
 | `pydantic.ValidationError` | 構築時の型違反。application 層で catch | MSG-AG-001（汎用） |
 | その他 | 握り潰さない、application 層へ伝播 | 汎用エラーメッセージ |
+
+## 依存関係
+
+| 区分 | 依存 | バージョン方針 | 導入経路 | 備考 |
+|-----|------|-------------|---------|------|
+| ランタイム | Python 3.12+ | pyproject.toml | uv | 既存 |
+| Python 依存 | `pydantic` v2 | `pyproject.toml` | uv | 既存 |
+| Python 依存 | `pyright` (strict) | `pyproject.toml` dev | uv tool | 既存 |
+| Python 依存 | `ruff` | 同上 | uv tool | 既存 |
+| Python 依存 | `pytest` / `pytest-cov` | 同上 | uv | 既存 |
+| Node 依存 | 該当なし | — | — | バックエンド単独 |
+| 外部サービス | 該当なし | — | — | domain 層 |

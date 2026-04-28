@@ -1,0 +1,207 @@
+# 業務仕様書（feature-spec）— Agent
+
+> feature: `agent`（業務概念単位）
+> sub-features: [`domain/`](domain/) | [`repository/`](repository/) | http-api（将来）| ui（将来）
+> 関連 Issue: [#10 feat(agent): Agent Aggregate Root (M1)](https://github.com/bakufu-dev/bakufu/issues/10) / [#32 feat(agent-repository): Agent SQLite Repository (M2)](https://github.com/bakufu-dev/bakufu/issues/32)
+> 凍結済み設計: [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Agent / [`value-objects.md`](../../design/domain-model/value-objects.md) §Agent 構成要素
+
+## 本書の役割
+
+本書は **Agent という業務概念全体の業務仕様** を凍結する。bakufu 全体の要求分析（[`docs/analysis/`](../../analysis/)）を Agent という業務概念で具体化し、ペルソナ（個人開発者 CEO）から見て **観察可能な業務ふるまい** を実装レイヤー（domain / repository / http-api / ui）に依存せず定義する。Vモデル正規工程では **要件定義（業務）** 相当（システムテスト ↔ [`system-test-design.md`](system-test-design.md)）。
+
+各 sub-feature（[`domain/`](domain/) / [`repository/`](repository/) / 将来の http-api / ui）は本書を **業務根拠の真実源** として参照する。各 sub-feature は本書の業務ルール R1-X を実装方針 §確定 A〜Z として展開し、本書には逆流させない（本書の更新は別 PR で先行する）。
+
+**書くこと**:
+- ペルソナ（CEO）が Agent という業務概念で達成できるようになる行為（ユースケース）
+- 業務ルール（不変条件・容量上限・プロバイダ一意・スキル参照・永続性 等、すべての sub-feature を貫く凍結）
+- E2E で観察可能な事象としての受入基準（業務概念全体）
+- sub-feature 間の責務分離マップ（実装レイヤー対応）
+
+**書かないこと**（sub-feature の設計書へ追い出す）:
+- 採用技術スタック（Pydantic / SQLAlchemy / FastAPI 等） → sub-feature の `basic-design.md`
+- 実装方式の比較・選定議論（pre-validate / delete-then-insert / TypeDecorator 等） → sub-feature の `detailed-design.md`
+- 内部 API 形・メソッド名・属性名・型 → sub-feature の `basic-design.md` / `detailed-design.md`
+- sub-feature 内のテスト戦略（IT / UT） → sub-feature の `test-design.md`（E2E のみ親 [`system-test-design.md`](system-test-design.md) で扱う）
+
+## 1. この feature の位置付け
+
+bakufu インスタンスの組織（Empire）に採用された AI エージェント「Agent」を、ペルソナ（個人開発者 CEO）が役割分担付きで運用できる業務概念として定義する。Agent は Persona（キャラクター設定）/ Role（役割テンプレ）/ LLM プロバイダ設定を持つ採用済み AI エージェントであり、Room の `members` に紐づく中核 Aggregate。
+
+Agent の業務的なライフサイクルは複数の実装レイヤーを跨ぐ:
+
+| レイヤー | sub-feature | 業務観点での役割 |
+|---|---|---|
+| domain | [`domain/`](domain/) | Agent の構造的整合性（不変条件・容量・プロバイダ一意・スキル参照）を Aggregate 内で保証 |
+| repository | [`repository/`](repository/) | Agent の状態を再起動跨ぎで保持（永続化）、Persona.prompt_body の secret マスキングを担保 |
+| http-api | (将来) | UI / 外部クライアントから Agent を操作・取得する経路 |
+| ui | (将来) | CEO が Agent を直感的に編成する画面 |
+
+本書はこれら全レイヤーを貫く **業務概念単位の凍結文書** であり、各 sub-feature は本書を引用して実装契約を凍結する。
+
+## 2. 人間の要求
+
+> Issue #10（M1 domain）:
+>
+> bakufu MVP（v0.1.0）M1「ドメイン骨格」の一環として **Agent Aggregate Root** を実装する。Agent は Persona / Role / LLM プロバイダ設定を持つ採用済み AI エージェントで、Room の `members` に紐づく中核 Aggregate。
+
+> Issue #32（M2 repository）:
+>
+> bakufu MVP（v0.1.0）M2「SQLite 永続化」の後続 Repository PR（empire-repository #25 のテンプレート責務継承）。**Agent Aggregate** の SQLite 永続化を実装する。**Schneier 申し送り #3（`Persona.prompt_body` Repository マスキング）の実適用が本 PR の核心**。
+
+## 3. 背景・痛点
+
+### 現状の痛点
+
+1. bakufu の核心思想「複数 AI エージェントの役割分担」は Agent Aggregate なしには実現できない。Persona / Role / Provider 設定を 1 つの整合性ある単位として扱う Aggregate が必要
+2. M1 後段の `room` / `task` Issue は AgentMembership を介して Agent を参照する設計。Agent が無いと Room の `members` を構築できない
+3. CEO が Agent を採用しても再起動で状態が消えるなら、業務として成立しない（Agent 採用は持続的な組織概念）
+4. **Schneier 申し送り #3**: `Persona.prompt_body` に API key / GitHub PAT が混入した場合、Repository 経由での DB 永続化時に raw 流出する経路が残っている
+
+### 解決されれば変わること
+
+- CEO が Agent を採用し、Persona / Role / Provider を設定して組織に組み込める
+- Agent の状態がアプリ再起動を跨いで保持される（CEO は永続化を意識しない）
+- `Persona.prompt_body` に CEO が誤って API key / GitHub PAT を貼り付けても DB には `<REDACTED:*>` で永続化（**Schneier 申し送り #3 完了**）
+
+### ビジネス価値
+
+- bakufu の差別化「Persona 注入による Agent の個性化」が Aggregate 単位で扱えるようになる
+- マルチプロバイダ対応（Claude Code / Codex / Gemini 等）の切替経路が実装可能になる
+
+## 4. ペルソナ
+
+| ペルソナ名 | 役割 | 観察主体 | 達成したいゴール |
+|-----------|------|---------|---------------|
+| 個人開発者 CEO | bakufu インスタンスのオーナー | 直接（将来の UI 経由）/ 間接（domain・repository sub-feature では application 層経由） | Agent を採用し、Persona / Role / Provider を設定してチームに組み込み、再起動跨ぎで状態が保持される |
+
+bakufu システム全体ペルソナは [`docs/analysis/personas.md`](../../analysis/personas.md) を参照。
+
+## 5. ユースケース
+
+| UC ID | ペルソナ | ユーザーストーリー | 優先度 | 主担当 sub-feature |
+|-------|---------|-----------------|-------|------|
+| UC-AG-001 | CEO | Agent を採用できる（Persona / Role / Provider を設定して valid な Agent を構築する）| 必須 | domain |
+| UC-AG-002 | CEO | Agent の LLM プロバイダ（既定）を切り替えられる | 必須 | domain |
+| UC-AG-003 | CEO | Agent にスキルを追加・削除できる | 必須 | domain |
+| UC-AG-004 | CEO | Agent をアーカイブできる（物理削除なし）| 必須 | domain |
+| UC-AG-005 | CEO | 業務ルール違反（重複・容量・不変条件違反）の操作が拒否され、Agent 状態は変化しない | 必須 | domain |
+| UC-AG-006 | CEO | 採用した Agent の状態がアプリ再起動を跨いで保持される（永続化を意識しない）| 必須 | repository |
+| UC-AG-007 | CEO | 同 Empire 内で Agent 名は一意でなければならない（重複採用は拒否される）| 必須 | repository（find_by_name 提供）+ application 層（強制） |
+
+## 6. スコープ
+
+### In Scope
+
+- Agent 業務概念全体で観察可能な業務ふるまい（UC-AG-001〜007）
+- ふるまいの呼び出し失敗時に観察される拒否シグナル（業務ルール違反）
+- 業務概念単位の E2E 検証戦略 → [`system-test-design.md`](system-test-design.md)
+
+### Out of Scope（参照）
+
+- Agent の HTTP API → 将来の `agent/http-api/` sub-feature（Issue #59）
+- Agent の管理 UI → 将来の `agent/ui/` sub-feature
+- Agent の管理 CLI → 別 feature `feature/admin-cli`（横断的）
+- Room / Task との結合（AgentMembership 等） → `feature/room` / `feature/task`
+- 永続化基盤の汎用責務（WAL / マイグレーション / masking gateway） → [`feature/persistence-foundation`](../persistence-foundation/)
+- LLM Adapter（Agent の Persona を LLM に送信する経路） → 将来の `feature/llm-adapter`
+- 「Empire 内 name 一意」の application 層強制 → 将来の `feature/agent-service`（domain と repository の合間に位置）
+
+## 7. 業務ルールの確定（要求としての凍結）
+
+### 確定 R1-1: Agent 名は 1〜40 文字、空白のみは無効
+
+**理由**: CEO が認識可能な表示名であること。NFC 正規化 + strip 後の Unicode コードポイント数で判定。詳細は [`domain/detailed-design.md §確定 E`](domain/detailed-design.md)。
+
+### 確定 R1-2: providers は 1 件以上、上限 10 件、`provider_kind` 重複なし
+
+**理由**: Agent は必ず LLM プロバイダを持つ。同一プロバイダで複数モデル設定を可能にするため、List 構造で `provider_kind` 重複を禁止。MVP 運用想定規模（1〜3 プロバイダ）の数倍を上限として設定。
+
+### 確定 R1-3: providers のうち `is_default == True` は ちょうど 1 件
+
+**理由**: LLM Adapter が「現在の既定プロバイダ」を一意に決定できるようにする。0 件は LLM 呼び出し不能、2 件以上は非決定的選択の原因になる。これは Aggregate 内不変条件として強制する。
+
+### 確定 R1-4: skills は上限 20 件、`skill_id` 重複なし
+
+**理由**: MVP の実用範囲（1 Agent あたり 5 スキル程度）の数倍を上限に設定。MVP では Skill は Markdown プロンプトの参照のみ（Phase 2 で実体化）。
+
+### 確定 R1-5: アーカイブされた Agent は物理削除しない
+
+**理由**: 監査可能性。過去に採用した Agent の履歴を audit_log（後段 feature）から参照する際、物理削除すると `agent_id` が解決できなくなる。アーカイブは「論理削除フラグ + 履歴保持」とする。
+
+### 確定 R1-6: 同 Empire 内の Agent 名は一意
+
+**理由**: CEO が「役割の重複」に気付かず採用すると、業務上の責任分担が曖昧になる。この不変条件は **Aggregate 外部の集合知識**（同 Empire 内の他 Agent との比較を要する）のため、application 層 `AgentService.hire()` が `AgentRepository.find_by_name(empire_id, name)` 経由で判定する。Aggregate 自身は自分の name の一意性を知らない設計。
+
+### 確定 R1-7: Agent の状態は再起動跨ぎで保持される
+
+**理由**: Agent 採用は持続的な組織概念であり、アプリ再起動による状態消失は業務として許容できない。永続化は CEO から意識されない透明な責務。
+
+### 確定 R1-8: `Persona.prompt_body` は永続化前にシークレットマスキングを適用する
+
+**理由**: CEO が persona 設計時に `prompt_body` に API key / GitHub PAT を誤って含めた場合、DB 直読み / バックアップ / 監査ログ経路への raw token 流出を防ぐ（**Schneier 申し送り #3 実適用**）。domain 層は raw 文字列を保持し、Repository 層の `MaskedText` TypeDecorator 経由で INSERT/UPDATE 前にマスキングを適用する。
+
+## 8. 制約・前提
+
+| 区分 | 内容 |
+|-----|------|
+| 既存運用規約 | GitFlow / Conventional Commits（[`CONTRIBUTING.md`](../../../CONTRIBUTING.md)） |
+| ライセンス | MIT |
+| 対象 OS | Windows 10 21H2+ / macOS 12+ / Linux glibc 2.35+ |
+| ネットワーク | 該当なし — Agent 業務概念は外部通信を持たない（永続化はローカル SQLite） |
+| 依存 feature | M1 開始時点: chore #7 マージ済み / M2 開始時点: M1 `agent/domain` + [`feature/persistence-foundation`](../persistence-foundation/) マージ済み |
+
+実装技術スタック（Python 3.12 / Pydantic v2 / SQLAlchemy 2.x async / Alembic / pyright strict / pytest）は各 sub-feature の `basic-design.md §依存関係` に集約する。
+
+## 9. 受入基準（観察可能な事象）
+
+| # | 基準 | 紐付く UC | 検証方法 |
+|---|------|---------|---------|
+| 1 | valid な Agent が構築でき、Persona / Role / Provider / Skills を持つ | UC-AG-001 | TC-UT-AG-001（[`domain/test-design.md`](domain/test-design.md)） |
+| 2 | name が業務ルール R1-1（1〜40 文字、空白のみ無効）に違反する Agent は構築できない | UC-AG-005 | TC-UT-AG-002 |
+| 3 | providers に `is_default == True` が 0 件で構築しようとすると拒否される | UC-AG-005 | TC-UT-AG-003 |
+| 4 | providers に `is_default == True` が 2 件以上で構築しようとすると拒否される | UC-AG-005 | TC-UT-AG-004 |
+| 5 | `set_default_provider` で既定プロバイダが切り替わり、他は False になる | UC-AG-002 | TC-UT-AG-005 |
+| 6 | 存在しない `provider_kind` での `set_default_provider` は拒否される | UC-AG-005 | TC-UT-AG-006 |
+| 7 | `add_skill` でスキルを追加でき、重複 skill_id は拒否される | UC-AG-003 | TC-UT-AG-007, 008 |
+| 8 | `remove_skill` でスキルを削除でき、未登録 skill_id は拒否される | UC-AG-003 | TC-UT-AG-009 |
+| 9 | `archive()` で `archived = True` の新 Agent が返る（冪等） | UC-AG-004 | TC-UT-AG-010, 020 |
+| 10 | 採用した Agent の状態がアプリ再起動跨ぎで保持される（業務ルール R1-7） | UC-AG-006 | TC-E2E-AG-001（[`system-test-design.md`](system-test-design.md)） |
+| 11 | 同 Empire 内で同名 Agent を採用しようとすると拒否される（業務ルール R1-6） | UC-AG-007 | TC-E2E-AG-002 |
+| 12 | `Persona.prompt_body` に API key を含めて永続化すると DB には `<REDACTED:*>` で保存される（業務ルール R1-8）| UC-AG-006 | TC-IT-AGR-006-masking（[`repository/test-design.md`](repository/test-design.md)） |
+
+E2E（受入基準 10, 11）は [`system-test-design.md`](system-test-design.md) で詳細凍結。受入基準 1〜9 は domain sub-feature の IT / UT で検証（[`domain/test-design.md`](domain/test-design.md)）。受入基準 12 は repository sub-feature の IT で検証。
+
+## 10. 開発者品質基準（CI 担保、業務要求ではない）
+
+各 sub-feature の `basic-design.md §モジュール契約` / `test-design.md §カバレッジ基準` で個別に管理する。本書では業務要求のみ凍結。
+
+参考: domain は `domain/agent.py` カバレッジ 95% 以上、repository は実装ファイル群で 90% 以上を目標としているが、これは sub-feature 側の凍結事項。
+
+## 11. 開放論点 (Open Questions)
+
+凍結時点で未確定の論点はなし — R1 レビューで全件凍結済み。確定 R1-1〜8 として §7 に集約。
+
+## 12. sub-feature 一覧とマイルストーン整理
+
+[`README.md`](README.md) を参照。
+
+## 13. 扱うデータと機密レベル
+
+| 区分 | 内容 | 機密レベル |
+|-----|------|----------|
+| Agent.name | "ダリオ" / "イーロン" 等の表示名 | 低 |
+| Persona.display_name | Agent の表示名 | 低 |
+| Persona.archetype | "イーロン・マスク風 CEO" 等のキャラクター説明 | 低 |
+| Persona.prompt_body | LLM システムプロンプト（自然言語） | **中**（API key / GitHub PAT が混入し得る、Schneier #3 実適用、Repository 層でマスキング必須） |
+| ProviderConfig.model | "sonnet" / "gpt-5-codex" 等 | 低 |
+| SkillRef.path | スキル markdown ファイルパス | 低（H1〜H10 検証で path traversal 防御済み） |
+| 永続化テーブル群（agents / agent_providers / agent_skills） | 上記の永続化先 | 低（`agents.prompt_body` のみ MaskedText、その他は masking 対象なし） |
+
+## 14. 非機能要求
+
+| 区分 | 要求 |
+|-----|------|
+| パフォーマンス | 業務ふるまい呼び出しの応答が CEO 視点で「即時」（数 ms 以内）と感じられること。MVP 想定規模（providers ≤ 10、skills ≤ 20）で domain 層 1ms 未満、永続化層 50ms 未満を目標 |
+| 可用性 | 永続化層の WAL モード + crash safety（[`feature/persistence-foundation`](../persistence-foundation/) 担保）により、書き込み中のクラッシュでも Agent 状態が破損しない |
+| 可搬性 | 純 Python のみ。OS / ファイルシステム依存なし（SQLite はクロスプラットフォーム） |
+| セキュリティ | 業務ルール違反は早期に拒否される（Fail Fast）。`Persona.prompt_body` の API key / GitHub PAT は `MaskedText` で永続化前マスキング（業務ルール R1-8、Schneier 申し送り #3 実適用）。SkillRef.path の path traversal 防御は VO レベル（H1〜H10）+ 将来の `feature/skill-loader` での realpath 解決で Defense in Depth |
