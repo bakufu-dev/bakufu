@@ -119,17 +119,18 @@ Task Aggregate の 3 masking カラムを CI 三層防衛に登録する:
 | `Conversation.messages[].body_markdown` | `feature/conversation-repository`（後続）→ `feature/task-repository`（Issue #35、**会話履歴は Task Aggregate の子構造として task-repository が永続化**） |
 | `Task 残カラム（tasks / task_assigned_agents / conversations / deliverables / deliverable_attachments の masking 非対象カラム）` | masking 対象なし。CI Layer 2 で arch test 保証 |
 
-### §確定 R1-G: `tasks.current_stage_id` に FK を張らない理由（循環参照）
+### §確定 R1-G: `tasks.current_stage_id` に FK を張らない理由（Aggregate 境界 + application 層保証）
 
 `tasks.current_stage_id → workflow_stages.id` FK は **0007 では張らない**:
 
 | 根拠 | 内容 |
 |-----|------|
-| workflow §確定 J 同方針 | `workflow_stages` の遷移先参照（circular reference within workflow）で同種の申し送りを確立済み |
-| 循環参照 | `tasks → workflow_stages` FK を張ると、task 削除時に workflow_stages への影響が生まれる。Workflow は Task の外部概念であり、Task が消えても Workflow は残る。ON DELETE SET NULL / RESTRICT どちらも不自然 |
+| **Aggregate 境界** | `workflow_stages` は Workflow Aggregate（PR #41）の子構造であり、Task Aggregate とは独立した Aggregate 境界を持つ。Task が Workflow Aggregate の内部構造（stage）に直接 FK 依存することは Aggregate 間の結合を生み、Workflow Aggregate の変更（Stage 削除 / リネーム）が Task に波及する設計違反になる |
+| **ON DELETE の困難** | FK を張る場合の ON DELETE 選択肢はどれも不整合: CASCADE（Task が消えてしまう）/ RESTRICT（Stage 削除前に全 Task を終了させる連鎖義務）/ SET NULL（`current_stage_id` が NULL になり Task が壊れる）。いずれも Aggregate 独立性を損なう |
+| **workflow §確定 J 同方針** | `workflow_stages` 内の遷移先 Stage 参照（workflow §確定 J）で「Aggregate 内部参照は FK を張らない」と同方針。`current_stage_id` は Task の業務的な「現在地」であり、Workflow Aggregate が保有するデータへの参照整合性は application 層責務 |
 | application 層保証 | `current_stage_id` の Workflow 内存在検証は `TaskService` が `WorkflowRepository.find_by_id()` で行う（task §確定 R1-A 不変条件欄） |
 
-**申し送り**: 後続 `feature/task-workflow-binding`（未 Issue）が `tasks.current_stage_id` FK の追加を検討する際に `batch_alter_table` で追加する。本 PR では `tasks.current_stage_id` は nullable なし UUIDStr として存在（FK なし）。
+本 PR では `tasks.current_stage_id` は NOT NULL UUIDStr として存在（FK なし）。FK closure の申し送りなし（`room_members.agent_id` と同様、Aggregate 境界として永続的に FK を張らない設計決定）。
 
 ### §確定 R1-H: 子テーブル SELECT の ORDER BY 決定論性（BUG-EMR-001 準拠）
 
@@ -161,7 +162,7 @@ room-repository PR #47 BUG-EMR-001 規約（`ORDER BY` は PK を tiebreaker に
 | Protocol method 数 | 6（empire 3 + Task 固有 3） | 2（find_by_id / save のみ） | count_by_status / count_by_room / find_blocked はダッシュボード + 障害隔離の確定要件、YAGNI ではない |
 | save() DELETE 戦略 | CASCADE 活用（3 段 DELETE → 3 親テーブル） | 全子テーブル明示 DELETE（6 段） | CASCADE を使うことで DELETE 段数を削減し、コード量と FK 制約の重複を避ける |
 | Alembic revision 方式 | 1 ファイル（0007_task_aggregate.py）に 6 テーブル + BUG-DRR-001 FK closure を全収録 | 7 ファイル分割 | 1 ファイル atomic migration。テーブル群が 1 Aggregate に属するため分割する業務理由なし |
-| `current_stage_id` FK | なし（application 層保証） | `workflow_stages.id` FK | 循環参照 + workflow §確定 J 同方針（§確定 R1-G） |
+| `current_stage_id` FK | なし（Aggregate 境界 + application 層保証） | `workflow_stages.id` FK | Workflow Aggregate と Task Aggregate の Aggregate 境界。ON DELETE 選択肢がどれも不整合（§確定 R1-G） |
 
 ## 関連 Issue / PR
 

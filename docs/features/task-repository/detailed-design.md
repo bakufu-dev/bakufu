@@ -17,7 +17,7 @@
 |--------|---------|-------|------|
 | `find_by_id` | `(task_id: TaskId) -> Task \| None` | `Task`（存在時）/ `None`（不在時） | async def |
 | `count` | `() -> int` | `int`（全件数） | async def |
-| `save` | `(task: Task) -> None` | `None` | async def、§確定 R1-B 9 段階実行 |
+| `save` | `(task: Task) -> None` | `None` | async def、§確定 R1-B 9 段階実行（詳細設計 §確定 R1-B で凍結） |
 | `count_by_status` | `(status: TaskStatus) -> int` | `int`（ステータス別件数） | async def |
 | `count_by_room` | `(room_id: RoomId) -> int` | `int`（Room 別件数） | async def |
 | `find_blocked` | `() -> list[Task]` | `list[Task]`（空の場合 `[]`） | async def、ORDER BY updated_at DESC, id DESC |
@@ -36,18 +36,18 @@
 | `count_by_status` | `(status: TaskStatus) -> int` | `int` | `SELECT COUNT(*) FROM tasks WHERE status = :status` |
 | `count_by_room` | `(room_id: RoomId) -> int` | `int` | `SELECT COUNT(*) FROM tasks WHERE room_id = :room_id` |
 | `find_blocked` | `() -> list[Task]` | `list[Task]` | `SELECT * FROM tasks WHERE status = 'BLOCKED' ORDER BY updated_at DESC, id DESC` → 各行で `find_by_id` 相当の子テーブル取得 → `_from_rows()` |
-| `_to_rows` | `(task: Task) -> tuple[TaskRow, list[AssignedAgentRow], list[ConversationRow], list[MessageRow], list[DeliverableRow], list[AttachmentRow]]` | 6 種 Row の tuple | TypeDecorator 信頼（UUIDStr/MaskedText 二重変換しない、§確定 R1-A） |
+| `_to_rows` | `(task: Task) -> tuple[TaskRow, list[AssignedAgentRow], list[ConversationRow], list[MessageRow], list[DeliverableRow], list[AttachmentRow]]` | 6 種 Row の tuple | TypeDecorator 信頼（UUIDStr/MaskedText 二重変換しない、§確定 R1-A 詳細） |
 | `_from_rows` | `(task_row, agent_rows, conv_rows, msg_rows, deliv_rows, attach_rows) -> Task` | `Task` | TypeDecorator 信頼。`TaskId(task_row.id)` のように直接構築（UUID 二重ラップしない） |
 
 ## 確定事項（先送り撤廃）
 
-### §確定 A: TypeDecorator 信頼の徹底（Rams 指摘 R1 directive-repository v2 凍結の継承）
+### §確定 R1-A: TypeDecorator 信頼の徹底（Rams 指摘 R1 directive-repository v2 凍結の継承）
 
 `UUIDStr` TypeDecorator は SELECT 時に `UUID` インスタンスを返す（SQLAlchemy TypeDecorator の `process_result_value` で変換済み）。`_from_rows()` 内で `TaskId(UUID(row.id))` と二重ラップせず、`TaskId(row.id)` で直接 `AgentId` 型に渡す。
 
 `MaskedText` TypeDecorator は INSERT 時に `process_bind_param` でマスキング済み値を bind parameter に渡す。`_to_rows()` 内で `MaskingGateway.mask()` を手動呼び出しせず、TypeDecorator に委ねる（責務の重複排除）。
 
-### §確定 B: save() 9 段階の順序と SQLite FK 整合性
+### §確定 R1-B: save() 9 段階の順序と SQLite FK 整合性
 
 §確定 R1-B で定義した 9 段階を詳細凍結する:
 
@@ -56,16 +56,16 @@
 | 1 | `DELETE FROM deliverables WHERE task_id = :id` | deliverables + CASCADE | deliverable_attachments は CASCADE で自動削除。明示 DELETE 不要 |
 | 2 | `DELETE FROM conversations WHERE task_id = :id` | conversations + CASCADE | conversation_messages は CASCADE で自動削除。明示 DELETE 不要 |
 | 3 | `DELETE FROM task_assigned_agents WHERE task_id = :id` | task_assigned_agents | FK CASCADE 先がない。直接 DELETE |
-| 4 | `INSERT OR REPLACE INTO tasks ...` | tasks（UPSERT） | `ON CONFLICT id DO UPDATE` でも可（SQLAlchemy merge() 相当）。新規・更新両対応 |
+| 4 | `INSERT ... ON CONFLICT (id) DO UPDATE SET ...` | tasks（UPSERT） | SQLAlchemy `sqlite_insert(...).on_conflict_do_update(...)` で既存 tasks 行を UPDATE する（empire / room / directive-repository の既存実装パターンと一致）。新規・更新両対応 |
 | 5 | `INSERT INTO task_assigned_agents ...` | 各 AgentId | order_index は Aggregate の `assigned_agent_ids` リスト添字（0-indexed） |
 | 6 | `INSERT INTO conversations ...` | 各 Conversation | task_id FK が段階 4 で確定済みのため FK 制約通過 |
 | 7 | `INSERT INTO conversation_messages ...` | 各 Message（Conversation ごと） | conversation_id FK が段階 6 で確定済みのため FK 制約通過 |
 | 8 | `INSERT INTO deliverables ...` | 各 Deliverable | task_id FK が段階 4 で確定済み。`UNIQUE(task_id, stage_id)` は段階 1 の DELETE で先行クリア済みのため通過 |
 | 9 | `INSERT INTO deliverable_attachments ...` | 各 Attachment（Deliverable ごと） | deliverable_id FK が段階 8 で確定済み |
 
-**段階 4 の UPSERT を DELETE 前に行わない理由**: FK CASCADE により tasks 行削除が 5 子テーブルを連鎖削除する。tasks UPSERT を先に行うと新行 insert → 旧行 delete ができず UNIQUE PK 制約で衝突する（`INSERT OR REPLACE` は旧行を delete + 新行 insert の 2 ステップ）。よって子テーブルを先に DELETE してから tasks UPSERT が正しい順序。
+**段階 4 の UPSERT を DELETE 前に行わない理由**: `ON CONFLICT DO UPDATE` は既存行を IN-PLACE 更新するため tasks 行そのものは残り、段階 1〜3 の DELETE が済んでいれば子テーブルへの CASCADE 削除は発生しない。しかし UPSERT を先に行うと `UNIQUE(task_id, stage_id)` 等の制約で INSERT 段階 8 が衝突する可能性がある（段階 1 の DELETE で先行クリアしてから INSERT するのが正しい順序）。
 
-### §確定 C: BUG-DRR-001 closure の実装詳細（`directives.task_id → tasks.id` FK）
+### §確定 R1-C: BUG-DRR-001 closure の実装詳細（`directives.task_id → tasks.id` FK）
 
 `0007_task_aggregate.py` の `upgrade()` 末尾に追記する:
 
@@ -79,7 +79,7 @@
 
 **batch_alter_table が必要な理由**: SQLite は `ALTER TABLE ADD CONSTRAINT FOREIGN KEY` を未サポート（[SQLite ALTER TABLE 公式ドキュメント](https://www.sqlite.org/lang_altertable.html)）。Alembic の `batch_alter_table` は内部でテーブルを再作成（TEMP テーブル → COPY → DROP → RENAME）することで制約変更を実現する。room-repository PR #47 BUG-EMR-001 closure と同パターン。
 
-### §確定 D: `_from_rows` の子構造再組み立て（Task Aggregate 復元の詳細）
+### §確定 R1-J: `_from_rows` の子構造再組み立て（Task Aggregate 復元の詳細）
 
 Task Aggregate 復元時の `_from_rows()` 処理の確定ルール:
 
@@ -89,7 +89,7 @@ Task Aggregate 復元時の `_from_rows()` 処理の確定ルール:
 | `deliverables: dict[StageId, Deliverable]` | `{StageId(r.stage_id): _row_to_deliverable(r, attach_rows_for(r.id)) for r in deliv_rows}` | UNIQUE(task_id, stage_id) 制約により dict key 衝突なし |
 | `conversations: list[Conversation]` | `conv_rows` を `created_at ASC, id ASC` でソート済みで受け取り、各 `conv_id` に対応する `msg_rows` をフィルタして `Conversation` 再組み立て | §確定 R1-H の ORDER BY 保証 |
 
-### §確定 E: CI 三層防衛の詳細実装仕様
+### §確定 R1-E: CI 三層防衛の詳細実装仕様
 
 #### Layer 1: `check_masking_columns.sh` 追加エントリ
 
@@ -118,16 +118,20 @@ parametrize に追加する 3 行:
 
 `docs/architecture/domain-model/storage.md` §逆引き表の更新は REQ-TR-005 で実施済み（本 PR 設計書と同一コミット）。
 
-### §確定 F: INDEX 設計の根拠
+### §確定 R1-K: INDEX 設計の根拠
 
 | INDEX | 対象カラム | 種別 | 根拠 |
 |------|-----------|------|------|
-| `ix_tasks_status` | `tasks.status` | 非 UNIQUE | `count_by_status` / `find_blocked` の WHERE status フィルタを最適化 |
 | `ix_tasks_room_id` | `tasks.room_id` | 非 UNIQUE | `count_by_room` の WHERE room_id フィルタを最適化 |
-| `ix_tasks_updated_at_id` | `(tasks.updated_at, tasks.id)` | 非 UNIQUE | `find_blocked` の `ORDER BY updated_at DESC, id DESC` を最適化（BUG-EMR-001 tiebreaker 込み複合 INDEX） |
+| `ix_tasks_status_updated_id` | `(tasks.status, tasks.updated_at, tasks.id)` | 非 UNIQUE | `find_blocked` の `WHERE status = 'BLOCKED' ORDER BY updated_at DESC, id DESC` を WHERE + ORDER BY 一括最適化（status フィルタで先絞り → updated_at / id で決定論的ソート。`ix_tasks_status` 単独では ORDER BY が最適化されず、`ix_tasks_updated_at_id` 単独では WHERE status が効かない。複合 INDEX で両方をカバー） |
+
+**採用根拠の詳細 — `ix_tasks_status_updated_id` の 3 カラム複合 INDEX**:
+
+`find_blocked` クエリは `WHERE status = 'BLOCKED' ORDER BY updated_at DESC, id DESC` の構造を持つ。単純な `(updated_at, id)` INDEX は WHERE status フィルタに効かない（Halsenberg 指摘 R4）。`(status)` 単独 INDEX はフィルタには効くが ORDER BY ソートが最適化されない。複合 INDEX `(status, updated_at, id)` は WHERE 等価一致（status）→ 範囲ソート（updated_at, id）を一つの B-tree で処理し、`count_by_status` も同 INDEX の prefix `(status)` で効く。
 
 **INDEX を張らない判断（YAGNI）**:
-- `tasks.directive_id`: 1 Task につき 1 Directive（1:1 相当）のため低選択性。INDEX 効果薄。後続 HTTP API で必要になったら追加
+- `tasks.status` 単体 INDEX: 廃止。`ix_tasks_status_updated_id` の prefix `(status)` で `count_by_status` も最適化されるため単体 INDEX は冗長
+- `tasks.directive_id`: 1 Task につき 1 Directive（1:1 相当）のため低選択性。INDEX 効果薄
 - `conversations.task_id`: `find_by_id` 内の子テーブル SELECT で 1 task_id による 1 クエリ。テーブルサイズが巨大になるまで INDEX 不要
 - その他子テーブルの FK カラム: 同様の理由で保留
 
@@ -140,7 +144,7 @@ parametrize に追加する 3 行:
 | `id` | `UUIDStr` | PK, NOT NULL | TaskId（UUIDv4） |
 | `room_id` | `UUIDStr` | FK → `rooms.id` ON DELETE **CASCADE**, NOT NULL | 所属 Room |
 | `directive_id` | `UUIDStr` | FK → `directives.id` ON DELETE **CASCADE**, NOT NULL | 起点 Directive |
-| `current_stage_id` | `UUIDStr` | NOT NULL（**FK なし** — §確定 R1-G 循環参照問題） | 現 Stage（Workflow §確定 J 同方針） |
+| `current_stage_id` | `UUIDStr` | NOT NULL（**FK なし** — §確定 R1-G: Workflow Aggregate 境界、存在検証は application 層責務） | 現 Stage（Workflow §確定 J 同方針） |
 | `status` | `String(32)` | NOT NULL | TaskStatus 6 値（PENDING / IN_PROGRESS / AWAITING_EXTERNAL_REVIEW / BLOCKED / DONE / CANCELLED） |
 | `last_error` | **`MaskedText`** | NULL | BLOCKED 隔離理由（LLM エラーメッセージ。secret 混入の可能性 → masking 必須） |
 | `created_at` | `DateTime(timezone=True)` | NOT NULL | UTC 起票時刻 |
@@ -183,7 +187,7 @@ parametrize に追加する 3 行:
 |-------|----|----|----|
 | `id` | `UUIDStr` | PK, NOT NULL | DeliverableId（UUIDv4）。Aggregate は `stage_id` で一意管理だが永続化には PK が必要 |
 | `task_id` | `UUIDStr` | FK → `tasks.id` ON DELETE **CASCADE**, NOT NULL | 親 Task |
-| `stage_id` | `UUIDStr` | NOT NULL（**FK なし** — §確定 R1-G workflow 循環参照問題） | 対象 Stage |
+| `stage_id` | `UUIDStr` | NOT NULL（**FK なし** — §確定 R1-G: Workflow Aggregate 境界、存在検証は application 層責務） | 対象 Stage |
 | `body_markdown` | **`MaskedText`** | NOT NULL | 成果物本文（Agent 出力を含む → masking 必須） |
 | `committed_by` | `UUIDStr` | NOT NULL（**FK なし** — Aggregate 境界） | コミットした AgentId |
 | `committed_at` | `DateTime(timezone=True)` | NOT NULL | UTC コミット時刻 |
@@ -208,7 +212,7 @@ parametrize に追加する 3 行:
 
 | 操作 | 内容 |
 |---|---|
-| `upgrade()` — tasks | `op.create_table('tasks', ...)` + 3 INDEX（ix_tasks_status / ix_tasks_room_id / ix_tasks_updated_at_id） |
+| `upgrade()` — tasks | `op.create_table('tasks', ...)` + 2 INDEX（ix_tasks_room_id / ix_tasks_status_updated_id） |
 | `upgrade()` — 子テーブル | `op.create_table('task_assigned_agents', ...)` / `op.create_table('conversations', ...)` / `op.create_table('conversation_messages', ...)` / `op.create_table('deliverables', ...)` / `op.create_table('deliverable_attachments', ...)` |
 | `upgrade()` — BUG-DRR-001 | `op.batch_alter_table('directives')` → `create_foreign_key('fk_directives_task_id', 'tasks', ['task_id'], ['id'], ondelete='RESTRICT')` |
 | `downgrade()` | BUG-DRR-001 FK drop → 子テーブル 5 本 drop → tasks drop（CASCADE FK により子が先に消える）|
@@ -221,14 +225,15 @@ parametrize に追加する 3 行:
 
 ## §Known Issues
 
-### §BUG-TR-001: `task_assigned_agents.agent_id` / `deliverables.committed_by` / `conversations` FK 未追加
+### §設計決定 TR-001: `task_assigned_agents.agent_id` / `deliverables.committed_by` は Aggregate 境界として永続的に FK 張らない
 
 | 項目 | 内容 |
 |---|---|
-| 状態 | **OPEN（申し送り中）** |
-| 内容 | `task_assigned_agents.agent_id → agents.id` / `deliverables.committed_by → agents.id` FK は 0007 で張らない。`agents` テーブルは agent-repository（後続 Issue #32）で追加予定だが、task-repository と agent-repository のどちらが先にマージされるかに依存する forward reference 問題 |
-| 対策（現状）| application 層 `TaskService.assign()` が `AgentRepository.find_by_id(agent_id)` で存在確認 |
-| closure 責務 | agent-repository PR マージ後、`feature/task-agent-fk-closure`（未 Issue）で `op.batch_alter_table('task_assigned_agents')` / `op.batch_alter_table('deliverables')` 経由で FK 追加。BUG-DRR-001 / BUG-EMR-001 と同パターン |
+| 状態 | **RESOLVED（設計決定として凍結）** |
+| 内容 | `task_assigned_agents.agent_id` / `deliverables.committed_by` に `agents.id` への FK を張らない。これは forward reference 問題ではなく **Aggregate 境界の設計決定**。`agents` テーブルは agent-repository PR #45 でマージ済みであり、技術的には FK を張ることは可能 |
+| 根拠 | room-repository §確定 R1-B の `room_members.agent_id` 前例と同論理: **archived agent の CASCADE 危険性**。Agent が削除（archived）される際に ON DELETE CASCADE を適用すると task_assigned_agents 行が消え、Task Aggregate の復元が壊れる（IN_PROGRESS Task の assigned_agent_ids が空になり業務不整合）。ON DELETE RESTRICT なら Agent 削除前に必ず Task を DONE/CANCELLED にする連鎖が必要だが、これは Agent Aggregate と Task Aggregate の Aggregate 間依存を生む設計違反。**FK を張らないことで Aggregate の独立性を保ち、参照整合性は application 層の `AgentRepository.find_by_id(agent_id)` で補完する** |
+| 対策 | application 層 `TaskService.assign()` が `AgentRepository.find_by_id(agent_id)` で存在確認してから `task.assign(agent_ids)` → `save()` を呼ぶ（Aggregate 境界を越えた参照整合性は application 層の責務） |
+| 閉鎖 | FK closure 申し送りなし。この設計決定は **変更しない** |
 
 ## 出典・参考
 

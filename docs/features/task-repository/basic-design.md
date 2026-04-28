@@ -274,7 +274,7 @@ erDiagram
         string id PK
         string room_id FK
         string directive_id FK
-        string current_stage_id "NO FK (循環参照 §確定 R1-G)"
+        string current_stage_id "NO FK (Aggregate境界 §確定 R1-G)"
         string status "NOT NULL (6値)"
         text last_error "MaskedText NULL"
         datetime created_at "NOT NULL"
@@ -304,7 +304,7 @@ erDiagram
     deliverables {
         string id PK
         string task_id FK
-        string stage_id "NO FK (§確定 R1-G)"
+        string stage_id "NO FK (Aggregate境界 §確定 R1-G)"
         text body_markdown "MaskedText NOT NULL"
         string committed_by "NO FK (Aggregate境界)"
         datetime committed_at "NOT NULL"

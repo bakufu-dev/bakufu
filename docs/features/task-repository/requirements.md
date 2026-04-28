@@ -96,21 +96,20 @@
 | `tasks` | `id` | `UUIDStr` | PK, NOT NULL | TaskId |
 | `tasks` | `room_id` | `UUIDStr` | **FK → `rooms.id` ON DELETE CASCADE, NOT NULL** | 所属 Room |
 | `tasks` | `directive_id` | `UUIDStr` | **FK → `directives.id` ON DELETE CASCADE, NOT NULL** | 起点 Directive |
-| `tasks` | `current_stage_id` | `UUIDStr` | NOT NULL（**FK なし** — §確定 R1-G 循環参照問題、workflow §確定 J 同方針） | 現 Stage（application 層が Workflow 内存在を検証） |
+| `tasks` | `current_stage_id` | `UUIDStr` | NOT NULL（**FK なし** — §確定 R1-G: Aggregate 境界設計決定、workflow §確定 J 同方針） | 現 Stage（application 層が Workflow 内存在を検証） |
 | `tasks` | `status` | `String(32)` | NOT NULL（TaskStatus 6 値: PENDING / IN_PROGRESS / AWAITING_EXTERNAL_REVIEW / BLOCKED / DONE / CANCELLED） | 全体状態 |
 | `tasks` | `last_error` | **`MaskedText`** | NULL（BLOCKED ⇔ 非 NULL 不変条件は Aggregate 層で保証） | BLOCKED 隔離理由（LLM エラーメッセージ） |
 | `tasks` | `created_at` | `DateTime(timezone=True)` | NOT NULL | UTC 起票時刻 |
 | `tasks` | `updated_at` | `DateTime(timezone=True)` | NOT NULL | UTC 最終更新時刻 |
-| INDEX | `tasks.status` | 非 UNIQUE | — | `count_by_status` / `find_blocked` 最適化 |
 | INDEX | `tasks.room_id` | 非 UNIQUE | — | `count_by_room` 最適化 |
-| INDEX | `(tasks.updated_at, tasks.id)` | 非 UNIQUE | — | `find_blocked` ORDER BY 最適化 |
+| INDEX | `(tasks.status, tasks.updated_at, tasks.id)` | 非 UNIQUE | — | `find_blocked` の WHERE status フィルタ + ORDER BY updated_at DESC, id DESC を一括最適化（§確定 R1-K） |
 
 ### `task_assigned_agents` テーブル
 
 | エンティティ | 属性 | 型 | 制約 | 関連 |
 |-------------|------|---|------|------|
 | `task_assigned_agents` | `task_id` | `UUIDStr` | **FK → `tasks.id` ON DELETE CASCADE, NOT NULL** | 親 Task |
-| `task_assigned_agents` | `agent_id` | `UUIDStr` | NOT NULL（**FK なし** — `agents` テーブルとの Aggregate 境界） | AgentId（参照のみ） |
+| `task_assigned_agents` | `agent_id` | `UUIDStr` | NOT NULL（**FK なし** — Aggregate 境界設計決定。room_members.agent_id 前例と同論理: archived agent の CASCADE 危険性回避。§設計決定 TR-001） | AgentId（参照のみ） |
 | `task_assigned_agents` | `order_index` | `Integer` | NOT NULL（割り当て順序保持） | — |
 | UNIQUE | `(task_id, agent_id)` | — | — | 重複割り当て防止（Aggregate 不変条件と 2 層防衛） |
 
