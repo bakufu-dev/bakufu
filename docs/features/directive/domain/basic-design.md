@@ -1,13 +1,25 @@
-# 基本設計書
+# 基本設計書 — directive / domain
 
 > feature: `directive`
-> 関連: [requirements.md](requirements.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Directive
+> sub-feature: `domain`
+> 親 spec: [`../feature-spec.md`](../feature-spec.md) §9 受入基準 1〜7, 9
+> 関連: [`docs/design/domain-model/aggregates.md`](../../../design/domain-model/aggregates.md) §Directive
 
 ## 記述ルール（必ず守ること）
 
 基本設計に**疑似コード・サンプル実装（python/ts/sh/yaml 等の言語コードブロック）を書かない**。
 ソースコードと二重管理になりメンテナンスコストしか生まない。
 必要なのは構造契約（クラス・モジュール・データの関係）であり、実装の細部は [detailed-design.md](detailed-design.md) で凍結する。
+
+## §モジュール契約（機能要件）
+
+本 sub-feature が実装すべき機能要件は以下の通り（親 [`../feature-spec.md`](../feature-spec.md) §9 受入基準 1〜7, 9 を domain 実装観点で展開）。
+
+| 要件 ID | 概要 | 入力 | 処理 | 出力 | エラー時 |
+|---------|------|------|------|------|---------|
+| REQ-DR-001 | Directive 構築 | `id: DirectiveId` / `text: str` / `target_room_id: RoomId` / `created_at: datetime`（UTC、tz-aware）/ `task_id: TaskId \| None`（既定 None） | Pydantic 型バリデーション → `model_validator(mode='after')` で不変条件検査（`text` 1〜10000 文字 NFC 正規化後・strip しない / `task_id` UUIDv4 or None / `created_at` tz-aware） | valid な `Directive` インスタンス（frozen） | `DirectiveInvariantViolation`（kind: `text_range`）/ `pydantic.ValidationError`（型違反） |
+| REQ-DR-002 | Task 紐付け（link_task） | `task_id: TaskId`（生成済み Task の id） | 現状 `task_id` 確認 → None なら新 `task_id` を設定して `Directive.model_validate` で再構築（pre-validate 方式）。既に紐付け済みなら Fail Fast | 新 `Directive` インスタンス（pre-validate 方式で元 Directive は不変） | `DirectiveInvariantViolation`（kind: `task_already_linked`） |
+| REQ-DR-003 | 不変条件検査 | Directive の現状属性 | `_validate_text_range`（NFC 後の length が 1〜10000）/ `_validate_task_link_immutable`（task_id 一意遷移）を順次実行 | 違反なしなら return（None） | `DirectiveInvariantViolation` を raise |
 
 ## モジュール構成
 
@@ -38,7 +50,7 @@
 │               └── test_directive.py             # 新規: ユニットテスト
 └── docs/
     └── features/
-        └── directive/                            # 本 feature 設計書 4 本
+        └── directive/                            # 本 feature 設計書群
 ```
 
 ## クラス設計（概要）
@@ -72,7 +84,7 @@ classDiagram
 1. application 層が `DirectiveService.issue(raw_text, target_room_id)` を呼び出す（UI / API 経由）
 2. application 層が `text = raw_text if raw_text.startswith('$') else '$' + raw_text` で正規化（§確定 R1-A）
 3. application 層が `RoomRepository.find_by_id(target_room_id)` で Room 存在検証（不在なら `RoomNotFoundError`）
-4. application 層が `Directive(id=uuid4(), text=text, target_room_id=target_room_id, created_at=datetime.now(timezone.utc), task_id=None)` を構築
+4. application 層が Directive を構築（id / text / target_room_id / created_at / task_id=None）
 5. Pydantic 型バリデーション → `model_validator(mode='after')` で `_validate_text_range` → `_validate_task_link_immutable` の順に走行
 6. valid なら `DirectiveRepository.save(directive)` で永続化（永続化前に `text` のマスキング適用、Repository 層で TypeDecorator `MaskedText`）
 7. 続けて Task 構築 → TaskRepository.save → directive.link_task(task_id) で紐付け（§確定 R1-B）
@@ -118,7 +130,7 @@ sequenceDiagram
 
 - `docs/design/domain-model.md` への変更: なし（`mermaid classDiagram` の Directive は既存）
 - `docs/design/domain-model/aggregates.md` への変更: なし（§Directive は既に凍結済み、本 feature は実装の追従）
-- `docs/design/domain-model/storage.md` への変更: §シークレットマスキング規則 §逆引き表に `Directive.text` 行が追加される（**ただし本 feature では追記しない**。後続 `feature/directive-repository` PR で永続化テーブル定義と同時に追記する責務分離）
+- `docs/design/domain-model/storage.md` への変更: §シークレットマスキング規則 §逆引き表に `Directive.text` 行が追加される（**ただし本 feature では追記しない**。後続 `repository` sub-feature PR で永続化テーブル定義と同時に追記する責務分離）
 - `docs/design/tech-stack.md` への変更: なし
 - 既存 feature への波及: なし。empire / workflow / agent / room は本 feature を import しない（依存方向: directive → 既存 ID 型のみ）
 
@@ -132,7 +144,7 @@ sequenceDiagram
 
 ## UX 設計
 
-該当なし — 理由: domain 層のため UI は持たない。CEO directive 発行 UI は `feature/chat-ui`（Phase 2）で扱う。
+該当なし — 理由: domain 層のため UI は持たない。CEO directive 発行 UI は `directive/ui/`（将来）で扱う。
 
 | シナリオ | 期待される挙動 |
 |---------|------------|
@@ -144,11 +156,11 @@ sequenceDiagram
 
 ### 脅威モデル
 
-本 feature 範囲では以下の 2 件。詳細な信頼境界は [`docs/design/threat-model.md`](../../design/threat-model.md)。
+本 feature 範囲では以下の 2 件。詳細な信頼境界は [`docs/design/threat-model.md`](../../../design/threat-model.md)。
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|
-| **T1: Directive.text 経由の secret 漏洩** | CEO がチャット欄で webhook URL / API key を含むメッセージを `$` 付きで送信 → DB 永続化 → ログ・監査経路へ流出 | OAuth トークン / Discord webhook token / API key | Aggregate 内ではマスキングしない（生入力を保持して UI で読み返す経路を確保）。**永続化前の単一ゲートウェイ**（[`storage.md`](../../design/domain-model/storage.md) §シークレットマスキング規則）で TypeDecorator `MaskedText` 経由で適用。後続 `feature/directive-repository` PR で `directives.text` カラムを `MaskedText` 型として宣言する責務 |
+| **T1: Directive.text 経由の secret 漏洩** | CEO がチャット欄で webhook URL / API key を含むメッセージを `$` 付きで送信 → DB 永続化 → ログ・監査経路へ流出 | OAuth トークン / Discord webhook token / API key | Aggregate 内ではマスキングしない（生入力を保持して UI で読み返す経路を確保）。**永続化前の単一ゲートウェイ**（[`storage.md`](../../../design/domain-model/storage.md) §シークレットマスキング規則）で TypeDecorator `MaskedText` 経由で適用。後続 `repository` sub-feature PR で `directives.text` カラムを `MaskedText` 型として宣言する責務 |
 | **T2: Directive.text に Discord webhook URL が混入した状態で `DirectiveInvariantViolation` を raise** | text 10001 文字超過 → 例外発生 → 例外 message / detail に webhook URL がそのまま埋め込まれログ / Discord 通知に流出 | Discord webhook token | `DirectiveInvariantViolation` の `__init__` で `mask_discord_webhook` + `mask_discord_webhook_in` を `super().__init__` 前に強制適用。agent / workflow / room と同パターン（多層防御） |
 
 ### OWASP Top 10 対応
@@ -156,7 +168,7 @@ sequenceDiagram
 | # | カテゴリ | 対応状況 |
 |---|---------|---------|
 | A01 | Broken Access Control | 該当なし（domain 層） |
-| A02 | Cryptographic Failures | **適用**: 永続化前マスキング（`Directive.text`、後続 directive-repository PR で配線）+ 例外 auto-mask（DirectiveInvariantViolation） |
+| A02 | Cryptographic Failures | **適用**: 永続化前マスキング（`Directive.text`、後続 repository sub-feature PR で配線）+ 例外 auto-mask（DirectiveInvariantViolation） |
 | A03 | Injection | 該当なし（Pydantic 型強制） |
 | A04 | Insecure Design | **適用**: pre-validate 方式 / frozen model / `task_id` 一意遷移の構造的不変条件 |
 | A05 | Security Misconfiguration | 該当なし |
@@ -168,7 +180,7 @@ sequenceDiagram
 
 ## ER 図
 
-該当なし — 理由: 本 feature は domain 層のみで永続化スキーマは含まない。永続化は `feature/directive-repository` で扱う（M2 永続化基盤完了後）。参考の概形:
+該当なし — 理由: 本 sub-feature は domain 層のみで永続化スキーマは含まない。永続化は `repository` sub-feature で扱う。参考の概形:
 
 ```mermaid
 erDiagram
