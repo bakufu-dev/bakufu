@@ -1,7 +1,9 @@
-# 基本設計書
+# 基本設計書 — task / domain
 
-> feature: `task`
-> 関連: [requirements.md](requirements.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Task / [`storage.md`](../../design/domain-model/storage.md) §Deliverable / §Attachment
+> feature: `task`（業務概念）/ sub-feature: `domain`
+> 親業務仕様: [`../feature-spec.md`](../feature-spec.md)
+> 関連 Issue: [#37 feat(task): Task Aggregate Root (M1)](https://github.com/bakufu-dev/bakufu/issues/37)
+> 凍結済み設計: [`docs/design/domain-model/aggregates.md`](../../../design/domain-model/aggregates.md) §Task / [`docs/design/domain-model/storage.md`](../../../design/domain-model/storage.md) §Deliverable / §Attachment
 
 ## 記述ルール（必ず守ること）
 
@@ -269,7 +271,7 @@ sequenceDiagram
 
 ### 脅威モデル
 
-本 feature 範囲では以下の 4 件。詳細な信頼境界は [`docs/design/threat-model.md`](../../design/threat-model.md)。
+本 feature 範囲では以下の 4 件。詳細な信頼境界は [`docs/design/threat-model.md`](../../../design/threat-model.md)。
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|
