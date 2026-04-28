@@ -273,7 +273,7 @@ sequenceDiagram
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|
 | **T1: `agents.prompt_body` 経由の API key / GitHub PAT 漏洩**（Schneier #3 中核）| CEO が persona 設計時に prompt_body に secret を書く → DB 直読み / バックアップ / 監査ログ経路で token 流出 | API key / GitHub PAT / OAuth token | `agents.prompt_body` を **`MaskedText`** で宣言、`process_bind_param` で `MaskingGateway.mask()` 経由マスキング。CI 三層防衛 Layer 1 + Layer 2 で `MaskedText` 必須を物理保証 |
-| **T2: `is_default` 複数違反でデータ破損** | Aggregate 内検査を迂回する経路で `is_default=True` が複数行 INSERT される | Agent の整合性 | DB レベル **partial unique index** (`UNIQUE WHERE is_default = 1`) で INSERT/UPDATE を物理拒否 → IntegrityError |
+| **T2: `is_default` 複数違反でデータ破損** | Aggregate 内検査を迂回する経路で `is_default=True` が複数行 INSERT される | Agent の整合性 | DB レベル **partial unique index** (`UNIQUE WHERE is_default = 1`) で INSERT/UPDATE を物理拒否 → IntegrityError。[`feature-spec.md §9 #3/#4`](../feature-spec.md)（providers `is_default==True` が 0 件 / 2 件以上は拒否）の domain 層検査に加えた Repository 層二重防衛（内部品質基準）。`TC-IT-AGR-007` で Aggregate 経由なしの直接 INSERT 経路でも DB が拒否することを物理確認 |
 | **T3: 永続化 Tx の半端終了による参照整合性破損** | `save()` 中にクラッシュ → 子テーブルが中途半端な状態 | Agent の整合性 | 同一 Tx 内の delete-then-insert + WAL crash safety + foreign_keys ON |
 
 ### OWASP Top 10 対応
