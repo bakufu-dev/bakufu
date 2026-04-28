@@ -55,10 +55,10 @@
 │       │                   ├── conftest.py
 │       │                   └── test_*.py                           # テスト担当が作成（本 PR スコープ外）
 │       └── architecture/
-│           └── test_masking_columns.py                             # 既存更新: 2 masking カラム parametrize 追加
+│           └── test_masking_columns.py                             # 既存更新: 3 masking カラム parametrize 追加
 ├── scripts/
 │   └── ci/
-│       └── check_masking_columns.sh                                # 既存更新: 2 エントリ追加
+│       └── check_masking_columns.sh                                # 既存更新: 3 エントリ追加
 └── docs/
     ├── architecture/
     │   └── domain-model/
@@ -200,7 +200,7 @@ sequenceDiagram
 - `docs/architecture/domain-model/storage.md` への変更: §逆引き表に ExternalReviewGate 関連行追加（本 PR で実施）
 - `docs/architecture/tech-stack.md` への変更: なし（既存スタックのみ使用）
 - 既存 feature への波及:
-  - CI (`check_masking_columns.sh`, `test_masking_columns.py`): 既存ファイルに 2 masking カラム追加
+  - CI (`check_masking_columns.sh`, `test_masking_columns.py`): 既存ファイルに 3 masking カラム追加
   - storage.md: 逆引き表更新（2 行更新 + 1 行追加）
   - **M2 マイルストーン完了**: 本 PR マージで empire / workflow / agent / room / directive / task / external-review-gate の全 7 Aggregate Repository が揃い、M2 SQLite 永続化が完成
 
@@ -227,8 +227,8 @@ sequenceDiagram
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|
 | **T1: 内部脅威（DB 直接参照）** | SQLite ファイルへの直接アクセスで masking カラムを読み取り | `snapshot_body_markdown`（Agent 出力・secret 混入の可能性）/ `feedback_text`（CEO コメント・webhook URL 等を貼り付け得る）/ `audit_entries.comment`（CEO が webhook URL を貼り付け得る、`feedback_text` と同一 CEO 入力値） | `MaskedText` TypeDecorator で永続化前にマスキング。DB に raw secret が保存されない |
-| **T2: ログ経由漏洩** | SQLAlchemy echo ログ / アプリログに bind param が出力される | 2 masking カラムに混入した secret | `MaskedText` が bind param 生成前にマスキング → ログに masked テキストが流れる |
-| **T3: 実装漏れ（TypeDecorator 未適用）** | 後続 PR が 2 masking カラムのいずれかを `Text` 型に変更 | 2 masking カラムの masking 保証 | CI 三層防衛（grep guard + arch test + storage.md 逆引き表）が自動検出して PR ブロック |
+| **T2: ログ経由漏洩** | SQLAlchemy echo ログ / アプリログに bind param が出力される | 3 masking カラムに混入した secret | `MaskedText` が bind param 生成前にマスキング → ログに masked テキストが流れる |
+| **T3: 実装漏れ（TypeDecorator 未適用）** | 後続 PR が 3 masking カラムのいずれかを `Text` 型に変更 | 3 masking カラムの masking 保証 | CI 三層防衛（grep guard + arch test + storage.md 逆引き表）が自動検出して PR ブロック |
 | **T4: snapshot の不正改ざん（DB 直接 UPDATE）** | DB を直接操作して snapshot を書き換え | Gate 生成時の deliverable_snapshot 不変性 | snapshot 不変条件は Domain 層（§確定 D 凍結）で保証。Repository は valid な状態のみ保存する契約。DB 直接操作は監査ログ（audit_log テーブル）で検出 |
 
 ### OWASP Top 10 対応
