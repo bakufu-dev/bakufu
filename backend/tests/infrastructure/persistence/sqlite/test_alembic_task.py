@@ -64,10 +64,16 @@ def _alembic_config() -> Config:
 
 
 # ---------------------------------------------------------------------------
-# TC-IT-TR-001: 0007 creates 6 task tables (受入基準 §確定 R1-B)
+# TC-IT-TR-001: 0007 creates 4 task tables (受入基準 §確定 R1-B)
+# conversations / conversation_messages は §BUG-TR-002 凍結 (YAGNI)
 # ---------------------------------------------------------------------------
 class TestSeventhRevisionFourTablesPresent:
-    """TC-IT-TR-001: alembic upgrade head adds the 4 Task-aggregate tables."""
+    """TC-IT-TR-001: alembic upgrade head adds the 4 Task-aggregate tables.
+
+    conversations / conversation_messages are §BUG-TR-002 凍結:
+    Task domain model has no conversations attribute; these tables are
+    NOT created by 0007_task_aggregate (deferred to feature/conversation-repository).
+    """
 
     async def test_four_task_tables_present_after_upgrade(
         self,
@@ -97,6 +103,29 @@ class TestSeventhRevisionFourTablesPresent:
         assert "conversation_messages" not in tables, (
             "[FAIL] conversation_messages table exists but §BUG-TR-002 requires it to be excluded."
         )
+
+    async def test_conversations_and_messages_tables_absent_after_upgrade(
+        self,
+        empty_engine: AsyncEngine,
+    ) -> None:
+        """§BUG-TR-002 凍結: conversations / conversation_messages must NOT exist.
+
+        Task PR #35 intentionally omits these tables (YAGNI — no conversations
+        attribute on Task domain model). They are deferred to the
+        feature/conversation-repository PR. If they appear here, the YAGNI
+        decision was violated.
+        """
+        await run_upgrade_head(empty_engine)
+        async with empty_engine.connect() as conn:
+            result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
+            tables = {row[0] for row in result}
+
+        for absent_table in ("conversations", "conversation_messages"):
+            assert absent_table not in tables, (
+                f"[FAIL] {absent_table!r} table must NOT exist after 0007_task_aggregate.\n"
+                f"§BUG-TR-002 凍結: deferred to feature/conversation-repository PR.\n"
+                f"Tables found: {tables}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -264,6 +293,12 @@ class TestUpgradeDowngradeIdempotent:
         assert expected.issubset(tables), (
             f"[FAIL] task tables missing after re-upgrade.\nMissing: {expected - tables}"
         )
+        # §BUG-TR-002 凍結: conversations / conversation_messages must remain absent
+        for absent_table in ("conversations", "conversation_messages"):
+            assert absent_table not in tables, (
+                f"[FAIL] {absent_table!r} must NOT exist after re-upgrade.\n"
+                f"§BUG-TR-002 凍結: deferred to feature/conversation-repository PR."
+            )
 
 
 # ---------------------------------------------------------------------------

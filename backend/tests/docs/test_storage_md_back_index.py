@@ -266,22 +266,30 @@ class TestBackIndexHasTaskRows:
             "task-repository §確定 G 実適用 (Issue #35)."
         )
 
-    def test_conversation_messages_body_markdown_masked_text_row_present(
+    def test_conversation_messages_bug_tr_002_frozen_row_present(
         self, storage_md_text: str
     ) -> None:
-        """TC-DOC-TR-001b: §逆引き表 declares MaskedText on conversation_messages.body_markdown.
+        """TC-DOC-TR-001b: §逆引き表 declares §BUG-TR-002 凍結 for conversation_messages.
 
-        The line must co-locate ``conversation_messages`` and ``MaskedText``.
+        conversation_messages.body_markdown masking is deferred to
+        feature/conversation-repository (§BUG-TR-002 凍結). The storage.md
+        §逆引き表 must document this frozen state so future PR reviewers can
+        identify the pending masking requirement without opening the issue.
+
+        The line must co-locate ``conversation_messages`` (or ``Conversation``)
+        and ``BUG-TR-002`` so the frozen state is operator-readable directly.
         """
         co_located_lines = [
             line
             for line in storage_md_text.splitlines()
-            if "conversation_messages" in line and "MaskedText" in line
+            if ("conversation_messages" in line or "Conversation" in line) and "BUG-TR-002" in line
         ]
         assert co_located_lines, (
             "storage.md §逆引き表 must contain at least one line that "
-            "co-locates 'conversation_messages' and 'MaskedText' per "
-            "task-repository §確定 G 実適用 (Issue #35, conversation history masking)."
+            "co-locates 'conversation_messages' (or 'Conversation') and "
+            "'BUG-TR-002' to document the §BUG-TR-002 凍結 frozen state. "
+            "conversation_messages.body_markdown masking is deferred to "
+            "feature/conversation-repository PR (Issue #35 §BUG-TR-002)."
         )
 
     def test_deliverables_body_markdown_masked_text_row_present(self, storage_md_text: str) -> None:

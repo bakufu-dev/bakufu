@@ -12,7 +12,6 @@ introduced.
 2 columns must never let secret tokens reach SQLite. Each is verified via
 **raw SQL SELECT** so the observation bypasses ``MaskedText.process_result_value``
 and confirms the literal bytes on disk.
-
 Per ``docs/features/task-repository/test-design.md`` TC-IT-TR-020-masking-*.
 Issue #35 — M2 0007.
 """
@@ -48,15 +47,11 @@ pytestmark = pytest.mark.asyncio
 # Discord Bot Token — [MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{27,}
 _DISCORD_TOKEN = "MTk4NjIyNDgz" + "NDcxOTI1MjQ4.ClFDg_." + "A" * 27
 
-# Anthropic API key — sk-ant-(?:api03-)?[A-Za-z0-9_\-]{40,}
-_ANTHROPIC_TOKEN = "sk-ant-api03-" + "A" * 60
-
 # GitHub PAT — (?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}
 _GITHUB_TOKEN = "ghp_" + "X" * 40
 
 # Redaction sentinels
 _DISCORD_SENTINEL = "<REDACTED:DISCORD_TOKEN>"
-_ANTHROPIC_SENTINEL = "<REDACTED:ANTHROPIC_KEY>"
 _GITHUB_SENTINEL = "<REDACTED:GITHUB_PAT>"
 
 
