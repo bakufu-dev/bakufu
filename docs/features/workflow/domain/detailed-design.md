@@ -1,7 +1,8 @@
-# 詳細設計書
+# 詳細設計書 — workflow / domain
 
-> feature: `workflow`
-> 関連: [basic-design.md](basic-design.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Workflow
+> feature: `workflow`（業務概念）/ sub-feature: `domain`
+> 親業務仕様: [`../feature-spec.md`](../feature-spec.md)
+> 関連: [basic-design.md](basic-design.md) / [`docs/design/domain-model/aggregates.md`](../../../design/domain-model/aggregates.md) §Workflow
 
 ## 記述ルール（必ず守ること）
 
@@ -120,7 +121,7 @@ Transition 単体では参照整合性を検査しない（Workflow 集約検査
 
 ### 確定 G: NotifyChannel URL allow list の完全凍結（SSRF / A10 対策）
 
-`NotifyChannel.target` は外部 webhook URL を保持し、bakufu Backend が後段（`feature/discord-notifier`）で **HTTPS POST 送信先**として利用する。攻撃者が任意 URL を埋め込めば、Backend が任意の第三者サーバーへ通知を送る経路が成立する（SSRF / [`docs/design/threat-model.md`](../../design/threat-model.md) §A10）。VO レベルで以下を**全て充足**する URL のみを受理し、1 つでも違反すれば即 `pydantic.ValidationError` を Fail Fast で raise する。
+`NotifyChannel.target` は外部 webhook URL を保持し、bakufu Backend が後段（`feature/discord-notifier`）で **HTTPS POST 送信先**として利用する。攻撃者が任意 URL を埋め込めば、Backend が任意の第三者サーバーへ通知を送る経路が成立する（SSRF / [`docs/design/threat-model.md`](../../../design/threat-model.md) §A10）。VO レベルで以下を**全て充足**する URL のみを受理し、1 つでも違反すれば即 `pydantic.ValidationError` を Fail Fast で raise する。
 
 #### 検査仕様（kind='discord' の場合）
 
@@ -152,7 +153,7 @@ Transition 単体では参照整合性を検査しない（Workflow 集約検査
 | 例外 `message` / `detail`（`WorkflowInvariantViolation` / `pydantic.ValidationError`） | ✓ |
 | `Workflow.model_dump()` / `Stage.model_dump()` の出力 | ✓（`mode='json'` 時に自動置換、後述）|
 
-**マスキング規則**: 正規表現 `https://discord\.com/api/webhooks/([0-9]+)/([A-Za-z0-9_\-]+)` にマッチする箇所を `https://discord.com/api/webhooks/\1/<REDACTED:DISCORD_WEBHOOK>` に置換（id 部は識別性のため残す、token 部のみ伏字）。これは [`docs/design/domain-model/storage.md`](../../design/domain-model/storage.md) §シークレットマスキング規則 への追補として `feature/persistence` で `storage.md` を更新する PR を起こす（横断的変更、本 feature の `アーキテクチャへの影響` で明示）。
+**マスキング規則**: 正規表現 `https://discord\.com/api/webhooks/([0-9]+)/([A-Za-z0-9_\-]+)` にマッチする箇所を `https://discord.com/api/webhooks/\1/<REDACTED:DISCORD_WEBHOOK>` に置換（id 部は識別性のため残す、token 部のみ伏字）。これは [`docs/design/domain-model/storage.md`](../../../design/domain-model/storage.md) §シークレットマスキング規則 への追補として `feature/persistence` で `storage.md` を更新する PR を起こす（横断的変更、本 feature の `アーキテクチャへの影響` で明示）。
 
 **VO 自体のシリアライズ時挙動**: `NotifyChannel.model_dump(mode='json')` の `target` 値は、**カスタム `field_serializer` でマスキング後の文字列に変換**して返す。デフォルトの `model_dump()` は内部処理（同じ Workflow 内での参照取り回し）用に raw target を返してよいが、`mode='json'` および `model_dump_json()` では必ずマスキング済み文字列を出力する。実装観点で「永続化用 JSON は token を含まない」を VO レベルで保証する。
 
@@ -304,31 +305,17 @@ Stage 自身の不変条件（`required_role` 非空 / `EXTERNAL_REVIEW` の `no
 
 ## データ構造（永続化キー）
 
-該当なし — 理由: 本 feature は domain 層のみで永続化スキーマは含まない。永続化は `feature/persistence` で扱う。
-
-参考の概形のみ:
-
-| カラム | 型 | 制約 | 意図 |
-|-------|----|----|----|
-| `workflows.id` | `UUID` | PK | WorkflowId |
-| `workflows.name` | `VARCHAR(80)` | NOT NULL | 表示名 |
-| `workflows.entry_stage_id` | `UUID` | NOT NULL, FK to `stages.id` | エントリポイント |
-| `stages.id` | `UUID` | PK | StageId |
-| `stages.workflow_id` | `UUID` | FK to `workflows.id` | 所属 |
-| `transitions.id` | `UUID` | PK | TransitionId |
-| `transitions.workflow_id` | `UUID` | FK | 所属 |
-
-詳細は `feature/persistence` で確定。
+該当なし — 理由: 本 sub-feature は domain 層のみで永続化スキーマは含まない。永続化は [`../repository/`](../repository/) sub-feature で扱う。
 
 ## API エンドポイント詳細
 
-該当なし — 理由: 本 feature は domain 層のみ。API は `feature/http-api` で凍結する。
+該当なし — 理由: 本 sub-feature は domain 層のみ。API は `feature/http-api` で凍結する。
 
 ## 出典・参考
 
 - [Pydantic v2 — model_validator / model_validate](https://docs.pydantic.dev/latest/concepts/validators/) — pre-validate 方式の実装根拠
 - [Pydantic v2 — frozen models](https://docs.pydantic.dev/latest/concepts/models/#fields-with-non-hashable-default-values) — 不変モデルの挙動
 - [Cormen et al., "Introduction to Algorithms" 3rd ed., Ch. 22](https://mitpress.mit.edu/9780262033848/) — BFS の正当性証明（到達可能性）
-- [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) — Workflow 凍結済み設計
-- [`docs/design/domain-model/transactions.md`](../../design/domain-model/transactions.md) — V モデル開発室の Workflow レンダリング例
-- [`docs/design/threat-model.md`](../../design/threat-model.md) — A04 / A10 対応根拠
+- [`docs/design/domain-model/aggregates.md`](../../../design/domain-model/aggregates.md) — Workflow 凍結済み設計
+- [`docs/design/domain-model/transactions.md`](../../../design/domain-model/transactions.md) — V モデル開発室のレンダリング例
+- [`docs/design/threat-model.md`](../../../design/threat-model.md) — A04 / A10 対応根拠

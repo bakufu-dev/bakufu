@@ -1,13 +1,82 @@
-# 基本設計書
+# 基本設計書 — workflow / domain
 
-> feature: `workflow`
-> 関連: [requirements.md](requirements.md) / [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Workflow
+> feature: `workflow`（業務概念）/ sub-feature: `domain`
+> 親業務仕様: [`../feature-spec.md`](../feature-spec.md)
+> 関連 Issue: [#9 feat(workflow): Workflow + Stage + Transition Aggregate (M1)](https://github.com/bakufu-dev/bakufu/issues/9)
+> 凍結済み設計: [`docs/design/domain-model/aggregates.md`](../../../design/domain-model/aggregates.md) §Workflow / [`docs/design/domain-model/value-objects.md`](../../../design/domain-model/value-objects.md) §Workflow 構成要素
 
 ## 記述ルール（必ず守ること）
 
 基本設計に**疑似コード・サンプル実装（python/ts/sh/yaml 等の言語コードブロック）を書かない**。
 ソースコードと二重管理になりメンテナンスコストしか生まない。
 必要なのは構造契約（クラス・モジュール・データの関係）であり、実装の細部は [detailed-design.md](detailed-design.md) で凍結する。
+
+## §モジュール契約（機能要件）
+
+本 sub-feature が満たすべき機能要件（入力 / 処理 / 出力 / エラー時）を凍結する。業務根拠は [`../feature-spec.md §9 受入基準`](../feature-spec.md) を参照。
+
+### REQ-WF-001: Workflow 構築
+
+| 項目 | 内容 |
+|------|------|
+| 入力 | `id: WorkflowId`、`name: str`（1〜80）、`stages: list[Stage]`（1 件以上）、`transitions: list[Transition]`（0 件以上）、`entry_stage_id: StageId` |
+| 処理 | Pydantic 型バリデーション → `model_validator(mode='after')` で DAG 不変条件 7 種を集約検査（①entry 存在 ②Transition 参照整合 ③決定論性 ④BFS 到達可能性 ⑤終端 Stage ⑥EXTERNAL_REVIEW notify_channels 集約 ⑦required_role 非空 集約） → 通過時のみ Workflow を返す |
+| 出力 | `Workflow` インスタンス（frozen） |
+| エラー時 | `WorkflowInvariantViolation` を raise。MSG-WF-001〜007 のいずれかを格納 |
+
+### REQ-WF-002: Stage 追加
+
+| 項目 | 内容 |
+|------|------|
+| 入力 | 現 Workflow + `stage: Stage` |
+| 処理 | 1) 現 `stages` に `stage` を追加した新リスト 2) 仮 Workflow を `model_validate(updated_dict)` で再構築（不変条件検査が走る） 3) 通過時のみ仮 Workflow を返す |
+| 出力 | 更新された Workflow（新インスタンス） |
+| エラー時 | 同一 `stage_id` 重複、Stage 自身の不変条件違反等で `WorkflowInvariantViolation`（MSG-WF-008） |
+
+### REQ-WF-003: Transition 追加
+
+| 項目 | 内容 |
+|------|------|
+| 入力 | 現 Workflow + `transition: Transition` |
+| 処理 | 1) 現 `transitions` に追加した新リスト 2) 仮 Workflow を再構築し DAG 整合性を検査 |
+| 出力 | 更新された Workflow |
+| エラー時 | `from_stage_id` / `to_stage_id` が `stages` 内に存在しない、同一 `from × condition` の Transition 重複で `WorkflowInvariantViolation`（MSG-WF-009 / MSG-WF-005）|
+
+### REQ-WF-004: Stage 削除
+
+| 項目 | 内容 |
+|------|------|
+| 入力 | 現 Workflow + `stage_id: StageId` |
+| 処理 | 1) 削除対象 `stage_id` が `entry_stage_id` を指すなら即 raise（MSG-WF-010） 2) `stages` から該当 Stage を除外し、`transitions` から `from_stage_id` または `to_stage_id` が一致するものを除外 3) 仮 Workflow を再構築・検査 |
+| 出力 | 更新された Workflow |
+| エラー時 | `stage_id` が存在しない、entry stage を削除しようとした、削除後に到達不能 Stage が生じた等で `WorkflowInvariantViolation` |
+
+### REQ-WF-005: DAG 不変条件検査
+
+| 項目 | 内容 |
+|------|------|
+| 入力 | Workflow インスタンス（コンストラクタ末尾 / 状態変更ふるまい末尾で自動呼び出し） |
+| 処理 | 以下の検査を順次実行（最初の違反で停止）: ①`entry_stage_id` が `stages` に存在 ②全 Transition の `from_stage_id` / `to_stage_id` が `stages` に存在 ③同一 `from_stage_id × condition` の Transition 重複なし（決定論性） ④`entry_stage_id` から BFS で全 Stage に到達可能（孤立 Stage 禁止） ⑤終端 Stage（外向き Transition なし）が 1 件以上存在 ⑥`EXTERNAL_REVIEW` Stage は `notify_channels` を持つ ⑦各 Stage の `required_role` が空集合でない |
+| 出力 | None（検査通過） |
+| エラー時 | いずれか違反で `WorkflowInvariantViolation`（kind に違反種別を格納） |
+
+### REQ-WF-006: bulk-import ファクトリ
+
+| 項目 | 内容 |
+|------|------|
+| 入力 | `payload: dict`（`{id, name, stages, transitions, entry_stage_id}`） |
+| 処理 | 1) Pydantic で全 Stage / Transition を構築（個別に Stage 自身の不変条件はここで検査） 2) Workflow を `model_validate(payload)` で再構築（最終状態のみ validate） 3) 通過時のみ返す |
+| 出力 | `Workflow` インスタンス |
+| エラー時 | Pydantic `ValidationError` または `WorkflowInvariantViolation` を raise（MSG-WF-011） |
+
+### REQ-WF-007: Stage 自身の不変条件
+
+| 項目 | 内容 |
+|------|------|
+| 入力 | Stage インスタンス |
+| 処理 | `model_validator(mode='after')` で: ①`required_role` が空集合でない ②`EXTERNAL_REVIEW` の場合 `notify_channels` を持つ |
+| 出力 | None |
+| エラー時 | `StageInvariantViolation`（`WorkflowInvariantViolation` のサブクラス） |
 
 ## モジュール構成
 
@@ -138,11 +207,10 @@ sequenceDiagram
 ## アーキテクチャへの影響
 
 - `docs/design/domain-model.md` への変更: なし（凍結済み設計に従う実装のみ）
-- `docs/design/domain-model/value-objects.md` §Stage 属性表 L50 で `notify_channels` の説明に「Discord / Slack / Email 等」とあるが、本 feature の MVP では `kind='discord'` のみコンストラクタ受理（[detailed-design.md](detailed-design.md) §確定 G）。`'slack'` / `'email'` の解禁は **Phase 2 でメッセンジャー多対応を検討する際に、kind ごとの URL / target 規則を凍結した上で**実施する。本 PR ではアーキ側の文言は触らず、feature レイヤで MVP 制約を凍結する責務分離を選択
-- `docs/design/domain-model/storage.md` §シークレットマスキング規則 への追補: Discord webhook URL の token 部マスキング規則（正規表現 `https://discord\.com/api/webhooks/([0-9]+)/([A-Za-z0-9_\-]+)` → `https://discord.com/api/webhooks/\1/<REDACTED:DISCORD_WEBHOOK>`）は本 feature の domain 層では VO 内 `field_serializer` として実装する。`feature/persistence` で Repository 実装時に `infrastructure/security/masking.py` 単一ゲートウェイにも追加する（本 PR スコープ外、`feature/persistence` で `storage.md` を更新する PR を立てる）
+- `docs/design/domain-model/value-objects.md` §Stage 属性表 で `notify_channels` の説明に「Discord / Slack / Email 等」とあるが、本 feature の MVP では `kind='discord'` のみコンストラクタ受理（[detailed-design.md](detailed-design.md) §確定 G）。`'slack'` / `'email'` の解禁は Phase 2 で kind ごとの URL / target 規則を凍結した上で実施する
+- `docs/design/domain-model/storage.md` §シークレットマスキング規則 への追補: Discord webhook URL の token 部マスキング規則は本 feature の domain 層では VO 内 `field_serializer` として実装する。`feature/persistence` で Repository 実装時に `infrastructure/security/masking.py` 単一ゲートウェイにも追加する（本 PR スコープ外）
 - `docs/design/tech-stack.md` への変更: なし
 - 既存 feature への波及: なし。後続 `feature/task` が Workflow 内 Stage を `current_stage_id` で参照する設計だが、本 feature 範囲では参照されないので波及なし
-- 後続 `feature/discord-notifier` への申し送り: 実 webhook 送信時に DNS rebinding / IPv4-mapped IPv6 / リダイレクト追跡時の再検査を `basic-design.md` に必ず凍結する（本 feature 範囲では VO レベルで対処不能）
 
 ## 外部連携
 
@@ -166,7 +234,7 @@ sequenceDiagram
 
 ### 脅威モデル
 
-本 feature 範囲では以下の 3 件。詳細な信頼境界は [`docs/design/threat-model.md`](../../design/threat-model.md) を参照。
+本 feature 範囲では以下の 3 件。詳細な信頼境界は [`docs/design/threat-model.md`](../../../design/threat-model.md) を参照。
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|
@@ -191,34 +259,25 @@ sequenceDiagram
 
 ## ER 図
 
-該当なし — 理由: 本 feature は domain 層のみで永続化スキーマは含まない。永続化は `feature/persistence` で扱う。参考の概形のみ:
-
-```mermaid
-erDiagram
-    WORKFLOW {
-        string id PK
-        string name
-        string entry_stage_id
-    }
-    STAGE {
-        string id PK
-        string workflow_id FK
-    }
-    TRANSITION {
-        string id PK
-        string workflow_id FK
-        string from_stage_id FK
-        string to_stage_id FK
-    }
-    WORKFLOW ||--o{ STAGE : owns
-    WORKFLOW ||--o{ TRANSITION : owns
-```
+該当なし — 理由: 本 sub-feature は domain 層のみで永続化スキーマは含まない。永続化は [`../repository/`](../repository/) sub-feature で扱う。
 
 ## エラーハンドリング方針
 
 | 例外種別 | 処理方針 | ユーザーへの通知 |
 |---------|---------|----------------|
-| `WorkflowInvariantViolation` | application 層で catch、HTTP API 層で 400 / 422 にマッピング（別 feature） | MSG-WF-001 〜 011 |
+| `WorkflowInvariantViolation` | application 層で catch、HTTP API 層で 400 / 422 にマッピング（別 feature） | MSG-WF-001 〜 012 |
 | `StageInvariantViolation` | 同上（`WorkflowInvariantViolation` のサブクラスとして処理可能） | MSG-WF-006 / 007 |
 | `pydantic.ValidationError` | 構築時の型違反。application 層で catch、HTTP 422 にマッピング | MSG-WF-011（汎用） |
 | その他の例外 | 握り潰さない、application 層へ伝播。Backend ルートで 500 として記録 | 汎用エラーメッセージ |
+
+## 依存関係
+
+| 区分 | 依存 | バージョン方針 | 導入経路 | 備考 |
+|-----|------|-------------|---------|------|
+| ランタイム | Python 3.12+ | pyproject.toml | uv | 既存 |
+| Python 依存 | `pydantic` v2 | `pyproject.toml` | uv | 既存 |
+| Python 依存 | `pyright` (strict) | `pyproject.toml` dev | uv tool | 既存 |
+| Python 依存 | `ruff` | 同上 | uv tool | 既存 |
+| Python 依存 | `pytest` / `pytest-cov` | 同上 | uv | 既存 |
+| Node 依存 | 該当なし | — | — | バックエンド単独 |
+| 外部サービス | 該当なし | — | — | domain 層 |
