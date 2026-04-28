@@ -132,6 +132,10 @@ readonly PARTIAL_MASK_FILES=(
     # rooms.prompt_kit_prefix_markdown だけが MaskedText (room §確定 G 実適用)、
     # 他カラムは String / Boolean / Text に閉じる。
     "${TABLES_DIR}/rooms.py:prompt_kit_prefix_markdown:MaskedText"
+    # Directive Repository (PR #34, detailed-design.md §確定 R1-E):
+    # directives.text だけが MaskedText (directive §確定 G 実適用)、
+    # 他カラムは UUIDStr / UTCDateTime に閉じる。
+    "${TABLES_DIR}/directives.py:text:MaskedText"
 )
 
 for entry in "${PARTIAL_MASK_FILES[@]}"; do
