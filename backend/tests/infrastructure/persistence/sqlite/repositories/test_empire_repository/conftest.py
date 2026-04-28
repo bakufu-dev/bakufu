@@ -63,10 +63,8 @@ async def seed_rooms(
         # INSERT OR IGNORE is safe even after SqliteEmpireRepository.save()
         # has already created the empire row via UPSERT.
         await session.execute(
-            text(
-                "INSERT OR IGNORE INTO empires (id, name, archived) VALUES (:id, :name, :archived)"
-            ),
-            {"id": empire_id.hex, "name": "seed-empire", "archived": False},
+            text("INSERT OR IGNORE INTO empires (id, name) VALUES (:id, :name)"),
+            {"id": empire_id.hex, "name": "seed-empire"},
         )
 
         # Step 2: seed a minimal workflow row so rooms.workflow_id FK resolves.
