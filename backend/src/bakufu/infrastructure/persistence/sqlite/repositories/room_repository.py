@@ -32,7 +32,6 @@ child-table SELECTs and ``_from_row`` conversion stay single-sourced
 from __future__ import annotations
 
 from typing import Any
-from uuid import UUID
 
 from sqlalchemy import delete, func, insert, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -199,34 +198,21 @@ class SqliteRoomRepository:
         """
         members = [
             AgentMembership(
-                agent_id=_to_uuid(row.agent_id),
+                agent_id=row.agent_id,
                 role=Role(row.role),
                 joined_at=row.joined_at,
             )
             for row in member_rows
         ]
         return Room(
-            id=_to_uuid(room_row.id),
-            workflow_id=_to_uuid(room_row.workflow_id),
+            id=room_row.id,
+            workflow_id=room_row.workflow_id,
             name=room_row.name,
             description=room_row.description,
             prompt_kit=PromptKit(prefix_markdown=room_row.prompt_kit_prefix_markdown or ""),
             members=members,
             archived=room_row.archived,
         )
-
-
-def _to_uuid(value: UUID | str) -> UUID:
-    """Coerce a row value to :class:`uuid.UUID`.
-
-    UUIDStr TypeDecorator already returns UUID instances on
-    ``process_result_value``, but defensive coercion lets raw-SQL hydration
-    paths route through the same code without an extra ``isinstance`` ladder
-    at every call site (agent_repository pattern).
-    """
-    if isinstance(value, UUID):
-        return value
-    return UUID(value)
 
 
 __all__ = ["SqliteRoomRepository"]
