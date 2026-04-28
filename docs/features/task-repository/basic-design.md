@@ -240,8 +240,8 @@ sequenceDiagram
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|
 | **T1: 内部脅威（DB 直接参照）** | SQLite ファイルへの直接アクセス / DB dump で masking カラムを読み取り | `tasks.last_error`（API key / auth token 混入の可能性）/ `deliverables.body_markdown`（Agent 出力に secret 混入）（`conversation_messages.body_markdown` は §BUG-TR-002 凍結済み — 将来追加時に本表に追記） | `MaskedText` TypeDecorator で `process_bind_param` 時点でマスキング。DB に raw text が保存されない |
-| **T2: ログ経由漏洩** | SQLAlchemy echo ログ / アプリログに bind param が出力される | 3 masking カラムに混入した secret | `MaskedText` が bind param 生成前にマスキング → ログに masking 済みテキストが流れる |
-| **T3: 実装漏れ（TypeDecorator 未適用）** | 後続 PR が 3 masking カラムのいずれかを `Text` 型に変更 | 3 masking カラムの masking 保証 | CI 三層防衛（grep guard + arch test + storage.md 逆引き表）が自動検出して PR ブロック |
+| **T2: ログ経由漏洩** | SQLAlchemy echo ログ / アプリログに bind param が出力される | 2 masking カラムに混入した secret（`tasks.last_error` / `deliverables.body_markdown`）| `MaskedText` が bind param 生成前にマスキング → ログに masking 済みテキストが流れる |
+| **T3: 実装漏れ（TypeDecorator 未適用）** | 後続 PR が 2 masking カラムのいずれかを `Text` 型に変更 | 2 masking カラムの masking 保証 | CI 三層防衛（grep guard + arch test + storage.md 逆引き表）が自動検出して PR ブロック |
 
 ### OWASP Top 10 対応
 

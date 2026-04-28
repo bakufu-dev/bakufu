@@ -130,7 +130,7 @@ parametrize に追加する 2 行:
 **INDEX を張らない判断（YAGNI）**:
 - `tasks.status` 単体 INDEX: 廃止。`ix_tasks_status_updated_id` の prefix `(status)` で `count_by_status` も最適化されるため単体 INDEX は冗長
 - `tasks.directive_id`: 1 Task につき 1 Directive（1:1 相当）のため低選択性。INDEX 効果薄
-- `conversations.task_id`: `find_by_id` 内の子テーブル SELECT で 1 task_id による 1 クエリ。テーブルサイズが巨大になるまで INDEX 不要
+- `conversations.task_id`: `find_by_id` 内の子テーブル SELECT で 1 task_id による 1 クエリ。テーブルサイズが巨大になるまで INDEX 不要（§BUG-TR-002凍結済み、conversations追加PR時に再確認）
 - その他子テーブルの FK カラム: 同様の理由で保留
 
 ## データ構造（永続化キー）
