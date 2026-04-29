@@ -81,7 +81,7 @@
 | フィールド | 型 | 備考 |
 |----------|---|------|
 | `items` | `list[TaskResponse]` | 0 件以上 |
-| `total` | `int` | `len(items)` と等価（ページネーション未実装）|
+| `total` | `int` | `len(items)` と等価（ページネーションは本 PR のスコープ外）|
 
 ## MSG 確定文言表
 
