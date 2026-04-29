@@ -91,11 +91,35 @@ def _external_review_stage_payload(
     }
 
 
+async def _seed_external_review_workflow_direct(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> object:
+    """EXTERNAL_REVIEW stage を含む Workflow を tempdb に直接 INSERT して返す。
+
+    保存後は notify_channels が masked 状態（<REDACTED:DISCORD_WEBHOOK>）になる。
+    TC-IT-WFH-030 用: POST 経由でなく直接 save() して masked 状態を確認。
+    """
+    from bakufu.domain.value_objects import StageKind
+    from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
+        SqliteWorkflowRepository,
+    )
+
+    from tests.factories.workflow import make_stage, make_workflow
+
+    ext_stage = make_stage(kind=StageKind.EXTERNAL_REVIEW)
+    wf = make_workflow(stages=[ext_stage])
+    async with session_factory() as session, session.begin():
+        repo = SqliteWorkflowRepository(session)
+        await repo.save(wf)
+    return wf
+
+
 __all__ = [
     "WfTestCtx",
     "_create_empire",
     "_create_room",
     "_external_review_stage_payload",
     "_minimal_stage_payload",
+    "_seed_external_review_workflow_direct",
     "_seed_workflow_direct",
 ]
