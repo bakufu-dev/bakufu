@@ -93,7 +93,7 @@
 | TC-IT-ERG-HTTP-014 | CSRF Origin guard | なし | PENDING Gate、subject=A | `Origin: http://evil.example.com` 付きで approve / reject / cancel | 403、http-api-foundation MSG-HAF-004 |
 | TC-IT-ERG-HTTP-015 | auth subject required | なし | PENDING Gate | Authorization 欠落 / 不正 token / `X-Reviewer-Id` のみ指定 | 401 または 403。Service は呼ばれず、自己申告 ID では成功しない |
 | TC-IT-ERG-HTTP-016 | Bearer token operation | なし | `BAKUFU_OWNER_API_TOKEN` と `BAKUFU_OWNER_ID` を test config に設定 | 32 bytes 以上の token で成功、短い token 設定 / 不一致 token / 不正 owner UUID を送る | 成功時だけ subject が作られる。失敗時は 401、token 値と Authorization ヘッダはログに出ない |
-| TC-STATIC-ERG-HTTP-003 | HTTP app / DI / error handler / route 境界封入 | なし | `interfaces/http/app.py` / `interfaces/http/dependencies.py` / `interfaces/http/error_handlers.py` / `interfaces/http/routers/external_review_gates.py` | AST でトップレベル関数定義を棚卸し | 公開関数定義は 0。app 初期化は `HttpApplicationFactory`、DI は `HttpDependencies` / `ExternalReviewGateDependencies`、例外変換は `HttpErrorHandlers`、route handler は `ExternalReviewGateHttpRoutes` に閉じる |
+| TC-STATIC-ERG-HTTP-003 | HTTP app / DI / error handler / 全 router 境界封入 | なし | `interfaces/http/app.py` / `interfaces/http/dependencies.py` / `interfaces/http/error_handlers.py` / `interfaces/http/routers/*.py` | AST でトップレベル関数定義を棚卸し。router は glob で全 `.py` を対象にし、個別ファイル列挙の漏れを禁止する | 公開関数定義は 0。app 初期化は `HttpApplicationFactory`、DI は `HttpDependencies` / `ExternalReviewGateDependencies`、例外変換は `HttpErrorHandlers`、route handler は各 `*HttpRoutes` classmethod に閉じる |
 
 ## ユニットテストケース
 
@@ -134,7 +134,7 @@
 - T1〜T6 と OWASP API Security Top 10 2023 API1〜API10 の各脅威に対する対策または非該当根拠が最低 1 件のテストケースで確認されている。
 - Bearer token 運用（生成強度、保管、ローテーション、ログ非露出）が TC-IT-ERG-HTTP-016 / TC-UT-ERG-HTTP-012 に接続されている。
 - API 6 本すべてが単発ケースとユーザー観測可能な API flow smoke のどちらかで最低 1 回通る。
-- HTTP 境界にトップレベル公開関数を残さない。app 初期化は `HttpApplicationFactory.create()`、FastAPI `Depends` は `HttpDependencies` / `ExternalReviewGateDependencies`、例外ハンドラは `HttpErrorHandlers` の class / static method を渡す。
+- HTTP 境界にトップレベル公開関数を残さない。app 初期化は `HttpApplicationFactory.create()`、FastAPI `Depends` は `HttpDependencies` / `ExternalReviewGateDependencies`、例外ハンドラは `HttpErrorHandlers` の class / static method、route handler は各 `*HttpRoutes` classmethod を渡す。静的検査は `routers/*.py` 全件を glob で対象化する。
 - 行カバレッジ目標: `external_review_gate_service.py` / `external_review_gates.py` / `schemas/external_review_gate.py` / `external_review_gate_exceptions.py` 合計 90% 以上。
 
 ## 人間が動作確認できるタイミング
@@ -167,7 +167,7 @@ backend/tests/
 - `backend/tests/integration/test_external_review_gate_http_api/test_read_flows.py`: TC-IT-ERG-HTTP-001 / 002 / 003 / 004 / 010 / 011。公開 HTTP API の一覧・履歴・閲覧監査・approve flow・secret 非復号を検証する。
 - `backend/tests/integration/test_external_review_gate_http_api/test_auth_decisions.py`: TC-IT-ERG-HTTP-005 / 006 / 008 / 012 / 013 / 015 / 016。reject / cancel、subject 認可、Bearer 境界、不正 token、owner UUID 境界を検証する。
 - `backend/tests/integration/test_external_review_gate_http_api/test_validation_static.py`: TC-IT-ERG-HTTP-007 / 009 / 014 と TC-STATIC-ERG-HTTP-001 / 002。既決 Gate、UUID/query/body validation、CSRF、Next 文、API 棚卸し、外部 HTTP 非依存を検証する。
-- `backend/tests/integration/test_external_review_gate_http_api/test_boundary_static.py`: TC-STATIC-ERG-HTTP-003。`app.py` / `dependencies.py` / `error_handlers.py` / `routers/external_review_gates.py` にトップレベル公開関数定義が残っていないことを検証する。
+- `backend/tests/integration/test_external_review_gate_http_api/test_boundary_static.py`: TC-STATIC-ERG-HTTP-003。`app.py` / `dependencies.py` / `error_handlers.py` / `routers/*.py` 全件にトップレベル公開関数定義が残っていないことを検証する。
 - `backend/tests/integration/test_external_review_gate_http_api/conftest.py`: 実 DB セッションと HTTP 結合テスト用 app fixture を提供する。
 - `backend/tests/integration/test_external_review_gate_http_api/helpers.py`: 結合テストの seed と HTTP request helper を提供する。
 - `backend/tests/unit/test_external_review_gate_http_api/test_schemas.py`: TC-UT-ERG-HTTP-001 / 002 / 005 / 008。

@@ -9,7 +9,18 @@ from bakufu.interfaces.http.schemas.common import HealthResponse
 router = APIRouter()
 
 
-@router.get("/health", response_model=HealthResponse)
-async def health() -> HealthResponse:
-    """bakufu 稼働確認エンドポイント。"""
-    return HealthResponse(status="ok")
+class HealthHttpRoutes:
+    """Health HTTP 入口をクラスメソッドに閉じる。"""
+
+    @classmethod
+    async def health(cls) -> HealthResponse:
+        """bakufu 稼働確認エンドポイント。"""
+        return HealthResponse(status="ok")
+
+
+router.add_api_route(
+    "/health",
+    HealthHttpRoutes.health,
+    methods=["GET"],
+    response_model=HealthResponse,
+)

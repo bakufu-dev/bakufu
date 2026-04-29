@@ -165,7 +165,7 @@ Issue #61 実装 PR は `audit` CI（pip-audit / pnpm audit）を必須証跡に
 
 ### 確定 I: HTTP 境界の公開関数禁止
 
-ExternalReviewGate の HTTP 入口、DI、app wiring、error handler はクラスへ封入する。`app.py` / `dependencies.py` / `error_handlers.py` / `routers/external_review_gates.py` はトップレベル公開関数を持たない。FastAPI の handler 登録は `HttpApplicationFactory` から `HttpErrorHandlers` のメソッドを明示的に参照する。
+ExternalReviewGate の HTTP 入口、DI、app wiring、error handler はクラスへ封入する。HTTP 境界全体（`app.py` / `dependencies.py` / `error_handlers.py` / `routers/*.py`）はトップレベル公開関数を持たない。FastAPI の handler 登録は `HttpApplicationFactory` から `HttpErrorHandlers` のメソッドを明示的に参照し、route 登録は各 `*HttpRoutes` クラスの classmethod を `APIRouter.add_api_route()` に渡す。
 
 ## 設計判断の補足
 

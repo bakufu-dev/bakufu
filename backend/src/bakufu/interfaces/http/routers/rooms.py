@@ -47,155 +47,148 @@ rooms_router = APIRouter(prefix="/api/rooms", tags=["room"])
 RoomServiceDep = Annotated[RoomService, Depends(HttpDependencies.get_room_service)]
 
 
-@empire_rooms_router.post(
+class RoomHttpRoutes:
+    """Room HTTP 入口をクラスメソッドに閉じる。"""
+
+    @classmethod
+    async def create_room(
+        cls,
+        empire_id: UUID,
+        body: RoomCreate,
+        service: RoomServiceDep,
+    ) -> RoomResponse:
+        """Room を新規作成する (REQ-RM-HTTP-001)。"""
+        room = await service.create(
+            empire_id=empire_id,
+            name=body.name,
+            description=body.description,
+            workflow_id=body.workflow_id,
+            prompt_kit_prefix_markdown=body.prompt_kit_prefix_markdown,
+        )
+        return RoomResponse.model_validate(room)
+
+    @classmethod
+    async def list_rooms(
+        cls,
+        empire_id: UUID,
+        service: RoomServiceDep,
+    ) -> RoomListResponse:
+        """Empire スコープの Room 一覧を取得する (REQ-RM-HTTP-002)。"""
+        rooms = await service.find_all_by_empire(empire_id)
+        items = [RoomResponse.model_validate(r) for r in rooms]
+        return RoomListResponse(items=items, total=len(items))
+
+    @classmethod
+    async def get_room(
+        cls,
+        room_id: UUID,
+        service: RoomServiceDep,
+    ) -> RoomResponse:
+        """Room を単件取得する (REQ-RM-HTTP-003)。"""
+        room = await service.find_by_id(room_id)
+        return RoomResponse.model_validate(room)
+
+    @classmethod
+    async def update_room(
+        cls,
+        room_id: UUID,
+        body: RoomUpdate,
+        service: RoomServiceDep,
+    ) -> RoomResponse:
+        """Room を部分更新する (REQ-RM-HTTP-004)。"""
+        room = await service.update(
+            room_id=room_id,
+            name=body.name,
+            description=body.description,
+            prompt_kit_prefix_markdown=body.prompt_kit_prefix_markdown,
+        )
+        return RoomResponse.model_validate(room)
+
+    @classmethod
+    async def archive_room(
+        cls,
+        room_id: UUID,
+        service: RoomServiceDep,
+    ) -> Response:
+        """Room を論理削除する (REQ-RM-HTTP-005 / UC-RM-010)。"""
+        await service.archive(room_id)
+        return Response(status_code=204)
+
+    @classmethod
+    async def assign_agent(
+        cls,
+        room_id: UUID,
+        body: AgentAssignRequest,
+        service: RoomServiceDep,
+    ) -> RoomResponse:
+        """Room に Agent を割り当てる (REQ-RM-HTTP-006)。"""
+        room = await service.assign_agent(
+            room_id=room_id,
+            agent_id=body.agent_id,
+            role=body.role,
+        )
+        return RoomResponse.model_validate(room)
+
+    @classmethod
+    async def unassign_agent(
+        cls,
+        room_id: UUID,
+        agent_id: UUID,
+        role: str,
+        service: RoomServiceDep,
+    ) -> Response:
+        """Room から Agent の役割割り当てを解除する (REQ-RM-HTTP-007)。"""
+        await service.unassign_agent(room_id=room_id, agent_id=agent_id, role=role)
+        return Response(status_code=204)
+
+
+empire_rooms_router.add_api_route(
     "/{empire_id}/rooms",
+    RoomHttpRoutes.create_room,
+    methods=["POST"],
     status_code=201,
     response_model=RoomResponse,
 )
-async def create_room(
-    empire_id: UUID,
-    body: RoomCreate,
-    service: RoomServiceDep,
-) -> RoomResponse:
-    """Room を新規作成する (REQ-RM-HTTP-001)。
-
-    - 404: Empire が存在しない場合 (``EmpireNotFoundError``)
-    - 404: Workflow が存在しない場合 (``WorkflowNotFoundError``)
-    - 409: 同 Empire 内で同名 Room が既に存在する場合 (``RoomNameAlreadyExistsError``)
-    - 422: name / description / prompt_kit_prefix_markdown が制約違反の場合
-    - 422: 不正 UUID (FastAPI path validation)
-    """
-    room = await service.create(
-        empire_id=empire_id,
-        name=body.name,
-        description=body.description,
-        workflow_id=body.workflow_id,
-        prompt_kit_prefix_markdown=body.prompt_kit_prefix_markdown,
-    )
-    return RoomResponse.model_validate(room)
-
-
-@empire_rooms_router.get(
+empire_rooms_router.add_api_route(
     "/{empire_id}/rooms",
+    RoomHttpRoutes.list_rooms,
+    methods=["GET"],
     status_code=200,
     response_model=RoomListResponse,
 )
-async def list_rooms(
-    empire_id: UUID,
-    service: RoomServiceDep,
-) -> RoomListResponse:
-    """Empire スコープの Room 一覧を取得する (REQ-RM-HTTP-002)。
-
-    空リストも 200 で返す (items=[], total=0)。
-
-    - 404: Empire が存在しない場合 (``EmpireNotFoundError``)
-    - 422: 不正 UUID (FastAPI path validation)
-    """
-    rooms = await service.find_all_by_empire(empire_id)
-    items = [RoomResponse.model_validate(r) for r in rooms]
-    return RoomListResponse(items=items, total=len(items))
-
-
-@rooms_router.get("/{room_id}", status_code=200, response_model=RoomResponse)
-async def get_room(
-    room_id: UUID,
-    service: RoomServiceDep,
-) -> RoomResponse:
-    """Room を単件取得する (REQ-RM-HTTP-003)。
-
-    - 404: 対象 Room が存在しない場合 (``RoomNotFoundError``)
-    - 422: 不正 UUID (FastAPI path validation)
-    """
-    room = await service.find_by_id(room_id)
-    return RoomResponse.model_validate(room)
-
-
-@rooms_router.patch("/{room_id}", status_code=200, response_model=RoomResponse)
-async def update_room(
-    room_id: UUID,
-    body: RoomUpdate,
-    service: RoomServiceDep,
-) -> RoomResponse:
-    """Room を部分更新する (REQ-RM-HTTP-004)。
-
-    - 404: 対象 Room が存在しない場合 (``RoomNotFoundError``)
-    - 409: アーカイブ済み Room への更新 (``RoomArchivedError``)
-    - 422: name / description / prompt_kit_prefix_markdown が制約違反の場合
-    - 422: 不正 UUID (FastAPI path validation)
-    """
-    room = await service.update(
-        room_id=room_id,
-        name=body.name,
-        description=body.description,
-        prompt_kit_prefix_markdown=body.prompt_kit_prefix_markdown,
-    )
-    return RoomResponse.model_validate(room)
-
-
-@rooms_router.delete("/{room_id}", status_code=204)
-async def archive_room(
-    room_id: UUID,
-    service: RoomServiceDep,
-) -> Response:
-    """Room を論理削除する (REQ-RM-HTTP-005 / UC-RM-010)。
-
-    ``archived=True`` に設定して永続化する。物理削除は行わない。
-
-    - 204: 成功 (No Content)
-    - 404: 対象 Room が存在しない場合 (``RoomNotFoundError``)
-    - 422: 不正 UUID (FastAPI path validation)
-    """
-    await service.archive(room_id)
-    return Response(status_code=204)
-
-
-@rooms_router.post("/{room_id}/agents", status_code=201, response_model=RoomResponse)
-async def assign_agent(
-    room_id: UUID,
-    body: AgentAssignRequest,
-    service: RoomServiceDep,
-) -> RoomResponse:
-    """Room に Agent を割り当てる (REQ-RM-HTTP-006)。
-
-    - 404: Room が存在しない場合 (``RoomNotFoundError``)
-    - 404: Agent が存在しない場合 (``AgentNotFoundError``)
-    - 409: アーカイブ済み Room への操作 (``RoomArchivedError``)
-    - 422: ``(agent_id, role)`` 重複 / capacity 超過 (``RoomInvariantViolation``)
-    - 422: 不正 UUID / 無効な role 値 (FastAPI / schema validation)
-    """
-    room = await service.assign_agent(
-        room_id=room_id,
-        agent_id=body.agent_id,
-        role=body.role,
-    )
-    return RoomResponse.model_validate(room)
-
-
-@rooms_router.delete(
-    "/{room_id}/agents/{agent_id}/roles/{role}",
+rooms_router.add_api_route(
+    "/{room_id}",
+    RoomHttpRoutes.get_room,
+    methods=["GET"],
+    status_code=200,
+    response_model=RoomResponse,
+)
+rooms_router.add_api_route(
+    "/{room_id}",
+    RoomHttpRoutes.update_room,
+    methods=["PATCH"],
+    status_code=200,
+    response_model=RoomResponse,
+)
+rooms_router.add_api_route(
+    "/{room_id}",
+    RoomHttpRoutes.archive_room,
+    methods=["DELETE"],
     status_code=204,
 )
-async def unassign_agent(
-    room_id: UUID,
-    agent_id: UUID,
-    role: str,
-    service: RoomServiceDep,
-) -> Response:
-    """Room から Agent の役割割り当てを解除する (REQ-RM-HTTP-007)。
-
-    ``role`` パスパラメータで ``(agent_id, role)`` ペアを一意識別する。
-    無効な role 値は ``RoomInvariantViolation(kind='member_not_found')`` → 404 で返す
-    (型バリデーションを domain に委ねることで HTTP 層の責務を最小化する / 確定 E)。
-
-    - 204: 成功 (No Content)
-    - 404: Room が存在しない場合 (``RoomNotFoundError``)
-    - 404: 指定した membership が存在しない場合 / 無効 role
-      (``RoomInvariantViolation`` kind=member_not_found)
-    - 409: アーカイブ済み Room への操作 (``RoomArchivedError``)
-    - 422: 不正 UUID (FastAPI path validation)
-    """
-    await service.unassign_agent(room_id=room_id, agent_id=agent_id, role=role)
-    return Response(status_code=204)
+rooms_router.add_api_route(
+    "/{room_id}/agents",
+    RoomHttpRoutes.assign_agent,
+    methods=["POST"],
+    status_code=201,
+    response_model=RoomResponse,
+)
+rooms_router.add_api_route(
+    "/{room_id}/agents/{agent_id}/roles/{role}",
+    RoomHttpRoutes.unassign_agent,
+    methods=["DELETE"],
+    status_code=204,
+)
 
 
 __all__ = ["empire_rooms_router", "rooms_router"]

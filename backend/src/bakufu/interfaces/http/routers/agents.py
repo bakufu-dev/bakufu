@@ -25,99 +25,120 @@ empire_agents_router = APIRouter(prefix="/api/empires", tags=["agent"])
 agents_router = APIRouter(prefix="/api/agents", tags=["agent"])
 
 
-@empire_agents_router.post(
+class AgentHttpRoutes:
+    """Agent HTTP 入口をクラスメソッドに閉じる。"""
+
+    @classmethod
+    async def hire_agent(
+        cls,
+        empire_id: UUID,
+        body: AgentCreate,
+        service: AgentServiceDep,
+    ) -> AgentResponse:
+        """Empire に Agent を採用する。"""
+        agent = await service.hire(
+            empire_id=empire_id,
+            name=body.name,
+            persona=body.persona.model_dump(),
+            role=body.role,
+            providers=[p.model_dump() for p in body.providers],
+            skills=[s.model_dump() for s in body.skills],
+        )
+        return AgentResponse.model_validate(agent)
+
+    @classmethod
+    async def list_agents(
+        cls,
+        empire_id: UUID,
+        service: AgentServiceDep,
+    ) -> AgentListResponse:
+        """Empire 内の全 Agent を返す（0 件も 200）。"""
+        agents = await service.find_by_empire(empire_id)
+        items = [AgentResponse.model_validate(a) for a in agents]
+        return AgentListResponse(items=items, total=len(items))
+
+    @classmethod
+    async def get_agent(
+        cls,
+        agent_id: UUID,
+        service: AgentServiceDep,
+    ) -> AgentResponse:
+        """Agent を 1 件返す。"""
+        agent = await service.find_by_id(agent_id)
+        return AgentResponse.model_validate(agent)
+
+    @classmethod
+    async def update_agent(
+        cls,
+        agent_id: UUID,
+        body: AgentUpdate,
+        service: AgentServiceDep,
+    ) -> AgentResponse:
+        """Agent を部分更新する。"""
+        persona_dict = body.persona.model_dump() if body.persona is not None else None
+        providers_list = (
+            [p.model_dump() for p in body.providers] if body.providers is not None else None
+        )
+        skills_list = [s.model_dump() for s in body.skills] if body.skills is not None else None
+        updated = await service.update(
+            agent_id=agent_id,
+            name=body.name,
+            persona=persona_dict,
+            role=body.role,
+            providers=providers_list,
+            skills=skills_list,
+        )
+        return AgentResponse.model_validate(updated)
+
+    @classmethod
+    async def archive_agent(
+        cls,
+        agent_id: UUID,
+        service: AgentServiceDep,
+    ) -> None:
+        """Agent を論理削除する（archived=True）。冪等: 2 回目の DELETE も 204。"""
+        await service.archive(agent_id)
+
+
+empire_agents_router.add_api_route(
     "/{empire_id}/agents",
+    AgentHttpRoutes.hire_agent,
+    methods=["POST"],
     response_model=AgentResponse,
     status_code=201,
     summary="Agent 採用（REQ-AG-HTTP-001）",
 )
-async def hire_agent(
-    empire_id: UUID,
-    body: AgentCreate,
-    service: AgentServiceDep,
-) -> AgentResponse:
-    """Empire に Agent を採用する。"""
-    agent = await service.hire(
-        empire_id=empire_id,
-        name=body.name,
-        persona=body.persona.model_dump(),
-        role=body.role,
-        providers=[p.model_dump() for p in body.providers],
-        skills=[s.model_dump() for s in body.skills],
-    )
-    return AgentResponse.model_validate(agent)
-
-
-@empire_agents_router.get(
+empire_agents_router.add_api_route(
     "/{empire_id}/agents",
+    AgentHttpRoutes.list_agents,
+    methods=["GET"],
     response_model=AgentListResponse,
     status_code=200,
     summary="Empire の Agent 一覧取得（REQ-AG-HTTP-002）",
 )
-async def list_agents(
-    empire_id: UUID,
-    service: AgentServiceDep,
-) -> AgentListResponse:
-    """Empire 内の全 Agent を返す（0 件も 200）。"""
-    agents = await service.find_by_empire(empire_id)
-    items = [AgentResponse.model_validate(a) for a in agents]
-    return AgentListResponse(items=items, total=len(items))
-
-
-@agents_router.get(
+agents_router.add_api_route(
     "/{agent_id}",
+    AgentHttpRoutes.get_agent,
+    methods=["GET"],
     response_model=AgentResponse,
     status_code=200,
     summary="Agent 単件取得（REQ-AG-HTTP-003）",
 )
-async def get_agent(
-    agent_id: UUID,
-    service: AgentServiceDep,
-) -> AgentResponse:
-    """Agent を 1 件返す。"""
-    agent = await service.find_by_id(agent_id)
-    return AgentResponse.model_validate(agent)
-
-
-@agents_router.patch(
+agents_router.add_api_route(
     "/{agent_id}",
+    AgentHttpRoutes.update_agent,
+    methods=["PATCH"],
     response_model=AgentResponse,
     status_code=200,
     summary="Agent 更新（REQ-AG-HTTP-004）",
 )
-async def update_agent(
-    agent_id: UUID,
-    body: AgentUpdate,
-    service: AgentServiceDep,
-) -> AgentResponse:
-    """Agent を部分更新する。"""
-    persona_dict = body.persona.model_dump() if body.persona is not None else None
-    providers_list = (
-        [p.model_dump() for p in body.providers] if body.providers is not None else None
-    )
-    skills_list = [s.model_dump() for s in body.skills] if body.skills is not None else None
-    updated = await service.update(
-        agent_id=agent_id,
-        name=body.name,
-        persona=persona_dict,
-        role=body.role,
-        providers=providers_list,
-        skills=skills_list,
-    )
-    return AgentResponse.model_validate(updated)
-
-
-@agents_router.delete(
+agents_router.add_api_route(
     "/{agent_id}",
+    AgentHttpRoutes.archive_agent,
+    methods=["DELETE"],
     status_code=204,
     summary="Agent 引退（REQ-AG-HTTP-005）",
 )
-async def archive_agent(
-    agent_id: UUID,
-    service: AgentServiceDep,
-) -> None:
-    """Agent を論理削除する（archived=True）。冪等: 2 回目の DELETE も 204。"""
-    await service.archive(agent_id)
 
 
 __all__ = ["agents_router", "empire_agents_router"]

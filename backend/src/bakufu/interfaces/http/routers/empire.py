@@ -40,78 +40,118 @@ router = APIRouter(prefix="/api/empires", tags=["empire"])
 EmpireServiceDep = Annotated[EmpireService, Depends(HttpDependencies.get_empire_service)]
 
 
-@router.post("", status_code=201, response_model=EmpireResponse)
-async def create_empire(
-    body: EmpireCreate,
-    service: EmpireServiceDep,
-) -> EmpireResponse:
-    """Empire を新規作成する (REQ-EM-HTTP-001)。
+class EmpireHttpRoutes:
+    """Empire HTTP 入口をクラスメソッドに閉じる。"""
 
-    - 409: Empire が既に存在する場合 (``EmpireAlreadyExistsError``)
-    - 422: name が 1-80 文字を超える場合
-    """
-    empire = await service.create(body.name)
-    return EmpireResponse.model_validate(empire)
+    @classmethod
+    async def create_empire(
+        cls,
+        body: EmpireCreate,
+        service: EmpireServiceDep,
+    ) -> EmpireResponse:
+        """Empire を新規作成する (REQ-EM-HTTP-001)。
+
+        - 409: Empire が既に存在する場合 (``EmpireAlreadyExistsError``)
+        - 422: name が 1-80 文字を超える場合
+        """
+        empire = await service.create(body.name)
+        return EmpireResponse.model_validate(empire)
+
+    @classmethod
+    async def list_empires(
+        cls,
+        service: EmpireServiceDep,
+    ) -> EmpireListResponse:
+        """Empire 一覧を取得する (REQ-EM-HTTP-002)。
+
+        シングルトンのため 0 件または 1 件。空リストは 200 で返す。
+        """
+        empires = await service.find_all()
+        items = [EmpireResponse.model_validate(e) for e in empires]
+        return EmpireListResponse(items=items, total=len(items))
+
+    @classmethod
+    async def get_empire(
+        cls,
+        empire_id: UUID,
+        service: EmpireServiceDep,
+    ) -> EmpireResponse:
+        """Empire を単件取得する (REQ-EM-HTTP-003)。
+
+        - 404: 対象 Empire が存在しない場合 (``EmpireNotFoundError``)
+        - 422: ``empire_id`` が不正な UUID 形式の場合 (FastAPI path validation)
+        """
+        empire = await service.find_by_id(empire_id)
+        return EmpireResponse.model_validate(empire)
+
+    @classmethod
+    async def update_empire(
+        cls,
+        empire_id: UUID,
+        body: EmpireUpdate,
+        service: EmpireServiceDep,
+    ) -> EmpireResponse:
+        """Empire を部分更新する (REQ-EM-HTTP-004)。
+
+        - 404: 対象 Empire が存在しない場合 (``EmpireNotFoundError``)
+        - 409: アーカイブ済み Empire への更新 (``EmpireArchivedError``)
+        - 422: name が 1-80 文字を超える場合 / 不正 UUID (FastAPI path validation)
+        """
+        empire = await service.update(empire_id, body.name)
+        return EmpireResponse.model_validate(empire)
+
+    @classmethod
+    async def delete_empire(
+        cls,
+        empire_id: UUID,
+        service: EmpireServiceDep,
+    ) -> Response:
+        """Empire を論理削除する (REQ-EM-HTTP-005 / UC-EM-010)。
+
+        ``archived=True`` に設定して永続化する。物理削除は行わない。
+
+        - 204: 成功 (No Content)
+        - 404: 対象 Empire が存在しない場合 (``EmpireNotFoundError``)
+        - 422: ``empire_id`` が不正な UUID 形式の場合 (FastAPI path validation)
+        """
+        await service.archive(empire_id)
+        return Response(status_code=204)
 
 
-@router.get("", status_code=200, response_model=EmpireListResponse)
-async def list_empires(
-    service: EmpireServiceDep,
-) -> EmpireListResponse:
-    """Empire 一覧を取得する (REQ-EM-HTTP-002)。
-
-    シングルトンのため 0 件または 1 件。空リストは 200 で返す。
-    """
-    empires = await service.find_all()
-    items = [EmpireResponse.model_validate(e) for e in empires]
-    return EmpireListResponse(items=items, total=len(items))
-
-
-@router.get("/{empire_id}", status_code=200, response_model=EmpireResponse)
-async def get_empire(
-    empire_id: UUID,
-    service: EmpireServiceDep,
-) -> EmpireResponse:
-    """Empire を単件取得する (REQ-EM-HTTP-003)。
-
-    - 404: 対象 Empire が存在しない場合 (``EmpireNotFoundError``)
-    - 422: ``empire_id`` が不正な UUID 形式の場合 (FastAPI path validation)
-    """
-    empire = await service.find_by_id(empire_id)
-    return EmpireResponse.model_validate(empire)
-
-
-@router.patch("/{empire_id}", status_code=200, response_model=EmpireResponse)
-async def update_empire(
-    empire_id: UUID,
-    body: EmpireUpdate,
-    service: EmpireServiceDep,
-) -> EmpireResponse:
-    """Empire を部分更新する (REQ-EM-HTTP-004)。
-
-    - 404: 対象 Empire が存在しない場合 (``EmpireNotFoundError``)
-    - 409: アーカイブ済み Empire への更新 (``EmpireArchivedError``)
-    - 422: name が 1-80 文字を超える場合 / 不正 UUID (FastAPI path validation)
-    """
-    empire = await service.update(empire_id, body.name)
-    return EmpireResponse.model_validate(empire)
-
-
-@router.delete("/{empire_id}", status_code=204)
-async def delete_empire(
-    empire_id: UUID,
-    service: EmpireServiceDep,
-) -> Response:
-    """Empire を論理削除する (REQ-EM-HTTP-005 / UC-EM-010)。
-
-    ``archived=True`` に設定して永続化する。物理削除は行わない。
-
-    - 204: 成功 (No Content)
-    - 404: 対象 Empire が存在しない場合 (``EmpireNotFoundError``)
-    - 422: ``empire_id`` が不正な UUID 形式の場合 (FastAPI path validation)
-    """
-    await service.archive(empire_id)
-    return Response(status_code=204)
+router.add_api_route(
+    "",
+    EmpireHttpRoutes.create_empire,
+    methods=["POST"],
+    status_code=201,
+    response_model=EmpireResponse,
+)
+router.add_api_route(
+    "",
+    EmpireHttpRoutes.list_empires,
+    methods=["GET"],
+    status_code=200,
+    response_model=EmpireListResponse,
+)
+router.add_api_route(
+    "/{empire_id}",
+    EmpireHttpRoutes.get_empire,
+    methods=["GET"],
+    status_code=200,
+    response_model=EmpireResponse,
+)
+router.add_api_route(
+    "/{empire_id}",
+    EmpireHttpRoutes.update_empire,
+    methods=["PATCH"],
+    status_code=200,
+    response_model=EmpireResponse,
+)
+router.add_api_route(
+    "/{empire_id}",
+    EmpireHttpRoutes.delete_empire,
+    methods=["DELETE"],
+    status_code=204,
+)
 
 
 __all__ = ["router"]
