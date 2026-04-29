@@ -116,9 +116,10 @@ class TestTaskSchemas:
 class TestStaticDependencyAnalysisTask:
     """TC-UT-TSH-011: routers/schemas の domain/infrastructure 直参照禁止."""
 
+    backend_root = Path(__file__).resolve().parents[3]
     targets = (
-        Path("src/bakufu/interfaces/http/routers/tasks.py"),
-        Path("src/bakufu/interfaces/http/schemas/task.py"),
+        backend_root / "src/bakufu/interfaces/http/routers/tasks.py",
+        backend_root / "src/bakufu/interfaces/http/schemas/task.py",
     )
 
     def _imports(self, path: Path) -> list[tuple[str, int]]:

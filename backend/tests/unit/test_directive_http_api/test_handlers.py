@@ -76,9 +76,10 @@ class TestDirectiveSchemas:
 class TestStaticDependencyAnalysisDirective:
     """TC-UT-DRH-006: routers/schemas の domain/infrastructure 直参照禁止."""
 
+    backend_root = Path(__file__).resolve().parents[3]
     targets = (
-        Path("src/bakufu/interfaces/http/routers/directives.py"),
-        Path("src/bakufu/interfaces/http/schemas/directive.py"),
+        backend_root / "src/bakufu/interfaces/http/routers/directives.py",
+        backend_root / "src/bakufu/interfaces/http/schemas/directive.py",
     )
 
     def _imports(self, path: Path) -> list[tuple[str, int]]:
