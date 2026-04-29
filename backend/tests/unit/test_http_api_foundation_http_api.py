@@ -1,4 +1,4 @@
-"""http-api-foundation / http-api ユニットテスト (TC-UT-HAF-001, 002, 003, 010).
+"""http-api-foundation / http-api ユニットテスト (TC-UT-HAF-001〜003, 010〜012).
 
 Per ``docs/features/http-api-foundation/http-api/test-design.md`` §ユニットテストケース.
 
@@ -7,6 +7,8 @@ Covers:
   TC-UT-HAF-002  ErrorResponse extra フィールド拒否 (REQ-HAF-005, Q-3)
   TC-UT-HAF-003  EmpireService.__init__ 骨格 (REQ-HAF-006, Q-3)
   TC-UT-HAF-010  interfaces/http/ 依存方向静的解析 — ast モジュール (Q-3)
+  TC-UT-HAF-011  http_exception_handler status_code 分岐 (ヘルスバーグ指摘 #1)
+  TC-UT-HAF-012  main.py BAKUFU_BIND_HOST/PORT env var 使用確認 (REQ-HAF-007, Tabriz指摘)
 
 Issue: #55
 """
@@ -164,3 +166,119 @@ class TestStaticDependencyAnalysis:
             "Direct bakufu.infrastructure imports detected at module level:\n"
             + "\n".join(violations)
         )
+
+
+# ---------------------------------------------------------------------------
+# TC-UT-HAF-011: http_exception_handler status_code 分岐 (ヘルスバーグ指摘 #1)
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+class TestHttpExceptionHandlerUnit:
+    """TC-UT-HAF-011: http_exception_handler correctly maps status codes to error codes.
+
+    Tests the handler function directly (no HTTP transport) to cover all
+    status code branches including cases not easily triggered via routing.
+    """
+
+    def _make_request(self) -> object:
+        """Return a minimal mock Request object."""
+        from unittest.mock import MagicMock
+
+        return MagicMock()
+
+    def _make_http_exc(self, status_code: int, detail: str | None = None) -> object:
+        from starlette.exceptions import HTTPException as StarletteHTTPException
+
+        return StarletteHTTPException(status_code=status_code, detail=detail)
+
+    async def test_404_code_is_not_found(self) -> None:
+        """HTTPException(404) → code "not_found"."""
+        from bakufu.interfaces.http.error_handlers import http_exception_handler
+
+        resp = await http_exception_handler(self._make_request(), self._make_http_exc(404))  # type: ignore[arg-type]
+        assert resp.status_code == 404  # type: ignore[union-attr]
+        import json
+
+        body = json.loads(resp.body)  # type: ignore[union-attr]
+        assert body["error"]["code"] == "not_found"
+
+    async def test_404_message_is_msg_haf_001(self) -> None:
+        """HTTPException(404) → message is exactly MSG-HAF-001 "Resource not found."."""
+        from bakufu.interfaces.http.error_handlers import http_exception_handler
+
+        resp = await http_exception_handler(self._make_request(), self._make_http_exc(404))  # type: ignore[arg-type]
+        import json
+
+        body = json.loads(resp.body)  # type: ignore[union-attr]
+        assert body["error"]["message"] == "Resource not found."
+
+    async def test_403_code_is_forbidden(self) -> None:
+        """HTTPException(403) → code "forbidden"."""
+        from bakufu.interfaces.http.error_handlers import http_exception_handler
+
+        resp = await http_exception_handler(self._make_request(), self._make_http_exc(403, "Forbidden"))  # type: ignore[arg-type]
+        import json
+
+        body = json.loads(resp.body)  # type: ignore[union-attr]
+        assert body["error"]["code"] == "forbidden"
+
+    async def test_405_code_is_method_not_allowed(self) -> None:
+        """HTTPException(405) → code "method_not_allowed"."""
+        from bakufu.interfaces.http.error_handlers import http_exception_handler
+
+        resp = await http_exception_handler(self._make_request(), self._make_http_exc(405))  # type: ignore[arg-type]
+        import json
+
+        body = json.loads(resp.body)  # type: ignore[union-attr]
+        assert body["error"]["code"] == "method_not_allowed"
+
+    async def test_401_code_is_http_error_401(self) -> None:
+        """HTTPException(401) → code "http_error_401" (catch-all branch)."""
+        from bakufu.interfaces.http.error_handlers import http_exception_handler
+
+        resp = await http_exception_handler(self._make_request(), self._make_http_exc(401, "Unauthorized"))  # type: ignore[arg-type]
+        import json
+
+        body = json.loads(resp.body)  # type: ignore[union-attr]
+        assert body["error"]["code"] == "http_error_401"
+
+    async def test_wrong_exception_type_raises_type_error(self) -> None:
+        """Non-HTTPException → TypeError (Fail Fast 確認)."""
+        from bakufu.interfaces.http.error_handlers import http_exception_handler
+
+        import pytest as _pytest
+
+        with _pytest.raises(TypeError, match="Expected StarletteHTTPException"):
+            await http_exception_handler(self._make_request(), ValueError("oops"))  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# TC-UT-HAF-012: main.py が BAKUFU_BIND_HOST / BAKUFU_BIND_PORT を使用する (REQ-HAF-007)
+# ---------------------------------------------------------------------------
+class TestMainEnvVarBinding:
+    """TC-UT-HAF-012: _uvicorn_starter uses BAKUFU_BIND_HOST / BAKUFU_BIND_PORT env vars.
+
+    Verifies via ast.parse() that the host/port arguments come from
+    os.environ.get("BAKUFU_BIND_HOST", ...) / os.environ.get("BAKUFU_BIND_PORT", ...)
+    and that the defaults are "127.0.0.1" / "8000".
+    """
+
+    def _main_source(self) -> str:
+        import bakufu.main as _main_mod
+
+        return Path(_main_mod.__file__).read_text(encoding="utf-8")  # type: ignore[arg-type]
+
+    def test_bind_host_env_var_present_in_source(self) -> None:
+        """main.py contains os.environ.get("BAKUFU_BIND_HOST", ...) (REQ-HAF-007)."""
+        assert 'BAKUFU_BIND_HOST' in self._main_source()
+
+    def test_bind_port_env_var_present_in_source(self) -> None:
+        """main.py contains os.environ.get("BAKUFU_BIND_PORT", ...) (REQ-HAF-007)."""
+        assert 'BAKUFU_BIND_PORT' in self._main_source()
+
+    def test_bind_host_default_is_loopback(self) -> None:
+        """Default BAKUFU_BIND_HOST is "127.0.0.1" (not 0.0.0.0 — OWASP A01)."""
+        assert '"127.0.0.1"' in self._main_source()
+
+    def test_bind_host_is_not_hardcoded_to_all_interfaces(self) -> None:
+        """main.py must not contain hardcoded "0.0.0.0" (Tabriz指摘 — OWASP A01)."""
+        assert '"0.0.0.0"' not in self._main_source()

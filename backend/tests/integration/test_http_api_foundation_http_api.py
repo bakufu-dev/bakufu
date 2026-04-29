@@ -364,3 +364,42 @@ class TestCsrfOriginMiddleware:
             headers={"Origin": "http://evil.example.com"},
         )
         assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# TC-IT-HAF-009: http_exception_handler status_code 分岐 (ヘルスバーグ指摘 #1)
+# ---------------------------------------------------------------------------
+class TestHttpExceptionHandlerBranching:
+    """TC-IT-HAF-009: http_exception_handler routes status codes to distinct error codes.
+
+    Ensures that non-404 HTTP exceptions do not get squashed to "not_found",
+    and that 404 still returns the exact MSG-HAF-001 message.
+    """
+
+    async def test_404_returns_not_found_code(self, app_client: AsyncClient) -> None:
+        """GET /nonexistent → code "not_found" (re-verified after branching refactor)."""
+        response = await app_client.get("/nonexistent")
+        assert response.json()["error"]["code"] == "not_found"
+
+    async def test_404_returns_msg_haf_001_message(self, app_client: AsyncClient) -> None:
+        """GET /nonexistent → message is exactly MSG-HAF-001 "Resource not found." not "Not Found"."""
+        response = await app_client.get("/nonexistent")
+        assert response.json()["error"]["message"] == "Resource not found."
+
+    async def test_405_returns_method_not_allowed_code(self, app_client: AsyncClient) -> None:
+        """POST /health (GET-only route, no Origin) → 405 with code "method_not_allowed"."""
+        response = await app_client.post("/health")
+        assert response.status_code == 405
+
+    async def test_405_error_code_is_method_not_allowed(self, app_client: AsyncClient) -> None:
+        """POST /health → error code "method_not_allowed" (not "not_found")."""
+        response = await app_client.post("/health")
+        assert response.json()["error"]["code"] == "method_not_allowed"
+
+    async def test_405_has_error_envelope(self, app_client: AsyncClient) -> None:
+        """POST /health → response uses {"error": {"code": ..., "message": ...}} envelope."""
+        response = await app_client.post("/health")
+        body = response.json()
+        assert "error" in body
+        assert "code" in body["error"]
+        assert "message" in body["error"]

@@ -38,7 +38,8 @@ async def http_exception_handler(request: Request, exc: Exception) -> JSONRespon
 
     status = exc.status_code
     if status == 404:
-        code = NOT_FOUND
+        # MSG-HAF-001: 確定文言 "Resource not found." を使う (exc.detail は "Not Found" で異なる)
+        return _error_response(NOT_FOUND, "Resource not found.", status)
     elif status == 403:
         code = FORBIDDEN
     elif status == 405:
