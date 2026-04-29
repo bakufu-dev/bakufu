@@ -6,7 +6,7 @@
 
 ## 本書の役割
 
-本書は **テストケースで検証可能な単位までトレーサビリティを担保する**。`basic-design.md §モジュール契約` の REQ-WF-HTTP-NNN / `detailed-design.md §MSG 確定文言表` の MSG-WF-HTTP-NNN / 親 `feature-spec.md §9 受入基準` #13〜22 / 脅威 T1〜T5 を、それぞれ最低 1 件のテストケースで検証する。
+本書は **テストケースで検証可能な単位までトレーサビリティを担保する**。`basic-design.md §モジュール契約` の REQ-WF-HTTP-NNN / `detailed-design.md §MSG 確定文言表` の MSG-WF-HTTP-NNN / 親 `feature-spec.md §9 受入基準` #13〜21 / 脅威 T1〜T5 を、それぞれ最低 1 件のテストケースで検証する。
 
 **書くこと**:
 - REQ-WF-HTTP-NNN / MSG-WF-HTTP-NNN / 受入基準 # / 脅威を実テストケース（TC-IT / TC-UT）に紐付けるマトリクス
