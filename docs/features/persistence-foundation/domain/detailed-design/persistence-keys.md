@@ -4,15 +4,15 @@
 
 ## `audit_log` テーブル
 
-[`../requirements.md`](../requirements.md) §データモデル + [`triggers.md`](triggers.md) §確定 C のトリガを参照。
+[`../feature-spec.md`](../feature-spec.md) §データモデル + [`triggers.md`](triggers.md) §確定 C のトリガを参照。
 
 ## `bakufu_pid_registry` テーブル
 
-[`../requirements.md`](../requirements.md) §データモデル を参照。詳細手順は [`bootstrap.md`](bootstrap.md) §確定 E。
+[`../feature-spec.md`](../feature-spec.md) §データモデル を参照。詳細手順は [`bootstrap.md`](bootstrap.md) §確定 E。
 
 ## `domain_event_outbox` テーブル
 
-[`../requirements.md`](../requirements.md) §データモデル + [`masking.md`](masking.md) §確定 A のマスキング適用先 を参照。
+[`../feature-spec.md`](../feature-spec.md) §データモデル + [`masking.md`](masking.md) §確定 A のマスキング適用先 を参照。
 
 ## Alembic 初回 revision キー構造
 

@@ -1,8 +1,30 @@
-# 基本設計書
+# 基本設計書 — dev-workflow / domain
 
-<!-- 詳細設計書とは別ファイル。統合禁止 -->
-<!-- feature単位で1ファイル。新規featureならテンプレートコピー、既存featureなら既存ファイルをREAD→EDIT -->
-<!-- 配置先: docs/features/dev-workflow/basic-design.md -->
+> feature: `dev-workflow` / sub-feature: `domain`
+> 親 spec: [`../feature-spec.md`](../feature-spec.md) §9 受入基準 1〜13 / §10 Q-1〜Q-6
+
+## §モジュール契約（機能要件）
+
+| 要件ID | 概要 | 入力 | 処理 | 出力 | エラー時 | 親 spec 参照 |
+|--------|------|------|------|------|---------|-------------|
+| REQ-DW-001 | フックツール導入（lefthook） | `lefthook install` または setup スクリプト経由 | `lefthook.yml` を読み `.git/hooks/{pre-commit,pre-push,commit-msg}` を生成 | フックが有効化された状態 | lefthook バイナリ未検出 → setup スクリプト案内つき exit 非 0 | §9 AC#1 |
+| REQ-DW-002 | pre-commit フック | `git commit` 実行（`--no-verify` 非指定） | `just fmt-check` / `just lint` / `just typecheck` / `just audit-secrets` を並列実行 | 全成功: コミット続行 / 失敗: コミット中止 + MSG-DW-001/002/014/010 | exit 非 0 でコミット中止 | §9 AC#2, AC#11 |
+| REQ-DW-003 | pre-push フック | `git push` 実行（`--no-verify` 非指定） | `just test` を実行（pytest + vitest） | 成功: push 続行 / 失敗: push 中止 + MSG-DW-003 | exit 非 0 で push 中止 | §9 AC#3 |
+| REQ-DW-004 | commit-msg フック（Conventional Commits） | `.git/COMMIT_EDITMSG` | `convco check --from-stdin --strip < {1}` でメッセージを規約に照合 | 適合: 続行 / 不適合: 中止 + MSG-DW-004 | exit 非 0 | §9 AC#4 |
+| REQ-DW-005 | タスクランナー導入（just） | `just <recipe>` または `just --list` | `justfile` を読み、該当レシピのコマンドを実行 | レシピ実行結果 / `just --list` は全 13 レシピを 1 行コメントつきで列挙 | レシピ未定義: just が usage 表示 exit 非 0 | §9 AC#10 |
+| REQ-DW-006 | CI との単一実行経路化 | GitHub Actions workflow job の `run:` | lint / typecheck / test-backend / test-frontend / audit 5 ワークフローの直接ツール呼び出しを `just <recipe>` に置換 + `bash scripts/setup.sh --tools-only` を先頭ステップに追加 | ローカルフック / 手動 `just <recipe>` / CI が同一レシピ呼び出し経路で実行される状態 | `just` バイナリ未インストール: workflow ステップが fail | §9 AC#5 |
+| REQ-DW-007 | setup スクリプト（Unix, `scripts/setup.sh`） | `bash scripts/setup.sh [--tools-only]` | (1) リポジトリルート検査 (2) python3/node ランタイム検査 (3) GitHub Releases バイナリ（uv/just/convco/lefthook/gitleaks）SHA256 検証導入 (4) `uv tool install` で ruff/pyright/pip-audit (5) `pnpm install -g` で biome/osv-scanner (6) `--tools-only` 非指定時のみ `lefthook install` (7) MSG-DW-005 表示 | exit 0 + MSG-DW-005 | 各ステップ失敗で即 exit（`set -euo pipefail`） | §9 AC#1, AC#6, AC#7 |
+| REQ-DW-008 | setup スクリプト（Windows, `scripts/setup.ps1`） | `pwsh scripts/setup.ps1 [-ToolsOnly]`（PowerShell 7+ 必須） | ステップ 0: PowerShell 7+ 検査 → 以降は REQ-DW-007 と同等ロジックを PowerShell で表現 | REQ-DW-007 と同様 | REQ-DW-007 と同様 | §9 AC#1, AC#7 |
+| REQ-DW-009 | 冪等性 | setup スクリプトの連続再実行 | 各ツールについて存在確認 → 存在時はスキップ / `lefthook install` は冪等 | 2 回目以降は MSG-DW-006 を出して 0 秒で完了 | 初回エラーは通常通り Fail Fast | §9 AC#6 |
+| REQ-DW-010 | README / CONTRIBUTING 更新 | 設計確定 + Sub-issue C 完了後の PR | README.md §ビルド方法 / CONTRIBUTING.md §開発環境セットアップを更新 | setup 手順・`just` レシピ・`--no-verify` 禁止ポリシー・AI 生成フッター禁止ポリシーが追記された状態 | 該当なし（ドキュメント変更のみ） | §9 AC#9 |
+| REQ-DW-011 | `--no-verify` バイパス検知 | GitHub への push | CI の lint / typecheck / test-backend / test-frontend / audit が同一レシピを再実行 | CI ランで結果が可視化される / 規約違反は PR レビューで却下 | CI ジョブが非 0 終了 → PR マージ不可 | §9 AC#8 |
+| REQ-DW-012 | フック失敗時のメッセージ品質 | pre-commit / pre-push / commit-msg いずれかの失敗 | lefthook の `fail_text` で `[FAIL] <原因要約>` / `次のコマンド: just <recipe>` の **2 行固定構造**を静的文字列として定義 | stderr に最終 2 行が固定構造で出力 | 該当なし（メッセージ表示自体は exit コードに影響しない） | §9 AC#11 |
+| REQ-DW-013 | Secret 混入検知 pre-commit フック | `git commit` 実行時の staged 差分 | `gitleaks protect --staged --no-banner` で staged 差分を汎用 secret パターンでスキャン | pass: コミット続行 / 検出: 中止 + MSG-DW-010 | exit 非 0 | §9 AC#12 |
+| REQ-DW-014 | PowerShell 7+ 必須化 | `setup.ps1` 起動時の `$PSVersionTable.PSVersion` | `Major -lt 7` を検出したら Fail Fast + `winget install Microsoft.PowerShell` 案内 | 条件不一致: exit 非 0 + MSG-DW-011 / 条件一致: 後続ステップ続行 | 該当なし（Fail Fast 自体がエラー経路） | §9 AC#13 |
+| REQ-DW-015 | 開発ツールバイナリの完全性検証 | setup スクリプト実行時（当該ツールが未インストールの場合） | (1) SHA256 ピン定数参照 (2) バイナリダウンロード (3) sha256sum/Get-FileHash で照合 (4) 不一致なら削除 + MSG-DW-012 + Fail Fast (5) 一致なら配置 | 検証成功: `~/.local/bin/` または `$env:USERPROFILE\.local\bin\` に配置 | MSG-DW-012 + 一時ファイル削除 | §10 Q-1 |
+| REQ-DW-016 | 開発ワークフロー設定ファイルの CODEOWNERS 保護 | `.github/CODEOWNERS` への追記 | `/lefthook.yml` / `/justfile` / `/scripts/setup.sh` / `/scripts/setup.ps1` / `/scripts/ci/` を CODEOWNERS に登録 | 該当ファイルを含む PR でオーナーのレビュー要求が生成される | 該当なし | §10 Q-2 |
+| REQ-DW-017 | Git 履歴からの secret リムーブ運用 | push 済みコミットに secret 混入が判明した場合 | CONTRIBUTING.md の該当節で 3 段階手順を規定: (a) **即 revoke**（該当キーを発行元で失効）(b) `git filter-repo --path <file> --invert-paths` で履歴から該当ファイルを除去し force-push を対象ブランチに対してのみ実施（`main` / `develop` は対象外、release 前の feature ブランチ限定）(c) GitHub Support に cache purge 依頼、secret scanning の alert を resolve | CONTRIBUTING.md §Secret 混入時の緊急対応 に手順が明文化された状態 | 該当なし（運用手順の文書化のみ） | §10 Q-3 |
+| REQ-DW-018 | AI 生成フッターのコミットメッセージ混入禁止 | commit-msg フックから渡される `.git/COMMIT_EDITMSG` | `just commit-msg-no-ai-footer {1}` が case-insensitive な拡張正規表現で 3 パターン検査（🤖+Generated+Claude / Co-Authored-By:+@anthropic.com / Co-Authored-By:+\bClaude\b） | 非ヒット: exit 0 / ヒット: exit 非 0 + MSG-DW-013 | exit 非 0 | §10 Q-4 |
 
 ## 記述ルール（必ず守ること）
 

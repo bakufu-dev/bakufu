@@ -1,7 +1,8 @@
-# 詳細設計書
+# 詳細設計書 — persistence-foundation / domain
 
-> feature: `persistence-foundation`
-> 関連: [basic-design.md](basic-design.md) / [`tech-stack.md`](../../design/tech-stack.md) §ORM / [`storage.md`](../../design/domain-model/storage.md) §シークレットマスキング規則 / [`events-and-outbox.md`](../../design/domain-model/events-and-outbox.md) §`domain_event_outbox`
+> feature: `persistence-foundation` / sub-feature: `domain`
+> 親 spec: [`../feature-spec.md`](../feature-spec.md)
+> 関連: [`basic-design.md`](basic-design.md) §モジュール契約 / [`docs/design/tech-stack.md`](../../../design/tech-stack.md) §ORM / [`docs/design/domain-model/storage.md`](../../../design/domain-model/storage.md) §シークレットマスキング規則 / [`docs/design/domain-model/events-and-outbox.md`](../../../design/domain-model/events-and-outbox.md) §`domain_event_outbox`
 
 ## 記述ルール（必ず守ること）
 
@@ -18,7 +19,7 @@
 | [`detailed-design/modules.md`](detailed-design/modules.md) | Module 別仕様（関数表 / 属性 / カラム） | 14 Module 全件 |
 | [`detailed-design/pragma.md`](detailed-design/pragma.md) | PRAGMA + dual connection | 確定 D-1〜D-4（PRAGMA 8 件、application / migration 接続分離、Schneier 重大 2） |
 | [`detailed-design/masking.md`](detailed-design/masking.md) | マスキング契約 | 確定 A（9 種正規表現）+ 確定 F（Fail-Secure、Schneier 重大 1） |
-| [`detailed-design/triggers.md`](detailed-design/triggers.md) | TypeDecorator 配線 + SQLite トリガ | 確定 B（`MaskedJSONEncoded` / `MaskedText` の `process_bind_param`、event listener から反転 — [`requirements-analysis.md`](requirements-analysis.md) §確定 R1-D 参照）+ 確定 C（`audit_log` 不変性トリガ） |
+| [`detailed-design/triggers.md`](detailed-design/triggers.md) | TypeDecorator 配線 + SQLite トリガ | 確定 B（`MaskedJSONEncoded` / `MaskedText` の `process_bind_param`、event listener から反転 — [`../feature-spec.md`](../feature-spec.md) §確定 R1-D 参照）+ 確定 C（`audit_log` 不変性トリガ） |
 | [`detailed-design/bootstrap.md`](detailed-design/bootstrap.md) | Backend 起動シーケンス | 確定 E（pid_gc）+ 確定 G（8 段階順序 + INFO ログ）+ 確定 J（cleanup、Schneier 中等 4）+ 確定 L（umask、Schneier 中等 1） |
 | [`detailed-design/outbox.md`](detailed-design/outbox.md) | Outbox Dispatcher Fail Loud | 確定 K（空 handler レジストリ WARN、Schneier 中等 3） |
 | [`detailed-design/handoff.md`](detailed-design/handoff.md) | Schneier 申し送り + 依存方向 | 確定 H（申し送り 6 項目実装ステータス）+ 確定 I（依存方向の物理保証） |
@@ -77,7 +78,7 @@ classDiagram
 | 確定 | 概要 | 詳細サブファイル |
 |---|---|---|
 | 確定 A | マスキング 9 種正規表現 + 環境変数 + ホームパスの 3 段階適用順序 | [`masking.md`](detailed-design/masking.md) |
-| 確定 B | SQLAlchemy TypeDecorator (`MaskedJSONEncoded` / `MaskedText`) の `process_bind_param` 配線（旧 event listener 採用案を [`requirements-analysis.md`](requirements-analysis.md) §確定 R1-D で反転却下） | [`triggers.md`](detailed-design/triggers.md) |
+| 確定 B | SQLAlchemy TypeDecorator (`MaskedJSONEncoded` / `MaskedText`) の `process_bind_param` 配線（旧 event listener 採用案を [`../feature-spec.md`](../feature-spec.md) §確定 R1-D で反転却下） | [`triggers.md`](detailed-design/triggers.md) |
 | 確定 C | SQLite トリガで `audit_log` の DELETE 拒否 + UPDATE 制限（Alembic 初回 revision で発行） | [`triggers.md`](detailed-design/triggers.md) |
 | 確定 D | PRAGMA 8 件 SET（`defensive=ON` 含む）+ application / migration 接続分離（dual connection） | [`pragma.md`](detailed-design/pragma.md) |
 | 確定 E | pid_registry 起動時 GC の 8 段階手順、`psutil.create_time()` で PID 衝突対策 | [`bootstrap.md`](detailed-design/bootstrap.md) |
@@ -95,7 +96,7 @@ classDiagram
 
 旧設計は「event listener が raw SQL 経路でも走る」前提で `event.listens_for(TableClass, 'before_insert')` 方式を採用していた。しかし PR #23 BUG-PF-001 の技術検証で **SQLAlchemy 2.x の Core `insert(table).values({...})` の inline values は ORM mapper を経由しないため `before_insert` listener が発火しない**ことが判明した（TC-IT-PF-020 旧 xfail strict=True）。raw SQL 経路で生 secret が永続化される脱出経路が残るため、Schneier 申し送り #6 の契約が破綻する。
 
-リーナス commit `4b882bf` で **`MaskedJSONEncoded` / `MaskedText` TypeDecorator** に切替え、`process_bind_param` フックで Core / ORM 両経路を確実に捕捉する設計に反転した（TC-IT-PF-020 PASSED で物理保証）。詳細経緯は [`requirements-analysis.md`](requirements-analysis.md) §確定 R1-D。
+リーナス commit `4b882bf` で **`MaskedJSONEncoded` / `MaskedText` TypeDecorator** に切替え、`process_bind_param` フックで Core / ORM 両経路を確実に捕捉する設計に反転した（TC-IT-PF-020 PASSED で物理保証）。詳細経緯は [`../feature-spec.md`](../feature-spec.md) §確定 R1-D。
 
 「属性追加時の漏れ」リスク（旧設計が TypeDecorator を却下した理由）は CI 三層防衛（grep guard + アーキテクチャテスト + storage.md 逆引き表の運用ルール）で物理保証する。詳細は [`detailed-design/triggers.md`](detailed-design/triggers.md) §確定 B。
 
