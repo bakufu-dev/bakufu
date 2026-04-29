@@ -63,6 +63,7 @@ class Empire(BaseModel):
 
     id: EmpireId
     name: str
+    archived: bool = False
     # Pydantic v2 deep-copies these defaults per instance, so the empty-list
     # literal is safe and pyright-friendly (no `default_factory=list` Unknown).
     rooms: list[RoomRef] = []
@@ -200,6 +201,16 @@ class Empire(BaseModel):
             message=f"[FAIL] Room not found in Empire: room_id={room_id}",
             detail={"room_id": str(room_id)},
         )
+
+    def archive(self) -> Empire:
+        """Return a new :class:`Empire` with ``archived=True``.
+
+        Implements the logical delete (UC-EM-010 / 確定 H). Returns a new
+        frozen instance; callers pass the result to
+        ``EmpireRepository.save(archived_empire)`` to persist the state
+        change inside the Unit-of-Work.
+        """
+        return Empire.model_validate(self.model_dump() | {"archived": True})
 
     # ------------------------------------------------------------------
     # Internal: pre-validate rebuild (Confirmation A)

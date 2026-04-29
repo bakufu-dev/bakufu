@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -89,19 +90,21 @@ class TestEmpireServiceSkeleton:
     """TC-UT-HAF-003: EmpireService.__init__ stores repo in _repo."""
 
     def test_empire_service_stores_repo_in_private_field(self) -> None:
-        """EmpireService(repo=mock) stores mock in _repo."""
+        """EmpireService(repo=mock, session=mock) stores repo mock in _repo."""
         from bakufu.application.services.empire_service import EmpireService
 
         mock_repo = MagicMock()
-        service = EmpireService(repo=mock_repo)
+        mock_session = MagicMock()
+        service = EmpireService(repo=mock_repo, session=mock_session)
         assert service._repo is mock_repo  # pyright: ignore[reportPrivateUsage]
 
     def test_empire_service_instantiation_succeeds(self) -> None:
-        """EmpireService construction with mock repo does not raise."""
+        """EmpireService construction with mock repo and session does not raise."""
         from bakufu.application.services.empire_service import EmpireService
 
         mock_repo = MagicMock()
-        service = EmpireService(repo=mock_repo)
+        mock_session = MagicMock()
+        service = EmpireService(repo=mock_repo, session=mock_session)
         assert service is not None
 
 
@@ -172,13 +175,13 @@ class TestHttpExceptionHandlerUnit:
     status code branches including cases not easily triggered via routing.
     """
 
-    def _make_request(self) -> object:
+    def _make_request(self) -> Any:
         """Return a minimal mock Request object."""
         from unittest.mock import MagicMock
 
         return MagicMock()
 
-    def _make_http_exc(self, status_code: int, detail: str | None = None) -> object:
+    def _make_http_exc(self, status_code: int, detail: str | None = None) -> Any:
         from starlette.exceptions import HTTPException as StarletteHTTPException
 
         return StarletteHTTPException(status_code=status_code, detail=detail)

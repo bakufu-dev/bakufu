@@ -88,6 +88,38 @@ class SqliteEmpireRepository:
 
         return self._from_row(empire_row, room_rows, agent_rows)
 
+    async def find_all(self) -> list[Empire]:
+        """``SELECT * FROM empires`` with side-table hydration.
+
+        Bakufu's Empire is a singleton (R1-5), so the result list is
+        0 or 1 element. The implementation fetches all ``empires`` rows
+        then hydrates each via :meth:`find_by_id` semantics, keeping
+        the hydration logic centralized.
+        """
+        empire_stmt = select(EmpireRow)
+        empire_rows = list((await self._session.execute(empire_stmt)).scalars().all())
+
+        result: list[Empire] = []
+        for empire_row in empire_rows:
+            empire_id = _uuid(empire_row.id)
+            room_stmt = (
+                select(EmpireRoomRefRow)
+                .where(EmpireRoomRefRow.empire_id == empire_id)
+                .order_by(EmpireRoomRefRow.room_id)
+            )
+            room_rows = list((await self._session.execute(room_stmt)).scalars().all())
+
+            agent_stmt = (
+                select(EmpireAgentRefRow)
+                .where(EmpireAgentRefRow.empire_id == empire_id)
+                .order_by(EmpireAgentRefRow.agent_id)
+            )
+            agent_rows = list((await self._session.execute(agent_stmt)).scalars().all())
+
+            result.append(self._from_row(empire_row, room_rows, agent_rows))
+
+        return result
+
     async def count(self) -> int:
         """``SELECT COUNT(*) FROM empires``.
 
@@ -121,7 +153,10 @@ class SqliteEmpireRepository:
         upsert_stmt = sqlite_insert(EmpireRow).values(empire_row)
         upsert_stmt = upsert_stmt.on_conflict_do_update(
             index_elements=["id"],
-            set_={"name": upsert_stmt.excluded.name},
+            set_={
+                "name": upsert_stmt.excluded.name,
+                "archived": upsert_stmt.excluded.archived,
+            },
         )
         await self._session.execute(upsert_stmt)
 
@@ -158,6 +193,7 @@ class SqliteEmpireRepository:
         empire_row: dict[str, Any] = {
             "id": empire.id,
             "name": empire.name,
+            "archived": empire.archived,
         }
         room_refs: list[dict[str, Any]] = [
             {
@@ -212,6 +248,7 @@ class SqliteEmpireRepository:
         return Empire(
             id=_uuid(empire_row.id),
             name=empire_row.name,
+            archived=empire_row.archived,
             rooms=rooms,
             agents=agents,
         )

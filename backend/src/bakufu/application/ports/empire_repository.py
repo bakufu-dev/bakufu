@@ -39,6 +39,15 @@ class EmpireRepository(Protocol):
         """
         ...
 
+    async def find_all(self) -> list[Empire]:
+        """Return all Empire rows as a list.
+
+        Bakufu's Empire is a singleton, so the result is 0 or 1 element.
+        ``EmpireService.find_all()`` uses this to back
+        ``GET /api/empires`` (REQ-EM-HTTP-002).
+        """
+        ...
+
     async def count(self) -> int:
         """Return ``SELECT COUNT(*) FROM empires``.
 

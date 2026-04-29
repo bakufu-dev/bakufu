@@ -55,7 +55,12 @@ SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
 async def get_empire_service(session: SessionDep) -> EmpireService:
-    """EmpireService を DI 注入する。"""
+    """EmpireService を DI 注入する。
+
+    session を repo と service の両方に渡す:
+    - repo: SQLite クエリ実行に使用
+    - service: UoW (``async with session.begin()``) の管理に使用
+    """
     # 遅延 import: interfaces → infrastructure の直接依存を避けるため
     # モジュールロード時の循環参照リスクを回避し、
     # 依存方向 interfaces → application → infrastructure を遵守する
@@ -64,7 +69,7 @@ async def get_empire_service(session: SessionDep) -> EmpireService:
     )
 
     repo = SqliteEmpireRepository(session)
-    return EmpireService(repo)
+    return EmpireService(repo, session)
 
 
 async def get_room_service(session: SessionDep) -> RoomService:
