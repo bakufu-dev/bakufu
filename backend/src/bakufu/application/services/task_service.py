@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,9 +20,11 @@ from bakufu.application.exceptions.task_exceptions import (
     TaskStateConflictError,
 )
 from bakufu.application.ports.agent_repository import AgentRepository
+from bakufu.application.ports.external_review_gate_repository import ExternalReviewGateRepository
 from bakufu.application.ports.room_repository import RoomRepository
 from bakufu.application.ports.task_repository import TaskRepository
 from bakufu.domain.exceptions import TaskInvariantViolation
+from bakufu.domain.external_review_gate.gate import ExternalReviewGate
 from bakufu.domain.task.task import Task
 from bakufu.domain.value_objects import (
     AgentId,
@@ -41,11 +44,13 @@ class TaskService:
         task_repo: TaskRepository,
         room_repo: RoomRepository,
         agent_repo: AgentRepository,
+        external_review_gate_repo: ExternalReviewGateRepository,
         session: AsyncSession,
     ) -> None:
         self._task_repo = task_repo
         self._room_repo = room_repo
         self._agent_repo = agent_repo
+        self._external_review_gate_repo = external_review_gate_repo
         self._session = session
 
     async def find_by_id(self, task_id: TaskId) -> Task:
@@ -124,11 +129,36 @@ class TaskService:
                     submitted_by,
                     updated_at=self._now(),
                 )
+                maybe_gate = self._build_external_review_gate_if_needed(
+                    task=updated,
+                    deliverable=deliverable,
+                )
+                if maybe_gate is not None:
+                    updated = updated.request_external_review(updated_at=self._now())
             except TaskInvariantViolation as exc:
                 self._raise_conflict_if_needed(task, "commit_deliverable", exc)
                 raise
             await self._task_repo.save(updated)
+            if maybe_gate is not None:
+                await self._external_review_gate_repo.save(maybe_gate)
         return updated
+
+    def _build_external_review_gate_if_needed(
+        self,
+        *,
+        task: Task,
+        deliverable: Deliverable,
+    ) -> ExternalReviewGate | None:
+        if not os.environ.get("BAKUFU_OWNER_ID"):
+            return None
+        return ExternalReviewGate(
+            id=uuid4(),
+            task_id=task.id,
+            stage_id=task.current_stage_id,
+            deliverable_snapshot=deliverable,
+            reviewer_id=UUID(os.environ["BAKUFU_OWNER_ID"]),
+            created_at=self._now(),
+        )
 
     async def _find_by_id_in_uow(self, task_id: TaskId) -> Task:
         task = await self._task_repo.find_by_id(task_id)

@@ -5,9 +5,8 @@ Covers:
   TC-E2E-ERG-002  Approved Gate remains approved across application restart
   TC-E2E-ERG-003  Multi-round Gate history remains observable across restart
 
-Gate creation is not exposed as a public HTTP API in this slice. E2E
-preconditions are installed before the observed scenario starts; every scenario
-operation and assertion below uses only public HTTP API responses.
+Gate preconditions are created through the public HTTP task flow. Assertions and
+user actions use only public HTTP API responses; tests never inspect DB state.
 """
 
 from __future__ import annotations
@@ -24,10 +23,12 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from tests.integration.test_external_review_gate_http_api.helpers import (
-    TOKEN,
-    ExternalReviewGateHttpCtx,
-    action_names,
+from tests.integration.test_agent_http_api.helpers import _create_agent_via_http
+from tests.integration.test_external_review_gate_http_api.helpers import TOKEN, action_names
+from tests.integration.test_room_http_api.helpers import (
+    _create_empire,
+    _create_room,
+    _seed_workflow,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -42,36 +43,6 @@ class ExternalReviewGateE2ECtx:
     @property
     def headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {TOKEN}"}
-
-
-class ExternalReviewGateE2EPreconditions:
-    """Observed E2E scenario の前提データを準備する責務を閉じる。"""
-
-    def __init__(self, ctx: ExternalReviewGateE2ECtx, client: AsyncClient) -> None:
-        self._seed_ctx = ExternalReviewGateHttpCtx(client, ctx.session_factory, ctx.reviewer_id)
-
-    async def install_pending_gate(self) -> dict[str, str]:
-        """PENDING Gate を準備し、以後の観測は公開 HTTP API に限定する。"""
-        from tests.integration.test_external_review_gate_http_api.helpers import seed_gate
-
-        return await seed_gate(self._seed_ctx)
-
-    async def install_pending_gate_for_existing_task(
-        self,
-        *,
-        task_id: UUID,
-        stage_id: UUID,
-    ) -> dict[str, str]:
-        """既存 Task の次ラウンド Gate を準備する。"""
-        from tests.integration.test_external_review_gate_http_api.helpers import (
-            seed_gate_for_existing_task,
-        )
-
-        return await seed_gate_for_existing_task(
-            self._seed_ctx,
-            task_id=task_id,
-            stage_id=stage_id,
-        )
 
 
 async def _make_engine_and_session(
@@ -141,6 +112,62 @@ def _observed_business_attributes(body: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+async def _create_gate_through_public_http(
+    client: AsyncClient,
+    ctx: ExternalReviewGateE2ECtx,
+    *,
+    body_markdown: str = "public HTTP deliverable",
+) -> dict[str, str]:
+    unique = uuid4().hex[:12]
+    empire = await _create_empire(client, name=f"ERG E2E {unique}")
+    workflow = await _seed_workflow(ctx.session_factory)
+    room = await _create_room(
+        client,
+        str(empire["id"]),
+        str(workflow.id),  # type: ignore[attr-defined]
+        name=f"ERG E2E Room {unique}",
+    )
+    agent = await _create_agent_via_http(client, str(empire["id"]), name=f"ERG Agent {unique}")
+    room_assign = await client.post(
+        f"/api/rooms/{room['id']}/agents",
+        json={"agent_id": str(agent["id"]), "role": "DEVELOPER"},
+    )
+    assert room_assign.status_code == 201, room_assign.text
+
+    issued = await client.post(
+        f"/api/rooms/{room['id']}/directives",
+        json={"text": f"ERG E2E directive {unique}"},
+    )
+    assert issued.status_code == 201, issued.text
+    task = issued.json()["task"]
+
+    assigned = await client.post(
+        f"/api/tasks/{task['id']}/assign",
+        json={"agent_ids": [agent["id"]]},
+    )
+    assert assigned.status_code == 200, assigned.text
+
+    committed = await client.post(
+        f"/api/tasks/{task['id']}/deliverables/{task['current_stage_id']}",
+        json={
+            "body_markdown": body_markdown,
+            "submitted_by": agent["id"],
+            "attachments": [],
+        },
+    )
+    assert committed.status_code == 200, committed.text
+
+    listed = await client.get("/api/gates?decision=PENDING", headers=ctx.headers)
+    assert listed.status_code == 200, listed.text
+    gate = listed.json()["items"][0]
+    return {
+        "gate_id": gate["id"],
+        "task_id": gate["task_id"],
+        "stage_id": gate["stage_id"],
+        "agent_id": str(agent["id"]),
+    }
+
+
 async def test_gate_roundtrip_is_observable_across_application_restart(
     external_review_gate_e2e_ctx: ExternalReviewGateE2ECtx,
 ) -> None:
@@ -148,7 +175,7 @@ async def test_gate_roundtrip_is_observable_across_application_restart(
     ctx = external_review_gate_e2e_ctx
 
     async with _running_app(ctx) as client:
-        ids = await ExternalReviewGateE2EPreconditions(ctx, client).install_pending_gate()
+        ids = await _create_gate_through_public_http(client, ctx)
 
         listed = await client.get("/api/gates?decision=PENDING", headers=ctx.headers)
         assert listed.status_code == 200, listed.text
@@ -183,7 +210,7 @@ async def test_approved_gate_remains_approved_across_application_restart(
     comment = "CEO approval survives restart"
 
     async with _running_app(ctx) as client:
-        ids = await ExternalReviewGateE2EPreconditions(ctx, client).install_pending_gate()
+        ids = await _create_gate_through_public_http(client, ctx)
 
         approve = await client.post(
             f"/api/gates/{ids['gate_id']}/approve",
@@ -233,10 +260,7 @@ async def test_rejected_gate_and_new_pending_round_survive_application_restart(
     feedback = "CEO requests another review round"
 
     async with _running_app(ctx) as client:
-        preconditions = ExternalReviewGateE2EPreconditions(ctx, client)
-        first = await preconditions.install_pending_gate()
-        task_id = UUID(first["task_id"])
-        stage_id = UUID(first["stage_id"])
+        first = await _create_gate_through_public_http(client, ctx)
 
         rejected = await client.post(
             f"/api/gates/{first['gate_id']}/reject",
@@ -246,10 +270,24 @@ async def test_rejected_gate_and_new_pending_round_survive_application_restart(
         assert rejected.status_code == 200, rejected.text
         assert rejected.json()["decision"] == "REJECTED"
 
-        second = await preconditions.install_pending_gate_for_existing_task(
-            task_id=task_id,
-            stage_id=stage_id,
+        recommitted = await client.post(
+            f"/api/tasks/{first['task_id']}/deliverables/{first['stage_id']}",
+            json={
+                "body_markdown": "public HTTP follow-up deliverable",
+                "submitted_by": first["agent_id"],
+                "attachments": [],
+            },
         )
+        assert recommitted.status_code == 200, recommitted.text
+
+        pending_before_restart = await client.get(
+            "/api/gates?decision=PENDING",
+            headers=ctx.headers,
+        )
+        assert pending_before_restart.status_code == 200, pending_before_restart.text
+        second = pending_before_restart.json()["items"][0]
+        assert second["task_id"] == first["task_id"]
+        assert second["id"] != first["gate_id"]
 
     async with _running_app(ctx) as restarted_client:
         history = await restarted_client.get(
@@ -266,9 +304,9 @@ async def test_rejected_gate_and_new_pending_round_survive_application_restart(
     assert old_gate["decision"] == "REJECTED"
     assert old_gate["feedback_text"] == feedback
     assert action_names(old_gate) == ["REJECTED"]
-    assert new_gate["id"] == second["gate_id"]
+    assert new_gate["id"] == second["id"]
     assert new_gate["decision"] == "PENDING"
     assert new_gate["id"] != old_gate["id"]
 
     assert pending.status_code == 200, pending.text
-    assert second["gate_id"] in {item["id"] for item in pending.json()["items"]}
+    assert second["id"] in {item["id"] for item in pending.json()["items"]}

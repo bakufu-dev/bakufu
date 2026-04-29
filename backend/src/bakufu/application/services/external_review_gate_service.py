@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,9 +16,10 @@ from bakufu.application.exceptions.external_review_gate_exceptions import (
 from bakufu.application.ports.external_review_gate_repository import (
     ExternalReviewGateRepository,
 )
+from bakufu.application.ports.task_repository import TaskRepository
 from bakufu.domain.exceptions import ExternalReviewGateInvariantViolation
 from bakufu.domain.external_review_gate.gate import ExternalReviewGate
-from bakufu.domain.value_objects import GateId, OwnerId, TaskId
+from bakufu.domain.value_objects import GateId, OwnerId, TaskId, TaskStatus
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,9 +37,15 @@ class AuthenticatedSubject:
 class ExternalReviewGateService:
     """ExternalReviewGate Aggregate 操作の application 層サービス。"""
 
-    def __init__(self, repo: ExternalReviewGateRepository, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        repo: ExternalReviewGateRepository,
+        session: AsyncSession,
+        task_repo: TaskRepository | None = None,
+    ) -> None:
         self._repo = repo
         self._session = session
+        self._task_repo = task_repo
 
     async def list_pending(self, subject: AuthenticatedSubject) -> list[ExternalReviewGate]:
         """認証済み reviewer の PENDING Gate 一覧を返す。"""
@@ -76,6 +83,7 @@ class ExternalReviewGateService:
             gate = await self._find_authorized_gate(gate_id, subject)
             updated = self._decide(gate, subject.owner_id, "approve", comment)
             await self._repo.save(updated)
+            await self._advance_task_if_available(updated, subject.owner_id, approved=True)
         return updated
 
     async def reject(
@@ -89,6 +97,7 @@ class ExternalReviewGateService:
             gate = await self._find_authorized_gate(gate_id, subject)
             updated = self._decide(gate, subject.owner_id, "reject", feedback_text)
             await self._repo.save(updated)
+            await self._advance_task_if_available(updated, subject.owner_id, approved=False)
         return updated
 
     async def cancel(
@@ -139,6 +148,36 @@ class ExternalReviewGateService:
                 ) from exc
             raise
         raise ValueError(f"Unsupported gate decision action: {action}")
+
+    async def _advance_task_if_available(
+        self,
+        gate: ExternalReviewGate,
+        owner_id: OwnerId,
+        *,
+        approved: bool,
+    ) -> None:
+        if self._task_repo is None:
+            return
+        task = await self._task_repo.find_by_id(gate.task_id)
+        if task is None:
+            return
+        if task.status is not TaskStatus.AWAITING_EXTERNAL_REVIEW:
+            return
+        if approved:
+            updated_task = task.approve_review(
+                uuid4(),
+                owner_id,
+                gate.stage_id,
+                updated_at=self._now(),
+            )
+        else:
+            updated_task = task.reject_review(
+                uuid4(),
+                owner_id,
+                gate.stage_id,
+                updated_at=self._now(),
+            )
+        await self._task_repo.save(updated_task)
 
     @staticmethod
     def _now() -> datetime:

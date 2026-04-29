@@ -132,6 +132,9 @@ class HttpDependencies:
         from bakufu.infrastructure.persistence.sqlite.repositories.agent_repository import (
             SqliteAgentRepository,
         )
+        from bakufu.infrastructure.persistence.sqlite.repositories.external_review_gate_repository import (  # noqa: E501
+            SqliteExternalReviewGateRepository,
+        )
         from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
             SqliteRoomRepository,
         )
@@ -143,6 +146,7 @@ class HttpDependencies:
             task_repo=SqliteTaskRepository(session),
             room_repo=SqliteRoomRepository(session),
             agent_repo=SqliteAgentRepository(session),
+            external_review_gate_repo=SqliteExternalReviewGateRepository(session),
             session=session,
         )
 
@@ -192,9 +196,12 @@ class ExternalReviewGateDependencies:
         from bakufu.infrastructure.persistence.sqlite.repositories.external_review_gate_repository import (  # noqa: E501
             SqliteExternalReviewGateRepository,
         )
+        from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
+            SqliteTaskRepository,
+        )
 
         repo = SqliteExternalReviewGateRepository(session)
-        return ExternalReviewGateService(repo, session)
+        return ExternalReviewGateService(repo, session, SqliteTaskRepository(session))
 
     @classmethod
     async def get_subject(
