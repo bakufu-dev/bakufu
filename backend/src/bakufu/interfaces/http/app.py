@@ -13,6 +13,9 @@ from starlette.middleware.cors import CORSMiddleware
 
 from bakufu.interfaces.http.error_handlers import (
     CsrfOriginMiddleware,
+    agent_archived_handler,
+    agent_invariant_violation_handler,
+    agent_name_already_exists_handler,
     agent_not_found_handler,
     empire_already_exists_handler,
     empire_archived_handler,
@@ -31,6 +34,7 @@ from bakufu.interfaces.http.error_handlers import (
     workflow_not_found_handler,
     workflow_preset_not_found_handler,
 )
+from bakufu.interfaces.http.routers.agents import agents_router, empire_agents_router
 from bakufu.interfaces.http.routers.empire import router as empire_router
 from bakufu.interfaces.http.routers.health import router as health_router
 from bakufu.interfaces.http.routers.rooms import empire_rooms_router, rooms_router
@@ -92,13 +96,17 @@ def create_app() -> FastAPI:
 
     # エラーハンドラ
     # empire / room 専用ハンドラを先に登録する (より具体的な例外を優先, 確定 C)
+    from bakufu.application.exceptions.agent_exceptions import (
+        AgentArchivedError,
+        AgentNameAlreadyExistsError,
+        AgentNotFoundError,
+    )
     from bakufu.application.exceptions.empire_exceptions import (
         EmpireAlreadyExistsError,
         EmpireArchivedError,
         EmpireNotFoundError,
     )
     from bakufu.application.exceptions.room_exceptions import (
-        AgentNotFoundError,
         RoomArchivedError,
         RoomNameAlreadyExistsError,
         RoomNotFoundError,
@@ -110,6 +118,7 @@ def create_app() -> FastAPI:
         WorkflowPresetNotFoundError,
     )
     from bakufu.domain.exceptions import (
+        AgentInvariantViolation,
         EmpireInvariantViolation,
         RoomInvariantViolation,
         WorkflowInvariantViolation,
@@ -128,7 +137,11 @@ def create_app() -> FastAPI:
     app.add_exception_handler(WorkflowIrreversibleError, workflow_irreversible_handler)
     app.add_exception_handler(WorkflowPresetNotFoundError, workflow_preset_not_found_handler)
     app.add_exception_handler(WorkflowInvariantViolation, workflow_invariant_violation_handler)
+    # agent 専用ハンドラ (workflow ハンドラ群の直後 / HTTPException・Exception より前)
     app.add_exception_handler(AgentNotFoundError, agent_not_found_handler)
+    app.add_exception_handler(AgentNameAlreadyExistsError, agent_name_already_exists_handler)
+    app.add_exception_handler(AgentArchivedError, agent_archived_handler)
+    app.add_exception_handler(AgentInvariantViolation, agent_invariant_violation_handler)
     app.add_exception_handler(RoomInvariantViolation, room_invariant_violation_handler)
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_error_handler)
@@ -141,6 +154,8 @@ def create_app() -> FastAPI:
     app.include_router(rooms_router)
     app.include_router(room_workflows_router)
     app.include_router(workflows_router)
+    app.include_router(empire_agents_router)
+    app.include_router(agents_router)
 
     return app
 
