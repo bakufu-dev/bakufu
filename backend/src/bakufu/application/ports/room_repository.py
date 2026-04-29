@@ -86,5 +86,27 @@ class RoomRepository(Protocol):
         """
         ...
 
+    async def find_all_by_empire(self, empire_id: EmpireId) -> list[Room]:
+        """Return all Rooms whose ``empire_id`` matches (§確定 H / UC-RM-009).
+
+        Implementations must emit ``SELECT * FROM rooms WHERE empire_id = :empire_id
+        ORDER BY name ASC`` (Q-OPEN-2 暫定: name 昇順) without fetching all rooms
+        and filtering in Python.
+
+        Returns an empty list when no Rooms exist in the Empire.
+        """
+        ...
+
+    async def find_empire_id_by_room_id(self, room_id: RoomId) -> EmpireId | None:
+        """Return the ``empire_id`` for the Room row matching ``room_id``.
+
+        Used by write operations (update / archive / assign_agent / unassign_agent)
+        where the service has ``room_id`` but not ``empire_id`` (because :class:`Room`
+        holds no ``empire_id`` attribute — §確定 R1-H).
+
+        Returns ``None`` when the row is absent.
+        """
+        ...
+
 
 __all__ = ["RoomRepository"]
