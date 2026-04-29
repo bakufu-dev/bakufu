@@ -156,13 +156,24 @@ class TestAgentAssignRequestSchema:
         assert schema.role == "LEADER"
 
     def test_all_valid_roles_pass(self) -> None:
-        """_VALID_ROLES に含まれる全 10 値が通過することを確認。"""
-        from bakufu.interfaces.http.schemas.room import (  # type: ignore[attr-defined]
-            _VALID_ROLES,
-            AgentAssignRequest,
-        )
+        """有効 role 全10値が通過することを確認。"""
+        from bakufu.interfaces.http.schemas.room import AgentAssignRequest
 
-        for role in _VALID_ROLES:
+        valid_roles = frozenset(
+            {
+                "LEADER",
+                "DEVELOPER",
+                "TESTER",
+                "REVIEWER",
+                "UX",
+                "SECURITY",
+                "ASSISTANT",
+                "DISCUSSANT",
+                "WRITER",
+                "SITE_ADMIN",
+            }
+        )
+        for role in valid_roles:
             schema = AgentAssignRequest(agent_id=uuid4(), role=role)
             assert schema.role == role
 
