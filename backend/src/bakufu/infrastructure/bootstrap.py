@@ -1,23 +1,23 @@
-"""Backend startup sequencer (Confirmation E + G + J + K + L).
+"""Backend 起動シーケンサ（Confirmation E + G + J + K + L）。
 
-Owns the eight-stage cold-start choreography described in
-``docs/features/persistence-foundation/detailed-design/bootstrap.md``.
-Splitting it into one class lets us:
+``docs/features/persistence-foundation/detailed-design/bootstrap.md`` に
+記述された 8 段階のコールドスタート振付（choreography）を担う。1 つの
+クラスに集約することで以下の利点が得られる:
 
-* Read the order top-to-bottom in :meth:`Bootstrap.run` (Confirmation G).
-* Bind the LIFO cleanup contract to ``try/finally`` in one place
-  (Confirmation J — Schneier 中等 4).
-* Set ``os.umask(0o077)`` *before* SQLite ever opens a WAL/SHM file
-  (Confirmation L — Schneier 中等 1).
-* Surface the empty-handler-registry WARN at the end of stage 6
-  (Confirmation K — Schneier 中等 3).
-* Centralize the FATAL log + ``exit(1)`` flow so every stage failure
-  produces the same shape of telemetry.
+* :meth:`Bootstrap.run` 内で順序を上から下に読める（Confirmation G）。
+* LIFO クリーンアップ契約を ``try/finally`` で 1 か所に束ねられる
+  （Confirmation J — Schneier 中等 4）。
+* SQLite が WAL/SHM ファイルを開く *前* に ``os.umask(0o077)`` を
+  設定できる（Confirmation L — Schneier 中等 1）。
+* Stage 6 末尾でハンドラ未登録の WARN を可視化できる
+  （Confirmation K — Schneier 中等 3）。
+* 各 Stage 失敗時の FATAL ログ + ``exit(1)`` フローを集約し、テレメトリ
+  形状を均質化できる。
 
-The actual FastAPI bind (stage 8) is supplied via the
-``listener_starter`` callable so this PR can ship without dragging in
-the ``feature/http-api`` HTTP surface — tests pass ``None`` to skip
-stage 8 entirely.
+実際の FastAPI バインド（Stage 8）は ``listener_starter`` callable で注入
+する。これにより本 PR は ``feature/http-api`` の HTTP 表面を取り込まずに
+リリース可能となる。テストでは ``None`` を渡して Stage 8 をまるごと
+スキップする。
 """
 
 from __future__ import annotations
@@ -55,19 +55,19 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Confirmation L: secure-by-default file mode (POSIX only).
+# Confirmation L: secure-by-default のファイルモード（POSIX のみ）。
 SECURE_UMASK: int = 0o077
 
-# Type alias for the optional stage-8 callable.
+# 任意の Stage 8 callable 用の型エイリアス。
 ListenerStarter = Callable[[], Awaitable[None]]
 
 
 class Bootstrap:
-    """Eight-stage startup orchestrator.
+    """8 段階の起動オーケストレータ。
 
-    Tests construct one with ``listener_starter=None`` and call
-    :meth:`run` to verify the full sequence sans HTTP bind.
-    Production wires the FastAPI binder in.
+    テストは ``listener_starter=None`` で構築し :meth:`run` を呼んで、
+    HTTP バインドなしの全シーケンスを検証する。本番では FastAPI バインダ
+    を注入する。
     """
 
     def __init__(
@@ -77,13 +77,14 @@ class Bootstrap:
         migration_runner: Callable[[AsyncEngine], Awaitable[str]] | None = None,
     ) -> None:
         self._listener_starter = listener_starter
-        # Migration is decoupled so tests can inject a stub instead of
-        # spinning up Alembic. Production passes the Alembic-driven
-        # implementation from ``infrastructure.persistence.sqlite.migrations``.
+        # マイグレーションは Bootstrap から疎結合化されており、テストは
+        # Alembic を起動せずスタブを差し込める。本番では
+        # ``infrastructure.persistence.sqlite.migrations`` の Alembic 駆動
+        # 実装を渡す。
         self._migration_runner = migration_runner
 
-        # State populated as stages succeed; LIFO cleanup walks them in
-        # reverse on failure.
+        # Stage が成功するごとに状態を埋めていく。失敗時は LIFO クリーン
+        # アップが逆順に走査する。
         self._app_engine: AsyncEngine | None = None
         self._session_factory: async_sessionmaker[AsyncSession] | None = None
         self._dispatcher: dispatcher_mod.OutboxDispatcher | None = None
@@ -93,21 +94,21 @@ class Bootstrap:
 
     @property
     def app_engine(self) -> AsyncEngine | None:
-        """Application engine (``None`` until stage 2 succeeds)."""
+        """アプリケーション エンジン（Stage 2 成功までは ``None``）。"""
         return self._app_engine
 
     @property
     def session_factory(self) -> async_sessionmaker[AsyncSession] | None:
-        """Session factory (``None`` until stage 2 succeeds)."""
+        """セッション ファクトリ（Stage 2 成功までは ``None``）。"""
         return self._session_factory
 
     async def run(self) -> None:
-        """Execute stages 0〜8. ``finally`` block runs LIFO cleanup.
+        """Stage 0〜8 を実行する。``finally`` ブロックが LIFO クリーンアップを行う。
 
         Raises:
-            BakufuConfigError: any fatal stage failure (1/2/3/5/6/7/8).
-                Stage 4 (pid_gc) only emits WARNs; ``AccessDenied``
-                rows are left for the next sweep.
+            BakufuConfigError: いずれかの致命的 Stage（1/2/3/5/6/7/8）が
+                失敗した場合。Stage 4（pid_gc）は WARN のみで非致命。
+                ``AccessDenied`` 行は次回スイープに委ねる。
         """
         try:
             self._stage_0_umask()
@@ -123,15 +124,15 @@ class Bootstrap:
             await self._cleanup()
 
     # ------------------------------------------------------------------
-    # Stage 0: secure-by-default umask (Confirmation L).
+    # Stage 0: secure-by-default umask（Confirmation L）。
     # ------------------------------------------------------------------
     def _stage_0_umask(self) -> None:
-        """Set ``umask`` so SQLite-created files inherit ``0o600``.
+        """SQLite が作成するファイルが ``0o600`` を継承するよう ``umask`` を設定する。
 
-        POSIX only — Windows uses ACLs and ``os.umask`` is a no-op.
-        Failure to set a more-restrictive umask isn't fatal; the OS
-        default is still ``0o022`` and our explicit ``chmod`` calls in
-        stages 5 / Alembic compensate.
+        POSIX のみ — Windows は ACL を使うため ``os.umask`` は no-op となる。
+        より制限的な umask 設定の失敗自体は致命ではない。OS デフォルトは
+        ``0o022`` のままだが、Stage 5 / Alembic で明示的な ``chmod`` を
+        実施しているため補正される。
         """
         if platform.system() == "Windows":
             return
@@ -148,7 +149,7 @@ class Bootstrap:
             ) from exc
 
     # ------------------------------------------------------------------
-    # Stage 1: resolve BAKUFU_DATA_DIR.
+    # Stage 1: BAKUFU_DATA_DIR の解決。
     # ------------------------------------------------------------------
     def _stage_1_resolve_data_dir(self) -> None:
         logger.info("[INFO] Bootstrap stage 1/8: resolving BAKUFU_DATA_DIR...")
@@ -157,9 +158,8 @@ class Bootstrap:
         except BakufuConfigError as exc:
             logger.error("[FAIL] Bootstrap stage 1/8: %s", exc.message)
             raise
-        # Materialize the directory itself so subsequent stages can
-        # write into it without races. ``exist_ok=True`` keeps idempotent
-        # restarts cheap.
+        # 後続 Stage が競合なく書き込めるよう、ディレクトリ自体をここで
+        # 実体化する。``exist_ok=True`` により再起動時も安価に冪等動作する。
         try:
             self._data_dir.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
@@ -176,7 +176,7 @@ class Bootstrap:
         )
 
     # ------------------------------------------------------------------
-    # Stage 2: SQLite engine + masking gateway init.
+    # Stage 2: SQLite エンジン + マスキング ゲートウェイ初期化。
     # ------------------------------------------------------------------
     async def _stage_2_init_engine(self) -> None:
         logger.info("[INFO] Bootstrap stage 2/8: initializing SQLite engine...")
@@ -187,14 +187,14 @@ class Bootstrap:
                     "[FAIL] Bootstrap stage 2/8: data_dir not resolved (stage 1 must run first)"
                 ),
             )
-        # Initialize the masking gateway *before* the engine because
-        # tables register listeners at import time and the listeners
-        # call ``mask`` immediately.
+        # マスキング ゲートウェイをエンジンより *前* に初期化する。テーブル
+        # 群は import 時にリスナを登録し、リスナは即座に ``mask`` を呼ぶ
+        # ためである。
         try:
             masking.init()
         except BakufuConfigError:
-            # Bubble the MSG-PF-008 case unchanged; Bootstrap exit is
-            # the contract for a Fail-Fast masking init failure.
+            # MSG-PF-008 のケースはそのまま再送出する。マスキング初期化
+            # 失敗時の Bootstrap 終了は Fail-Fast 契約である。
             raise
         url = f"sqlite+aiosqlite:///{self._data_dir / 'bakufu.db'}"
         try:
@@ -213,7 +213,7 @@ class Bootstrap:
         )
 
     # ------------------------------------------------------------------
-    # Stage 3: Alembic upgrade via migration engine (Confirmation D-3).
+    # Stage 3: マイグレーション エンジン経由の Alembic upgrade（Confirmation D-3）。
     # ------------------------------------------------------------------
     async def _stage_3_migrate(self) -> None:
         logger.info("[INFO] Bootstrap stage 3/8: applying Alembic migrations...")
@@ -223,8 +223,8 @@ class Bootstrap:
                 message="[FAIL] Bootstrap stage 3/8: app_engine not initialized",
             )
         if self._migration_runner is None:
-            # Tests / minimal startups pass no runner; skip with a
-            # WARN so production wiring failures are obvious.
+            # テストや最小起動構成では runner が渡されない。本番配線の
+            # 失敗を可視化するため WARN を出してスキップする。
             logger.warning(
                 "[WARN] Bootstrap stage 3/8: no migration_runner injected; "
                 "skipping Alembic upgrade (test-mode or minimal startup)."
@@ -239,13 +239,14 @@ class Bootstrap:
             ) from exc
         logger.info("[INFO] Bootstrap stage 3/8: schema at head %s", head)
 
-        # REQ-PF-002-A (Schneier 致命1): even though stage 0 set
-        # ``umask 0o077`` so newly-created files inherit ``0o600``, a
-        # *previous* bakufu run that started without the umask may
-        # have left these files at ``0o644``. Audit + repair while we
-        # know data_dir is resolved and the DB file definitely exists
-        # (Alembic just wrote to it). Non-fatal: if chmod fails, log
-        # ERROR and continue — refusing to start would block recovery.
+        # REQ-PF-002-A（Schneier 致命1）: Stage 0 で ``umask 0o077`` を
+        # 設定し新規作成ファイルが ``0o600`` を継承するようにしているが、
+        # umask を設定せずに起動した *過去の* bakufu 実行が、これらの
+        # ファイルを ``0o644`` のまま残している可能性がある。data_dir が
+        # 解決済みで DB ファイルが確実に存在する（Alembic が直前に書き
+        # 込んでいる）ここで監査と修復を実施する。chmod 失敗時は ERROR
+        # ログのみで継続する（非致命）。起動を拒否するとリカバリ経路を
+        # 塞いでしまうためである。
         if self._data_dir is not None:
             mode_results = db_file_mode.verify_and_repair(self._data_dir)
             logger.info(
@@ -254,7 +255,7 @@ class Bootstrap:
             )
 
     # ------------------------------------------------------------------
-    # Stage 4: pid_registry orphan GC (non-fatal).
+    # Stage 4: pid_registry オーファン GC（非致命）。
     # ------------------------------------------------------------------
     async def _stage_4_pid_gc(self) -> None:
         logger.info("[INFO] Bootstrap stage 4/8: pid_registry orphan GC...")
@@ -271,15 +272,15 @@ class Bootstrap:
                 counts["access_denied"],
             )
         except Exception as exc:
-            # Confirmation E + G: stage 4 is non-fatal. The unaffected
-            # rows survive to the next GC and the Backend continues.
+            # Confirmation E + G: Stage 4 は非致命。残った行は次回 GC で
+            # 処理し、Backend は起動を継続する。
             logger.warning(
                 "[WARN] Bootstrap stage 4/8: pid_registry GC raised (%r); continuing startup",
                 exc,
             )
 
     # ------------------------------------------------------------------
-    # Stage 5: attachments FS root (Confirmation E).
+    # Stage 5: 添付ファイル FS ルート（Confirmation E）。
     # ------------------------------------------------------------------
     def _stage_5_attachments(self) -> None:
         logger.info("[INFO] Bootstrap stage 5/8: ensuring attachment FS root...")
@@ -296,7 +297,7 @@ class Bootstrap:
         )
 
     # ------------------------------------------------------------------
-    # Stage 6: Outbox dispatcher (Confirmation K Fail Loud).
+    # Stage 6: Outbox ディスパッチャ（Confirmation K Fail Loud）。
     # ------------------------------------------------------------------
     async def _stage_6_dispatcher(self) -> None:
         logger.info(
@@ -317,7 +318,7 @@ class Bootstrap:
             "[INFO] Bootstrap stage 6/8: dispatcher running (handler_registry size=%d)",
             size,
         )
-        # Confirmation K row 1: empty registry WARN at startup.
+        # Confirmation K 行 1: 起動時にレジストリが空の場合 WARN を出す。
         if size == 0:
             logger.warning(
                 "[WARN] Bootstrap stage 6/8: No event handlers registered. "
@@ -327,7 +328,7 @@ class Bootstrap:
             )
 
     # ------------------------------------------------------------------
-    # Stage 7: attachments orphan GC scheduler.
+    # Stage 7: 添付ファイル オーファン GC スケジューラ。
     # ------------------------------------------------------------------
     def _stage_7_orphan_scheduler(self) -> None:
         logger.info(
@@ -337,7 +338,7 @@ class Bootstrap:
         logger.info("[INFO] Bootstrap stage 7/8: scheduler running")
 
     # ------------------------------------------------------------------
-    # Stage 8: FastAPI / WebSocket bind (delegated).
+    # Stage 8: FastAPI / WebSocket バインド（委譲）。
     # ------------------------------------------------------------------
     async def _stage_8_listener(self) -> None:
         if self._listener_starter is None:
@@ -357,20 +358,21 @@ class Bootstrap:
         logger.info("[INFO] Bootstrap stage 8/8: bakufu Backend ready")
 
     # ------------------------------------------------------------------
-    # LIFO cleanup (Confirmation J).
+    # LIFO クリーンアップ（Confirmation J）。
     # ------------------------------------------------------------------
     async def _cleanup(self) -> None:
-        """Cancel async tasks in reverse start order, then dispose engine.
+        """async タスクを起動と逆順でキャンセルし、最後にエンジンを破棄する。
 
-        Order (from Confirmation J):
+        順序（Confirmation J より）:
 
-        1. Cancel the attachments orphan-GC scheduler (stage 7).
-        2. Stop and cancel the Outbox dispatcher (stage 6).
-        3. Dispose the application engine (stage 2).
-        4. Flush log handlers.
+        1. 添付ファイル オーファン GC スケジューラを cancel（Stage 7）。
+        2. Outbox ディスパッチャを stop し、タスクを cancel（Stage 6）。
+        3. アプリケーション エンジンを dispose（Stage 2）。
+        4. ログハンドラを flush。
         """
-        # Stage 7 cleanup — gather() with return_exceptions so a single
-        # CancelledError doesn't mask issues in stage 6 cleanup.
+        # Stage 7 のクリーンアップ — Stage 6 側のクリーンアップで起こり
+        # 得る別の問題を 1 つの CancelledError でマスクしないよう、
+        # ``return_exceptions=True`` 付きの ``gather`` を使う。
         if self._attachments_task is not None:
             self._attachments_task.cancel()
             await asyncio.gather(self._attachments_task, return_exceptions=True)

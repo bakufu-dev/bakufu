@@ -1,12 +1,11 @@
-"""bakufu Backend entry point.
+"""bakufu Backend のエントリポイント。
 
-The CLI launches :func:`main` which wires the production
-:class:`Bootstrap` (with the Alembic migration runner attached) and
-runs the eight-stage cold start. Stage 8 (FastAPI bind) is supplied
-via the ``listener_starter`` coroutine that runs uvicorn in-process
-(REQ-HAF-007, 確定 G).
+CLI は :func:`main` を起動し、本番用の :class:`Bootstrap`
+（Alembic マイグレーションランナーを接続済み）を構築して 8 段階のコールドスタート
+を実行する。Stage 8（FastAPI バインド）は ``listener_starter`` コルーチンで供給され、
+プロセス内で uvicorn を実行する（REQ-HAF-007、確定 G）。
 
-Execution: ``uv run python -m bakufu.main``.
+実行方法: ``uv run python -m bakufu.main``。
 """
 
 from __future__ import annotations
@@ -46,8 +45,8 @@ async def _run() -> int:
     try:
         await bootstrap.run()
     except BakufuConfigError as exc:
-        # Stage failure already logged a FATAL line; emit the canonical
-        # MSG-PF-NNN message to stderr for parity with operator runbooks.
+        # Stage 失敗時には既に FATAL ログが出力済みのため、運用ランブックとの整合のため
+        # 確定文言の MSG-PF-NNN メッセージを stderr に出力する。
         sys.stderr.write(f"{exc.message}\n")
         return 1
     return 0

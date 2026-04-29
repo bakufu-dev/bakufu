@@ -1,14 +1,16 @@
-"""Masking gateway integration tests (TC-IT-PF-007 / 020 / 021 / 022).
+"""マスキングゲートウェイ統合テスト（TC-IT-PF-007 / 020 / 021 / 022）。
 
-The **core** of Schneier 申し送り #6 + Confirmation R1-D (post-flip) — the
-masking gateway must fire even when callers bypass the ORM mapper and use a
-raw ``insert(table).values(...)`` statement. The original design specified
-``event.listens_for(target, 'before_insert/before_update')`` mapper
-events, but BUG-PF-001 surfaced that those listeners do **not** fire on
-the Core ``insert(table).values(...)`` path. R1-D was reverted to
-``MaskedJSONEncoded`` / ``MaskedText`` :class:`~sqlalchemy.types.TypeDecorator`
-columns whose ``process_bind_param`` hook fires on **both** ORM and Core
-paths — the very property R1-D originally tried to buy with listeners.
+Schneier 申し送り #6 + 確定 R1-D（フリップ後）の**核**となる契約 —
+呼び出し側が ORM マッパーを迂回して
+``insert(table).values(...)`` の生 Core ステートメントを使う場合でも
+マスキングゲートウェイは発火しなければならない。元の設計は
+``event.listens_for(target, 'before_insert/before_update')`` マッパー
+イベントを使っていたが、BUG-PF-001 によりそれらのリスナーは Core の
+``insert(table).values(...)`` 経路では**発火しない**ことが判明した。
+R1-D は ``MaskedJSONEncoded`` / ``MaskedText``
+:class:`~sqlalchemy.types.TypeDecorator` 列に差し戻された。これらの
+``process_bind_param`` フックは ORM フラッシュと Core 経路の**両方**で
+発火し、まさに R1-D がリスナーで得ようとした性質を満たす。
 """
 
 from __future__ import annotations

@@ -1,18 +1,19 @@
-"""SQLite ``AsyncEngine`` factory with PRAGMA enforcement (§確定 D).
+"""PRAGMA を強制する SQLite ``AsyncEngine`` ファクトリ（§確定 D）。
 
-Two engine flavors per Confirmation D-2 (Schneier 重大 2):
+確定 D-2（Schneier 重大 2）に従い、2 種類のエンジンを用意する:
 
-* :func:`create_engine` — **application** engine. Used by everything
-  except Alembic. Sets eight PRAGMAs, including ``defensive=ON`` and
-  ``writable_schema=OFF`` so the ``audit_log`` triggers cannot be
-  ``DROP``-ed at runtime.
-* :func:`create_migration_engine` — **migration** engine. Used only
-  inside Bootstrap stage 3, then ``dispose()``-ed. Relaxes
-  ``defensive`` / ``writable_schema`` so Alembic can issue DDL.
+* :func:`create_engine` — **アプリケーション** エンジン。Alembic 以外の
+  全箇所で使用する。``defensive=ON`` と ``writable_schema=OFF`` を含む
+  8 つの PRAGMA を設定するので、``audit_log`` トリガが実行時に
+  ``DROP`` されることはない。
+* :func:`create_migration_engine` — **マイグレーション** エンジン。
+  Bootstrap stage 3 の内側でのみ使用し、その後 ``dispose()`` する。
+  Alembic が DDL を発行できるよう ``defensive`` / ``writable_schema``
+  を緩める。
 
-The PRAGMA list is set per-connection via a ``connect`` event listener
-on the underlying sync engine — that is where SQLAlchemy / aiosqlite
-hand us a DBAPI connection before any ORM activity.
+PRAGMA 一覧は基盤の同期エンジンに対する ``connect`` イベントリスナで
+接続ごとに設定する — ここが SQLAlchemy / aiosqlite が DBAPI 接続を
+ORM 活動の前に渡してくる箇所である。
 """
 
 from __future__ import annotations
@@ -25,9 +26,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 logger = logging.getLogger(__name__)
 
-# Confirmation D-1: eight PRAGMAs for the application connection.
-# Order matters — `journal_mode=WAL` first, defensive guards last so
-# they activate against everything that follows.
+# 確定 D-1: アプリケーション接続向けの 8 つの PRAGMA。
+# 順序が重要 — `journal_mode=WAL` を最初に、defensive ガードを最後に置き、
+# それらが以後すべてに対して有効になるようにする。
 _APP_PRAGMAS: Final[tuple[tuple[str, str], ...]] = (
     ("journal_mode", "WAL"),
     ("foreign_keys", "ON"),
@@ -39,10 +40,9 @@ _APP_PRAGMAS: Final[tuple[tuple[str, str], ...]] = (
     ("trusted_schema", "OFF"),
 )
 
-# Confirmation D-2: migration engine relaxes the defensive guards so
-# Alembic can issue CREATE TABLE / CREATE TRIGGER. The other PRAGMAs
-# stay identical — concurrency / FK / busy_timeout still matter even
-# during migrations.
+# 確定 D-2: マイグレーション用エンジンは defensive ガードを緩めて Alembic が
+# CREATE TABLE / CREATE TRIGGER を発行できるようにする。それ以外の PRAGMA は
+# 同一に保つ — 並行性 / FK / busy_timeout はマイグレーション中も依然重要。
 _MIGRATION_PRAGMAS: Final[tuple[tuple[str, str], ...]] = (
     ("journal_mode", "WAL"),
     ("foreign_keys", "ON"),
@@ -55,20 +55,21 @@ _MIGRATION_PRAGMAS: Final[tuple[tuple[str, str], ...]] = (
 
 
 def create_engine(url: str, *, debug: bool = False) -> AsyncEngine:
-    """Build the application-level :class:`AsyncEngine`.
+    """アプリケーションレベルの :class:`AsyncEngine` を構築する。
 
     Args:
-        url: SQLAlchemy URL (e.g. ``sqlite+aiosqlite:///<path>``).
-        debug: Forwarded to ``create_async_engine(echo=...)`` for
-            verbose SQL logging during development.
+        url: SQLAlchemy URL（例: ``sqlite+aiosqlite:///<path>``）。
+        debug: 開発時に詳細な SQL ログを出すため
+            ``create_async_engine(echo=...)`` に転送する。
 
-    Wires the eight PRAGMA listener (Confirmation D-1) on connect.
-    Secret masking is enforced via the ``Masked*`` column
-    :class:`TypeDecorator` adapters in
-    :mod:`bakufu.infrastructure.persistence.sqlite.base`; that layer
-    fires in ``process_bind_param`` for both ORM flushes and Core
-    ``insert(table).values(...)`` calls (BUG-PF-001 fix), so no
-    additional engine-level listener is needed for masking.
+    connect 時に確定 D-1 の 8 つの PRAGMA リスナを配線する。
+    秘密情報のマスキングは
+    :mod:`bakufu.infrastructure.persistence.sqlite.base` の
+    ``Masked*`` カラム :class:`TypeDecorator` アダプタで強制される。
+    そのレイヤは ORM フラッシュと Core
+    ``insert(table).values(...)`` の双方の ``process_bind_param`` で
+    発火する（BUG-PF-001 の修正）ため、マスキングのために engine レベルの
+    リスナを追加する必要はない。
     """
     engine = create_async_engine(url, echo=debug, future=True)
     event.listen(engine.sync_engine, "connect", _set_app_pragmas)
@@ -76,10 +77,10 @@ def create_engine(url: str, *, debug: bool = False) -> AsyncEngine:
 
 
 def create_migration_engine(url: str) -> AsyncEngine:
-    """Build the migration-only :class:`AsyncEngine` (Confirmation D-2).
+    """マイグレーション専用の :class:`AsyncEngine` を構築する（確定 D-2）。
 
-    Use only from Bootstrap stage 3 (Alembic ``upgrade head``) and
-    ``dispose()`` immediately after; never share with application code.
+    Bootstrap stage 3（Alembic ``upgrade head``）からのみ使用し、直後に
+    ``dispose()`` すること。アプリケーションコードと共有してはならない。
     """
     engine = create_async_engine(url, echo=False, future=True)
     event.listen(engine.sync_engine, "connect", _set_migration_pragmas)
@@ -90,12 +91,12 @@ def _apply_pragmas(
     dbapi_conn: object,
     pragmas: tuple[tuple[str, str], ...],
 ) -> None:
-    """Apply ``PRAGMA name=value;`` for each pair.
+    """各ペアに対して ``PRAGMA name=value;`` を適用する。
 
-    Some PRAGMAs (``defensive`` / ``writable_schema`` / ``trusted_schema``)
-    only exist on SQLite 3.31+; on older builds the ``execute`` raises
-    and we log the skip. The other PRAGMAs are mandatory — failures
-    propagate so Bootstrap can convert them to MSG-PF-002.
+    一部の PRAGMA（``defensive`` / ``writable_schema`` / ``trusted_schema``）
+    は SQLite 3.31+ にしか存在しない。古いビルドでは ``execute`` が例外を
+    送出するためスキップをログに出す。それ以外の PRAGMA は必須なので
+    失敗は伝播し、Bootstrap が MSG-PF-002 へ変換する。
     """
     cursor_factory = getattr(dbapi_conn, "cursor", None)
     if cursor_factory is None:
@@ -107,8 +108,8 @@ def _apply_pragmas(
                 cursor.execute(f"PRAGMA {name}={value}")
             except Exception as exc:
                 if name in {"defensive", "writable_schema", "trusted_schema"}:
-                    # Confirmation D-4 fallback: log + continue. The
-                    # threat-model entry covers this case.
+                    # 確定 D-4 のフォールバック: ログ + 継続。
+                    # 脅威モデルのエントリがこのケースをカバーしている。
                     logger.warning(
                         "[WARN] PRAGMA %s=%s not supported on this "
                         "SQLite build (%r); falling back to OS-level "
@@ -124,7 +125,7 @@ def _apply_pragmas(
 
 
 def _set_app_pragmas(dbapi_conn: object, _connection_record: object) -> None:
-    """``connect`` listener for the application engine."""
+    """アプリケーションエンジン用の ``connect`` リスナ。"""
     _apply_pragmas(dbapi_conn, _APP_PRAGMAS)
 
 
@@ -132,7 +133,7 @@ def _set_migration_pragmas(
     dbapi_conn: object,
     _connection_record: object,
 ) -> None:
-    """``connect`` listener for the migration engine."""
+    """マイグレーションエンジン用の ``connect`` リスナ。"""
     _apply_pragmas(dbapi_conn, _MIGRATION_PRAGMAS)
 
 
