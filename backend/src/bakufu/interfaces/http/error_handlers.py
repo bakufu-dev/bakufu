@@ -24,15 +24,37 @@ def _error_response(code: str, message: str, status_code: int) -> JSONResponse:
     return JSONResponse(content=body.model_dump(), status_code=status_code)
 
 
-async def not_found_handler(request: Request, exc: Exception) -> JSONResponse:
-    return _error_response(NOT_FOUND, "Resource not found.", 404)
+async def http_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """StarletteHTTPException を ErrorResponse に変換する。
+
+    404 は "not_found"、その他は status_code に応じた code を返す。
+    関数名 not_found_handler では 401/405/409 等も誤って 404 として返すため
+    status_code で正確に分岐する (ヘルスバーグ指摘 #1)。
+    """
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+
+    if not isinstance(exc, StarletteHTTPException):
+        raise TypeError(f"Expected StarletteHTTPException, got {type(exc).__name__}")
+
+    status = exc.status_code
+    if status == 404:
+        code = NOT_FOUND
+    elif status == 403:
+        code = FORBIDDEN
+    elif status == 405:
+        code = "method_not_allowed"
+    else:
+        code = f"http_error_{status}"
+
+    return _error_response(code, str(exc.detail) if exc.detail else "HTTP error.", status)
 
 
 async def validation_error_handler(request: Request, exc: Exception) -> JSONResponse:
-    validation_exc = exc if isinstance(exc, RequestValidationError) else RequestValidationError([])
+    if not isinstance(exc, RequestValidationError):
+        raise TypeError(f"Expected RequestValidationError, got {type(exc).__name__}")
+    validation_exc = exc
     detail = "; ".join(
-        f"{'.'.join(str(loc) for loc in e['loc'])}: {e['msg']}"
-        for e in validation_exc.errors()
+        f"{'.'.join(str(loc) for loc in e['loc'])}: {e['msg']}" for e in validation_exc.errors()
     )
     return _error_response(VALIDATION_ERROR, f"Request validation failed: {detail}", 422)
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 
 from bakufu.infrastructure.bootstrap import Bootstrap
@@ -28,8 +29,8 @@ async def _uvicorn_starter() -> None:
 
     config = uvicorn.Config(
         app,
-        host="0.0.0.0",
-        port=8000,
+        host=os.environ.get("BAKUFU_BIND_HOST", "127.0.0.1"),
+        port=int(os.environ.get("BAKUFU_BIND_PORT", "8000")),
         loop="asyncio",
         log_level="info",
     )

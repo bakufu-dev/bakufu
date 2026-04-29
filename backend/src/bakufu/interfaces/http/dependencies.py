@@ -56,6 +56,9 @@ SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 async def get_empire_service(session: SessionDep) -> EmpireService:
     """EmpireService を DI 注入する。"""
+    # 遅延 import: interfaces → infrastructure の直接依存を避けるため
+    # モジュールロード時の循環参照リスクを回避し、
+    # 依存方向 interfaces → application → infrastructure を遵守する
     from bakufu.infrastructure.persistence.sqlite.repositories.empire_repository import (
         SqliteEmpireRepository,
     )
@@ -66,6 +69,9 @@ async def get_empire_service(session: SessionDep) -> EmpireService:
 
 async def get_room_service(session: SessionDep) -> RoomService:
     """RoomService を DI 注入する。"""
+    # 遅延 import: interfaces → infrastructure の直接依存を避けるため
+    # モジュールロード時の循環参照リスクを回避し、
+    # 依存方向 interfaces → application → infrastructure を遵守する
     from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
         SqliteRoomRepository,
     )
@@ -76,6 +82,9 @@ async def get_room_service(session: SessionDep) -> RoomService:
 
 async def get_workflow_service(session: SessionDep) -> WorkflowService:
     """WorkflowService を DI 注入する。"""
+    # 遅延 import: interfaces → infrastructure の直接依存を避けるため
+    # モジュールロード時の循環参照リスクを回避し、
+    # 依存方向 interfaces → application → infrastructure を遵守する
     from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
         SqliteWorkflowRepository,
     )
@@ -86,6 +95,9 @@ async def get_workflow_service(session: SessionDep) -> WorkflowService:
 
 async def get_agent_service(session: SessionDep) -> AgentService:
     """AgentService を DI 注入する。"""
+    # 遅延 import: interfaces → infrastructure の直接依存を避けるため
+    # モジュールロード時の循環参照リスクを回避し、
+    # 依存方向 interfaces → application → infrastructure を遵守する
     from bakufu.infrastructure.persistence.sqlite.repositories.agent_repository import (
         SqliteAgentRepository,
     )
@@ -96,6 +108,9 @@ async def get_agent_service(session: SessionDep) -> AgentService:
 
 async def get_task_service(session: SessionDep) -> TaskService:
     """TaskService を DI 注入する。"""
+    # 遅延 import: interfaces → infrastructure の直接依存を避けるため
+    # モジュールロード時の循環参照リスクを回避し、
+    # 依存方向 interfaces → application → infrastructure を遵守する
     from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
         SqliteTaskRepository,
     )
@@ -108,6 +123,9 @@ async def get_external_review_gate_service(
     session: SessionDep,
 ) -> ExternalReviewGateService:
     """ExternalReviewGateService を DI 注入する。"""
+    # 遅延 import: interfaces → infrastructure の直接依存を避けるため
+    # モジュールロード時の循環参照リスクを回避し、
+    # 依存方向 interfaces → application → infrastructure を遵守する
     from bakufu.infrastructure.persistence.sqlite.repositories.external_review_gate_repository import (  # noqa: E501
         SqliteExternalReviewGateRepository,
     )

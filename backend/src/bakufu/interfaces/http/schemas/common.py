@@ -22,6 +22,8 @@ class ErrorResponse(BaseModel):
     error: ErrorDetail
 
 
+# 互換しない (BaseModel + Generic[T] の組み合わせが必要)。
+# UP046 を抑制して TypeVar ベースの Generic を維持する。
 class PaginatedResponse(BaseModel, Generic[T]):  # noqa: UP046
     model_config = ConfigDict(extra="forbid")
 

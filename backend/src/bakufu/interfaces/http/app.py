@@ -13,8 +13,8 @@ from starlette.middleware.cors import CORSMiddleware
 
 from bakufu.interfaces.http.error_handlers import (
     CsrfOriginMiddleware,
+    http_exception_handler,
     internal_error_handler,
-    not_found_handler,
     validation_error_handler,
 )
 from bakufu.interfaces.http.routers.health import router as health_router
@@ -74,7 +74,7 @@ def create_app() -> FastAPI:
     app.add_middleware(CsrfOriginMiddleware, allowed_origins=allowed_origins)
 
     # エラーハンドラ
-    app.add_exception_handler(StarletteHTTPException, not_found_handler)
+    app.add_exception_handler(StarletteHTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_error_handler)
     app.add_exception_handler(Exception, internal_error_handler)
 
