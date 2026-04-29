@@ -163,6 +163,10 @@ Issue #61 実装 PR は `audit` CI（pip-audit / pnpm audit）を必須証跡に
 | API9 Inventory | 本書の 6 endpoint だけを公開対象にする |
 | API10 Unsafe API Consumption | 外部 API 消費なし、依存 CVE は audit CI で止める |
 
+### 確定 I: HTTP 境界の公開関数禁止
+
+ExternalReviewGate の HTTP 入口、DI、app wiring、error handler はクラスへ封入する。`app.py` / `dependencies.py` / `error_handlers.py` / `routers/external_review_gates.py` はトップレベル公開関数を持たない。FastAPI の handler 登録は `HttpApplicationFactory` から `HttpErrorHandlers` のメソッドを明示的に参照する。
+
 ## 設計判断の補足
 
 ### なぜ decision を query で自由検索にしないか

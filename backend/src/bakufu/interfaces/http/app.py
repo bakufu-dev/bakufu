@@ -159,7 +159,8 @@ class HttpApplicationFactory:
             WorkflowPresetNotFoundError, handlers.workflow_preset_not_found_handler
         )
         app.add_exception_handler(
-            WorkflowInvariantViolation, handlers.workflow_invariant_violation_handler
+            WorkflowInvariantViolation,
+            handlers.workflow_invariant_violation_handler,
         )
         app.add_exception_handler(AgentNotFoundError, handlers.agent_not_found_handler)
         app.add_exception_handler(

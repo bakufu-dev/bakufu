@@ -24,6 +24,7 @@ def test_http_boundary_does_not_expose_public_top_level_functions() -> None:
         BACKEND_ROOT / "src/bakufu/interfaces/http/app.py",
         BACKEND_ROOT / "src/bakufu/interfaces/http/dependencies.py",
         BACKEND_ROOT / "src/bakufu/interfaces/http/error_handlers.py",
+        BACKEND_ROOT / "src/bakufu/interfaces/http/routers/external_review_gates.py",
     ]
 
     violations = {

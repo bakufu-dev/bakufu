@@ -43,7 +43,7 @@
 | API6 | sensitive flow protection | TC-IT-ERG-HTTP-007 / 014 | 結合 | セキュリティ | — |
 | API7 / API10 | no outbound API consumption | TC-STATIC-ERG-HTTP-001 | 静的確認 | セキュリティ | — |
 | API8 / API9 | app wiring / API inventory | TC-STATIC-ERG-HTTP-002 | 静的確認 | セキュリティ | — |
-| HTTP/DI 境界 | `HttpApplicationFactory` / `HttpDependencies` / `ExternalReviewGateDependencies` | TC-STATIC-ERG-HTTP-003 | 静的確認 | 設計原則 | — |
+| HTTP 境界 | `HttpApplicationFactory` / `HttpDependencies` / `ExternalReviewGateDependencies` / `HttpErrorHandlers` / `ExternalReviewGateHttpRoutes` | TC-STATIC-ERG-HTTP-003 | 静的確認 | 設計原則 | — |
 
 **マトリクス充足の証拠**:
 - REQ-ERG-HTTP-001〜006 すべてに最低 1 件の結合テストを割り当てる。
@@ -93,7 +93,7 @@
 | TC-IT-ERG-HTTP-014 | CSRF Origin guard | なし | PENDING Gate、subject=A | `Origin: http://evil.example.com` 付きで approve / reject / cancel | 403、http-api-foundation MSG-HAF-004 |
 | TC-IT-ERG-HTTP-015 | auth subject required | なし | PENDING Gate | Authorization 欠落 / 不正 token / `X-Reviewer-Id` のみ指定 | 401 または 403。Service は呼ばれず、自己申告 ID では成功しない |
 | TC-IT-ERG-HTTP-016 | Bearer token operation | なし | `BAKUFU_OWNER_API_TOKEN` と `BAKUFU_OWNER_ID` を test config に設定 | 32 bytes 以上の token で成功、短い token 設定 / 不一致 token / 不正 owner UUID を送る | 成功時だけ subject が作られる。失敗時は 401、token 値と Authorization ヘッダはログに出ない |
-| TC-STATIC-ERG-HTTP-003 | HTTP app / DI 境界封入 | なし | `interfaces/http/app.py` と `interfaces/http/dependencies.py` | AST でトップレベル関数定義を棚卸し | 公開関数定義は 0。app 初期化は `HttpApplicationFactory`、DI は `HttpDependencies` / `ExternalReviewGateDependencies` の classmethod に閉じる |
+| TC-STATIC-ERG-HTTP-003 | HTTP app / DI / error handler / route 境界封入 | なし | `interfaces/http/app.py` / `interfaces/http/dependencies.py` / `interfaces/http/error_handlers.py` / `interfaces/http/routers/external_review_gates.py` | AST でトップレベル関数定義を棚卸し | 公開関数定義は 0。app 初期化は `HttpApplicationFactory`、DI は `HttpDependencies` / `ExternalReviewGateDependencies`、例外変換は `HttpErrorHandlers`、route handler は `ExternalReviewGateHttpRoutes` に閉じる |
 
 ## ユニットテストケース
 
@@ -167,7 +167,7 @@ backend/tests/
 - `backend/tests/integration/test_external_review_gate_http_api/test_read_flows.py`: TC-IT-ERG-HTTP-001 / 002 / 003 / 004 / 010 / 011。公開 HTTP API の一覧・履歴・閲覧監査・approve flow・secret 非復号を検証する。
 - `backend/tests/integration/test_external_review_gate_http_api/test_auth_decisions.py`: TC-IT-ERG-HTTP-005 / 006 / 008 / 012 / 013 / 015 / 016。reject / cancel、subject 認可、Bearer 境界、不正 token、owner UUID 境界を検証する。
 - `backend/tests/integration/test_external_review_gate_http_api/test_validation_static.py`: TC-IT-ERG-HTTP-007 / 009 / 014 と TC-STATIC-ERG-HTTP-001 / 002。既決 Gate、UUID/query/body validation、CSRF、Next 文、API 棚卸し、外部 HTTP 非依存を検証する。
-- `backend/tests/integration/test_external_review_gate_http_api/test_boundary_static.py`: TC-STATIC-ERG-HTTP-003。`app.py` / `dependencies.py` / `error_handlers.py` にトップレベル公開関数定義が残っていないことを検証する。
+- `backend/tests/integration/test_external_review_gate_http_api/test_boundary_static.py`: TC-STATIC-ERG-HTTP-003。`app.py` / `dependencies.py` / `error_handlers.py` / `routers/external_review_gates.py` にトップレベル公開関数定義が残っていないことを検証する。
 - `backend/tests/integration/test_external_review_gate_http_api/conftest.py`: 実 DB セッションと HTTP 結合テスト用 app fixture を提供する。
 - `backend/tests/integration/test_external_review_gate_http_api/helpers.py`: 結合テストの seed と HTTP request helper を提供する。
 - `backend/tests/unit/test_external_review_gate_http_api/test_schemas.py`: TC-UT-ERG-HTTP-001 / 002 / 005 / 008。

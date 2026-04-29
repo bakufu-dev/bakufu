@@ -21,8 +21,8 @@
 | REQ-ERG-HTTP-001〜006 | `external_review_gates_router` | `backend/src/bakufu/interfaces/http/routers/external_review_gates.py` | Gate 一覧 / Task 履歴 / 単件 / approve / reject / cancel の 6 エンドポイント |
 | REQ-ERG-HTTP-001〜006 | `ExternalReviewGateService` | `backend/src/bakufu/application/services/external_review_gate_service.py` | Repository 取得、reviewer 境界検証、Domain ふるまい呼び出し、UoW 保存 |
 | REQ-ERG-HTTP-001〜006 | `ExternalReviewGateSchemas` | `backend/src/bakufu/interfaces/http/schemas/external_review_gate.py` | Pydantic v2 request / response model、VO 変換、HTTP レスポンスは Repository 復元値をそのまま返す。`MaskedText` が保存時に不可逆マスクした secret は redacted のまま返る |
-| REQ-ERG-HTTP-003〜006 | error handlers | `backend/src/bakufu/interfaces/http/error_handlers.py` | NotFound / Forbidden / Conflict / InvariantViolation を `ErrorResponse` へ変換 |
-| REQ-ERG-HTTP-001〜006 | DI / app wiring | `backend/src/bakufu/interfaces/http/dependencies.py` / `app.py` | `HttpDependencies` / `ExternalReviewGateDependencies` による service / subject 注入と `HttpApplicationFactory` による router 登録 |
+| REQ-ERG-HTTP-003〜006 | `HttpErrorHandlers` | `backend/src/bakufu/interfaces/http/error_handlers.py` | NotFound / Forbidden / Conflict / InvariantViolation を `ErrorResponse` へ変換し、例外変換責務をクラスに封入 |
+| REQ-ERG-HTTP-001〜006 | DI / app wiring | `backend/src/bakufu/interfaces/http/dependencies.py` / `app.py` | `HttpDependencies` / `ExternalReviewGateDependencies` による service / subject 注入と `HttpApplicationFactory` による router / `HttpErrorHandlers` 登録 |
 
 ```
 ディレクトリ構造（本 sub-feature で追加・変更されるファイル）:
