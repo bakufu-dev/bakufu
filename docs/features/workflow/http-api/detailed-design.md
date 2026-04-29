@@ -48,7 +48,7 @@
 | `to_stage_id` | `UUID` | 必須 | 終点 Stage ID |
 | `condition` | `str` | 有効値: `"SUCCESS"` / `"FAILURE"` / `"APPROVAL"` / `"REJECTION"` / `"ALWAYS"` | `TransitionCondition` enum 値 |
 
-#### `WorkflowCreate`（POST /api/rooms/{room_id}/workflows Body）
+#### `WorkflowCreate`（POST /api/workflows / POST /api/rooms/{room_id}/workflows Body）
 
 | フィールド | 型 | 制約 | 備考 |
 |---|---|---|---|
@@ -251,6 +251,7 @@ http-api-foundation 確定F で骨格が確定済み（`WorkflowService.__init__
 
 | メソッド名 | 引数 | 戻り値 | raises |
 |---|---|---|---|
+| `create` | `workflow_create: WorkflowCreateDTO` | `Workflow` | `WorkflowPresetNotFoundError` / `WorkflowInvariantViolation` |
 | `create_for_room` | `room_id: RoomId, workflow_create: WorkflowCreateDTO` | `Workflow` | `RoomNotFoundError` / `RoomArchivedError` / `WorkflowPresetNotFoundError` / `WorkflowInvariantViolation` |
 | `find_by_room` | `room_id: RoomId` | `Workflow \| None` | `RoomNotFoundError` |
 | `find_by_id` | `workflow_id: WorkflowId` | `Workflow` | `WorkflowNotFoundError` |
@@ -259,7 +260,7 @@ http-api-foundation 確定F で骨格が確定済み（`WorkflowService.__init__
 | `find_stages` | `workflow_id: WorkflowId` | `tuple[list[Stage], list[Transition], StageId]` | `WorkflowNotFoundError` |
 | `get_presets` | なし | `list[WorkflowPresetDefinition]` | 該当なし（static データ）|
 
-`create_for_room` / `update` / `archive` は `async with session.begin()` を service 内で開く（UoW 責務は service 層が持つ）。
+`create` / `create_for_room` / `update` / `archive` は `async with session.begin()` を service 内で開く（UoW 責務は service 層が持つ）。
 
 **`update` の部分更新ルール（凍結）**: `stages` が None の場合は既存 stages を維持。`stages` が非 None の場合は `transitions` / `entry_stage_id` も同時に更新する（詳細設計 §確定A §WorkflowUpdate 整合バリデーション参照）。`name` のみの更新は既存 DAG 構造を維持したまま name だけ差し替えて `Workflow(...)` を再構築する。
 

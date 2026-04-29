@@ -26,9 +26,9 @@
 
 | 機能 ID | モジュール | ディレクトリ | 責務 |
 |--------|----------|------------|------|
-| REQ-WF-HTTP-001〜007 | `workflow_router` | `backend/src/bakufu/interfaces/http/routers/workflows.py` | Workflow CRUD + Stage 一覧 + プリセット一覧 エンドポイント（7 本）|
-| REQ-WF-HTTP-001〜007 | `WorkflowService` | `backend/src/bakufu/application/services/workflow_service.py` | http-api-foundation で骨格確定済み。本 sub-feature で全メソッドを肉付け |
-| REQ-WF-HTTP-001〜007 | `WorkflowSchemas` | `backend/src/bakufu/interfaces/http/schemas/workflow.py` | Pydantic v2 リクエスト / レスポンスモデル（新規ファイル）|
+| REQ-WF-HTTP-001〜008 | `workflow_router` | `backend/src/bakufu/interfaces/http/routers/workflows.py` | Workflow CRUD + Stage 一覧 + プリセット一覧 エンドポイント（8 本）|
+| REQ-WF-HTTP-001〜008 | `WorkflowService` | `backend/src/bakufu/application/services/workflow_service.py` | http-api-foundation で骨格確定済み。本 sub-feature で全メソッドを肉付け |
+| REQ-WF-HTTP-001〜008 | `WorkflowSchemas` | `backend/src/bakufu/interfaces/http/schemas/workflow.py` | Pydantic v2 リクエスト / レスポンスモデル（新規ファイル）|
 | 横断 | `workflow 例外ハンドラ群` | `backend/src/bakufu/interfaces/http/error_handlers.py`（既存追記）| `WorkflowNotFoundError` / `WorkflowArchivedError` / `WorkflowIrreversibleError` / `WorkflowInvariantViolation` → `ErrorResponse` 変換 |
 | 横断 | `application 例外定義` | `backend/src/bakufu/application/exceptions/workflow_exceptions.py`（新規）| `WorkflowNotFoundError` / `WorkflowArchivedError` / `WorkflowIrreversibleError`（room sub-feature の暫定定義を本ファイルに正式移転）|
 | REQ-WF-HTTP-004, 005 | `WorkflowService` DI 拡張 | `backend/src/bakufu/interfaces/http/dependencies.py`（既存追記）| `get_workflow_service()` を WorkflowRepository + RoomRepository を受け取る形に拡張 |
@@ -47,7 +47,7 @@ backend/
         ├── dependencies.py                     # 既存追記: get_workflow_service() 拡張
         ├── error_handlers.py                   # 既存追記: workflow 例外ハンドラ群
         ├── routers/
-        │   └── workflows.py                    # 新規: 7 エンドポイント
+        │   └── workflows.py                    # 新規: 8 エンドポイント
         └── schemas/
             └── workflow.py                     # 新規: Pydantic スキーマ群
 ```
@@ -64,6 +64,15 @@ backend/
 | 処理 | `WorkflowService.create_for_room(room_id, workflow_create)` → 1) Room 存在確認（不在 → `RoomNotFoundError` 404）2) Room archived 確認（archived → `RoomArchivedError` 409）3) プリセット解決または JSON デシリアライズ（不明プリセット名 → `WorkflowPresetNotFoundError` 404）4) `Workflow(...)` 構築（DAG 不変条件 R1-1〜9 検査）→ 5) `WorkflowRepository.save(workflow)` 6) Room.workflow_id を新 Workflow ID に更新 → 7) `RoomRepository.save(updated_room, empire_id)` 。手順 5〜7 は同一 UoW 内で実行 |
 | 出力 | HTTP 201, `WorkflowResponse`（id / name / stages / transitions / entry_stage_id / archived）|
 | エラー時 | Room 不在 → 404 / Room archived → 409 / プリセット不明 → 404 (MSG-WF-HTTP-004) / DAG 違反 → 422 (MSG-WF-HTTP-005) / 不正 UUID → 422 |
+
+### REQ-WF-HTTP-008: Workflow 定義単体作成（POST /api/workflows）
+
+| 項目 | 内容 |
+|---|---|
+| 入力 | リクエスト Body `WorkflowCreate`（`preset_name: str \| None` または `name: str` + `stages: list[StageCreate]` + `transitions: list[TransitionCreate]` + `entry_stage_id: UUID` のどちらか）|
+| 処理 | `WorkflowService.create(workflow_create)` → 1) プリセット解決または JSON デシリアライズ 2) `Workflow(...)` 構築（DAG 不変条件 R1-1〜9 検査）3) `WorkflowRepository.save(workflow)`。Room への割り当ては行わない |
+| 出力 | HTTP 201, `WorkflowResponse`（id / name / stages / transitions / entry_stage_id / archived）|
+| エラー時 | プリセット不明 → 404 (MSG-WF-HTTP-004) / DAG 違反 → 422 (MSG-WF-HTTP-005) / 不正 UUID → 422 |
 
 ### REQ-WF-HTTP-002: Room の Workflow 取得（GET /api/rooms/{room_id}/workflows）
 
@@ -153,6 +162,7 @@ backend/
 classDiagram
     class WorkflowRouter {
         <<FastAPI APIRouter>>
+        +POST /api/workflows
         +POST /api/rooms/{room_id}/workflows
         +GET /api/rooms/{room_id}/workflows
         +GET /api/workflows/presets
@@ -166,6 +176,7 @@ classDiagram
         -_room_repo: RoomRepository
         -_session: AsyncSession
         +__init__(workflow_repo, room_repo, session)
+        +create(workflow_create) Workflow
         +create_for_room(room_id, workflow_create) Workflow
         +find_by_room(room_id) Workflow | None
         +find_by_id(workflow_id) Workflow
