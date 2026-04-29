@@ -6,7 +6,7 @@ duck typing で domain オブジェクトを変換する。
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -48,7 +48,7 @@ class StageCreate(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     kind: str
     required_role: list[str] = Field(min_length=1)
-    completion_policy: dict | None = None
+    completion_policy: dict[str, Any] | None = None
     notify_channels: list[str] = []
     deliverable_template: str = ""
 
@@ -63,15 +63,19 @@ class StageCreate(BaseModel):
 
     @field_validator("required_role", mode="before")
     @classmethod
-    def _validate_roles(cls, value: object) -> object:
-        if isinstance(value, list):
-            for role in value:
-                if isinstance(role, str) and role not in _VALID_ROLES:
-                    raise ValueError(
-                        f"required_role element must be one of {sorted(_VALID_ROLES)!r},"
-                        f" got {role!r}"
-                    )
-        return value
+    def _validate_roles(cls, value: Any) -> Any:
+        if not isinstance(value, list):
+            return value
+        # isinstance 後の list[Unknown] 問題を回避するため cast で list[Any] に昇格させる
+        roles: list[Any] = cast("list[Any]", value)
+        for item in roles:
+            if isinstance(item, str) and item not in _VALID_ROLES:
+                raise ValueError(
+                    f"required_role element must be one of {sorted(_VALID_ROLES)!r},"
+                    f" got {item!r}"
+                )
+        out: Any = roles
+        return out
 
 
 class TransitionCreate(BaseModel):
@@ -175,7 +179,7 @@ class StageResponse(BaseModel):
     name: str
     kind: str
     required_role: list[str]
-    completion_policy: dict | None
+    completion_policy: dict[str, Any] | None
     notify_channels: list[str]
     deliverable_template: str
 
@@ -183,9 +187,9 @@ class StageResponse(BaseModel):
     @classmethod
     def _from_domain(cls, data: Any) -> Any:
         """domain Stage → dict 変換 (duck typing, domain import なし)。"""
-        if isinstance(data, dict):
+        if not hasattr(data, "kind"):
             return data
-        return {
+        result: dict[str, Any] = {
             "id": str(data.id),
             "name": data.name,
             "kind": str(data.kind),
@@ -200,6 +204,7 @@ class StageResponse(BaseModel):
             ],
             "deliverable_template": data.deliverable_template,
         }
+        return result
 
 
 class TransitionResponse(BaseModel):
@@ -216,14 +221,15 @@ class TransitionResponse(BaseModel):
     @classmethod
     def _from_domain(cls, data: Any) -> Any:
         """domain Transition → dict 変換 (duck typing, domain import なし)。"""
-        if isinstance(data, dict):
+        if not hasattr(data, "from_stage_id"):
             return data
-        return {
+        result: dict[str, Any] = {
             "id": str(data.id),
             "from_stage_id": str(data.from_stage_id),
             "to_stage_id": str(data.to_stage_id),
             "condition": str(data.condition),
         }
+        return result
 
 
 class WorkflowResponse(BaseModel):
@@ -243,7 +249,7 @@ class WorkflowResponse(BaseModel):
     def _from_domain(cls, data: Any) -> Any:
         """domain Workflow → dict 変換 (duck typing, domain import なし)。"""
         if hasattr(data, "stages"):
-            return {
+            result: dict[str, Any] = {
                 "id": str(data.id),
                 "name": data.name,
                 "stages": list(data.stages),
@@ -251,6 +257,7 @@ class WorkflowResponse(BaseModel):
                 "entry_stage_id": str(data.entry_stage_id),
                 "archived": data.archived,
             }
+            return result
         return data
 
 

@@ -2,6 +2,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
+
+
+def _empty_stage_list() -> list[dict[str, Any]]:
+    return []
+
+
+def _empty_transition_list() -> list[dict[str, Any]]:
+    return []
 
 
 @dataclass(frozen=True)
@@ -12,8 +21,8 @@ class WorkflowPresetDefinition:
     display_name: str
     description: str
     name: str
-    stages: list[dict] = field(default_factory=list)
-    transitions: list[dict] = field(default_factory=list)
+    stages: list[dict[str, Any]] = field(default_factory=_empty_stage_list)
+    transitions: list[dict[str, Any]] = field(default_factory=_empty_transition_list)
     entry_stage_id: str = ""
 
     @property
@@ -32,7 +41,7 @@ class WorkflowPresetDefinition:
 # Stage IDs: "00000001-0000-4000-8000-{i:012d}"
 # Transition IDs: "00000001-0001-4000-8000-{i:012d}"
 # ---------------------------------------------------------------------------
-_VMODEL_STAGES: list[dict] = [
+_VMODEL_STAGES: list[dict[str, Any]] = [
     {
         "id": "00000001-0000-4000-8000-000000000001",
         "name": "要件定義",
@@ -155,7 +164,7 @@ _VMODEL_STAGES: list[dict] = [
 # Forward APPROVED transitions (12): stage 1→2, 2→3, 3→4, 4→5, 5→6, 6→7,
 #   7→8, 8→9, 9→10, 10→11, 11→12, 12→13
 # Backward REJECTED transitions (3): 2→1, 4→3, 6→5
-_VMODEL_TRANSITIONS: list[dict] = [
+_VMODEL_TRANSITIONS: list[dict[str, Any]] = [
     # Forward transitions (APPROVED)
     {
         "id": "00000001-0001-4000-8000-000000000001",
@@ -271,7 +280,7 @@ _VMODEL_TRANSITIONS: list[dict] = [
 # Stage IDs: "00000002-0000-4000-8000-{i:012d}"
 # Transition IDs: "00000002-0001-4000-8000-{i:012d}"
 # ---------------------------------------------------------------------------
-_AGILE_STAGES: list[dict] = [
+_AGILE_STAGES: list[dict[str, Any]] = [
     {
         "id": "00000002-0000-4000-8000-000000000001",
         "name": "バックログ精査",
@@ -328,7 +337,7 @@ _AGILE_STAGES: list[dict] = [
     },
 ]
 
-_AGILE_TRANSITIONS: list[dict] = [
+_AGILE_TRANSITIONS: list[dict[str, Any]] = [
     # バックログ精査→スプリント計画(APPROVED)
     {
         "id": "00000002-0001-4000-8000-000000000001",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,8 +40,8 @@ class WorkflowService:
         room_id: RoomId,
         preset_name: str | None,
         name: str | None,
-        stages: list[dict] | None,
-        transitions: list[dict] | None,
+        stages: list[dict[str, Any]] | None,
+        transitions: list[dict[str, Any]] | None,
         entry_stage_id: UUID | None,
     ) -> Workflow:
         """Room に Workflow を作成し、Room.workflow_id を更新する。"""
@@ -90,8 +91,8 @@ class WorkflowService:
         self,
         workflow_id: WorkflowId,
         name: str | None,
-        stages: list[dict] | None,
-        transitions: list[dict] | None,
+        stages: list[dict[str, Any]] | None,
+        transitions: list[dict[str, Any]] | None,
         entry_stage_id: UUID | None,
     ) -> Workflow:
         """Workflow を部分更新する。"""
@@ -106,7 +107,8 @@ class WorkflowService:
             state["name"] = name
         if stages is not None:
             state["stages"] = self._prepare_stage_dicts(stages)
-            state["transitions"] = self._prepare_transition_dicts(transitions or [])
+            _transitions: list[dict[str, Any]] = transitions if transitions is not None else []
+            state["transitions"] = self._prepare_transition_dicts(_transitions)
             state["entry_stage_id"] = str(entry_stage_id)
         updated = Workflow.model_validate(state)
         async with self._session.begin():
@@ -153,8 +155,8 @@ class WorkflowService:
     def _build_from_dicts(
         self,
         name: str,
-        stages: list[dict],
-        transitions: list[dict],
+        stages: list[dict[str, Any]],
+        transitions: list[dict[str, Any]],
         entry_stage_id: UUID,
     ) -> Workflow:
         """dict 定義から Workflow を構築する。"""
@@ -169,9 +171,9 @@ class WorkflowService:
         )
 
     @staticmethod
-    def _prepare_stage_dicts(stages: list[dict]) -> list[dict]:
+    def _prepare_stage_dicts(stages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """StageCreate.model_dump() 形式を domain Stage 互換形式に変換する。"""
-        result = []
+        result: list[dict[str, Any]] = []
         for stage in stages:
             s = dict(stage)
             if s.get("completion_policy") is None:
@@ -185,7 +187,9 @@ class WorkflowService:
         return result
 
     @staticmethod
-    def _prepare_transition_dicts(transitions: list[dict]) -> list[dict]:
+    def _prepare_transition_dicts(
+        transitions: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
         """TransitionCreate.model_dump() 形式を domain Transition 互換形式に変換する。"""
         return [dict(t) for t in transitions]
 
