@@ -1,20 +1,19 @@
-"""Task Repository port.
+"""Task Repository ポート。
 
-Per ``docs/features/task-repository/detailed-design.md`` §確定 R1-A
-(empire-repo / workflow-repo / agent-repo / room-repo / directive-repo
-テンプレート 100% 継承) plus §確定 R1-D (additional Task-specific methods):
+``docs/features/task-repository/detailed-design.md`` §確定 R1-A
+（empire-repo / workflow-repo / agent-repo / room-repo / directive-repo
+テンプレート 100% 継承）に加え、§確定 R1-D（Task 固有メソッドの追加）に従う:
 
-* Protocol class with **no** ``@runtime_checkable`` decorator (empire-repo
-  §確定 A: Python 3.12 ``typing.Protocol`` duck typing is sufficient).
-* Every method declared ``async def`` (async-first contract).
-* Argument and return types come exclusively from :mod:`bakufu.domain` —
-  no SQLAlchemy types cross the port boundary.
-* ``save`` signature is ``save(task: Task) -> None`` (standard 1-argument
-  pattern, §確定 R1-F): :class:`Task` carries ``room_id`` and
-  ``directive_id`` as own attributes so the Repository reads them directly.
-* Three Task-specific query methods beyond the empire-repo §確定 B baseline
-  (``count_by_status`` / ``count_by_room`` / ``find_blocked``) are
-  included per §確定 R1-D.
+* Protocol クラスに ``@runtime_checkable`` デコレータを **付けない**
+  （empire-repo §確定 A: Python 3.12 の ``typing.Protocol`` ダックタイピングで十分）。
+* すべてのメソッドを ``async def`` で宣言（async-first 契約）。
+* 引数および戻り値の型は :mod:`bakufu.domain` 由来のもののみ —
+  SQLAlchemy 型がポート境界を越えることはない。
+* ``save`` のシグネチャは ``save(task: Task) -> None``（標準 1 引数パターン、
+  §確定 R1-F）。:class:`Task` が ``room_id`` および ``directive_id`` を自身の属性として
+  保持するため、Repository が直接読み取れる。
+* §確定 R1-D に従い、empire-repo §確定 B のベースラインに加え Task 固有のクエリ
+  メソッドを 3 つ持つ（``count_by_status`` / ``count_by_room`` / ``find_blocked``）。
 """
 
 from __future__ import annotations
@@ -26,84 +25,83 @@ from bakufu.domain.value_objects import RoomId, TaskId, TaskStatus
 
 
 class TaskRepository(Protocol):
-    """Persistence contract for the :class:`Task` Aggregate Root.
+    """:class:`Task` Aggregate Root の永続化契約。
 
-    The application layer (``TaskService``, future PRs) consumes this
-    Protocol via dependency injection; the SQLite implementation lives in
-    :mod:`bakufu.infrastructure.persistence.sqlite.repositories.task_repository`.
+    application 層（``TaskService``、将来 PR）が依存性注入により本 Protocol を
+    消費する。SQLite 実装は
+    :mod:`bakufu.infrastructure.persistence.sqlite.repositories.task_repository`
+    に存在する。
     """
 
     async def find_by_id(self, task_id: TaskId) -> Task | None:
-        """Hydrate the Task whose primary key equals ``task_id``.
+        """主キーが ``task_id`` の Task をハイドレートする。
 
-        Returns ``None`` when the row is absent. All five child tables
-        (task_assigned_agents / conversations / conversation_messages /
-        deliverables / deliverable_attachments) are fetched and included
-        in the hydrated Task. SQLAlchemy / driver / ``pydantic.ValidationError``
-        exceptions propagate untouched so the application service's
-        Unit-of-Work boundary can choose between rollback and surfaced error.
+        該当行がない場合は ``None`` を返す。5 つのすべての子テーブル
+        （task_assigned_agents / conversations / conversation_messages /
+        deliverables / deliverable_attachments）がフェッチされ、ハイドレートされた
+        Task に含まれる。SQLAlchemy / ドライバ / ``pydantic.ValidationError`` 例外は
+        そのまま伝播させ、application service の Unit-of-Work 境界がロールバックと
+        エラー表出のいずれを取るかを判断できるようにする。
         """
         ...
 
     async def count(self) -> int:
-        """Return ``SELECT COUNT(*) FROM tasks``.
+        """``SELECT COUNT(*) FROM tasks`` を返す。
 
-        Global count across all Tasks regardless of status or room.
-        Application services use this for monitoring / bulk introspection
-        (empire-repo §確定 D 踏襲).
+        ステータスや room を問わず、全 Task を横断するグローバルカウント。
+        application service は本メソッドを監視 / 一括イントロスペクションに用いる
+        （empire-repo §確定 D 踏襲）。
         """
         ...
 
     async def save(self, task: Task) -> None:
-        """Persist ``task`` via the §確定 R1-B 9-step delete-then-insert.
+        """§確定 R1-B の 9 段階 delete-then-insert で ``task`` を永続化する。
 
-        The save flow covers all six tables:
-        1. DELETE deliverables (CASCADE removes deliverable_attachments)
-        2. DELETE conversations (CASCADE removes conversation_messages)
+        save フローは 6 つのテーブルすべてを対象とする:
+        1. DELETE deliverables（CASCADE で deliverable_attachments も削除）
+        2. DELETE conversations（CASCADE で conversation_messages も削除）
         3. DELETE task_assigned_agents
-        4. UPSERT tasks (ON CONFLICT id DO UPDATE)
-        5. INSERT task_assigned_agents (per AgentId, with order_index)
-        6. INSERT conversations (per Conversation)
-        7. INSERT conversation_messages (per Message per Conversation)
-        8. INSERT deliverables (per Deliverable)
-        9. INSERT deliverable_attachments (per Attachment per Deliverable)
+        4. UPSERT tasks（ON CONFLICT id DO UPDATE）
+        5. INSERT task_assigned_agents（AgentId ごと、order_index 付き）
+        6. INSERT conversations（Conversation ごと）
+        7. INSERT conversation_messages（Conversation 内の Message ごと）
+        8. INSERT deliverables（Deliverable ごと）
+        9. INSERT deliverable_attachments（Deliverable 内の Attachment ごと）
 
-        The implementation must not call ``session.commit()`` /
-        ``session.rollback()``; the application service owns the
-        Unit-of-Work boundary (empire-repo §確定 B 踏襲).
+        実装は ``session.commit()`` / ``session.rollback()`` を呼んではならない。
+        Unit-of-Work 境界の保有は application service の責務である
+        （empire-repo §確定 B 踏襲）。
         """
         ...
 
     async def count_by_status(self, status: TaskStatus) -> int:
-        """Return ``SELECT COUNT(*) FROM tasks WHERE status = :status``.
+        """``SELECT COUNT(*) FROM tasks WHERE status = :status`` を返す。
 
-        Used for Room dashboard status aggregations and monitoring.
-        Returns 0 when no Tasks exist with the given status.
+        Room ダッシュボードのステータス集計や監視に用いる。
+        該当 status の Task が存在しない場合は 0 を返す。
         """
         ...
 
     async def count_by_room(self, room_id: RoomId) -> int:
-        """Return ``SELECT COUNT(*) FROM tasks WHERE room_id = :room_id``.
+        """``SELECT COUNT(*) FROM tasks WHERE room_id = :room_id`` を返す。
 
-        Used for Room detail page Task count display (after HTTP API PR).
-        Returns 0 when no Tasks exist for the given Room.
+        Room 詳細ページの Task 件数表示（HTTP API PR 後）に用いる。
+        該当 Room に Task が存在しない場合は 0 を返す。
         """
         ...
 
     async def find_blocked(self) -> list[Task]:
-        """Return all BLOCKED Tasks ordered by ``updated_at DESC, id DESC``.
+        """全 BLOCKED Task を ``updated_at DESC, id DESC`` の順で返す。
 
-        Used by ``TaskService.find_blocked_tasks()`` (Issue #38) for
-        障害隔離 — recently blocked Tasks are surfaced first so operators
-        can triage in priority order.
+        ``TaskService.find_blocked_tasks()``（Issue #38）の障害隔離に用いる —
+        最近ブロックされた Task が先に現れることで、運用者が優先順位順にトリアージ
+        できるようにする。
 
-        ORDER BY ``updated_at DESC, id DESC`` (BUG-EMR-001 規約: composite
-        key for deterministic ordering — ``updated_at`` alone is
-        insufficient when multiple Tasks share the same timestamp; ``id``
-        (PK, UUID) is the tiebreaker that makes the result fully
-        deterministic).
+        ORDER BY ``updated_at DESC, id DESC``（BUG-EMR-001 規約: 決定的な順序付けの
+        ための複合キー — 複数の Task が同一タイムスタンプを持つ場合 ``updated_at``
+        単独では不十分。``id``（PK、UUID）が tiebreaker として結果を完全に決定的にする）。
 
-        Returns ``[]`` when no BLOCKED Tasks exist.
+        BLOCKED Task が存在しない場合は ``[]`` を返す。
         """
         ...
 

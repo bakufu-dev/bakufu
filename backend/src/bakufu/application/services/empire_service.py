@@ -1,9 +1,9 @@
 """EmpireService — Empire Aggregate 操作の application 層サービス。
 
-Implements ``REQ-EM-HTTP-001``〜``REQ-EM-HTTP-005`` per
-``docs/features/empire/http-api/detailed-design.md`` §確定 G.
+``docs/features/empire/http-api/detailed-design.md`` §確定 G に従い、
+``REQ-EM-HTTP-001``〜``REQ-EM-HTTP-005`` を実装する。
 
-Design notes:
+設計メモ:
 
 * **UoW 境界**: write 操作 (``create`` / ``update`` / ``archive``) は read も含め
   単一の ``async with self._session.begin():`` ブロック内で完結させる。
@@ -12,13 +12,12 @@ Design notes:
   が発生するため (BUG-EM-001 修正)。
 * ``find_all`` / ``find_by_id`` は read-only。明示的な ``begin()`` は不要。
   SQLAlchemy が autobegin するため呼び出し元でトランザクションを意識しなくてよい。
-* The service raises application-layer exceptions
+* 本サービスは sentinel 値を返す代わりに application 層の例外
   (:class:`EmpireNotFoundError` / :class:`EmpireAlreadyExistsError` /
-  :class:`EmpireArchivedError`) rather than returning sentinel values,
-  keeping the interfaces layer free of domain-level conditionals.
-* Domain-layer ``EmpireInvariantViolation`` propagates unchanged to the
-  interfaces layer which maps it to HTTP 422 via
-  ``empire_invariant_violation_handler``.
+  :class:`EmpireArchivedError`) を送出することで、interfaces 層をドメインレベルの
+  条件分岐から解放する。
+* ドメイン層の ``EmpireInvariantViolation`` はそのまま interfaces 層へ伝播し、
+  ``empire_invariant_violation_handler`` 経由で HTTP 422 にマップされる。
 """
 
 from __future__ import annotations
@@ -40,10 +39,10 @@ from bakufu.domain.value_objects.identifiers import EmpireId
 class EmpireService:
     """Empire Aggregate 操作の thin CRUD サービス (確定 G)。
 
-    The session is injected alongside the repository so the service can
-    open and commit its own Unit-of-Work transactions for write
-    operations. Read-only operations (``find_all`` / ``find_by_id``)
-    execute directly on the session without an explicit ``begin()``.
+    session は repository とともに注入され、サービスが write 操作向けに自前の
+    Unit-of-Work トランザクションを開いて commit できるようにする。read-only 操作
+    （``find_all`` / ``find_by_id``）は明示的な ``begin()`` なしで session 上で
+    直接実行する。
     """
 
     def __init__(self, repo: EmpireRepository, session: AsyncSession) -> None:
@@ -51,27 +50,27 @@ class EmpireService:
         self._session = session
 
     async def create(self, name: str) -> Empire:
-        """Construct and persist a new Empire (REQ-EM-HTTP-001).
+        """新しい Empire を構築して永続化する（REQ-EM-HTTP-001）。
 
         Args:
-            name: Raw Empire name. Normalized via domain's NFC+strip
-                pipeline; length validated as 1-80 chars (R1-1).
+            name: 生の Empire 名。ドメインの NFC+strip パイプラインで正規化され、
+                長さは 1–80 文字として検証される（R1-1）。
 
         Returns:
-            The freshly persisted Empire.
+            新たに永続化された Empire。
 
         Raises:
-            EmpireAlreadyExistsError: if an Empire already exists (R1-5).
-            EmpireInvariantViolation: if ``name`` fails domain validation.
+            EmpireAlreadyExistsError: Empire が既に存在する場合（R1-5）。
+            EmpireInvariantViolation: ``name`` がドメイン検証に失敗した場合。
         """
-        # BUG-EM-001: count() triggers autobegin. Put ALL operations
-        # (read + write) inside a single begin() to avoid
-        # "InvalidRequestError: A transaction is already begun".
+        # BUG-EM-001: count() が autobegin を起動する。
+        # "InvalidRequestError: A transaction is already begun" を避けるため、
+        # 全操作（read + write）を単一の begin() 内に置く。
         async with self._session.begin():
             count = await self._repo.count()
             if count > 0:
                 raise EmpireAlreadyExistsError()
-            # EmpireId is a type alias for UUID — uuid4() is the correct type.
+            # EmpireId は UUID の型エイリアスのため、uuid4() が正しい型となる。
             empire = Empire(
                 id=uuid4(),
                 name=name,
@@ -81,24 +80,24 @@ class EmpireService:
         return empire
 
     async def find_all(self) -> list[Empire]:
-        """Return all Empire rows (REQ-EM-HTTP-002).
+        """全 Empire 行を返す（REQ-EM-HTTP-002）。
 
         Returns:
-            0 or 1 Empire (singleton). Never raises.
+            0 件または 1 件の Empire（シングルトン）。例外は送出しない。
         """
         return await self._repo.find_all()
 
     async def find_by_id(self, empire_id: EmpireId) -> Empire:
-        """Hydrate a single Empire by its primary key (REQ-EM-HTTP-003).
+        """主キーで単一の Empire をハイドレートする（REQ-EM-HTTP-003）。
 
         Args:
-            empire_id: Target Empire's UUID.
+            empire_id: 対象 Empire の UUID。
 
         Returns:
-            The hydrated Empire.
+            ハイドレートされた Empire。
 
         Raises:
-            EmpireNotFoundError: if no Empire with ``empire_id`` exists.
+            EmpireNotFoundError: ``empire_id`` の Empire が存在しない場合。
         """
         empire = await self._repo.find_by_id(empire_id)
         if empire is None:
@@ -106,22 +105,22 @@ class EmpireService:
         return empire
 
     async def update(self, empire_id: EmpireId, name: str | None) -> Empire:
-        """Apply a partial update to an Empire (REQ-EM-HTTP-004).
+        """Empire に部分更新を適用する（REQ-EM-HTTP-004）。
 
         Args:
-            empire_id: Target Empire's UUID.
-            name: New name, or ``None`` to leave it unchanged.
+            empire_id: 対象 Empire の UUID。
+            name: 新しい名前。``None`` の場合は変更しない。
 
         Returns:
-            The updated Empire.
+            更新後の Empire。
 
         Raises:
-            EmpireNotFoundError: if the Empire does not exist.
-            EmpireArchivedError: if the Empire is archived (R1-8).
-            EmpireInvariantViolation: if the new name fails domain validation.
+            EmpireNotFoundError: Empire が存在しない場合。
+            EmpireArchivedError: Empire がアーカイブ済みの場合（R1-8）。
+            EmpireInvariantViolation: 新しい名前がドメイン検証に失敗した場合。
         """
-        # BUG-EM-001: find_by_id triggers autobegin. Keep everything in one
-        # begin() so there is only one transaction boundary.
+        # BUG-EM-001: find_by_id が autobegin を起動する。
+        # トランザクション境界を 1 つに保つため、すべてを単一の begin() 内にまとめる。
         async with self._session.begin():
             empire = await self._repo.find_by_id(empire_id)
             if empire is None:
@@ -129,7 +128,7 @@ class EmpireService:
             if empire.archived:
                 raise EmpireArchivedError(str(empire_id))
             if name is None:
-                # No fields changed — nothing to persist.
+                # 変更フィールドなし — 永続化対象なし。
                 return empire
             updated = Empire(
                 id=empire.id,
@@ -142,16 +141,16 @@ class EmpireService:
         return updated
 
     async def archive(self, empire_id: EmpireId) -> None:
-        """Logically delete an Empire (REQ-EM-HTTP-005 / UC-EM-010).
+        """Empire を論理削除する（REQ-EM-HTTP-005 / UC-EM-010）。
 
         Args:
-            empire_id: Target Empire's UUID.
+            empire_id: 対象 Empire の UUID。
 
         Raises:
-            EmpireNotFoundError: if the Empire does not exist.
+            EmpireNotFoundError: Empire が存在しない場合。
         """
-        # BUG-EM-001: find_by_id triggers autobegin. Keep everything in one
-        # begin() so there is only one transaction boundary.
+        # BUG-EM-001: find_by_id が autobegin を起動する。
+        # トランザクション境界を 1 つに保つため、すべてを単一の begin() 内にまとめる。
         async with self._session.begin():
             empire = await self._repo.find_by_id(empire_id)
             if empire is None:

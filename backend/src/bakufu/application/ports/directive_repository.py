@@ -1,23 +1,22 @@
-"""Directive Repository port.
+"""Directive Repository ポート。
 
-Per ``docs/features/directive-repository/detailed-design.md`` §確定 R1-A
-(empire-repo / workflow-repo / agent-repo / room-repo テンプレート 100% 継承)
-plus §確定 R1-D (``find_by_room`` — Room-scoped Directive lookup, ORDER BY
-``created_at DESC, id DESC`` for deterministic ordering per BUG-EMR-001 規約)
-and §確定 R1-F (``save(directive)`` — standard 1-argument pattern because
-:class:`Directive` Aggregate holds ``target_room_id`` as its own attribute):
+``docs/features/directive-repository/detailed-design.md`` §確定 R1-A
+（empire-repo / workflow-repo / agent-repo / room-repo テンプレート 100% 継承）に加え、
+§確定 R1-D（``find_by_room`` — Room スコープの Directive 検索、BUG-EMR-001 規約に
+基づき決定的な順序とするため ``created_at DESC, id DESC`` で並べる）および §確定 R1-F
+（``save(directive)`` — :class:`Directive` Aggregate が ``target_room_id`` を自身の
+属性として保持するため、標準の 1 引数パターン）に従う:
 
-* Protocol class with **no** ``@runtime_checkable`` decorator (empire-repo
-  §確定 A: Python 3.12 ``typing.Protocol`` duck typing is sufficient).
-* Every method declared ``async def`` (async-first contract).
-* Argument and return types come exclusively from :mod:`bakufu.domain` —
-  no SQLAlchemy types cross the port boundary.
-* ``save`` signature is ``save(directive: Directive) -> None`` (standard
-  1-argument pattern, §確定 R1-F): :class:`Directive` carries
-  ``target_room_id`` as an attribute so the Repository can read it
-  directly — the non-symmetric Room pattern is not needed here.
-* ``find_by_room`` is the 4th method; ``find_by_task_id`` is deferred to
-  the task-repository PR (YAGNI, §確定 R1-D 後続申し送り).
+* Protocol クラスに ``@runtime_checkable`` デコレータを **付けない**
+  （empire-repo §確定 A: Python 3.12 の ``typing.Protocol`` ダックタイピングで十分）。
+* すべてのメソッドを ``async def`` で宣言（async-first 契約）。
+* 引数および戻り値の型は :mod:`bakufu.domain` 由来のもののみ —
+  SQLAlchemy 型がポート境界を越えることはない。
+* ``save`` のシグネチャは ``save(directive: Directive) -> None``（標準 1 引数パターン、
+  §確定 R1-F）。:class:`Directive` は ``target_room_id`` を属性として持つため、
+  Repository が直接読み取れる — Room の非対称パターンはここでは不要。
+* ``find_by_room`` が第 4 メソッド。``find_by_task_id`` は task-repository PR に
+  延期（YAGNI、§確定 R1-D 後続申し送り）。
 """
 
 from __future__ import annotations
@@ -29,58 +28,56 @@ from bakufu.domain.value_objects import DirectiveId, RoomId
 
 
 class DirectiveRepository(Protocol):
-    """Persistence contract for the :class:`Directive` Aggregate Root.
+    """:class:`Directive` Aggregate Root の永続化契約。
 
-    The application layer (``DirectiveService``, future PRs) consumes this
-    Protocol via dependency injection; the SQLite implementation lives in
-    :mod:`bakufu.infrastructure.persistence.sqlite.repositories.directive_repository`.
+    application 層（``DirectiveService``、将来 PR）が依存性注入により本 Protocol を
+    消費する。SQLite 実装は
+    :mod:`bakufu.infrastructure.persistence.sqlite.repositories.directive_repository`
+    に存在する。
     """
 
     async def find_by_id(self, directive_id: DirectiveId) -> Directive | None:
-        """Hydrate the Directive whose primary key equals ``directive_id``.
+        """主キーが ``directive_id`` の Directive をハイドレートする。
 
-        Returns ``None`` when the row is absent. SQLAlchemy / driver /
-        ``pydantic.ValidationError`` exceptions propagate untouched so the
-        application service's Unit-of-Work boundary can choose between
-        rollback and surfaced error.
+        該当行がない場合は ``None`` を返す。SQLAlchemy / ドライバ /
+        ``pydantic.ValidationError`` 例外はそのまま伝播させ、application service の
+        Unit-of-Work 境界がロールバックとエラー表出のいずれを取るかを判断できるように
+        する。
         """
         ...
 
     async def count(self) -> int:
-        """Return ``SELECT COUNT(*) FROM directives``.
+        """``SELECT COUNT(*) FROM directives`` を返す。
 
-        Application services use this for monitoring / bulk introspection.
-        The count is global (§確定 R1-A: SQL ``COUNT(*)`` contract,
-        empire-repo §確定 D 踏襲).
+        application service は本メソッドを監視 / 一括イントロスペクションに用いる。
+        カウントはグローバル（§確定 R1-A: SQL ``COUNT(*)`` 契約、empire-repo
+        §確定 D 踏襲）。
         """
         ...
 
     async def save(self, directive: Directive) -> None:
-        """Persist ``directive`` via a single-table UPSERT (§確定 R1-B).
+        """単一テーブルの UPSERT で ``directive`` を永続化する（§確定 R1-B）。
 
-        Directive has no child tables, so the save flow reduces to one step:
-        ``INSERT INTO directives ... ON CONFLICT (id) DO UPDATE SET ...``.
+        Directive には子テーブルが存在しないため、save フローは 1 ステップに集約される:
+        ``INSERT INTO directives ... ON CONFLICT (id) DO UPDATE SET ...``。
 
-        ``target_room_id`` is read from ``directive.target_room_id`` directly
-        (§確定 R1-F: standard 1-argument pattern). The implementation must
-        not call ``session.commit()`` / ``session.rollback()``; the
-        application service owns the Unit-of-Work boundary (empire-repo
-        §確定 B 踏襲).
+        ``target_room_id`` は ``directive.target_room_id`` から直接読み取る
+        （§確定 R1-F: 標準 1 引数パターン）。実装は ``session.commit()`` /
+        ``session.rollback()`` を呼んではならない。Unit-of-Work 境界の保有は
+        application service の責務である（empire-repo §確定 B 踏襲）。
         """
         ...
 
     async def find_by_room(self, room_id: RoomId) -> list[Directive]:
-        """Return all Directives targeting ``room_id``, newest first.
+        """``room_id`` を対象とする全 Directive を新しい順に返す。
 
-        ORDER BY ``created_at DESC, id DESC`` (BUG-EMR-001 規約: composite
-        key for deterministic ordering — ``created_at`` alone is insufficient
-        when multiple Directives share the same timestamp; ``id`` (PK, UUID)
-        is the tiebreaker that makes the result fully deterministic).
+        ORDER BY ``created_at DESC, id DESC``（BUG-EMR-001 規約: 決定的な順序付けの
+        ための複合キー — 複数の Directive が同一タイムスタンプを持つ場合 ``created_at``
+        単独では不十分。``id``（PK、UUID）が tiebreaker として結果を完全に決定的にする）。
 
-        Returns ``[]`` when no Directives exist for the Room. The empty-list
-        response does not distinguish between "Room exists but has no
-        Directives" and "Room does not exist" — that distinction is the
-        application layer's responsibility.
+        Room に対して Directive が存在しない場合は ``[]`` を返す。空リスト応答は
+        「Room は存在するが Directive がない」と「Room が存在しない」を区別しない —
+        この区別は application 層の責務である。
         """
         ...
 

@@ -1,17 +1,15 @@
-"""Application layer.
+"""Application 層。
 
-Sits between :mod:`bakufu.domain` (pure DDD aggregates) and
-:mod:`bakufu.infrastructure` (SQLite / FS / process I/O). The layer
-owns:
+:mod:`bakufu.domain`（純粋な DDD Aggregate）と :mod:`bakufu.infrastructure`
+（SQLite / FS / プロセス I/O）の中間に位置する。本層が保有するのは:
 
-* **Ports** (:mod:`bakufu.application.ports`) — :class:`typing.Protocol`
-  contracts that the infrastructure layer must satisfy. Hexagonal
-  Architecture's "ports and adapters" pattern.
-* **Services** (later PRs) — orchestration / Unit-of-Work coordination
-  / cross-aggregate Tx boundaries.
+* **Ports**（:mod:`bakufu.application.ports`） — infrastructure 層が満たすべき
+  :class:`typing.Protocol` 契約。Hexagonal Architecture の "ports and adapters"
+  パターン。
+* **Services**（後続 PR） — オーケストレーション、Unit-of-Work の協調、
+  Aggregate 横断 Tx 境界。
 
-Dependency direction is **strictly** ``domain ← application ←
-infrastructure``: this package may import from ``domain`` but not from
-``infrastructure``; ``infrastructure`` imports the ports defined here
-to declare adapter classes.
+依存方向は **厳格に** ``domain ← application ← infrastructure``。本パッケージは
+``domain`` を import してよいが ``infrastructure`` を import してはならない。
+``infrastructure`` はここで定義した ports を import して adapter クラスを宣言する。
 """
