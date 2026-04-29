@@ -89,7 +89,7 @@ backend/
 | room 例外 | `RoomNotFoundError` / `RoomArchivedError` | room http-api（Issue #57）確定 | Room 不在 / archived 確認のため |
 | workflow 参照 | `WorkflowStageResolver.find_entry_stage_id` | workflow stage resolver | Room に紐付く Workflow の entry stage 解決のため。EXTERNAL_REVIEW Workflow は notify_channels が保存時にマスクされるため、Workflow 全体の再水和に依存しない |
 | workflow 例外 | `WorkflowNotFoundError` | workflow application（Issue #52）確定 | Room.workflow_id が参照する Workflow 不在時の fail fast |
-| masking | `ApplicationMasking.mask()` | http-api-foundation 確定（Issue #59 §確定I）| `text` / `prompt_body` 等フィールドの HTTP レスポンスマスキング（defense-in-depth）|
+| masking | `bakufu.application.security.masking.ApplicationMasking` | http-api-foundation 確定（Issue #59 §確定I）| `text` / `prompt_body` 等フィールドの HTTP レスポンスマスキング（defense-in-depth）。公開関数 alias は使わない |
 | 基盤 | http-api-foundation（ErrorResponse / lifespan / CSRF / CORS）| M3-A 確定（Issue #55）| 全 error handler / app.state.session_factory を引き継ぐ |
 
 ## クラス設計（概要）

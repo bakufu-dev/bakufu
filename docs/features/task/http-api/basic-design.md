@@ -132,7 +132,7 @@ backend/
 | application 例外 | `TaskNotFoundError` / `TaskStateConflictError` / `TaskAuthorizationError` | 本 PR で新規定義（P-1）| `application/exceptions/task_exceptions.py` |
 | domain | `Task` / `TaskId` / `TaskStatus` / `TaskAction` / `TaskInvariantViolation` / `Deliverable` / `Attachment` / `state_machine` | M1 確定 | task domain sub-feature（Issue #37）|
 | repository | `TaskRepository` Protocol（`find_all_by_room` 追加後）/ `RoomRepository` / `AgentRepository` | M2 確定 + 本 PR で Protocol 拡張（P-2）| Task assign の Room.members 検証と deliverable submitter 検証は application 層責務 |
-| masking | `ApplicationMasking.mask()` | http-api-foundation 確定（Issue #59 §確定I）| `last_error` / `body_markdown` のHTTPレスポンスマスキング（defense-in-depth）|
+| masking | `bakufu.application.security.masking.ApplicationMasking` | http-api-foundation 確定（Issue #59 §確定I）| `last_error` / `body_markdown` のHTTPレスポンスマスキング（defense-in-depth）。公開関数 alias は使わない |
 | 基盤 | http-api-foundation（ErrorResponse / lifespan / CSRF / CORS）| M3-A 確定（Issue #55）| 全 error handler / app.state.session_factory を引き継ぐ |
 
 ## クラス設計（概要）
