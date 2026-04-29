@@ -31,7 +31,7 @@ class TestStaticDependencyAnalysisRoom:
         return Path(_app_mod.__file__).parent  # type: ignore[arg-type]
 
     def _collect_all_imports(self, py_file: Path) -> list[tuple[str, int]]:
-        """ast.walk() でファイル内の全 import 文 (関数内遅延 import 含む) を収集する.
+        """ast.walk() でファイル内の全 import 文（関数内遅延 import 含む）を収集する。
 
         旧 ``_collect_toplevel_imports`` は ``tree.body`` のみを走査していたが、
         本メソッドは ``ast.walk(tree)`` で AST 全ノードを走査するため、
@@ -49,7 +49,7 @@ class TestStaticDependencyAnalysisRoom:
         return results
 
     def test_room_router_has_no_domain_import(self) -> None:
-        """routers/ と schemas/ は bakufu.domain を一切 import してはならない (遅延含む).
+        """routers/ と schemas/ は bakufu.domain を一切 import してはならない（遅延含む）。
 
         ast.walk() で関数内遅延 import も検出する。
         """
@@ -62,12 +62,12 @@ class TestStaticDependencyAnalysisRoom:
                     if module_name.startswith("bakufu.domain"):
                         violations.append(f"{py_file.name}:{lineno}: import of {module_name}")
         assert violations == [], (
-            "bakufu.domain imports detected in routers/ or schemas/ (including deferred):\n"
+            "routers/ または schemas/ で bakufu.domain の import を検出（遅延 import 含む）:\n"
             + "\n".join(violations)
         )
 
     def test_room_router_has_no_infrastructure_import(self) -> None:
-        """routers/ と schemas/ は bakufu.infrastructure を一切 import してはならない (遅延含む).
+        """routers/ と schemas/ は bakufu.infrastructure を一切 import してはならない（遅延含む）。
 
         ast.walk() で関数内遅延 import も検出する。
         """
@@ -80,6 +80,6 @@ class TestStaticDependencyAnalysisRoom:
                     if module_name.startswith("bakufu.infrastructure"):
                         violations.append(f"{py_file.name}:{lineno}: import of {module_name}")
         assert violations == [], (
-            "bakufu.infrastructure imports detected in routers/ or schemas/ (including deferred):\n"
+            "routers/ または schemas/ で bakufu.infrastructure の import を検出（遅延 import 含む）:\n"
             + "\n".join(violations)
         )

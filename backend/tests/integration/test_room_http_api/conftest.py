@@ -1,6 +1,6 @@
-"""Shared fixtures for room / http-api integration tests.
+"""room / http-api 結合テスト共有フィクスチャ。
 
-Per ``docs/features/room/http-api/test-design.md`` §外部 I/O 依存マップ.
+``docs/features/room/http-api/test-design.md`` §外部 I/O 依存マップ 準拠。
 """
 
 from __future__ import annotations

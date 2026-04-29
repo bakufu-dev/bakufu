@@ -1,8 +1,8 @@
-"""Shared fixtures for E2E tests.
+"""E2E テスト共有フィクスチャ。
 
-E2E tests use the full production app (empire router + all handlers) with a
-real SQLite tempdb.  No test-only routes are injected — all access is through
-the public API.
+E2E テストは完全なプロダクション用アプリ（empire ルーター + 全ハンドラー）を
+リアルな SQLite テンポラリ DB で動作させる。テスト専用ルートは注入しない —
+全アクセスは公開 API 経由で行う。
 """
 
 from __future__ import annotations
@@ -16,10 +16,10 @@ from httpx import ASGITransport, AsyncClient
 
 @pytest_asyncio.fixture
 async def empire_e2e_client(tmp_path: Path) -> AsyncClient:  # type: ignore[override]
-    """httpx.AsyncClient for E2E tests — full production app + real SQLite tempdb.
+    """E2E テスト用 httpx.AsyncClient — 完全なプロダクション用アプリ + リアル SQLite テンポラリ DB。
 
-    Mirrors the integration ``empire_app_client`` fixture but lives here so
-    E2E tests are structurally independent of integration fixtures.
+    integration の ``empire_app_client`` フィクスチャと同一構成だが、
+    E2E テストが integration フィクスチャに依存しないよう独立して定義する。
     """
     from bakufu.interfaces.http.app import create_app
 

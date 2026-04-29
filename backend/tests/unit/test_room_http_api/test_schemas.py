@@ -20,7 +20,7 @@ from pydantic import ValidationError
 
 
 class TestRoomCreateSchema:
-    """TC-UT-RM-HTTP-001: RoomCreate validates name / description / prompt_kit_prefix_markdown."""
+    """TC-UT-RM-HTTP-001: RoomCreate の name / description / prompt_kit_prefix_markdown バリデーション。"""
 
     def test_valid_name_workflow_id_passes(self) -> None:
         """(a) name="Vモデル開発室", workflow_id=uuid4() → バリデーション通過."""
@@ -89,7 +89,7 @@ class TestRoomCreateSchema:
 
 
 class TestRoomUpdateSchema:
-    """TC-UT-RM-HTTP-002: RoomUpdate — partial update with optional fields."""
+    """TC-UT-RM-HTTP-002: RoomUpdate — オプションフィールドによる部分更新。"""
 
     def test_valid_name_passes(self) -> None:
         """(a) name='新名前' → 通過."""
@@ -146,7 +146,7 @@ class TestRoomUpdateSchema:
 
 
 class TestAgentAssignRequestSchema:
-    """TC-UT-RM-HTTP-003: AgentAssignRequest role validation (_validate_role)."""
+    """TC-UT-RM-HTTP-003: AgentAssignRequest の role バリデーション（_validate_role）。"""
 
     def test_valid_role_leader_passes(self) -> None:
         """(a) agent_id=uuid4(), role='LEADER' → 通過."""
@@ -303,7 +303,7 @@ class TestRoomResponseSchema:
         resp = RoomResponse.model_validate(mock_room)
         joined_at = resp.members[0].joined_at
         assert isinstance(joined_at, str)
-        assert "T" in joined_at  # ISO 8601 contains "T" separator
+        assert "T" in joined_at  # ISO 8601 は "T" 区切りを含む
 
     def test_room_response_prompt_kit_prefix_markdown_flattened(self) -> None:
         """prompt_kit.prefix_markdown が prompt_kit_prefix_markdown にフラット化される."""

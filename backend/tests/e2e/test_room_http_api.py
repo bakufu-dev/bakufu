@@ -29,11 +29,11 @@ pytestmark = pytest.mark.asyncio
 
 
 class TestRoomLifecycleE2E:
-    """TC-E2E-RM-004: Room HTTP API lifecycle — complete blackbox end-to-end.
+    """TC-E2E-RM-004: Room HTTP API ライフサイクル — 完全ブラックボックス E2E。
 
-    All assertions are against HTTP responses only (no DB direct access,
-    no internal state inspection).  This test exercises the full stack:
-    httpx → FastAPI → RoomService → SqliteRoomRepository → SQLite.
+    全アサーションは HTTP レスポンスのみに対して行う（DB 直接アクセスなし・
+    内部状態参照なし）。フルスタックを検証する:
+    httpx → FastAPI → RoomService → SqliteRoomRepository → SQLite。
 
     Workflow / Agent は HTTP API スコープ外のため direct DB seeding を使う
     （assumed mock 禁止原則準拠）。

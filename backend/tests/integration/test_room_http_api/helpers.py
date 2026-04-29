@@ -1,4 +1,4 @@
-"""Shared helpers for room / http-api integration tests."""
+"""room / http-api 結合テスト共有ヘルパー。"""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ class RoomTestCtx:
 
 
 async def _create_empire(client: AsyncClient, name: str = "テスト幕府") -> dict[str, object]:
-    """POST /api/empires → assert 201 → return parsed JSON."""
+    """POST /api/empires → 201 を assert → JSON を返す。"""
     resp = await client.post("/api/empires", json={"name": name})
     assert resp.status_code == 201, f"Empire creation failed: {resp.text}"
     return resp.json()  # type: ignore[return-value]
@@ -32,7 +32,7 @@ async def _seed_workflow(
     session_factory: async_sessionmaker[AsyncSession],
     workflow_id: UUID | None = None,
 ) -> object:
-    """Workflow を tempdb に直接 INSERT して返す (assumed mock 禁止)."""
+    """Workflow をテスト DB に直接 INSERT して返す（モック禁止原則準拠）。"""
     from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
         SqliteWorkflowRepository,
     )
@@ -51,7 +51,7 @@ async def _seed_agent(
     empire_id: UUID,
     agent_id: UUID | None = None,
 ) -> object:
-    """Agent を tempdb に直接 INSERT して返す (assumed mock 禁止)."""
+    """Agent をテスト DB に直接 INSERT して返す（モック禁止原則準拠）。"""
     from bakufu.infrastructure.persistence.sqlite.repositories.agent_repository import (
         SqliteAgentRepository,
     )
@@ -73,7 +73,7 @@ async def _create_room(
     description: str = "",
     prompt_kit_prefix_markdown: str = "",
 ) -> dict[str, object]:
-    """POST /api/empires/{empire_id}/rooms → assert 201 → return parsed JSON."""
+    """POST /api/empires/{empire_id}/rooms → 201 を assert → JSON を返す。"""
     resp = await client.post(
         f"/api/empires/{empire_id}/rooms",
         json={

@@ -86,24 +86,24 @@ class RoomRepository(Protocol):
         ...
 
     async def find_all_by_empire(self, empire_id: EmpireId) -> list[Room]:
-        """Return all Rooms whose ``empire_id`` matches (§確定 H / UC-RM-009).
+        """``empire_id`` に一致する全 Room を返す（§確定 H / UC-RM-009）。
 
-        Implementations must emit ``SELECT * FROM rooms WHERE empire_id = :empire_id
-        ORDER BY name ASC`` (Q-OPEN-2 暫定: name 昇順) without fetching all rooms
-        and filtering in Python.
+        実装は ``SELECT * FROM rooms WHERE empire_id = :empire_id ORDER BY name ASC``
+        を発行しなければならない（Q-OPEN-2 暫定: name 昇順）。全 Room を取得して
+        Python 側でフィルタしてはならない。
 
-        Returns an empty list when no Rooms exist in the Empire.
+        Empire 内に Room が存在しない場合は空リストを返す。
         """
         ...
 
     async def find_empire_id_by_room_id(self, room_id: RoomId) -> EmpireId | None:
-        """Return the ``empire_id`` for the Room row matching ``room_id``.
+        """``room_id`` に一致する Room 行の ``empire_id`` を返す。
 
-        Used by write operations (update / archive / assign_agent / unassign_agent)
-        where the service has ``room_id`` but not ``empire_id`` (because :class:`Room`
-        holds no ``empire_id`` attribute — §確定 R1-H).
+        write 操作（update / archive / assign_agent / unassign_agent）から使用する。
+        service は ``room_id`` を持つが ``empire_id`` は持たない
+        （:class:`Room` は ``empire_id`` 属性を保持しない — §確定 R1-H）ため。
 
-        Returns ``None`` when the row is absent.
+        行が存在しない場合は ``None`` を返す。
         """
         ...
 
