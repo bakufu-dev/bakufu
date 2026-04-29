@@ -21,12 +21,12 @@ async def room_ctx(tmp_path: Path) -> AsyncIterator[RoomTestCtx]:
     Workflow / Agent は HTTP API が本 PR のスコープ外のため、direct DB seeding
     (assumed mock 禁止原則準拠 — characterization fixture 確認済み) を使う。
     """
-    from bakufu.interfaces.http.app import create_app
+    from bakufu.interfaces.http.app import HttpApplicationFactory
     from httpx import ASGITransport, AsyncClient
 
     from tests.factories.db import create_all_tables, make_test_engine, make_test_session_factory
 
-    app = create_app()
+    app = HttpApplicationFactory.create()
     engine = make_test_engine(tmp_path / "room_test.db")
     await create_all_tables(engine)
     session_factory = make_test_session_factory(engine)

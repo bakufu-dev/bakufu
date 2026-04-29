@@ -19,12 +19,12 @@ async def wf_ctx(tmp_path: Path) -> AsyncIterator[WfTestCtx]:
 
     ``room_ctx`` と同一パターン。
     """
-    from bakufu.interfaces.http.app import create_app
+    from bakufu.interfaces.http.app import HttpApplicationFactory
     from httpx import ASGITransport, AsyncClient
 
     from tests.factories.db import create_all_tables, make_test_engine, make_test_session_factory
 
-    app = create_app()
+    app = HttpApplicationFactory.create()
     engine = make_test_engine(tmp_path / "workflow_test.db")
     await create_all_tables(engine)
     session_factory = make_test_session_factory(engine)

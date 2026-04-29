@@ -56,7 +56,7 @@
 | 外部 I/O | 用途 | raw fixture | schema | factory | characterization 状態 | テスト戦略 |
 |---|---|---|---|---|---|---|
 | SQLite tempfile DB | Gate 永続化 / 再取得 | 不要（内部 DB。結合は実接続） | 不要 | `tests/factories/db.py`, `tests/factories/external_review_gate.py` | 対象外 | 実 DB + TestClient。DB 直接 assert は seed / fixture 準備に限定し、検証は API ラウンドトリップで行う |
-| FastAPI app | ルーティング / error handler | 不要（プロセス内 ASGI） | 不要 | `create_app` fixture | 対象外 | httpx ASGITransport / TestClient で公開 API から呼ぶ |
+| FastAPI app | ルーティング / error handler | 不要（プロセス内 ASGI） | 不要 | `HttpApplicationFactory.create()` fixture | 対象外 | httpx ASGITransport / TestClient で公開 API から呼ぶ |
 | Clock | decided_at / viewed_at | 不要（外部サービスではない） | 不要 | monkeypatch 可能な service clock / fixed datetime factory | 対象外 | UTC aware datetime の存在、単調な順序、audit action との対応を検証 |
 | Auth subject provider | reviewer 認可境界 | 不要（外部サービスではない） | 不要 | subject factory | 対象外 | `Authorization: Bearer <token>` と test config の `BAKUFU_OWNER_ID` から検証済み subject を作る。query/body/header の自己申告 ID は使わない |
 | CSRF Origin middleware | 状態変更 POST の Origin 検証 | 不要（プロセス内 ASGI） | 不要 | 不要 | 対象外 | `Origin: http://evil.example.com` で approve / reject / cancel が 403 になることを確認 |

@@ -27,7 +27,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Response
 
 from bakufu.application.services.empire_service import EmpireService
-from bakufu.interfaces.http.dependencies import get_empire_service
+from bakufu.interfaces.http.dependencies import HttpDependencies
 from bakufu.interfaces.http.schemas.empire import (
     EmpireCreate,
     EmpireListResponse,
@@ -37,7 +37,7 @@ from bakufu.interfaces.http.schemas.empire import (
 
 router = APIRouter(prefix="/api/empires", tags=["empire"])
 
-EmpireServiceDep = Annotated[EmpireService, Depends(get_empire_service)]
+EmpireServiceDep = Annotated[EmpireService, Depends(HttpDependencies.get_empire_service)]
 
 
 @router.post("", status_code=201, response_model=EmpireResponse)

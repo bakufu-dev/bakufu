@@ -155,9 +155,9 @@ class TestLifespan:
 
         data_dir.reset()
 
-        from bakufu.interfaces.http.app import create_app
+        from bakufu.interfaces.http.app import HttpApplicationFactory
 
-        app = create_app()
+        app = HttpApplicationFactory.create()
         queue: asyncio.Queue[Any] = asyncio.Queue()
         sent: list[Any] = []
 
@@ -192,9 +192,9 @@ class TestLifespan:
 
         data_dir.reset()
 
-        from bakufu.interfaces.http.app import create_app
+        from bakufu.interfaces.http.app import HttpApplicationFactory
 
-        app = create_app()
+        app = HttpApplicationFactory.create()
         queue: asyncio.Queue[Any] = asyncio.Queue()
         sent: list[Any] = []
 
@@ -229,9 +229,9 @@ class TestLifespan:
 
         data_dir.reset()
 
-        from bakufu.interfaces.http.app import create_app
+        from bakufu.interfaces.http.app import HttpApplicationFactory
 
-        app = create_app()
+        app = HttpApplicationFactory.create()
         queue: asyncio.Queue[Any] = asyncio.Queue()
 
         async def receive() -> Any:
@@ -284,9 +284,9 @@ class TestLifespan:
             dispose_calls.append(1)
             await original_dispose(self, close=close)
 
-        from bakufu.interfaces.http.app import create_app
+        from bakufu.interfaces.http.app import HttpApplicationFactory
 
-        app = create_app()
+        app = HttpApplicationFactory.create()
         queue: asyncio.Queue[Any] = asyncio.Queue()
 
         async def receive() -> Any:

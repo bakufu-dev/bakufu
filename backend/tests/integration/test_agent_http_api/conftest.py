@@ -21,12 +21,12 @@ async def ag_ctx(tmp_path: Path) -> AsyncIterator[AgTestCtx]:
     Agent は HTTP API が本 PR のスコープのため直接 HTTP 経由で操作できる。
     TC-IT-AGH-013 の R1-8 バイパス経路テストには session_factory を公開する。
     """
-    from bakufu.interfaces.http.app import create_app
+    from bakufu.interfaces.http.app import HttpApplicationFactory
     from httpx import ASGITransport, AsyncClient
 
     from tests.factories.db import create_all_tables, make_test_engine, make_test_session_factory
 
-    app = create_app()
+    app = HttpApplicationFactory.create()
     engine = make_test_engine(tmp_path / "agent_test.db")
     await create_all_tables(engine)
     session_factory = make_test_session_factory(engine)

@@ -31,7 +31,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Response
 
 from bakufu.application.services.room_service import RoomService
-from bakufu.interfaces.http.dependencies import get_room_service
+from bakufu.interfaces.http.dependencies import HttpDependencies
 from bakufu.interfaces.http.schemas.room import (
     AgentAssignRequest,
     RoomCreate,
@@ -44,7 +44,7 @@ from bakufu.interfaces.http.schemas.room import (
 empire_rooms_router = APIRouter(prefix="/api/empires", tags=["room"])
 rooms_router = APIRouter(prefix="/api/rooms", tags=["room"])
 
-RoomServiceDep = Annotated[RoomService, Depends(get_room_service)]
+RoomServiceDep = Annotated[RoomService, Depends(HttpDependencies.get_room_service)]
 
 
 @empire_rooms_router.post(

@@ -19,7 +19,7 @@ async def external_review_gate_http_ctx(
     monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[ExternalReviewGateHttpCtx]:
     """実 SQLite と実 FastAPI app を配線する。"""
-    from bakufu.interfaces.http.app import create_app
+    from bakufu.interfaces.http.app import HttpApplicationFactory
 
     from tests.factories.db import create_all_tables, make_test_engine, make_test_session_factory
 
@@ -27,7 +27,7 @@ async def external_review_gate_http_ctx(
     monkeypatch.setenv("BAKUFU_OWNER_API_TOKEN", TOKEN)
     monkeypatch.setenv("BAKUFU_OWNER_ID", str(reviewer_id))
 
-    app = create_app()
+    app = HttpApplicationFactory.create()
     engine = make_test_engine(tmp_path / "test.db")
     await create_all_tables(engine)
     session_factory = make_test_session_factory(engine)
