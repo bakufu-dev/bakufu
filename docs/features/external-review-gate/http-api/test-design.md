@@ -137,19 +137,14 @@
 ## 人間が動作確認できるタイミング
 
 - CI 統合後: `gh pr checks` で全ジョブ緑であること。
-- ローカル: `uv run pytest backend/tests/integration/test_external_review_gate_http_api backend/tests/unit/test_external_review_gate_http_api`。
+- ローカル: `uv run pytest backend/tests/integration/test_external_review_gate_http_api.py backend/tests/unit/test_external_review_gate_http_api`。
 
 ## テストディレクトリ構造
 
 ```
 backend/tests/
 ├── integration/
-│   └── test_external_review_gate_http_api/
-│       ├── __init__.py
-│       ├── conftest.py
-│       ├── test_read.py
-│       ├── test_decisions.py
-│       └── test_security.py
+│   └── test_external_review_gate_http_api.py
 └── unit/
     └── test_external_review_gate_http_api/
         ├── __init__.py
@@ -157,6 +152,12 @@ backend/tests/
         ├── test_schemas.py
         └── test_service.py
 ```
+
+**実装対応**:
+- `backend/tests/integration/test_external_review_gate_http_api.py`: TC-IT-ERG-HTTP-001〜016 と TC-STATIC-ERG-HTTP-001〜002。公開 HTTP API / OpenAPI / AST 棚卸しだけで検証する。
+- `backend/tests/unit/test_external_review_gate_http_api/test_schemas.py`: TC-UT-ERG-HTTP-001 / 002 / 005 / 008。
+- `backend/tests/unit/test_external_review_gate_http_api/test_service.py`: TC-UT-ERG-HTTP-003 / 004 / 006 / 007。
+- `backend/tests/unit/test_external_review_gate_http_api/test_handlers.py`: TC-UT-ERG-HTTP-011 / 012。
 
 ## 未決課題
 

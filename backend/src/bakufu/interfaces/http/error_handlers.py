@@ -59,7 +59,16 @@ async def validation_error_handler(request: Request, exc: Exception) -> JSONResp
     detail = "; ".join(
         f"{'.'.join(str(loc) for loc in e['loc'])}: {e['msg']}" for e in validation_exc.errors()
     )
-    return _error_response(VALIDATION_ERROR, f"Request validation failed: {detail}", 422)
+    message = f"Request validation failed: {detail}"
+    if _is_external_review_gate_path(request.url.path):
+        message = f"{message}\nNext: Fix the request parameters and retry."
+    return _error_response(VALIDATION_ERROR, message, 422)
+
+
+def _is_external_review_gate_path(path: str) -> bool:
+    return path.startswith("/api/gates") or (
+        path.startswith("/api/tasks/") and path.endswith("/gates")
+    )
 
 
 async def internal_error_handler(request: Request, exc: Exception) -> JSONResponse:
