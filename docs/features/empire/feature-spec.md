@@ -194,9 +194,13 @@ E2E（受入基準 10, 11）は [`system-test-design.md`](system-test-design.md)
 
 ## 10. 開発者品質基準（CI 担保、業務要求ではない）
 
-各 sub-feature の `basic-design.md §モジュール契約` / `test-design.md §カバレッジ基準` で個別に管理する。本書では業務要求のみ凍結。
+業務受入基準（§9）ではなく、CI が強制する開発者向けの品質基準。各 sub-feature の `test-design.md §カバレッジ基準` で参照する正式定義を以下に凍結する。
 
-参考: domain は `domain/empire.py` カバレッジ 95% 以上、repository は実装ファイル群で 90% 以上を目標としているが、これは sub-feature 側の凍結事項。
+| 基準 ID | 名称 | 内容 |
+|---|---|---|
+| Q-1 | 型検査 / lint エラーゼロ | `pyright --strict` + `ruff check` が CI でエラーゼロであること |
+| Q-2 | カバレッジ | domain: `domain/empire.py` 95% 以上 / repository: 実装ファイル群 90% 以上（CI `pytest --cov` で担保） |
+| Q-3 | 内部実装契約の物理保証 | frozen / extra='forbid' / MSG 確定文言 / 依存方向（domain 層から上位層への import ゼロ）/ 脅威 T1・T2 拒否の動作 — いずれも CI の実行時テストで物理確認する |
 
 ## 11. 開放論点 (Open Questions)
 

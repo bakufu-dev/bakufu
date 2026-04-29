@@ -28,6 +28,54 @@ flowchart LR
 - **infrastructure** は domain と application を実装する（依存性逆転）
 - **interfaces** は application を呼び出す
 
+### interfaces レイヤー詳細（M3 http-api-foundation で確定）
+
+`backend/src/bakufu/interfaces/` は外部からの入力を application 層に橋渡しするレイヤー。FastAPI router / WebSocket handler / Admin CLI が含まれる。
+
+```
+backend/src/bakufu/interfaces/
+└── http/
+    ├── app.py              # FastAPI app 初期化・lifespan・CORS・error handler 登録
+    ├── dependencies.py     # get_session() / get_*_repository() / get_*_service() DI ファクトリ
+    ├── error_handlers.py   # 例外 → {"error": {"code": ..., "message": ...}} ErrorResponse 変換
+    ├── schemas/
+    │   └── common.py       # ErrorResponse / PaginatedResponse[T] 汎用 Pydantic モデル
+    └── routers/
+        ├── health.py       # GET /health（M3 http-api-foundation）
+        ├── empire.py       # Empire CRUD（M3 後続 Issue B）
+        ├── room.py         # Room CRUD（M3 後続 Issue C）
+        ├── workflow.py     # Workflow CRUD（M3 後続 Issue D）
+        ├── agent.py        # Agent CRUD（M3 後続 Issue E）
+        ├── task.py         # Task CRUD（M3 後続 Issue F）
+        └── external_review_gate.py  # ExternalReviewGate CRUD（M3 後続 Issue G）
+```
+
+interfaces レイヤーの規律:
+- **domain 層への直接 import 禁止**: interfaces は application/services/ 経由でのみ domain を操作する（依存方向の物理的保証）
+- **エラーハンドリングは境界のみ**: `error_handlers.py` が唯一の例外キャッチポイント。router 内で try/except を書かない
+- **エラーレスポンス形式の統一**: 全エンドポイントが `{"error": {"code": str, "message": str}}` 形式を使う（feature-spec.md §7 R1-1 で凍結）
+- **DI ファクトリ経由のセッション管理**: `get_session()` が lifespan で初期化した `async_sessionmaker` からセッションを yield し、リクエスト完了後に close する
+
+### application レイヤー詳細（M3 http-api-foundation で骨格確定）
+
+`backend/src/bakufu/application/services/` は interfaces 層からの呼び出しを domain 操作に変換する thin ファサード層。
+
+```
+backend/src/bakufu/application/
+└── services/
+    ├── empire_service.py               # EmpireService（M3 骨格、M3-B で肉付け）
+    ├── room_service.py                 # RoomService（M3 骨格、M3-C で肉付け）
+    ├── workflow_service.py             # WorkflowService（M3 骨格、M3-D で肉付け）
+    ├── agent_service.py                # AgentService（M3 骨格、M3-E で肉付け）
+    ├── task_service.py                 # TaskService（M3 骨格、M3-F で肉付け）
+    └── external_review_gate_service.py # ExternalReviewGateService（M3 骨格、M3-G で肉付け）
+```
+
+application レイヤーの規律:
+- **Port パターン**: 各 Service は Repository Port（インターフェース型）を `__init__` で受け取る。`AsyncSession` を直接参照しない
+- **audit_log 記録責務**: 各 Service が業務操作（Empire 作成・hire_agent 等）完了時に audit_log に記録する（`threat-model.md §A09` の申し送り事項）
+- **薄い変換のみ**: domain の業務ロジックを application 層で複製しない
+
 ## ドメインモデル概観
 
 bakufu の中核 Aggregate:
@@ -39,7 +87,8 @@ bakufu の中核 Aggregate:
 | Workflow | 業務フロー（Stage の DAG） | [`domain-model.md §Workflow`](domain-model.md) |
 | Agent | AI エージェント | [`domain-model.md §Agent`](domain-model.md) |
 | Task | 業務タスク + 状態遷移 | [`domain-model.md §Task`](domain-model.md) |
-| ExternalReviewGate | 外部レビュー（人間承認） | [`domain-model.md §ExternalReviewGate`](domain-model.md) |
+| InternalReviewGate | 内部レビュー（AI エージェント並列審査、ExternalReviewGate 前段の品質保証）| [`domain-model.md §InternalReviewGate`](domain-model.md) |
+| ExternalReviewGate | 外部レビュー（人間承認、InternalReviewGate 全合格後に生成）| [`domain-model.md §ExternalReviewGate`](domain-model.md) |
 
 詳細は [`domain-model.md`](domain-model.md) を参照。
 

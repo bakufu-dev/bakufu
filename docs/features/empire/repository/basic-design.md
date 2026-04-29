@@ -298,7 +298,7 @@ sequenceDiagram
 | A06 | Vulnerable Components | SQLAlchemy 2.x / Alembic / aiosqlite（pip-audit で監視） |
 | A07 | Auth Failures | 該当なし |
 | A08 | Data Integrity Failures | **適用**: foreign_keys ON + ON DELETE CASCADE で参照整合性、Tx 原子性で半端更新を防止 |
-| A09 | Logging Failures | M2 永続化基盤の構造化ログ + masking gateway の上に乗る、追加要件なし |
+| A09 | Logging Failures | **適用**: application 層（EmpireService）が Empire 作成・hire_agent・establish_room・archive_room の各操作完了時に audit_log に記録する責務を持つ。M2 永続化基盤の構造化ログ + masking gateway の上に乗る（Repository は audit_log 直接記録の責務を持たない）|
 | A10 | SSRF | 該当なし |
 
 ## ER 図
