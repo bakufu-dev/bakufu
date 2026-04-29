@@ -13,36 +13,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from bakufu.interfaces.http.error_handlers import (
     CsrfOriginMiddleware,
-    agent_archived_handler,
-    agent_invariant_violation_handler,
-    agent_name_already_exists_handler,
-    agent_not_found_handler,
-    directive_invariant_violation_handler,
-    empire_already_exists_handler,
-    empire_archived_handler,
-    empire_invariant_violation_handler,
-    empire_not_found_handler,
-    external_review_gate_authorization_handler,
-    external_review_gate_decision_conflict_handler,
-    external_review_gate_invariant_violation_handler,
-    external_review_gate_not_found_handler,
-    http_exception_handler,
-    internal_error_handler,
-    pydantic_validation_error_handler,
-    room_archived_handler,
-    room_invariant_violation_handler,
-    room_name_already_exists_handler,
-    room_not_found_handler,
-    task_authorization_error_handler,
-    task_invariant_violation_handler,
-    task_not_found_handler,
-    task_state_conflict_handler,
-    validation_error_handler,
-    workflow_archived_handler,
-    workflow_invariant_violation_handler,
-    workflow_irreversible_handler,
-    workflow_not_found_handler,
-    workflow_preset_not_found_handler,
+    HttpErrorHandlers,
 )
 from bakufu.interfaces.http.routers.agents import agents_router, empire_agents_router
 from bakufu.interfaces.http.routers.directives import room_directives_router
@@ -169,51 +140,64 @@ class HttpApplicationFactory:
             WorkflowInvariantViolation,
         )
 
-        app.add_exception_handler(EmpireNotFoundError, empire_not_found_handler)
-        app.add_exception_handler(EmpireAlreadyExistsError, empire_already_exists_handler)
-        app.add_exception_handler(EmpireArchivedError, empire_archived_handler)
-        app.add_exception_handler(EmpireInvariantViolation, empire_invariant_violation_handler)
-        app.add_exception_handler(RoomNotFoundError, room_not_found_handler)
-        app.add_exception_handler(RoomNameAlreadyExistsError, room_name_already_exists_handler)
-        app.add_exception_handler(RoomArchivedError, room_archived_handler)
-        app.add_exception_handler(WorkflowNotFoundError, workflow_not_found_handler)
-        app.add_exception_handler(WorkflowArchivedError, workflow_archived_handler)
-        app.add_exception_handler(WorkflowIrreversibleError, workflow_irreversible_handler)
-        app.add_exception_handler(WorkflowPresetNotFoundError, workflow_preset_not_found_handler)
-        app.add_exception_handler(WorkflowInvariantViolation, workflow_invariant_violation_handler)
-        app.add_exception_handler(AgentNotFoundError, agent_not_found_handler)
-        app.add_exception_handler(AgentNameAlreadyExistsError, agent_name_already_exists_handler)
-        app.add_exception_handler(AgentArchivedError, agent_archived_handler)
-        app.add_exception_handler(AgentInvariantViolation, agent_invariant_violation_handler)
-        app.add_exception_handler(RoomInvariantViolation, room_invariant_violation_handler)
+        handlers = HttpErrorHandlers
+        app.add_exception_handler(EmpireNotFoundError, handlers.empire_not_found_handler)
+        app.add_exception_handler(EmpireAlreadyExistsError, handlers.empire_already_exists_handler)
+        app.add_exception_handler(EmpireArchivedError, handlers.empire_archived_handler)
+        app.add_exception_handler(
+            EmpireInvariantViolation, handlers.empire_invariant_violation_handler
+        )
+        app.add_exception_handler(RoomNotFoundError, handlers.room_not_found_handler)
+        app.add_exception_handler(
+            RoomNameAlreadyExistsError, handlers.room_name_already_exists_handler
+        )
+        app.add_exception_handler(RoomArchivedError, handlers.room_archived_handler)
+        app.add_exception_handler(WorkflowNotFoundError, handlers.workflow_not_found_handler)
+        app.add_exception_handler(WorkflowArchivedError, handlers.workflow_archived_handler)
+        app.add_exception_handler(WorkflowIrreversibleError, handlers.workflow_irreversible_handler)
+        app.add_exception_handler(
+            WorkflowPresetNotFoundError, handlers.workflow_preset_not_found_handler
+        )
+        app.add_exception_handler(
+            WorkflowInvariantViolation, handlers.workflow_invariant_violation_handler
+        )
+        app.add_exception_handler(AgentNotFoundError, handlers.agent_not_found_handler)
+        app.add_exception_handler(
+            AgentNameAlreadyExistsError, handlers.agent_name_already_exists_handler
+        )
+        app.add_exception_handler(AgentArchivedError, handlers.agent_archived_handler)
+        app.add_exception_handler(
+            AgentInvariantViolation, handlers.agent_invariant_violation_handler
+        )
+        app.add_exception_handler(RoomInvariantViolation, handlers.room_invariant_violation_handler)
         app.add_exception_handler(
             DirectiveInvariantViolation,
-            directive_invariant_violation_handler,
+            handlers.directive_invariant_violation_handler,
         )
-        app.add_exception_handler(TaskNotFoundError, task_not_found_handler)
-        app.add_exception_handler(TaskStateConflictError, task_state_conflict_handler)
-        app.add_exception_handler(TaskAuthorizationError, task_authorization_error_handler)
-        app.add_exception_handler(TaskInvariantViolation, task_invariant_violation_handler)
+        app.add_exception_handler(TaskNotFoundError, handlers.task_not_found_handler)
+        app.add_exception_handler(TaskStateConflictError, handlers.task_state_conflict_handler)
+        app.add_exception_handler(TaskAuthorizationError, handlers.task_authorization_error_handler)
+        app.add_exception_handler(TaskInvariantViolation, handlers.task_invariant_violation_handler)
         app.add_exception_handler(
             ExternalReviewGateNotFoundError,
-            external_review_gate_not_found_handler,
+            handlers.external_review_gate_not_found_handler,
         )
         app.add_exception_handler(
             ExternalReviewGateAuthorizationError,
-            external_review_gate_authorization_handler,
+            handlers.external_review_gate_authorization_handler,
         )
         app.add_exception_handler(
             ExternalReviewGateDecisionConflictError,
-            external_review_gate_decision_conflict_handler,
+            handlers.external_review_gate_decision_conflict_handler,
         )
         app.add_exception_handler(
             ExternalReviewGateInvariantViolation,
-            external_review_gate_invariant_violation_handler,
+            handlers.external_review_gate_invariant_violation_handler,
         )
-        app.add_exception_handler(ValidationError, pydantic_validation_error_handler)
-        app.add_exception_handler(StarletteHTTPException, http_exception_handler)
-        app.add_exception_handler(RequestValidationError, validation_error_handler)
-        app.add_exception_handler(Exception, internal_error_handler)
+        app.add_exception_handler(ValidationError, handlers.pydantic_validation_error_handler)
+        app.add_exception_handler(StarletteHTTPException, handlers.http_exception_handler)
+        app.add_exception_handler(RequestValidationError, handlers.validation_error_handler)
+        app.add_exception_handler(Exception, handlers.internal_error_handler)
 
     @classmethod
     def _configure_routers(cls, app: FastAPI) -> None:

@@ -27,20 +27,20 @@ class TestWorkflowNotFoundHandler:
 
     async def test_returns_404(self) -> None:
         from bakufu.application.exceptions.workflow_exceptions import WorkflowNotFoundError
-        from bakufu.interfaces.http.error_handlers import workflow_not_found_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = WorkflowNotFoundError(workflow_id="test-id")
-        resp = await workflow_not_found_handler(self._make_request(), exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.workflow_not_found_handler(self._make_request(), exc)  # type: ignore[arg-type]
         assert resp.status_code == 404  # type: ignore[union-attr]
 
     async def test_error_code_is_not_found(self) -> None:
         import json
 
         from bakufu.application.exceptions.workflow_exceptions import WorkflowNotFoundError
-        from bakufu.interfaces.http.error_handlers import workflow_not_found_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = WorkflowNotFoundError(workflow_id="test-id")
-        resp = await workflow_not_found_handler(self._make_request(), exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.workflow_not_found_handler(self._make_request(), exc)  # type: ignore[arg-type]
         body = json.loads(resp.body)  # type: ignore[union-attr]
         assert body["error"]["code"] == "not_found"
 
@@ -49,10 +49,10 @@ class TestWorkflowNotFoundHandler:
         import json
 
         from bakufu.application.exceptions.workflow_exceptions import WorkflowNotFoundError
-        from bakufu.interfaces.http.error_handlers import workflow_not_found_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = WorkflowNotFoundError(workflow_id="test-id")
-        resp = await workflow_not_found_handler(self._make_request(), exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.workflow_not_found_handler(self._make_request(), exc)  # type: ignore[arg-type]
         body = json.loads(resp.body)  # type: ignore[union-attr]
         assert body["error"]["message"] == "Workflow not found."
 
@@ -66,20 +66,20 @@ class TestWorkflowArchivedHandler:
 
     async def test_returns_409(self) -> None:
         from bakufu.application.exceptions.workflow_exceptions import WorkflowArchivedError
-        from bakufu.interfaces.http.error_handlers import workflow_archived_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = WorkflowArchivedError(workflow_id="test-id", kind="update")
-        resp = await workflow_archived_handler(self._make_request(), exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.workflow_archived_handler(self._make_request(), exc)  # type: ignore[arg-type]
         assert resp.status_code == 409  # type: ignore[union-attr]
 
     async def test_error_code_is_conflict(self) -> None:
         import json
 
         from bakufu.application.exceptions.workflow_exceptions import WorkflowArchivedError
-        from bakufu.interfaces.http.error_handlers import workflow_archived_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = WorkflowArchivedError(workflow_id="test-id", kind="update")
-        resp = await workflow_archived_handler(self._make_request(), exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.workflow_archived_handler(self._make_request(), exc)  # type: ignore[arg-type]
         body = json.loads(resp.body)  # type: ignore[union-attr]
         assert body["error"]["code"] == "conflict"
 
@@ -88,10 +88,10 @@ class TestWorkflowArchivedHandler:
         import json
 
         from bakufu.application.exceptions.workflow_exceptions import WorkflowArchivedError
-        from bakufu.interfaces.http.error_handlers import workflow_archived_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = WorkflowArchivedError(workflow_id="test-id", kind="update")
-        resp = await workflow_archived_handler(self._make_request(), exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.workflow_archived_handler(self._make_request(), exc)  # type: ignore[arg-type]
         body = json.loads(resp.body)  # type: ignore[union-attr]
         assert body["error"]["message"] == "Workflow is archived and cannot be modified."
 
@@ -105,20 +105,20 @@ class TestWorkflowPresetNotFoundHandler:
 
     async def test_returns_404(self) -> None:
         from bakufu.application.exceptions.workflow_exceptions import WorkflowPresetNotFoundError
-        from bakufu.interfaces.http.error_handlers import workflow_preset_not_found_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = WorkflowPresetNotFoundError(preset_name="unknown")
-        resp = await workflow_preset_not_found_handler(self._make_request(), exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.workflow_preset_not_found_handler(self._make_request(), exc)  # type: ignore[arg-type]
         assert resp.status_code == 404  # type: ignore[union-attr]
 
     async def test_error_code_is_not_found(self) -> None:
         import json
 
         from bakufu.application.exceptions.workflow_exceptions import WorkflowPresetNotFoundError
-        from bakufu.interfaces.http.error_handlers import workflow_preset_not_found_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = WorkflowPresetNotFoundError(preset_name="unknown")
-        resp = await workflow_preset_not_found_handler(self._make_request(), exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.workflow_preset_not_found_handler(self._make_request(), exc)  # type: ignore[arg-type]
         body = json.loads(resp.body)  # type: ignore[union-attr]
         assert body["error"]["code"] == "not_found"
 
@@ -127,10 +127,10 @@ class TestWorkflowPresetNotFoundHandler:
         import json
 
         from bakufu.application.exceptions.workflow_exceptions import WorkflowPresetNotFoundError
-        from bakufu.interfaces.http.error_handlers import workflow_preset_not_found_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = WorkflowPresetNotFoundError(preset_name="unknown")
-        resp = await workflow_preset_not_found_handler(self._make_request(), exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.workflow_preset_not_found_handler(self._make_request(), exc)  # type: ignore[arg-type]
         body = json.loads(resp.body)  # type: ignore[union-attr]
         assert body["error"]["message"] == "Workflow preset not found."
 
@@ -145,7 +145,7 @@ class TestWorkflowInvariantViolationHandler:
     async def test_returns_422_with_next_suffix(self) -> None:
         """(a) [FAIL] + Next: 付きメッセージ → HTTP 422。"""
         from bakufu.domain.exceptions import WorkflowInvariantViolation
-        from bakufu.interfaces.http.error_handlers import workflow_invariant_violation_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = WorkflowInvariantViolation(
             kind="entry_not_in_stages",  # type: ignore[arg-type]
@@ -154,7 +154,9 @@ class TestWorkflowInvariantViolationHandler:
                 "\nNext: 有効な stage_id を指定してください。"
             ),
         )
-        resp = await workflow_invariant_violation_handler(self._make_request(), exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.workflow_invariant_violation_handler(
+            self._make_request(), exc
+        )  # type: ignore[arg-type]
         assert resp.status_code == 422  # type: ignore[union-attr]
 
     async def test_fail_prefix_removed(self) -> None:
@@ -162,7 +164,7 @@ class TestWorkflowInvariantViolationHandler:
         import json
 
         from bakufu.domain.exceptions import WorkflowInvariantViolation
-        from bakufu.interfaces.http.error_handlers import workflow_invariant_violation_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = WorkflowInvariantViolation(
             kind="entry_not_in_stages",  # type: ignore[arg-type]
@@ -171,7 +173,9 @@ class TestWorkflowInvariantViolationHandler:
                 "\nNext: 有効な stage_id を指定してください。"
             ),
         )
-        resp = await workflow_invariant_violation_handler(self._make_request(), exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.workflow_invariant_violation_handler(
+            self._make_request(), exc
+        )  # type: ignore[arg-type]
         body = json.loads(resp.body)  # type: ignore[union-attr]
         assert "[FAIL]" not in body["error"]["message"]
 
@@ -180,7 +184,7 @@ class TestWorkflowInvariantViolationHandler:
         import json
 
         from bakufu.domain.exceptions import WorkflowInvariantViolation
-        from bakufu.interfaces.http.error_handlers import workflow_invariant_violation_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = WorkflowInvariantViolation(
             kind="entry_not_in_stages",  # type: ignore[arg-type]
@@ -189,7 +193,9 @@ class TestWorkflowInvariantViolationHandler:
                 "\nNext: 有効な stage_id を指定してください。"
             ),
         )
-        resp = await workflow_invariant_violation_handler(self._make_request(), exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.workflow_invariant_violation_handler(
+            self._make_request(), exc
+        )  # type: ignore[arg-type]
         body = json.loads(resp.body)  # type: ignore[union-attr]
         assert "Next:" not in body["error"]["message"]
 
@@ -197,26 +203,30 @@ class TestWorkflowInvariantViolationHandler:
         import json
 
         from bakufu.domain.exceptions import WorkflowInvariantViolation
-        from bakufu.interfaces.http.error_handlers import workflow_invariant_violation_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = WorkflowInvariantViolation(
             kind="capacity_exceeded",  # type: ignore[arg-type]
             message="[FAIL] Stage 数が上限を超えています。",
         )
-        resp = await workflow_invariant_violation_handler(self._make_request(), exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.workflow_invariant_violation_handler(
+            self._make_request(), exc
+        )  # type: ignore[arg-type]
         body = json.loads(resp.body)  # type: ignore[union-attr]
         assert body["error"]["code"] == "validation_error"
 
     async def test_no_next_returns_422(self) -> None:
         """(b) Next: なしのメッセージ → HTTP 422。"""
         from bakufu.domain.exceptions import WorkflowInvariantViolation
-        from bakufu.interfaces.http.error_handlers import workflow_invariant_violation_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = WorkflowInvariantViolation(
             kind="capacity_exceeded",  # type: ignore[arg-type]
             message="[FAIL] Stage 数が上限を超えています。",
         )
-        resp = await workflow_invariant_violation_handler(self._make_request(), exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.workflow_invariant_violation_handler(
+            self._make_request(), exc
+        )  # type: ignore[arg-type]
         assert resp.status_code == 422  # type: ignore[union-attr]
 
     async def test_no_next_message_clean(self) -> None:
@@ -224,13 +234,15 @@ class TestWorkflowInvariantViolationHandler:
         import json
 
         from bakufu.domain.exceptions import WorkflowInvariantViolation
-        from bakufu.interfaces.http.error_handlers import workflow_invariant_violation_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = WorkflowInvariantViolation(
             kind="capacity_exceeded",  # type: ignore[arg-type]
             message="[FAIL] Stage 数が上限を超えています。",
         )
-        resp = await workflow_invariant_violation_handler(self._make_request(), exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.workflow_invariant_violation_handler(
+            self._make_request(), exc
+        )  # type: ignore[arg-type]
         body = json.loads(resp.body)  # type: ignore[union-attr]
         assert "Next:" not in body["error"]["message"]
 
@@ -244,20 +256,20 @@ class TestWorkflowIrreversibleHandler:
 
     async def test_returns_409(self) -> None:
         from bakufu.application.exceptions.workflow_exceptions import WorkflowIrreversibleError
-        from bakufu.interfaces.http.error_handlers import workflow_irreversible_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = WorkflowIrreversibleError(workflow_id="test-id")
-        resp = await workflow_irreversible_handler(self._make_request(), exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.workflow_irreversible_handler(self._make_request(), exc)  # type: ignore[arg-type]
         assert resp.status_code == 409  # type: ignore[union-attr]
 
     async def test_error_code_is_conflict(self) -> None:
         import json
 
         from bakufu.application.exceptions.workflow_exceptions import WorkflowIrreversibleError
-        from bakufu.interfaces.http.error_handlers import workflow_irreversible_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = WorkflowIrreversibleError(workflow_id="test-id")
-        resp = await workflow_irreversible_handler(self._make_request(), exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.workflow_irreversible_handler(self._make_request(), exc)  # type: ignore[arg-type]
         body = json.loads(resp.body)  # type: ignore[union-attr]
         assert body["error"]["code"] == "conflict"
 
@@ -266,10 +278,10 @@ class TestWorkflowIrreversibleHandler:
         import json
 
         from bakufu.application.exceptions.workflow_exceptions import WorkflowIrreversibleError
-        from bakufu.interfaces.http.error_handlers import workflow_irreversible_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = WorkflowIrreversibleError(workflow_id="test-id")
-        resp = await workflow_irreversible_handler(self._make_request(), exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.workflow_irreversible_handler(self._make_request(), exc)  # type: ignore[arg-type]
         body = json.loads(resp.body)  # type: ignore[union-attr]
         assert body["error"]["message"] == (
             "Workflow contains masked notify_channels and cannot be modified."

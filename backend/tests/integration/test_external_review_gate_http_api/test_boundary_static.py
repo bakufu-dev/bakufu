@@ -8,22 +8,28 @@ from pathlib import Path
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
 
 
-def _top_level_functions(path: Path) -> list[str]:
+def _public_top_level_functions(path: Path) -> list[str]:
     tree = ast.parse(path.read_text(encoding="utf-8"))
     return [
-        node.name for node in tree.body if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        node.name
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        and not node.name.startswith("_")
     ]
 
 
-def test_http_app_and_di_do_not_expose_top_level_functions() -> None:
-    """TC-STATIC-ERG-HTTP-003: HTTP app / DI の入口は classmethod に閉じる。"""
+def test_http_boundary_does_not_expose_public_top_level_functions() -> None:
+    """TC-STATIC-ERG-HTTP-003: HTTP 境界の公開入口は class/classmethod に閉じる。"""
     files = [
         BACKEND_ROOT / "src/bakufu/interfaces/http/app.py",
         BACKEND_ROOT / "src/bakufu/interfaces/http/dependencies.py",
+        BACKEND_ROOT / "src/bakufu/interfaces/http/error_handlers.py",
     ]
 
     violations = {
-        str(path): _top_level_functions(path) for path in files if _top_level_functions(path)
+        str(path): _public_top_level_functions(path)
+        for path in files
+        if _public_top_level_functions(path)
     }
 
     assert violations == {}

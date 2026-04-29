@@ -26,7 +26,7 @@ def _error_response(code: str, message: str, status_code: int) -> JSONResponse:
     return JSONResponse(content=body.model_dump(), status_code=status_code)
 
 
-async def http_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _http_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """StarletteHTTPException を ErrorResponse に変換する。
 
     404 は "not_found"、その他は status_code に応じた code を返す。
@@ -52,7 +52,7 @@ async def http_exception_handler(request: Request, exc: Exception) -> JSONRespon
     return _error_response(code, str(exc.detail) if exc.detail else "HTTP error.", status)
 
 
-async def validation_error_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _validation_error_handler(request: Request, exc: Exception) -> JSONResponse:
     if not isinstance(exc, RequestValidationError):
         raise TypeError(f"Expected RequestValidationError, got {type(exc).__name__}")
     validation_exc = exc
@@ -71,7 +71,7 @@ def _is_external_review_gate_path(path: str) -> bool:
     )
 
 
-async def internal_error_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _internal_error_handler(request: Request, exc: Exception) -> JSONResponse:
     return _error_response(INTERNAL_ERROR, "An internal server error occurred.", 500)
 
 
@@ -80,7 +80,7 @@ async def internal_error_handler(request: Request, exc: Exception) -> JSONRespon
 # (より具体的な例外を先に登録する FastAPI 慣習に従う)
 
 
-async def empire_not_found_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _empire_not_found_handler(request: Request, exc: Exception) -> JSONResponse:
     """``EmpireNotFoundError`` → HTTP 404 / not_found (MSG-EM-HTTP-002)。"""
     from bakufu.application.exceptions.empire_exceptions import EmpireNotFoundError
 
@@ -89,7 +89,7 @@ async def empire_not_found_handler(request: Request, exc: Exception) -> JSONResp
     return _error_response(NOT_FOUND, "Empire not found.", 404)
 
 
-async def empire_already_exists_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _empire_already_exists_handler(request: Request, exc: Exception) -> JSONResponse:
     """``EmpireAlreadyExistsError`` → HTTP 409 / conflict (MSG-EM-HTTP-001)。"""
     from bakufu.application.exceptions.empire_exceptions import EmpireAlreadyExistsError
 
@@ -98,7 +98,7 @@ async def empire_already_exists_handler(request: Request, exc: Exception) -> JSO
     return _error_response(CONFLICT, "Empire already exists.", 409)
 
 
-async def empire_archived_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _empire_archived_handler(request: Request, exc: Exception) -> JSONResponse:
     """``EmpireArchivedError`` → HTTP 409 / conflict (MSG-EM-HTTP-003)。"""
     from bakufu.application.exceptions.empire_exceptions import EmpireArchivedError
 
@@ -111,7 +111,7 @@ async def empire_archived_handler(request: Request, exc: Exception) -> JSONRespo
 _FAIL_PREFIX_RE: Final = re.compile(r"^\[FAIL\]\s*")
 
 
-async def empire_invariant_violation_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _empire_invariant_violation_handler(request: Request, exc: Exception) -> JSONResponse:
     """``EmpireInvariantViolation`` → HTTP 422 / validation_error (MSG-EM-HTTP-004)。
 
     前処理ルール (確定 C):
@@ -131,7 +131,7 @@ async def empire_invariant_violation_handler(request: Request, exc: Exception) -
 # 登録順: empire ハンドラ群の直後 (より具体的な例外を先に登録する FastAPI 慣習)
 
 
-async def room_not_found_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _room_not_found_handler(request: Request, exc: Exception) -> JSONResponse:
     """``RoomNotFoundError`` → HTTP 404 / not_found (MSG-RM-HTTP-002)。"""
     from bakufu.application.exceptions.room_exceptions import RoomNotFoundError
 
@@ -140,7 +140,7 @@ async def room_not_found_handler(request: Request, exc: Exception) -> JSONRespon
     return _error_response(NOT_FOUND, "Room not found.", 404)
 
 
-async def room_name_already_exists_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _room_name_already_exists_handler(request: Request, exc: Exception) -> JSONResponse:
     """``RoomNameAlreadyExistsError`` → HTTP 409 / conflict (MSG-RM-HTTP-001)。"""
     from bakufu.application.exceptions.room_exceptions import RoomNameAlreadyExistsError
 
@@ -149,7 +149,7 @@ async def room_name_already_exists_handler(request: Request, exc: Exception) -> 
     return _error_response(CONFLICT, "Room name already exists in this empire.", 409)
 
 
-async def room_archived_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _room_archived_handler(request: Request, exc: Exception) -> JSONResponse:
     """``RoomArchivedError`` → HTTP 409 / conflict (MSG-RM-HTTP-003)。"""
     from bakufu.application.exceptions.room_exceptions import RoomArchivedError
 
@@ -158,7 +158,7 @@ async def room_archived_handler(request: Request, exc: Exception) -> JSONRespons
     return _error_response(CONFLICT, "Room is archived and cannot be modified.", 409)
 
 
-async def workflow_not_found_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _workflow_not_found_handler(request: Request, exc: Exception) -> JSONResponse:
     """``WorkflowNotFoundError`` → HTTP 404 / not_found (MSG-WF-HTTP-001)。"""
     from bakufu.application.exceptions.workflow_exceptions import WorkflowNotFoundError
 
@@ -167,7 +167,7 @@ async def workflow_not_found_handler(request: Request, exc: Exception) -> JSONRe
     return _error_response(NOT_FOUND, "Workflow not found.", 404)
 
 
-async def workflow_archived_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _workflow_archived_handler(request: Request, exc: Exception) -> JSONResponse:
     """``WorkflowArchivedError`` → HTTP 409 / conflict (MSG-WF-HTTP-002)。"""
     from bakufu.application.exceptions.workflow_exceptions import WorkflowArchivedError
 
@@ -176,7 +176,7 @@ async def workflow_archived_handler(request: Request, exc: Exception) -> JSONRes
     return _error_response(CONFLICT, "Workflow is archived and cannot be modified.", 409)
 
 
-async def workflow_preset_not_found_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _workflow_preset_not_found_handler(request: Request, exc: Exception) -> JSONResponse:
     """``WorkflowPresetNotFoundError`` → HTTP 404 / not_found (MSG-WF-HTTP-004)。"""
     from bakufu.application.exceptions.workflow_exceptions import WorkflowPresetNotFoundError
 
@@ -185,7 +185,7 @@ async def workflow_preset_not_found_handler(request: Request, exc: Exception) ->
     return _error_response(NOT_FOUND, "Workflow preset not found.", 404)
 
 
-async def workflow_irreversible_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _workflow_irreversible_handler(request: Request, exc: Exception) -> JSONResponse:
     """``WorkflowIrreversibleError`` → HTTP 409 / conflict (MSG-WF-HTTP-008)。"""
     from bakufu.application.exceptions.workflow_exceptions import WorkflowIrreversibleError
 
@@ -199,7 +199,7 @@ async def workflow_irreversible_handler(request: Request, exc: Exception) -> JSO
     )
 
 
-async def workflow_invariant_violation_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _workflow_invariant_violation_handler(request: Request, exc: Exception) -> JSONResponse:
     """``WorkflowInvariantViolation`` → HTTP 422 / validation_error (MSG-WF-HTTP-005)。
 
     前処理ルール (確定 C):
@@ -215,7 +215,7 @@ async def workflow_invariant_violation_handler(request: Request, exc: Exception)
     return _error_response(VALIDATION_ERROR, cleaned, 422)
 
 
-async def agent_not_found_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _agent_not_found_handler(request: Request, exc: Exception) -> JSONResponse:
     """``AgentNotFoundError`` → HTTP 404 / not_found (MSG-AG-HTTP-001)。"""
     from bakufu.application.exceptions.agent_exceptions import AgentNotFoundError
 
@@ -224,7 +224,7 @@ async def agent_not_found_handler(request: Request, exc: Exception) -> JSONRespo
     return _error_response(NOT_FOUND, "Agent not found.", 404)
 
 
-async def agent_name_already_exists_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _agent_name_already_exists_handler(request: Request, exc: Exception) -> JSONResponse:
     """``AgentNameAlreadyExistsError`` → HTTP 409 / conflict (MSG-AG-HTTP-002)。"""
     from bakufu.application.exceptions.agent_exceptions import AgentNameAlreadyExistsError
 
@@ -233,7 +233,7 @@ async def agent_name_already_exists_handler(request: Request, exc: Exception) ->
     return _error_response(CONFLICT, "Agent with this name already exists in the Empire.", 409)
 
 
-async def agent_archived_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _agent_archived_handler(request: Request, exc: Exception) -> JSONResponse:
     """``AgentArchivedError`` → HTTP 409 / conflict (MSG-AG-HTTP-003)。"""
     from bakufu.application.exceptions.agent_exceptions import AgentArchivedError
 
@@ -242,7 +242,7 @@ async def agent_archived_handler(request: Request, exc: Exception) -> JSONRespon
     return _error_response(CONFLICT, "Agent is archived and cannot be modified.", 409)
 
 
-async def agent_invariant_violation_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _agent_invariant_violation_handler(request: Request, exc: Exception) -> JSONResponse:
     """``AgentInvariantViolation`` → HTTP 422 / validation_error (MSG-AG-HTTP-004)。
 
     前処理ルール（empire / room / workflow と同一パターン）:
@@ -258,7 +258,7 @@ async def agent_invariant_violation_handler(request: Request, exc: Exception) ->
     return _error_response(VALIDATION_ERROR, cleaned, 422)
 
 
-async def directive_invariant_violation_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _directive_invariant_violation_handler(request: Request, exc: Exception) -> JSONResponse:
     """``DirectiveInvariantViolation`` → HTTP 422 / validation_error."""
     from bakufu.domain.exceptions import DirectiveInvariantViolation
 
@@ -269,7 +269,7 @@ async def directive_invariant_violation_handler(request: Request, exc: Exception
     return _error_response(VALIDATION_ERROR, cleaned, 422)
 
 
-async def task_not_found_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _task_not_found_handler(request: Request, exc: Exception) -> JSONResponse:
     """``TaskNotFoundError`` → HTTP 404 / not_found."""
     from bakufu.application.exceptions.task_exceptions import TaskNotFoundError
 
@@ -278,7 +278,7 @@ async def task_not_found_handler(request: Request, exc: Exception) -> JSONRespon
     return _error_response(NOT_FOUND, "Task not found.", 404)
 
 
-async def task_state_conflict_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _task_state_conflict_handler(request: Request, exc: Exception) -> JSONResponse:
     """``TaskStateConflictError`` → HTTP 409 / conflict."""
     from bakufu.application.exceptions.task_exceptions import TaskStateConflictError
 
@@ -289,7 +289,7 @@ async def task_state_conflict_handler(request: Request, exc: Exception) -> JSONR
     return _error_response(CONFLICT, cleaned, 409)
 
 
-async def task_authorization_error_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _task_authorization_error_handler(request: Request, exc: Exception) -> JSONResponse:
     """``TaskAuthorizationError`` → HTTP 403 / forbidden."""
     from bakufu.application.exceptions.task_exceptions import TaskAuthorizationError
 
@@ -298,7 +298,7 @@ async def task_authorization_error_handler(request: Request, exc: Exception) -> 
     return _error_response(FORBIDDEN, exc.reason, 403)
 
 
-async def task_invariant_violation_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _task_invariant_violation_handler(request: Request, exc: Exception) -> JSONResponse:
     """``TaskInvariantViolation`` → HTTP 422 / validation_error."""
     from bakufu.domain.exceptions import TaskInvariantViolation
 
@@ -309,7 +309,7 @@ async def task_invariant_violation_handler(request: Request, exc: Exception) -> 
     return _error_response(VALIDATION_ERROR, cleaned, 422)
 
 
-async def external_review_gate_not_found_handler(
+async def _external_review_gate_not_found_handler(
     request: Request,
     exc: Exception,
 ) -> JSONResponse:
@@ -327,7 +327,7 @@ async def external_review_gate_not_found_handler(
     )
 
 
-async def external_review_gate_authorization_handler(
+async def _external_review_gate_authorization_handler(
     request: Request,
     exc: Exception,
 ) -> JSONResponse:
@@ -346,7 +346,7 @@ async def external_review_gate_authorization_handler(
     )
 
 
-async def external_review_gate_decision_conflict_handler(
+async def _external_review_gate_decision_conflict_handler(
     request: Request,
     exc: Exception,
 ) -> JSONResponse:
@@ -367,7 +367,7 @@ async def external_review_gate_decision_conflict_handler(
     )
 
 
-async def external_review_gate_invariant_violation_handler(
+async def _external_review_gate_invariant_violation_handler(
     request: Request,
     exc: Exception,
 ) -> JSONResponse:
@@ -381,7 +381,7 @@ async def external_review_gate_invariant_violation_handler(
     return _error_response(VALIDATION_ERROR, cleaned, 422)
 
 
-async def pydantic_validation_error_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _pydantic_validation_error_handler(request: Request, exc: Exception) -> JSONResponse:
     """application/domain 構築時の Pydantic ValidationError → HTTP 422。"""
     from pydantic import ValidationError
 
@@ -393,7 +393,7 @@ async def pydantic_validation_error_handler(request: Request, exc: Exception) ->
     return _error_response(VALIDATION_ERROR, f"Validation failed: {detail}", 422)
 
 
-async def room_invariant_violation_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _room_invariant_violation_handler(request: Request, exc: Exception) -> JSONResponse:
     """``RoomInvariantViolation`` → HTTP 404 or 422 (MSG-RM-HTTP-005 / MSG-RM-HTTP-007)。
 
     処理ルール (確定 C 凍結):
@@ -415,6 +415,47 @@ async def room_invariant_violation_handler(request: Request, exc: Exception) -> 
     raw = str(exc)
     cleaned = _FAIL_PREFIX_RE.sub("", raw).split("\nNext:")[0].strip()
     return _error_response(VALIDATION_ERROR, cleaned, 422)
+
+
+class HttpErrorHandlers:
+    """HTTP exception handlers exposed through a class boundary."""
+
+    http_exception_handler = staticmethod(_http_exception_handler)
+    validation_error_handler = staticmethod(_validation_error_handler)
+    internal_error_handler = staticmethod(_internal_error_handler)
+    empire_not_found_handler = staticmethod(_empire_not_found_handler)
+    empire_already_exists_handler = staticmethod(_empire_already_exists_handler)
+    empire_archived_handler = staticmethod(_empire_archived_handler)
+    empire_invariant_violation_handler = staticmethod(_empire_invariant_violation_handler)
+    room_not_found_handler = staticmethod(_room_not_found_handler)
+    room_name_already_exists_handler = staticmethod(_room_name_already_exists_handler)
+    room_archived_handler = staticmethod(_room_archived_handler)
+    workflow_not_found_handler = staticmethod(_workflow_not_found_handler)
+    workflow_archived_handler = staticmethod(_workflow_archived_handler)
+    workflow_preset_not_found_handler = staticmethod(_workflow_preset_not_found_handler)
+    workflow_irreversible_handler = staticmethod(_workflow_irreversible_handler)
+    workflow_invariant_violation_handler = staticmethod(_workflow_invariant_violation_handler)
+    agent_not_found_handler = staticmethod(_agent_not_found_handler)
+    agent_name_already_exists_handler = staticmethod(_agent_name_already_exists_handler)
+    agent_archived_handler = staticmethod(_agent_archived_handler)
+    agent_invariant_violation_handler = staticmethod(_agent_invariant_violation_handler)
+    directive_invariant_violation_handler = staticmethod(_directive_invariant_violation_handler)
+    task_not_found_handler = staticmethod(_task_not_found_handler)
+    task_state_conflict_handler = staticmethod(_task_state_conflict_handler)
+    task_authorization_error_handler = staticmethod(_task_authorization_error_handler)
+    task_invariant_violation_handler = staticmethod(_task_invariant_violation_handler)
+    external_review_gate_not_found_handler = staticmethod(_external_review_gate_not_found_handler)
+    external_review_gate_authorization_handler = staticmethod(
+        _external_review_gate_authorization_handler
+    )
+    external_review_gate_decision_conflict_handler = staticmethod(
+        _external_review_gate_decision_conflict_handler
+    )
+    external_review_gate_invariant_violation_handler = staticmethod(
+        _external_review_gate_invariant_violation_handler
+    )
+    pydantic_validation_error_handler = staticmethod(_pydantic_validation_error_handler)
+    room_invariant_violation_handler = staticmethod(_room_invariant_violation_handler)
 
 
 # ── 確定 D: CSRF Origin 検証ミドルウェア ─────────────────────────────────

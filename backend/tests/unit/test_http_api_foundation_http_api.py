@@ -188,9 +188,11 @@ class TestHttpExceptionHandlerUnit:
 
     async def test_404_code_is_not_found(self) -> None:
         """HTTPException(404) → code "not_found"."""
-        from bakufu.interfaces.http.error_handlers import http_exception_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
-        resp = await http_exception_handler(self._make_request(), self._make_http_exc(404))  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.http_exception_handler(
+            self._make_request(), self._make_http_exc(404)
+        )  # type: ignore[arg-type]
         assert resp.status_code == 404  # type: ignore[union-attr]
         import json
 
@@ -199,9 +201,11 @@ class TestHttpExceptionHandlerUnit:
 
     async def test_404_message_is_msg_haf_001(self) -> None:
         """HTTPException(404) → message is exactly MSG-HAF-001 "Resource not found."."""
-        from bakufu.interfaces.http.error_handlers import http_exception_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
-        resp = await http_exception_handler(self._make_request(), self._make_http_exc(404))  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.http_exception_handler(
+            self._make_request(), self._make_http_exc(404)
+        )  # type: ignore[arg-type]
         import json
 
         body = json.loads(resp.body)  # type: ignore[union-attr]
@@ -209,11 +213,11 @@ class TestHttpExceptionHandlerUnit:
 
     async def test_403_code_is_forbidden(self) -> None:
         """HTTPException(403) → code "forbidden"."""
-        from bakufu.interfaces.http.error_handlers import http_exception_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         req = self._make_request()
         exc = self._make_http_exc(403, "Forbidden")
-        resp = await http_exception_handler(req, exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.http_exception_handler(req, exc)  # type: ignore[arg-type]
         import json
 
         body = json.loads(resp.body)  # type: ignore[union-attr]
@@ -221,9 +225,11 @@ class TestHttpExceptionHandlerUnit:
 
     async def test_405_code_is_method_not_allowed(self) -> None:
         """HTTPException(405) → code "method_not_allowed"."""
-        from bakufu.interfaces.http.error_handlers import http_exception_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
-        resp = await http_exception_handler(self._make_request(), self._make_http_exc(405))  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.http_exception_handler(
+            self._make_request(), self._make_http_exc(405)
+        )  # type: ignore[arg-type]
         import json
 
         body = json.loads(resp.body)  # type: ignore[union-attr]
@@ -231,11 +237,11 @@ class TestHttpExceptionHandlerUnit:
 
     async def test_401_code_is_http_error_401(self) -> None:
         """HTTPException(401) → code "http_error_401" (catch-all branch)."""
-        from bakufu.interfaces.http.error_handlers import http_exception_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         req = self._make_request()
         exc = self._make_http_exc(401, "Unauthorized")
-        resp = await http_exception_handler(req, exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.http_exception_handler(req, exc)  # type: ignore[arg-type]
         import json
 
         body = json.loads(resp.body)  # type: ignore[union-attr]
@@ -244,10 +250,10 @@ class TestHttpExceptionHandlerUnit:
     async def test_wrong_exception_type_raises_type_error(self) -> None:
         """Non-HTTPException → TypeError (Fail Fast 確認)."""
         import pytest as _pytest
-        from bakufu.interfaces.http.error_handlers import http_exception_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         with _pytest.raises(TypeError, match="Expected StarletteHTTPException"):
-            await http_exception_handler(self._make_request(), ValueError("oops"))  # type: ignore[arg-type]
+            await HttpErrorHandlers.http_exception_handler(self._make_request(), ValueError("oops"))  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------

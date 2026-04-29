@@ -22,9 +22,11 @@ class TestTaskHandlers:
     async def test_not_found_handler_returns_msg(self) -> None:
         """TC-UT-TSH-001〜003: TaskNotFoundError."""
         from bakufu.application.exceptions.task_exceptions import TaskNotFoundError
-        from bakufu.interfaces.http.error_handlers import task_not_found_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
-        response = await task_not_found_handler(MagicMock(), TaskNotFoundError("task-id"))
+        response = await HttpErrorHandlers.task_not_found_handler(
+            MagicMock(), TaskNotFoundError("task-id")
+        )
 
         assert response.status_code == 404
         assert _body(response)["error"] == {
@@ -35,7 +37,7 @@ class TestTaskHandlers:
     async def test_state_conflict_handler_cleans_message(self) -> None:
         """TC-UT-TSH-004〜005: TaskStateConflictError 前処理."""
         from bakufu.application.exceptions.task_exceptions import TaskStateConflictError
-        from bakufu.interfaces.http.error_handlers import task_state_conflict_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = TaskStateConflictError(
             task_id="task-id",
@@ -44,7 +46,7 @@ class TestTaskHandlers:
             message="[FAIL] Cannot assign to terminal task.\nNext: stop.",
         )
 
-        response = await task_state_conflict_handler(MagicMock(), exc)
+        response = await HttpErrorHandlers.task_state_conflict_handler(MagicMock(), exc)
 
         assert response.status_code == 409
         assert _body(response)["error"] == {
@@ -55,9 +57,9 @@ class TestTaskHandlers:
     async def test_authorization_handler_returns_403(self) -> None:
         """MSG-TS-HTTP-004: TaskAuthorizationError."""
         from bakufu.application.exceptions.task_exceptions import TaskAuthorizationError
-        from bakufu.interfaces.http.error_handlers import task_authorization_error_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
-        response = await task_authorization_error_handler(
+        response = await HttpErrorHandlers.task_authorization_error_handler(
             MagicMock(),
             TaskAuthorizationError("task-id", "assign", "Agent is not a member."),
         )

@@ -208,7 +208,7 @@ class TestEmpireInvariantViolationHandler:
 
     async def test_handler_returns_422(self) -> None:
         from bakufu.domain.exceptions import EmpireInvariantViolation
-        from bakufu.interfaces.http.error_handlers import empire_invariant_violation_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = EmpireInvariantViolation(
             kind="name_range",
@@ -218,14 +218,14 @@ class TestEmpireInvariantViolationHandler:
             ),
         )
         req = self._make_request()
-        resp = await empire_invariant_violation_handler(req, exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.empire_invariant_violation_handler(req, exc)  # type: ignore[arg-type]
         assert resp.status_code == 422  # type: ignore[union-attr]
 
     async def test_handler_error_code_is_validation_error(self) -> None:
         import json
 
         from bakufu.domain.exceptions import EmpireInvariantViolation
-        from bakufu.interfaces.http.error_handlers import empire_invariant_violation_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = EmpireInvariantViolation(
             kind="name_range",
@@ -235,7 +235,7 @@ class TestEmpireInvariantViolationHandler:
             ),
         )
         req = self._make_request()
-        resp = await empire_invariant_violation_handler(req, exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.empire_invariant_violation_handler(req, exc)  # type: ignore[arg-type]
         body = json.loads(resp.body)  # type: ignore[union-attr]
         assert body["error"]["code"] == "validation_error"
 
@@ -244,7 +244,7 @@ class TestEmpireInvariantViolationHandler:
         import json
 
         from bakufu.domain.exceptions import EmpireInvariantViolation
-        from bakufu.interfaces.http.error_handlers import empire_invariant_violation_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = EmpireInvariantViolation(
             kind="name_range",
@@ -254,7 +254,7 @@ class TestEmpireInvariantViolationHandler:
             ),
         )
         req = self._make_request()
-        resp = await empire_invariant_violation_handler(req, exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.empire_invariant_violation_handler(req, exc)  # type: ignore[arg-type]
         body = json.loads(resp.body)  # type: ignore[union-attr]
         assert "[FAIL]" not in body["error"]["message"]
 
@@ -263,7 +263,7 @@ class TestEmpireInvariantViolationHandler:
         import json
 
         from bakufu.domain.exceptions import EmpireInvariantViolation
-        from bakufu.interfaces.http.error_handlers import empire_invariant_violation_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = EmpireInvariantViolation(
             kind="name_range",
@@ -273,7 +273,7 @@ class TestEmpireInvariantViolationHandler:
             ),
         )
         req = self._make_request()
-        resp = await empire_invariant_violation_handler(req, exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.empire_invariant_violation_handler(req, exc)  # type: ignore[arg-type]
         body = json.loads(resp.body)  # type: ignore[union-attr]
         assert "Next:" not in body["error"]["message"]
 
@@ -282,7 +282,7 @@ class TestEmpireInvariantViolationHandler:
         import json
 
         from bakufu.domain.exceptions import EmpireInvariantViolation
-        from bakufu.interfaces.http.error_handlers import empire_invariant_violation_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = EmpireInvariantViolation(
             kind="name_range",
@@ -292,16 +292,18 @@ class TestEmpireInvariantViolationHandler:
             ),
         )
         req = self._make_request()
-        resp = await empire_invariant_violation_handler(req, exc)  # type: ignore[arg-type]
+        resp = await HttpErrorHandlers.empire_invariant_violation_handler(req, exc)  # type: ignore[arg-type]
         body = json.loads(resp.body)  # type: ignore[union-attr]
         assert body["error"]["message"] == "Empire name は 1〜80 文字でなければなりません。"
 
     async def test_handler_wrong_type_raises_type_error(self) -> None:
         """非 EmpireInvariantViolation → TypeError (Fail Fast 確認)."""
-        from bakufu.interfaces.http.error_handlers import empire_invariant_violation_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         with pytest.raises(TypeError, match="Expected EmpireInvariantViolation"):
-            await empire_invariant_violation_handler(self._make_request(), ValueError("oops"))  # type: ignore[arg-type]
+            await HttpErrorHandlers.empire_invariant_violation_handler(
+                self._make_request(), ValueError("oops")
+            )  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------

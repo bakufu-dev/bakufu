@@ -28,9 +28,9 @@ class TestExternalReviewGateErrorHandlers:
         from bakufu.application.exceptions.external_review_gate_exceptions import (
             ExternalReviewGateNotFoundError,
         )
-        from bakufu.interfaces.http.error_handlers import external_review_gate_not_found_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
-        response = await external_review_gate_not_found_handler(
+        response = await HttpErrorHandlers.external_review_gate_not_found_handler(
             None,  # type: ignore[arg-type]
             ExternalReviewGateNotFoundError(uuid4()),
         )
@@ -44,9 +44,9 @@ class TestExternalReviewGateErrorHandlers:
         from bakufu.application.exceptions.external_review_gate_exceptions import (
             ExternalReviewGateAuthorizationError,
         )
-        from bakufu.interfaces.http.error_handlers import external_review_gate_authorization_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
-        response = await external_review_gate_authorization_handler(
+        response = await HttpErrorHandlers.external_review_gate_authorization_handler(
             None,  # type: ignore[arg-type]
             ExternalReviewGateAuthorizationError(uuid4(), uuid4()),
         )
@@ -60,11 +60,9 @@ class TestExternalReviewGateErrorHandlers:
         from bakufu.application.exceptions.external_review_gate_exceptions import (
             ExternalReviewGateDecisionConflictError,
         )
-        from bakufu.interfaces.http.error_handlers import (
-            external_review_gate_decision_conflict_handler,
-        )
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
-        response = await external_review_gate_decision_conflict_handler(
+        response = await HttpErrorHandlers.external_review_gate_decision_conflict_handler(
             None,  # type: ignore[arg-type]
             ExternalReviewGateDecisionConflictError(uuid4(), "APPROVED", "approve"),
         )

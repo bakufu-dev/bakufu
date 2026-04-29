@@ -21,14 +21,14 @@ class TestDirectiveInvariantViolationHandler:
     async def test_fail_prefix_and_next_suffix_are_removed(self) -> None:
         """TC-UT-DRH-001: MSG-DR-HTTP-001 前処理."""
         from bakufu.domain.exceptions import DirectiveInvariantViolation
-        from bakufu.interfaces.http.error_handlers import directive_invariant_violation_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = DirectiveInvariantViolation(
             kind="text_range",
             message="[FAIL] text must not be empty.\nNext: provide non-empty text.",
         )
 
-        response = await directive_invariant_violation_handler(MagicMock(), exc)
+        response = await HttpErrorHandlers.directive_invariant_violation_handler(MagicMock(), exc)
 
         assert response.status_code == 422
         assert _body(response)["error"]["message"] == "text must not be empty."
@@ -36,11 +36,11 @@ class TestDirectiveInvariantViolationHandler:
     async def test_error_code_is_validation_error(self) -> None:
         """TC-UT-DRH-002: error.code."""
         from bakufu.domain.exceptions import DirectiveInvariantViolation
-        from bakufu.interfaces.http.error_handlers import directive_invariant_violation_handler
+        from bakufu.interfaces.http.error_handlers import HttpErrorHandlers
 
         exc = DirectiveInvariantViolation(kind="text_range", message="bad directive")
 
-        response = await directive_invariant_violation_handler(MagicMock(), exc)
+        response = await HttpErrorHandlers.directive_invariant_violation_handler(MagicMock(), exc)
 
         assert _body(response)["error"]["code"] == "validation_error"
 
