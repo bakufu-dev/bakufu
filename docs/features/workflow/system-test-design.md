@@ -1,7 +1,7 @@
 # E2E テスト設計書
 
 > feature: `workflow`（業務概念単位）
-> 関連: [`feature-spec.md`](feature-spec.md) §9 受入基準 11（12 は repository IT）/ 受入基準 23（http-api E2E）
+> 関連: [`feature-spec.md`](feature-spec.md) §9 受入基準 11（12 は repository IT）/ 受入基準 22（http-api E2E）
 
 ## 本書の役割
 
@@ -26,7 +26,7 @@
 | TC-E2E-WF-001 | Workflow の再起動跨ぎ保持（業務ルール R1-11） | 1) Workflow 構築（name="V モデル開発フロー"、3 Stage + 2 Transition、WORK Stage のみ）2) `WorkflowRepository.save(workflow)` 3) アプリ再起動相当（DB 接続再生成） 4) `WorkflowRepository.find_by_id(workflow.id)` | 復元された Workflow が元の Workflow と構造的等価（id / name / stages / transitions / entry_stage_id が一致。Stage の required_role frozenset も等価） | 11 |
 | TC-E2E-WF-002 | Workflow JSON プリセットからの構築と永続化（V モデル開発室） | 1) V モデル開発室プリセット JSON（13 Stage / 15 Transition）を `from_dict` で構築 2) `WorkflowRepository.save(workflow)` 3) 再起動 4) `WorkflowRepository.find_by_id(workflow.id)` | 13 Stage / 15 Transition / 正確な entry_stage_id が保持されている（notify_channels なし Workflow のため、ラウンドトリップで構造的等価が成立）| 10, 11 |
 
-| TC-E2E-WF-003 | HTTP API 経由 Workflow CRUD の再起動跨ぎ一貫性（業務ルール R1-11, R1-14, R1-15）| 1) `POST /api/rooms/{room_id}/workflows`（JSON 定義）→ 2) `GET /api/workflows/{id}` で確認 → 3) `PATCH /api/workflows/{id}` で name 更新 → 4) アプリ再起動相当（DB 接続再生成）→ 5) `GET /api/workflows/{id}` で再取得 | 取得 Workflow の name が更新後の値と一致。stages / transitions / entry_stage_id が永続化後も等価。`GET /api/rooms/{room_id}/workflows` が同一 Workflow を返す | 23 |
+| TC-E2E-WF-003 | HTTP API 経由 Workflow CRUD の再起動跨ぎ一貫性（業務ルール R1-11, R1-14, R1-15）| 1) `POST /api/rooms/{room_id}/workflows`（JSON 定義）→ 2) `GET /api/workflows/{id}` で確認 → 3) `PATCH /api/workflows/{id}` で name 更新 → 4) アプリ再起動相当（DB 接続再生成）→ 5) `GET /api/workflows/{id}` で再取得 | 取得 Workflow の name が更新後の値と一致。stages / transitions / entry_stage_id が永続化後も等価。`GET /api/rooms/{room_id}/workflows` が同一 Workflow を返す | 22 |
 
 将来追加予定:
 
@@ -44,7 +44,7 @@
 ## カバレッジ基準
 
 - 受入基準 11 が **E2E で最低 1 件**（TC-E2E-WF-001）検証される
-- 受入基準 23 が **E2E で最低 1 件**（TC-E2E-WF-003）検証される
+- 受入基準 22 が **E2E で最低 1 件**（TC-E2E-WF-003）検証される
 - 永続化跨ぎでの構造的等価を保証（`save → restart → find_by_id` ラウンドトリップ）
 - notify_channels 不在 Workflow でのラウンドトリップは TC-E2E-WF-001 / 002 / 003 でカバー（§確定 H §不可逆性による制約のため、EXTERNAL_REVIEW Stage を含む E2E ラウンドトリップは不可）
 - E2E はテスト戦略ガイド §E2E対象の判断「sub-feature 跨ぎの統合シナリオに絞る」に従う
