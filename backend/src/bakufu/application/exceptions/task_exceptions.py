@@ -29,7 +29,18 @@ class TaskStateConflictError(Exception):
         self.action = action
 
 
+class TaskAuthorizationError(Exception):
+    """Task 操作の application 層認可境界違反（MSG-TS-HTTP-004）。"""
+
+    def __init__(self, task_id: TaskId | str, action: str, reason: str) -> None:
+        super().__init__(reason)
+        self.task_id = str(task_id)
+        self.action = action
+        self.reason = reason
+
+
 __all__ = [
+    "TaskAuthorizationError",
     "TaskNotFoundError",
     "TaskStateConflictError",
 ]

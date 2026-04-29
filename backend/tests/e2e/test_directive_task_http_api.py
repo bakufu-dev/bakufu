@@ -32,14 +32,19 @@ _RAW_ANTHROPIC_TOKEN = "sk-ant-api03-" + "A" * 40
 _RAW_GITHUB_PAT = "ghp_" + "B" * 36
 
 
-async def _build_room_with_agent(ctx: RoomTestCtx) -> tuple[dict[str, Any], str]:
+async def _build_room_with_agent(ctx: RoomTestCtx) -> tuple[dict[str, Any], str, str]:
     """Create an Empire/Room through HTTP and seed one Agent precondition."""
-    empire = await _create_empire(ctx.client, name="Issue60 E2E 幕府")
+    empire = await _create_empire(ctx.client, name=f"Issue60 E2E 幕府 {uuid4()}")
     empire_id = str(empire["id"])
     workflow = await _seed_workflow(ctx.session_factory)
     room = await _create_room(ctx.client, empire_id, str(workflow.id))  # type: ignore[attr-defined]
     agent = await _seed_agent(ctx.session_factory, empire_id=UUID(empire_id))
-    return room, str(agent.id)  # type: ignore[attr-defined]
+    assigned = await ctx.client.post(
+        f"/api/rooms/{room['id']}/agents",
+        json={"agent_id": str(agent.id), "role": "DEVELOPER"},  # type: ignore[attr-defined]
+    )
+    assert assigned.status_code == 201, assigned.text
+    return room, str(agent.id), empire_id  # type: ignore[attr-defined]
 
 
 async def _seed_blocked_task(
@@ -87,7 +92,7 @@ class TestDirectiveTaskHttpE2E:
     ) -> None:
         """TC-E2E-DR-003 / TC-E2E-TS-003: public API lifecycle."""
         client = room_e2e_ctx.client
-        room, agent_id = await _build_room_with_agent(room_e2e_ctx)
+        room, agent_id, _empire_id = await _build_room_with_agent(room_e2e_ctx)
         room_id = str(room["id"])
 
         issue = await client.post(
@@ -151,6 +156,69 @@ class TestDirectiveTaskHttpE2E:
         missing_task = await client.get(f"/api/tasks/{uuid4()}")
         assert missing_task.status_code == 404
 
+    async def test_task_assignment_rejects_agent_outside_room(
+        self, room_e2e_ctx: RoomTestCtx
+    ) -> None:
+        """Task assign rejects arbitrary Agent UUIDs outside Room.members."""
+        client = room_e2e_ctx.client
+        room, _agent_id, empire_id = await _build_room_with_agent(room_e2e_ctx)
+        outsider = await _seed_agent(
+            room_e2e_ctx.session_factory,
+            empire_id=UUID(empire_id),
+        )
+
+        issue = await client.post(
+            f"/api/rooms/{room['id']}/directives",
+            json={"text": "未所属Agent拒否"},
+        )
+        assert issue.status_code == 201, issue.text
+
+        rejected = await client.post(
+            f"/api/tasks/{issue.json()['task']['id']}/assign",
+            json={"agent_ids": [str(outsider.id)]},  # type: ignore[attr-defined]
+        )
+        assert rejected.status_code == 403
+
+    async def test_deliverable_rejects_unassigned_submitter(
+        self, room_e2e_ctx: RoomTestCtx
+    ) -> None:
+        """Deliverable commit rejects a Room member who is not assigned to the Task."""
+        client = room_e2e_ctx.client
+        room, assigned_agent_id, empire_id = await _build_room_with_agent(room_e2e_ctx)
+        second_agent = await _seed_agent(
+            room_e2e_ctx.session_factory,
+            empire_id=UUID(empire_id),
+        )
+        room_assign = await client.post(
+            f"/api/rooms/{room['id']}/agents",
+            json={"agent_id": str(second_agent.id), "role": "TESTER"},  # type: ignore[attr-defined]
+        )
+        assert room_assign.status_code == 201, room_assign.text
+
+        issue = await client.post(
+            f"/api/rooms/{room['id']}/directives",
+            json={"text": "未担当Agent提出拒否"},
+        )
+        assert issue.status_code == 201, issue.text
+        task_id = issue.json()["task"]["id"]
+        stage_id = issue.json()["task"]["current_stage_id"]
+
+        assigned = await client.post(
+            f"/api/tasks/{task_id}/assign",
+            json={"agent_ids": [assigned_agent_id]},
+        )
+        assert assigned.status_code == 200, assigned.text
+
+        rejected = await client.post(
+            f"/api/tasks/{task_id}/deliverables/{stage_id}",
+            json={
+                "body_markdown": "別Agentからの提出",
+                "submitted_by": str(second_agent.id),  # type: ignore[attr-defined]
+                "attachments": [],
+            },
+        )
+        assert rejected.status_code == 403
+
     async def test_directive_issue_rejects_missing_and_archived_room(
         self, room_e2e_ctx: RoomTestCtx
     ) -> None:
@@ -163,7 +231,7 @@ class TestDirectiveTaskHttpE2E:
         )
         assert missing.status_code == 404
 
-        room, _agent_id = await _build_room_with_agent(room_e2e_ctx)
+        room, _agent_id, _empire_id = await _build_room_with_agent(room_e2e_ctx)
         room_id = str(room["id"])
         archived = await client.delete(f"/api/rooms/{room_id}")
         assert archived.status_code == 204, archived.text
@@ -179,7 +247,7 @@ class TestDirectiveTaskHttpE2E:
     ) -> None:
         """TC-E2E-TS-004: BLOCKED Task unblock and invalid retry conflict."""
         client = room_e2e_ctx.client
-        room, agent_id = await _build_room_with_agent(room_e2e_ctx)
+        room, agent_id, _empire_id = await _build_room_with_agent(room_e2e_ctx)
         task_id = await _seed_blocked_task(
             room_e2e_ctx.session_factory,
             room_id=UUID(str(room["id"])),

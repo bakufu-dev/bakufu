@@ -29,6 +29,7 @@ from bakufu.interfaces.http.error_handlers import (
     room_invariant_violation_handler,
     room_name_already_exists_handler,
     room_not_found_handler,
+    task_authorization_error_handler,
     task_invariant_violation_handler,
     task_not_found_handler,
     task_state_conflict_handler,
@@ -121,6 +122,7 @@ def create_app() -> FastAPI:
         RoomNotFoundError,
     )
     from bakufu.application.exceptions.task_exceptions import (
+        TaskAuthorizationError,
         TaskNotFoundError,
         TaskStateConflictError,
     )
@@ -161,6 +163,7 @@ def create_app() -> FastAPI:
     app.add_exception_handler(DirectiveInvariantViolation, directive_invariant_violation_handler)
     app.add_exception_handler(TaskNotFoundError, task_not_found_handler)
     app.add_exception_handler(TaskStateConflictError, task_state_conflict_handler)
+    app.add_exception_handler(TaskAuthorizationError, task_authorization_error_handler)
     app.add_exception_handler(TaskInvariantViolation, task_invariant_violation_handler)
     app.add_exception_handler(ValidationError, pydantic_validation_error_handler)
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)

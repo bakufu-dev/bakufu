@@ -30,7 +30,7 @@
 | REQ-TS-HTTP-001〜006 | `TaskService` | `backend/src/bakufu/application/services/task_service.py` | 骨格実装済み。本 sub-feature で全メソッドを肉付け |
 | REQ-TS-HTTP-001〜006 | `TaskSchemas` | `backend/src/bakufu/interfaces/http/schemas/task.py` | Pydantic v2 リクエスト / レスポンスモデル（新規ファイル）|
 | 横断 | `task 例外ハンドラ群` | `backend/src/bakufu/interfaces/http/error_handlers.py`（既存追記）| `TaskNotFoundError` / `TaskStateConflictError` / `TaskInvariantViolation` → `ErrorResponse` 変換 |
-| 横断 | `application 例外定義` | `backend/src/bakufu/application/exceptions/task_exceptions.py`（前提 P-1）| `TaskNotFoundError` / `TaskStateConflictError` |
+| 横断 | `application 例外定義` | `backend/src/bakufu/application/exceptions/task_exceptions.py`（前提 P-1）| `TaskNotFoundError` / `TaskStateConflictError` / `TaskAuthorizationError` |
 
 ```
 本 sub-feature で追加・変更されるファイル:
@@ -80,9 +80,9 @@ backend/
 | 項目 | 内容 |
 |---|---|
 | 入力 | パスパラメータ `task_id: UUID` / リクエスト Body `TaskAssign`（`agent_ids: list[UUID]`）|
-| 処理 | `TaskService.assign(task_id, agent_ids)` → 1) `find_by_id` → 不在 → `TaskNotFoundError` 2) `task.assign(agent_ids)` → `TaskInvariantViolation`（terminal / 重複 / 上限）または `TaskStateConflictError`（状態遷移不可）3) `TaskRepository.save(updated_task)` |
+| 処理 | `TaskService.assign(task_id, agent_ids)` → 1) `find_by_id` → 不在 → `TaskNotFoundError` 2) `RoomRepository.find_by_id(task.room_id)` と `AgentRepository.find_by_id(agent_id)` で各 Agent が active かつ `Room.members` 内であることを検証 3) `task.assign(agent_ids)` → `TaskInvariantViolation`（terminal / 重複 / 上限）または `TaskStateConflictError`（状態遷移不可）4) `TaskRepository.save(updated_task)` |
 | 出力 | HTTP 200, `TaskResponse`（status=IN_PROGRESS）|
-| エラー時 | 不在 → 404 (MSG-TS-HTTP-001) / terminal 状態または遷移不可 → 409 (MSG-TS-HTTP-002) / 重複・上限違反 → 422 (MSG-TS-HTTP-003) / 不正 UUID → 422 |
+| エラー時 | 不在 → 404 (MSG-TS-HTTP-001) / Room 不在 → 404 / Agent 不在 → 404 / Agent archived → 409 / Agent が Room.members 外 → 403 (MSG-TS-HTTP-004) / terminal 状態または遷移不可 → 409 (MSG-TS-HTTP-002) / 重複・上限違反 → 422 (MSG-TS-HTTP-003) / 不正 UUID → 422 |
 
 ### REQ-TS-HTTP-004: Task キャンセル（PATCH /api/tasks/{task_id}/cancel）
 
@@ -107,9 +107,9 @@ backend/
 | 項目 | 内容 |
 |---|---|
 | 入力 | パスパラメータ `task_id: UUID` / `stage_id: UUID` / リクエスト Body `DeliverableCreate`（`body_markdown: str`、`attachments: list[AttachmentCreate] \| None`、`submitted_by: UUID`）|
-| 処理 | `TaskService.commit_deliverable(task_id, stage_id, deliverable_create)` → 1) `find_by_id` → 不在 → `TaskNotFoundError` 2) `Deliverable(...)` 構築 3) `task.commit_deliverable(stage_id, deliverable, submitted_by)` → `TaskInvariantViolation` / `TaskStateConflictError` 4) `TaskRepository.save(updated_task)` |
+| 処理 | `TaskService.commit_deliverable(task_id, stage_id, deliverable_create)` → 1) `find_by_id` → 不在 → `TaskNotFoundError` 2) `AgentRepository.find_by_id(submitted_by)` で active Agent を検証 3) `submitted_by ∈ task.assigned_agent_ids` を検証 4) `Deliverable(...)` 構築 5) `task.commit_deliverable(stage_id, deliverable, submitted_by)` → `TaskInvariantViolation` / `TaskStateConflictError` 6) `TaskRepository.save(updated_task)` |
 | 出力 | HTTP 200, `TaskResponse`（`deliverables[stage_id]` 更新済み）|
-| エラー時 | 不在 → 404 (MSG-TS-HTTP-001) / terminal / 遷移不可 → 409 (MSG-TS-HTTP-002) / Deliverable / Attachment 業務ルール違反 → 422 (MSG-TS-HTTP-003) / 不正 UUID → 422 |
+| エラー時 | 不在 → 404 (MSG-TS-HTTP-001) / Agent 不在 → 404 / Agent archived → 409 / `submitted_by` が未担当 → 403 (MSG-TS-HTTP-004) / terminal / 遷移不可 → 409 (MSG-TS-HTTP-002) / Deliverable / Attachment 業務ルール違反 → 422 (MSG-TS-HTTP-003) / 不正 UUID → 422 |
 
 ## ユーザー向けメッセージ一覧
 
@@ -120,6 +120,7 @@ backend/
 | MSG-TS-HTTP-001 | エラー（不在）| Task が見つからない | 404 |
 | MSG-TS-HTTP-002 | エラー（競合）| terminal 状態（DONE/CANCELLED）からの操作 / state machine 上の不正遷移 | 409 |
 | MSG-TS-HTTP-003 | エラー（検証）| `TaskInvariantViolation` の業務ルール違反本文（割当重複・上限・Deliverable 制約等）| 422 |
+| MSG-TS-HTTP-004 | エラー（認可）| Agent が Task の Room に所属しない、または成果物提出者が Task 未担当 | 403 |
 
 ## 依存関係
 
@@ -128,9 +129,9 @@ backend/
 | ランタイム | Python 3.12+ | pyproject.toml | 既存 |
 | HTTP フレームワーク | FastAPI / Pydantic v2 / httpx | pyproject.toml | http-api-foundation で確定済み |
 | DI パターン | `get_session()` / `get_task_service()` | http-api-foundation 確定 | `dependencies.py` に `get_task_service()` を追加 |
-| application 例外 | `TaskNotFoundError` / `TaskStateConflictError` | 本 PR で新規定義（P-1）| `application/exceptions/task_exceptions.py` |
+| application 例外 | `TaskNotFoundError` / `TaskStateConflictError` / `TaskAuthorizationError` | 本 PR で新規定義（P-1）| `application/exceptions/task_exceptions.py` |
 | domain | `Task` / `TaskId` / `TaskStatus` / `TaskAction` / `TaskInvariantViolation` / `Deliverable` / `Attachment` / `state_machine` | M1 確定 | task domain sub-feature（Issue #37）|
-| repository | `TaskRepository` Protocol（`find_all_by_room` 追加後）| M2 確定 + 本 PR で Protocol 拡張（P-2）| task repository sub-feature（Issue #35）|
+| repository | `TaskRepository` Protocol（`find_all_by_room` 追加後）/ `RoomRepository` / `AgentRepository` | M2 確定 + 本 PR で Protocol 拡張（P-2）| Task assign の Room.members 検証と deliverable submitter 検証は application 層責務 |
 | masking | `application.security.masking.mask()` | http-api-foundation 確定（Issue #59 §確定I）| `last_error` / `body_markdown` のHTTPレスポンスマスキング（defense-in-depth）|
 | 基盤 | http-api-foundation（ErrorResponse / lifespan / CSRF / CORS）| M3-A 確定（Issue #55）| 全 error handler / app.state.session_factory を引き継ぐ |
 

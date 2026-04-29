@@ -8,10 +8,18 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bakufu.application.exceptions.agent_exceptions import (
+    AgentArchivedError,
+    AgentNotFoundError,
+)
+from bakufu.application.exceptions.room_exceptions import RoomNotFoundError
 from bakufu.application.exceptions.task_exceptions import (
+    TaskAuthorizationError,
     TaskNotFoundError,
     TaskStateConflictError,
 )
+from bakufu.application.ports.agent_repository import AgentRepository
+from bakufu.application.ports.room_repository import RoomRepository
 from bakufu.application.ports.task_repository import TaskRepository
 from bakufu.domain.exceptions import TaskInvariantViolation
 from bakufu.domain.task.task import Task
@@ -28,8 +36,16 @@ from bakufu.domain.value_objects import (
 class TaskService:
     """Task Aggregate 操作の application 層サービス。"""
 
-    def __init__(self, task_repo: TaskRepository, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        task_repo: TaskRepository,
+        room_repo: RoomRepository,
+        agent_repo: AgentRepository,
+        session: AsyncSession,
+    ) -> None:
         self._task_repo = task_repo
+        self._room_repo = room_repo
+        self._agent_repo = agent_repo
         self._session = session
 
     async def find_by_id(self, task_id: TaskId) -> Task:
@@ -47,8 +63,10 @@ class TaskService:
         """Task に Agent を割り当てる。"""
         async with self._session.begin():
             task = await self._find_by_id_in_uow(task_id)
+            assignees: list[AgentId] = list(agent_ids)
+            await self._ensure_room_members(task, assignees, "assign")
             try:
-                updated = task.assign(list(agent_ids), updated_at=self._now())
+                updated = task.assign(assignees, updated_at=self._now())
             except TaskInvariantViolation as exc:
                 self._raise_conflict_if_needed(task, "assign", exc)
                 raise
@@ -90,6 +108,8 @@ class TaskService:
         """Stage 成果物を Task に commit する。"""
         async with self._session.begin():
             task = await self._find_by_id_in_uow(task_id)
+            await self._ensure_active_agent(submitted_by)
+            self._ensure_assigned_agent(task, submitted_by, "commit_deliverable")
             try:
                 deliverable = Deliverable(
                     stage_id=stage_id,
@@ -115,6 +135,43 @@ class TaskService:
         if task is None:
             raise TaskNotFoundError(task_id)
         return task
+
+    async def _ensure_room_members(
+        self,
+        task: Task,
+        agent_ids: list[AgentId],
+        action: str,
+    ) -> None:
+        room = await self._room_repo.find_by_id(task.room_id)
+        if room is None:
+            raise RoomNotFoundError(str(task.room_id))
+
+        member_ids = {membership.agent_id for membership in room.members}
+        for agent_id in agent_ids:
+            await self._ensure_active_agent(agent_id)
+            if agent_id not in member_ids:
+                raise TaskAuthorizationError(
+                    task_id=task.id,
+                    action=action,
+                    reason="Agent is not a member of the Task room.",
+                )
+
+    async def _ensure_active_agent(self, agent_id: AgentId) -> None:
+        agent = await self._agent_repo.find_by_id(agent_id)
+        if agent is None:
+            raise AgentNotFoundError(str(agent_id))
+        if agent.archived:
+            raise AgentArchivedError(str(agent_id))
+
+    @staticmethod
+    def _ensure_assigned_agent(task: Task, agent_id: AgentId, action: str) -> None:
+        if agent_id in task.assigned_agent_ids:
+            return
+        raise TaskAuthorizationError(
+            task_id=task.id,
+            action=action,
+            reason="Agent is not assigned to this Task.",
+        )
 
     @staticmethod
     def _now() -> datetime:

@@ -161,12 +161,22 @@ async def get_task_service(session: SessionDep) -> TaskService:
     # 遅延 import: interfaces → infrastructure の直接依存を避けるため
     # モジュールロード時の循環参照リスクを回避し、
     # 依存方向 interfaces → application → infrastructure を遵守する
+    from bakufu.infrastructure.persistence.sqlite.repositories.agent_repository import (
+        SqliteAgentRepository,
+    )
+    from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
+        SqliteRoomRepository,
+    )
     from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
         SqliteTaskRepository,
     )
 
-    repo = SqliteTaskRepository(session)
-    return TaskService(task_repo=repo, session=session)
+    return TaskService(
+        task_repo=SqliteTaskRepository(session),
+        room_repo=SqliteRoomRepository(session),
+        agent_repo=SqliteAgentRepository(session),
+        session=session,
+    )
 
 
 TaskServiceDep = Annotated[TaskService, Depends(get_task_service)]

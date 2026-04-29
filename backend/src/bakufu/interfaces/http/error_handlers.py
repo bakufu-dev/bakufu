@@ -280,6 +280,15 @@ async def task_state_conflict_handler(request: Request, exc: Exception) -> JSONR
     return _error_response(CONFLICT, cleaned, 409)
 
 
+async def task_authorization_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``TaskAuthorizationError`` → HTTP 403 / forbidden."""
+    from bakufu.application.exceptions.task_exceptions import TaskAuthorizationError
+
+    if not isinstance(exc, TaskAuthorizationError):
+        raise TypeError(f"Expected TaskAuthorizationError, got {type(exc).__name__}")
+    return _error_response(FORBIDDEN, exc.reason, 403)
+
+
 async def task_invariant_violation_handler(request: Request, exc: Exception) -> JSONResponse:
     """``TaskInvariantViolation`` → HTTP 422 / validation_error."""
     from bakufu.domain.exceptions import TaskInvariantViolation
