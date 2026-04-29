@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import hmac
+import os
 from collections.abc import AsyncGenerator
 from typing import Annotated
+from uuid import UUID
 
-from fastapi import Depends, Request
+from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bakufu.application.ports.agent_repository import AgentRepository
@@ -21,7 +24,9 @@ from bakufu.application.services.agent_service import AgentService
 from bakufu.application.services.directive_service import DirectiveService
 from bakufu.application.services.empire_service import EmpireService
 from bakufu.application.services.external_review_gate_service import (
+    AuthenticatedSubject,
     ExternalReviewGateService,
+    make_authenticated_subject,
 )
 from bakufu.application.services.room_service import RoomService
 from bakufu.application.services.task_service import TaskService
@@ -35,6 +40,8 @@ __all__ = [
     "DirectiveServiceDep",
     "EmpireRepository",
     "ExternalReviewGateRepository",
+    "ExternalReviewGateServiceDep",
+    "ExternalReviewSubjectDep",
     "RoomRepository",
     "SessionDep",
     "TaskRepository",
@@ -44,6 +51,7 @@ __all__ = [
     "get_directive_service",
     "get_empire_service",
     "get_external_review_gate_service",
+    "get_external_review_subject",
     "get_room_service",
     "get_session",
     "get_task_service",
@@ -221,4 +229,42 @@ async def get_external_review_gate_service(
     )
 
     repo = SqliteExternalReviewGateRepository(session)
-    return ExternalReviewGateService(repo)
+    return ExternalReviewGateService(repo, session)
+
+
+ExternalReviewGateServiceDep = Annotated[
+    ExternalReviewGateService,
+    Depends(get_external_review_gate_service),
+]
+
+
+async def get_external_review_subject(
+    authorization: Annotated[str | None, Header()] = None,
+) -> AuthenticatedSubject:
+    """Bearer token から ExternalReviewGate reviewer subject を解決する。"""
+    configured_token = os.environ.get("BAKUFU_OWNER_API_TOKEN", "")
+    configured_owner_id = os.environ.get("BAKUFU_OWNER_ID", "")
+    if not _is_valid_bearer_token(authorization, configured_token):
+        raise HTTPException(status_code=401, detail="Authentication failed.")
+    try:
+        owner_id = UUID(configured_owner_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail="Authentication failed.") from exc
+    return make_authenticated_subject(owner_id)
+
+
+ExternalReviewSubjectDep = Annotated[
+    AuthenticatedSubject,
+    Depends(get_external_review_subject),
+]
+
+
+def _is_valid_bearer_token(authorization: str | None, configured_token: str) -> bool:
+    if len(configured_token.encode("utf-8")) < 32:
+        return False
+    if authorization is None:
+        return False
+    scheme, separator, token = authorization.partition(" ")
+    if separator != " " or scheme.lower() != "bearer":
+        return False
+    return hmac.compare_digest(token, configured_token)

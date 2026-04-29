@@ -188,7 +188,7 @@ backend/
           test_audit_snapshot.py               # TC-UT-GT-008/009 + TC-IT-GT-001〜003（往復シナリオ）
 ```
 
-## 未決課題・要起票 characterization task
+## 完了済み characterization 申し送り
 
 | # | タスク | 起票先 | 備考 |
 |---|-------|--------|------|

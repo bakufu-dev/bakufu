@@ -22,6 +22,10 @@ from bakufu.interfaces.http.error_handlers import (
     empire_archived_handler,
     empire_invariant_violation_handler,
     empire_not_found_handler,
+    external_review_gate_authorization_handler,
+    external_review_gate_decision_conflict_handler,
+    external_review_gate_invariant_violation_handler,
+    external_review_gate_not_found_handler,
     http_exception_handler,
     internal_error_handler,
     pydantic_validation_error_handler,
@@ -43,6 +47,10 @@ from bakufu.interfaces.http.error_handlers import (
 from bakufu.interfaces.http.routers.agents import agents_router, empire_agents_router
 from bakufu.interfaces.http.routers.directives import room_directives_router
 from bakufu.interfaces.http.routers.empire import router as empire_router
+from bakufu.interfaces.http.routers.external_review_gates import (
+    gates_router,
+    task_gates_router,
+)
 from bakufu.interfaces.http.routers.health import router as health_router
 from bakufu.interfaces.http.routers.rooms import empire_rooms_router, rooms_router
 from bakufu.interfaces.http.routers.tasks import room_tasks_router, tasks_router
@@ -116,6 +124,11 @@ def create_app() -> FastAPI:
         EmpireArchivedError,
         EmpireNotFoundError,
     )
+    from bakufu.application.exceptions.external_review_gate_exceptions import (
+        ExternalReviewGateAuthorizationError,
+        ExternalReviewGateDecisionConflictError,
+        ExternalReviewGateNotFoundError,
+    )
     from bakufu.application.exceptions.room_exceptions import (
         RoomArchivedError,
         RoomNameAlreadyExistsError,
@@ -136,6 +149,7 @@ def create_app() -> FastAPI:
         AgentInvariantViolation,
         DirectiveInvariantViolation,
         EmpireInvariantViolation,
+        ExternalReviewGateInvariantViolation,
         RoomInvariantViolation,
         TaskInvariantViolation,
         WorkflowInvariantViolation,
@@ -165,6 +179,22 @@ def create_app() -> FastAPI:
     app.add_exception_handler(TaskStateConflictError, task_state_conflict_handler)
     app.add_exception_handler(TaskAuthorizationError, task_authorization_error_handler)
     app.add_exception_handler(TaskInvariantViolation, task_invariant_violation_handler)
+    app.add_exception_handler(
+        ExternalReviewGateNotFoundError,
+        external_review_gate_not_found_handler,
+    )
+    app.add_exception_handler(
+        ExternalReviewGateAuthorizationError,
+        external_review_gate_authorization_handler,
+    )
+    app.add_exception_handler(
+        ExternalReviewGateDecisionConflictError,
+        external_review_gate_decision_conflict_handler,
+    )
+    app.add_exception_handler(
+        ExternalReviewGateInvariantViolation,
+        external_review_gate_invariant_violation_handler,
+    )
     app.add_exception_handler(ValidationError, pydantic_validation_error_handler)
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_error_handler)
@@ -182,6 +212,8 @@ def create_app() -> FastAPI:
     app.include_router(room_directives_router)
     app.include_router(room_tasks_router)
     app.include_router(tasks_router)
+    app.include_router(task_gates_router)
+    app.include_router(gates_router)
 
     return app
 

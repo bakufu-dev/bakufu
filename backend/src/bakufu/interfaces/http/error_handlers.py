@@ -300,6 +300,78 @@ async def task_invariant_violation_handler(request: Request, exc: Exception) -> 
     return _error_response(VALIDATION_ERROR, cleaned, 422)
 
 
+async def external_review_gate_not_found_handler(
+    request: Request,
+    exc: Exception,
+) -> JSONResponse:
+    """``ExternalReviewGateNotFoundError`` → HTTP 404 / not_found。"""
+    from bakufu.application.exceptions.external_review_gate_exceptions import (
+        ExternalReviewGateNotFoundError,
+    )
+
+    if not isinstance(exc, ExternalReviewGateNotFoundError):
+        raise TypeError(f"Expected ExternalReviewGateNotFoundError, got {type(exc).__name__}")
+    return _error_response(
+        NOT_FOUND,
+        "External review gate not found.\nNext: Refresh the gate list and select an existing gate.",
+        404,
+    )
+
+
+async def external_review_gate_authorization_handler(
+    request: Request,
+    exc: Exception,
+) -> JSONResponse:
+    """``ExternalReviewGateAuthorizationError`` → HTTP 403 / forbidden。"""
+    from bakufu.application.exceptions.external_review_gate_exceptions import (
+        ExternalReviewGateAuthorizationError,
+    )
+
+    if not isinstance(exc, ExternalReviewGateAuthorizationError):
+        raise TypeError(f"Expected ExternalReviewGateAuthorizationError, got {type(exc).__name__}")
+    return _error_response(
+        FORBIDDEN,
+        "Reviewer is not authorized for this gate.\n"
+        "Next: Sign in as the assigned reviewer for this gate.",
+        403,
+    )
+
+
+async def external_review_gate_decision_conflict_handler(
+    request: Request,
+    exc: Exception,
+) -> JSONResponse:
+    """``ExternalReviewGateDecisionConflictError`` → HTTP 409 / conflict。"""
+    from bakufu.application.exceptions.external_review_gate_exceptions import (
+        ExternalReviewGateDecisionConflictError,
+    )
+
+    if not isinstance(exc, ExternalReviewGateDecisionConflictError):
+        raise TypeError(
+            f"Expected ExternalReviewGateDecisionConflictError, got {type(exc).__name__}"
+        )
+    return _error_response(
+        CONFLICT,
+        "External review gate has already been decided.\n"
+        "Next: Open the task gate history and review the latest pending gate.",
+        409,
+    )
+
+
+async def external_review_gate_invariant_violation_handler(
+    request: Request,
+    exc: Exception,
+) -> JSONResponse:
+    """``ExternalReviewGateInvariantViolation`` → HTTP 422 / validation_error。"""
+    from bakufu.domain.exceptions import ExternalReviewGateInvariantViolation
+
+    if not isinstance(exc, ExternalReviewGateInvariantViolation):
+        raise TypeError(f"Expected ExternalReviewGateInvariantViolation, got {type(exc).__name__}")
+    raw = str(exc)
+    cleaned = _FAIL_PREFIX_RE.sub("", raw).split("\nNext:")[0].strip()
+    return _error_response(VALIDATION_ERROR, cleaned, 422)
+
+
 async def pydantic_validation_error_handler(request: Request, exc: Exception) -> JSONResponse:
     """application/domain 構築時の Pydantic ValidationError → HTTP 422。"""
     from pydantic import ValidationError
