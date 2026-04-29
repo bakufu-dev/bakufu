@@ -121,7 +121,7 @@
 | #6 閲覧監査 | TC-IT-ERG-HTTP-003 / 011 / 012 | 詳細閲覧後に VIEWED audit が API レスポンスで観測できる |
 | #10 feedback 境界 | TC-IT-ERG-HTTP-005 / 009, TC-UT-ERG-HTTP-005 / 008 | 1〜10000 文字は受理、空 reject と 10001 文字は拒否 |
 | #12 Next 文 | TC-UT-ERG-HTTP-011、TC-IT-ERG-HTTP-007 / 008 / 009 | 業務エラー時、ユーザーが次に取る行動を `Next:` 行として観測する |
-| #14 再起動跨ぎ永続化 | TC-IT-ERG-HTTP-001〜006 は API ラウンドトリップ、親 `TC-E2E-ERG-001〜003` は repository 再起動 | 親 system-test-design が担当 |
+| #14 再起動跨ぎ永続化 | TC-IT-ERG-HTTP-001〜006 は API ラウンドトリップ、親 `TC-E2E-ERG-001〜003` はアプリ再起動後の HTTP API 再取得 | 親 system-test-design が担当 |
 | #15 secret masking | repository TC-IT-ERGR-020-masking-* | HTTP は Repository 復元値を返す。DB 保存値 masking は repository IT が確認し、本 sub-feature は HTTP が redacted 値を raw secret 復号しないことを TC-IT-ERG-HTTP-010 で固定する |
 
 ## カバレッジ基準
