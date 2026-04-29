@@ -1,11 +1,9 @@
-"""Task construction tests (TC-UT-TS-001 / 002 / 014 / 040 / 044 / 045 / 053).
+"""Task 構築テスト (TC-UT-TS-001 / 002 / 014 / 040 / 044 / 045 / 053)。
 
-Per ``docs/features/task/test-design.md`` §Task 構築. Covers
-construction defaults, the 6 ``TaskStatus`` rehydration cases, frozen
-+ structural equality, NFC-without-strip ``last_error`` normalization
-(§確定 C), frozen-instance assignment rejection, ``extra='forbid'``,
-and the type-error class for fields that bypass the kind enum
-(§確定 J).
+``docs/features/task/test-design.md`` §Task 構築 準拠。構築時のデフォルト、
+``TaskStatus`` の 6 ケースの再水和、frozen + 構造的等価性、NFC-without-strip
+``last_error`` 正規化 (§確定 C)、frozen インスタンスの代入拒否、``extra='forbid'``、
+kind enum を経由しないフィールドの type エラークラス (§確定 J) を網羅する。
 """
 
 from __future__ import annotations
@@ -31,13 +29,13 @@ from tests.factories.task import (
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-TS-001: default-valued construction
+# TC-UT-TS-001: デフォルト値での構築
 # ---------------------------------------------------------------------------
 class TestTaskDefaults:
-    """TC-UT-TS-001: factory default Task is structurally PENDING + empty."""
+    """TC-UT-TS-001: factory のデフォルト Task は構造的に PENDING かつ空。"""
 
     def test_default_task_is_pending_with_empty_state(self) -> None:
-        """Defaults: status=PENDING, assigned=[], deliverables={}, last_error=None."""
+        """デフォルト: status=PENDING, assigned=[], deliverables={}, last_error=None。"""
         task = make_task()
         assert task.status == TaskStatus.PENDING
         assert task.assigned_agent_ids == []
@@ -46,20 +44,20 @@ class TestTaskDefaults:
         assert task.created_at <= task.updated_at
 
     def test_factory_marks_instance_synthetic(self) -> None:
-        """Factory output is registered in :func:`is_synthetic`."""
+        """factory の出力は :func:`is_synthetic` に登録される。"""
         task = make_task()
         assert is_synthetic(task)
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-TS-002: rehydration into all 6 TaskStatus values
+# TC-UT-TS-002: 6 種類の TaskStatus すべてへの再水和
 # ---------------------------------------------------------------------------
 class TestRehydrateAllStatuses:
-    """TC-UT-TS-002: each of the 6 TaskStatus values constructs cleanly.
+    """TC-UT-TS-002: 6 種類の TaskStatus 値それぞれが問題なく構築できる。
 
-    Repository hydration must be able to land any persisted status —
-    BLOCKED needs ``last_error``, every other status needs
-    ``last_error is None``.
+    Repository の hydration は永続化された任意の status を着地させられねばならない ──
+    BLOCKED は ``last_error`` を要し、それ以外の status は
+    ``last_error is None`` を要する。
     """
 
     def test_pending_constructs(self) -> None:
@@ -84,13 +82,13 @@ class TestRehydrateAllStatuses:
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-TS-014: frozen + structural equality + hash
+# TC-UT-TS-014: frozen + 構造的等価性 + ハッシュ
 # ---------------------------------------------------------------------------
 class TestFrozenStructuralEquality:
-    """TC-UT-TS-014: same-attributes Tasks are ``==`` and hashable identically."""
+    """TC-UT-TS-014: 同じ属性の Task は ``==`` で、ハッシュも同一。"""
 
     def test_same_attributes_compare_equal(self) -> None:
-        """Two Task instances with identical attrs are ``==``."""
+        """同一属性を持つ 2 つの Task インスタンスは ``==``。"""
         common_id = uuid4()
         common_room = uuid4()
         common_directive = uuid4()
@@ -116,73 +114,72 @@ class TestFrozenStructuralEquality:
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-TS-040: NFC-without-strip on last_error (§確定 C)
+# TC-UT-TS-040: last_error の NFC-without-strip 正規化 (§確定 C)
 # ---------------------------------------------------------------------------
 class TestLastErrorNormalization:
-    """TC-UT-TS-040: ``last_error`` is NFC-normalized but **not** stripped.
+    """TC-UT-TS-040: ``last_error`` は NFC 正規化されるが strip **されない**。
 
-    LLM stack traces rely on leading whitespace for indentation;
-    stripping would silently corrupt the diagnostic. The §確定 C
-    contract is "NFC normalize, never strip".
+    LLM のスタックトレースはインデント保持のために先頭空白に依存する。
+    strip すれば診断情報が静かに破壊される。§確定 C の契約は
+    「NFC 正規化、決して strip しない」。
     """
 
     def test_leading_and_trailing_whitespace_preserved(self) -> None:
-        """Newlines + leading/trailing spaces survive normalization."""
+        """改行 + 先頭/末尾スペースが正規化を生き残る。"""
         raw = "AuthExpired:\n  at line 1\n  at line 2\n"
         task = make_blocked_task(last_error=raw)
-        # The post-validator is mode='before', so it runs before
-        # field type checks. The value should round-trip through NFC
-        # but keep every leading-/trailing-whitespace character.
+        # post-validator は mode='before' のため、フィールド型チェックの前に走る。
+        # 値は NFC を通過するが、先頭/末尾の空白文字はすべて保持される。
         assert task.last_error is not None
         assert task.last_error == unicodedata.normalize("NFC", raw)
         assert task.last_error.startswith("AuthExpired:")
         assert task.last_error.endswith("\n")
-        assert "  at line 1" in task.last_error  # leading space kept
+        assert "  at line 1" in task.last_error  # 先頭スペース保持
 
     def test_decomposed_form_normalizes_to_composed_form(self) -> None:
-        """A composed-form characte equals its decomposed counterpart after NFC."""
-        composed = "café: error"  # NFC-composed (é = U+00E9)
-        decomposed = "café: error"  # NFC-decomposed (e + COMBINING ACCENT)
+        """合成形の文字は NFC 後に分解形と等価になる。"""
+        composed = "café: error"  # NFC 合成形 (é = U+00E9)
+        decomposed = "café: error"  # NFC 分解形 (e + COMBINING ACCENT)
         task_composed = make_blocked_task(last_error=composed)
         task_decomposed = make_blocked_task(last_error=decomposed)
-        # Both forms normalize to the same NFC string, so the field
-        # values match byte-for-byte.
+        # 双方が同じ NFC 文字列に正規化されるため、フィールド値は
+        # バイト等価で一致する。
         assert task_composed.last_error == task_decomposed.last_error
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-TS-044: frozen instance — direct attribute assignment rejected
+# TC-UT-TS-044: frozen インスタンス ── 直接の属性代入を拒否
 # ---------------------------------------------------------------------------
 class TestFrozenInstance:
-    """TC-UT-TS-044: ``task.<attr> = value`` raises on a frozen Pydantic model."""
+    """TC-UT-TS-044: ``task.<attr> = value`` は frozen Pydantic model で例外を起こす。"""
 
     def test_status_assignment_rejected(self) -> None:
-        """Direct ``task.status = ...`` is rejected by Pydantic frozen."""
+        """直接の ``task.status = ...`` は Pydantic frozen により拒否される。"""
         task = make_task()
         with pytest.raises(ValidationError):
             task.status = TaskStatus.IN_PROGRESS  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_assigned_agents_assignment_rejected(self) -> None:
-        """Direct ``task.assigned_agent_ids = ...`` is rejected."""
+        """直接の ``task.assigned_agent_ids = ...`` は拒否される。"""
         task = make_task()
         with pytest.raises(ValidationError):
             task.assigned_agent_ids = [uuid4()]  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_last_error_assignment_rejected(self) -> None:
-        """Direct ``task.last_error = ...`` is rejected."""
+        """直接の ``task.last_error = ...`` は拒否される。"""
         task = make_blocked_task()
         with pytest.raises(ValidationError):
             task.last_error = "new"  # pyright: ignore[reportAttributeAccessIssue]
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-TS-045: extra='forbid' rejects unknown fields
+# TC-UT-TS-045: extra='forbid' は未知フィールドを拒否
 # ---------------------------------------------------------------------------
 class TestExtraForbid:
-    """TC-UT-TS-045: an unknown field at construction time is rejected."""
+    """TC-UT-TS-045: 構築時の未知フィールドは拒否される。"""
 
     def test_unknown_field_rejected_via_model_validate(self) -> None:
-        """``Task.model_validate({..., 'unknown': 'x'})`` raises ValidationError."""
+        """``Task.model_validate({..., 'unknown': 'x'})`` が ValidationError。"""
         now = datetime.now(UTC)
         with pytest.raises(ValidationError):
             Task.model_validate(
@@ -199,26 +196,25 @@ class TestExtraForbid:
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-TS-053: type errors land as pydantic.ValidationError (§確定 J)
+# TC-UT-TS-053: 型エラーは pydantic.ValidationError として現れる (§確定 J)
 # ---------------------------------------------------------------------------
 class TestTypeErrorsRaisePydanticValidationError:
-    """TC-UT-TS-053: type-shaped failures use ``pydantic.ValidationError`` (no kind concept).
+    """TC-UT-TS-053: 型形式の失敗は ``pydantic.ValidationError`` を用いる（kind 概念なし）。
 
-    The §確定 J contract: structural / field-type errors are pure
-    Pydantic validation errors; only the 7 ``TaskInvariantViolation``
-    kinds are issued by the aggregate's invariants. Tests pin this
-    so a hypothetical refactor that wrapped pydantic errors in a
-    custom exception would force a docs revisit.
+    §確定 J の契約: 構造的 / フィールド型の誤りは純粋な Pydantic validation error であり、
+    7 種類の ``TaskInvariantViolation`` kind はアグリゲートの不変条件のみが発行する。
+    Pydantic エラーをカスタム例外でラップする仮想的なリファクタリングが
+    docs の見直しを強制するよう、本テストでこの分担を固定する。
     """
 
     def test_naive_datetime_rejected(self) -> None:
-        """``created_at`` without a timezone must be rejected."""
+        """timezone を持たない ``created_at`` は拒否される。"""
         naive = datetime.now()
         with pytest.raises(ValidationError):
             make_task(created_at=naive)
 
     def test_unknown_status_string_rejected(self) -> None:
-        """A non-enum status string is rejected by the Pydantic enum coercion."""
+        """enum でない status 文字列は Pydantic enum 強制により拒否される。"""
         now = datetime.now(UTC)
         with pytest.raises(ValidationError):
             Task.model_validate(
@@ -234,7 +230,7 @@ class TestTypeErrorsRaisePydanticValidationError:
             )
 
     def test_non_uuid_id_rejected(self) -> None:
-        """A malformed UUID-shaped string for ``id`` is rejected."""
+        """``id`` が不正な UUID 形式の文字列は拒否される。"""
         now = datetime.now(UTC)
         with pytest.raises(ValidationError):
             Task.model_validate(
@@ -250,13 +246,13 @@ class TestTypeErrorsRaisePydanticValidationError:
 
 
 # ---------------------------------------------------------------------------
-# Smoke: created_at > updated_at via factory raises (covered also by invariants)
+# Smoke: factory 経由で created_at > updated_at が例外（不変条件側でも検証あり）
 # ---------------------------------------------------------------------------
 class TestTimestampOrderSmoke:
-    """A construction-time timestamp violation surfaces immediately."""
+    """構築時のタイムスタンプ違反は即座に表面化する。"""
 
     def test_created_after_updated_rejected_at_construction(self) -> None:
-        """``created_at > updated_at`` raises ``TaskInvariantViolation``."""
+        """``created_at > updated_at`` は ``TaskInvariantViolation`` を起こす。"""
         from bakufu.domain.exceptions import TaskInvariantViolation
 
         ts_old = datetime(2026, 4, 27, 10, 0, 0, tzinfo=UTC)

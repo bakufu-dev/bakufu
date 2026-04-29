@@ -1,16 +1,15 @@
-"""SQLite Repository adapters (one module per Aggregate).
+"""SQLite リポジトリ アダプタ（Aggregate ごとに 1 モジュール）。
 
-Each module exports a class that satisfies the matching
-:class:`typing.Protocol` defined in :mod:`bakufu.application.ports`.
-Empire (PR #25) is the first Repository PR; the same pattern applies
-to subsequent ``feature/{aggregate}-repository`` PRs:
+各モジュールは :mod:`bakufu.application.ports` で定義される対応する
+:class:`typing.Protocol` を満たすクラスをエクスポートする。Empire（PR #25）が
+最初のリポジトリ PR。同じパターンが後続の ``feature/{aggregate}-repository``
+PR に適用される:
 
-* ``__init__(session: AsyncSession)`` — keeps the caller-managed Tx
-  boundary (Repositories never call ``session.commit()`` /
-  ``session.rollback()``).
-* ``find_by_id`` / ``count`` / ``save`` are ``async def``.
-* Reference / child tables are updated via delete-then-insert
-  (§確定 B) inside the caller's transaction.
-* ``_to_row`` / ``_from_row`` are private and convert between domain
-  Aggregate Roots and ``dict`` payloads (§確定 C).
+* ``__init__(session: AsyncSession)`` — 呼び元管理の Tx 境界を保つ
+  （リポジトリは ``session.commit()`` / ``session.rollback()`` を呼ばない）。
+* ``find_by_id`` / ``count`` / ``save`` は ``async def``。
+* 関連／子テーブルは呼び元のトランザクション内で delete-then-insert
+  （§確定 B）により更新される。
+* ``_to_row`` / ``_from_row`` はプライベートで、ドメイン Aggregate Root と
+  ``dict`` ペイロード間を変換する（§確定 C）。
 """

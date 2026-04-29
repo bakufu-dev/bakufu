@@ -1,47 +1,40 @@
-"""Decision-table state machine for the :class:`ExternalReviewGate` aggregate.
+""":class:`ExternalReviewGate` Aggregate のための decision-table state machine。
 
-Implements ``docs/features/external-review-gate/detailed-design.md``
-§確定 B (state machine table lock) and §確定 A (Method x
-current_decision dispatch table). The contract is intentionally a
-**flat ``Mapping[(ReviewDecision, str), ReviewDecision]``** rather
-than an ``if-elif`` ladder so:
+``docs/features/external-review-gate/detailed-design.md`` §確定 B
+（state machine テーブル ロック）と §確定 A（Method x current_decision の
+ディスパッチ表）を実装する。コントラクトは意図的に
+**フラットな ``Mapping[(ReviewDecision, str), ReviewDecision]``** であり、
+``if-elif`` 階段ではない。理由:
 
-1. The exact set of allowed transitions is enumerable in one
-   structure — code review can compare it against §確定 A's
-   16-cell dispatch table (4 method x 4 state) at a glance.
-2. The lookup function refuses unknown ``(decision, action)`` pairs
-   with ``KeyError`` so the caller wraps the failure in
+1. 許可遷移の集合がきっちり 1 つの構造で列挙可能 — コードレビュー時に §確定 A の
+   16 セル ディスパッチ表（4 メソッド × 4 状態）と一目で照合できる。
+2. ルックアップ関数は未知の ``(decision, action)`` 対を ``KeyError`` で拒否する
+   ため、呼び元は失敗を
    :class:`ExternalReviewGateInvariantViolation(kind='decision_already_decided')`
-   — Fail-Fast on illegal ``approve`` / ``reject`` / ``cancel`` calls
-   against a Gate that is no longer PENDING.
-3. ``Final[Mapping]`` + :func:`types.MappingProxyType` makes both
-   pyright (re-assignment detection) and the runtime (``setitem``
-   rejection) refuse to mutate the table after import. A future PR
-   that wants to add a transition has to edit *this* file plus the
-   corresponding test.
+   で包む — もう PENDING ではない Gate に対する不正な ``approve`` / ``reject`` /
+   ``cancel`` 呼び出しに対する Fail-Fast。
+3. ``Final[Mapping]`` + :func:`types.MappingProxyType` により、pyright（再代入検出）
+   と ランタイム（``setitem`` 拒否）の両方が import 後の変異を拒否する。遷移を追加
+   したい将来の PR は *この* ファイルと対応するテストの両方を編集する必要がある。
 
-The 7 entries below correspond 1:1 with the ``→`` cells in §確定 A's
-dispatch table:
+下記 7 エントリは §確定 A ディスパッチ表の ``→`` セルと 1:1 対応する:
 
-* ``PENDING`` → ``approve`` / ``reject`` / ``cancel`` (the three
-  decision-emitting actions, terminating to APPROVED / REJECTED /
-  CANCELLED respectively).
-* ``record_view`` self-loops on **every** decision value (PENDING,
-  APPROVED, REJECTED, CANCELLED) — auditing a decided Gate is
-  legitimate (§確定 G "誰がいつ何度見たか"). The four self-loops are
-  enumerated explicitly so test side can mirror the dispatch table
-  and a future PR cannot silently restrict ``record_view`` to a
-  subset.
+* ``PENDING`` → ``approve`` / ``reject`` / ``cancel``（決定を発行する 3 アクション、
+  それぞれ APPROVED / REJECTED / CANCELLED に終端）。
+* ``record_view`` は **すべての** decision 値（PENDING、APPROVED、REJECTED、
+  CANCELLED）で自己ループする — 決定済み Gate の監査は正当な操作（§確定 G
+  「誰がいつ何度見たか」）。4 つの自己ループは明示的に列挙し、テスト側がディスパッチ
+  表をミラーできるようにし、将来の PR が ``record_view`` を一部の状態にサイレント
+  に制限できないようにする。
 
-The remaining 9 illegal cells (PENDING-only actions invoked on a
-non-PENDING Gate) hit ``KeyError`` on lookup and translate to
-``decision_already_decided`` (MSG-GT-001) at the Aggregate boundary.
+残り 9 個の違法セル（PENDING 限定アクションを非 PENDING Gate に対して呼び出す）は
+ルックアップで ``KeyError`` に当たり、Aggregate 境界で ``decision_already_decided``
+（MSG-GT-001）に翻訳される。
 
-``action`` is constrained at the type level by :data:`GateAction` so
-typo-driven typos (``'approv'`` etc.) are caught by pyright strict
-before they reach runtime. The 4 ``Literal`` values mirror the 4
-:class:`ExternalReviewGate` methods one-for-one — adding a method
-without updating this list (or vice versa) is a type error.
+``action`` は :data:`GateAction` で型レベルに制約されているため、タイプミス
+（``'approv'`` 等）は実行前に pyright strict が捕捉する。4 個の ``Literal`` 値は
+4 個の :class:`ExternalReviewGate` メソッドと 1:1 で対応する — このリストを更新せず
+にメソッドを追加（あるいはその逆）するのは型エラーになる。
 """
 
 from __future__ import annotations
@@ -58,78 +51,71 @@ type GateAction = Literal[
     "cancel",
     "record_view",
 ]
-"""Closed set of action names matching :class:`ExternalReviewGate`
-method names 1:1.
+""":class:`ExternalReviewGate` のメソッド名と 1:1 対応するアクション名のクローズド集合。
 
-Per §確定 A (task #42 §確定 A-2 パターン継承), Gate methods do **not**
-dispatch on runtime values. Each method calls
-``state_machine.lookup(self.decision, '<method_name>')`` so the action
-name is a compile-time string literal — the table lookup result and
-the method's behavior are statically tied together.
+§確定 A（task #42 §確定 A-2 パターン継承）に従い、Gate メソッドはランタイム値で
+**ディスパッチしない**。各メソッドは
+``state_machine.lookup(self.decision, '<method_name>')`` を呼び出し、アクション名は
+コンパイル時の文字列リテラルとなる — テーブル ルックアップ結果とメソッドの振る舞い
+が静的に紐付く。
 """
 
 
 _TRANSITIONS: Mapping[tuple[ReviewDecision, GateAction], ReviewDecision] = MappingProxyType(
     {
-        # PENDING — the three decision-emitting transitions plus the
-        # record_view self-loop. After any of approve / reject / cancel
-        # the Gate is terminal for those three actions.
+        # PENDING — 決定を発行する 3 つの遷移と record_view 自己ループ。
+        # approve / reject / cancel のいずれかの後、Gate はその 3 アクションについて
+        # 終端となる。
         (ReviewDecision.PENDING, "approve"): ReviewDecision.APPROVED,
         (ReviewDecision.PENDING, "reject"): ReviewDecision.REJECTED,
         (ReviewDecision.PENDING, "cancel"): ReviewDecision.CANCELLED,
         (ReviewDecision.PENDING, "record_view"): ReviewDecision.PENDING,
-        # APPROVED / REJECTED / CANCELLED — only ``record_view`` is
-        # legal so the Gate's audit trail can keep tracking late
-        # readers. The four self-loops are enumerated rather than
-        # inferred so the dispatch table mirrors the implementation
-        # exactly (§確定 A §"4 行明示列挙する根拠").
+        # APPROVED / REJECTED / CANCELLED — ``record_view`` のみ合法。Gate の監査
+        # 証跡は遅れて読みに来た者を引き続き追跡できる。4 つの自己ループは推論
+        # ではなく列挙する — ディスパッチ表が実装と完全に一致するよう
+        # （§確定 A §「4 行明示列挙する根拠」）。
         (ReviewDecision.APPROVED, "record_view"): ReviewDecision.APPROVED,
         (ReviewDecision.REJECTED, "record_view"): ReviewDecision.REJECTED,
         (ReviewDecision.CANCELLED, "record_view"): ReviewDecision.CANCELLED,
     }
 )
-"""Read-only view of the canonical 7-entry transition map.
+"""正準 7 エントリ遷移マップへの読み取り専用ビュー。
 
-Wrapping the underlying ``dict`` in :class:`types.MappingProxyType`
-makes ``_TRANSITIONS[k] = v`` raise ``TypeError`` at runtime even
-when somebody `cast`s the table. ``Final`` blocks re-assignment of
-the symbol itself in pyright strict mode.
+基底の ``dict`` を :class:`types.MappingProxyType` で包むことで、誰かがテーブルを
+`cast` した場合でも ``_TRANSITIONS[k] = v`` がランタイムで ``TypeError`` になる。
+``Final`` は pyright strict モードでシンボル自体の再代入をブロックする。
 """
 
 TRANSITIONS: Final[Mapping[tuple[ReviewDecision, GateAction], ReviewDecision]] = _TRANSITIONS
-"""Public alias for the transition table.
+"""遷移テーブルのパブリック エイリアス。
 
-Tests import this to assert the table size (``len(TRANSITIONS) == 7``)
-and to walk every legal transition without going through ``lookup``.
-The :class:`MappingProxyType` wrapper still applies, so code that
-imports it cannot mutate it.
+テストはこれを import してテーブル サイズ（``len(TRANSITIONS) == 7``）をアサート
+し、``lookup`` を経由せずに全合法遷移を巡回する。:class:`MappingProxyType` ラッパは
+依然として有効なので、import したコードもこれを変異できない。
 """
 
 
 def lookup(current_decision: ReviewDecision, action: GateAction) -> ReviewDecision:
-    """Return the allowed ``next_decision`` for ``(current_decision, action)``.
+    """``(current_decision, action)`` に対する許可された ``next_decision`` を返す。
 
     Raises:
-        KeyError: when the pair is not in the canonical transition
-            table. The :class:`ExternalReviewGate` aggregate catches
-            this and re-raises as
+        KeyError: 対が正準遷移テーブルに存在しない場合。
+            :class:`ExternalReviewGate` Aggregate がこれを捕捉し、診断のために元の／
+            試行された decision を付与した
             :class:`ExternalReviewGateInvariantViolation(kind='decision_already_decided')`
-            with the original / attempted decision attached for
-            diagnostics — that translation lives in ``gate.py`` so
-            this module stays free of the exception package import
-            cycle.
+            として再送出する — その変換は ``gate.py`` に置き、本モジュールを例外
+            パッケージの import サイクルから解放する。
     """
     return _TRANSITIONS[(current_decision, action)]
 
 
 def allowed_actions_from(current_decision: ReviewDecision) -> list[GateAction]:
-    """Return the subset of actions legal from ``current_decision``.
+    """``current_decision`` から合法なアクション部分集合を返す。
 
-    Used by :class:`ExternalReviewGate` to populate the
-    ``allowed_actions`` field of MSG-GT-001 so the human-readable
-    next-action hint surfaces *which* transitions would have worked.
-    Returned in stable insertion order (Python 3.7+ dict iteration)
-    so test snapshots stay deterministic.
+    :class:`ExternalReviewGate` が MSG-GT-001 の ``allowed_actions`` フィールドを
+    埋めるために使う。これにより人間可読な next-action ヒントが *どの* 遷移であれば
+    成功したかを表面化する。挿入順を保つ Python 3.7+ dict iteration を使うため、
+    テスト スナップショットも決定的に保たれる。
     """
     return [action for (decision, action) in _TRANSITIONS if decision == current_decision]
 

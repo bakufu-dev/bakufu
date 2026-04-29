@@ -1,17 +1,15 @@
-"""``empires`` table — Empire Aggregate root row.
+"""``empires`` テーブル — Empire Aggregate ルート行。
 
-The Empire holds two scalar columns (``id`` / ``name``); reference
-collections (``rooms`` / ``agents``) live in the side tables
-:mod:`...tables.empire_room_refs` /
-:mod:`...tables.empire_agent_refs` to keep the row width bounded and
-the foreign-key cascade target obvious.
+Empire は 2 個のスカラー カラム（``id`` / ``name``）を保持する。参照コレクション
+（``rooms`` / ``agents``）は :mod:`...tables.empire_room_refs` /
+:mod:`...tables.empire_agent_refs` の関連テーブルに置き、行幅を抑え外部キー
+カスケード対象を明確にする。
 
-No ``Masked*`` TypeDecorator on any column: per
-``docs/design/domain-model/storage.md`` §逆引き表 the Empire
-schema carries no secret-bearing values. The CI three-layer defense
-(grep guard + arch test + reverse-lookup table) registers this
-explicit absence so a future PR cannot silently swap a column to a
-secret-bearing semantic.
+どのカラムにも ``Masked*`` TypeDecorator は付けない:
+``docs/design/domain-model/storage.md`` §逆引き表 によれば、Empire スキーマは
+シークレットを保持する値を持たない。CI 3 層防御（grep ガード + アーキ テスト
++ 逆引き表）はこの明示的な不在を登録するため、将来の PR がカラムをサイレントに
+シークレット保持の意味へ置き換えることはできない。
 """
 
 from __future__ import annotations
@@ -25,7 +23,7 @@ from bakufu.infrastructure.persistence.sqlite.base import Base, UUIDStr
 
 
 class EmpireRow(Base):
-    """ORM mapping for the ``empires`` table."""
+    """``empires`` テーブルの ORM マッピング。"""
 
     __tablename__ = "empires"
 

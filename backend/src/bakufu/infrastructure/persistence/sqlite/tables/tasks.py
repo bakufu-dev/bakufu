@@ -1,37 +1,33 @@
-"""``tasks`` table — Task Aggregate root row.
+"""``tasks`` テーブル — Task Aggregate ルート行。
 
-Holds the eight scalar columns of the Task aggregate root. Child
-collections (assigned agents / conversations / messages / deliverables /
-attachments) live in companion modules so the root row width stays bounded
-and CASCADE targets are obvious.
+Task Aggregate ルートの 8 個のスカラー カラムを保持する。子コレクション
+（アサイン エージェント / 会話 / メッセージ / 成果物 / 添付）はコンパニオン
+モジュールに置き、ルート行の幅を抑え CASCADE 対象を明確にする。
 
-``room_id`` carries an ``ON DELETE CASCADE`` foreign key onto ``rooms.id`` —
-when a Room is removed, its associated Tasks go with it.
+``room_id`` は ``rooms.id`` に対する ``ON DELETE CASCADE`` 外部キーを持つ —
+Room が削除されると関連 Task も一緒に削除される。
 
-``directive_id`` carries an ``ON DELETE CASCADE`` foreign key onto
-``directives.id`` — when a Directive is removed, its associated Tasks go
-with it.
+``directive_id`` は ``directives.id`` に対する ``ON DELETE CASCADE`` 外部キーを
+持つ — Directive が削除されると関連 Task も一緒に削除される。
 
-``current_stage_id`` intentionally has **no FK** onto ``workflow_stages.id``
-— Task and Workflow are separate Aggregates; adding a FK would create an
-Aggregate boundary violation and cause ON DELETE ambiguity (§確定 R1-G).
-Existence validation is the application layer's responsibility
-(``TaskService``).
+``current_stage_id`` は ``workflow_stages.id`` への FK を意図的に **持たない** —
+Task と Workflow は別の Aggregate であり、FK を加えると Aggregate 境界違反となり、
+ON DELETE の曖昧性も生じる（§確定 R1-G）。存在検証はアプリケーション層
+（``TaskService``）の責務。
 
-``last_error`` is a :class:`MaskedText` column (§確定 R1-E). The masking
-gateway replaces embedded API keys / OAuth tokens / LLM error secrets with
-``<REDACTED:*>`` *before* the row hits SQLite — preventing DB-dump / SQL-log
-secret leaks. Nullable: only BLOCKED Tasks carry a ``last_error`` value.
+``last_error`` は :class:`MaskedText` カラム（§確定 R1-E）。マスキング ゲートウェイ
+が、行が SQLite に到達する *前* に埋め込まれた API キー / OAuth トークン / LLM
+エラー シークレットを ``<REDACTED:*>`` に置換する — DB ダンプ / SQL ログからの
+シークレット漏洩を防ぐ。Nullable: BLOCKED の Task のみ ``last_error`` 値を持つ。
 
-Two indexes are created (§確定 R1-K):
+2 つのインデックスを作成する（§確定 R1-K）:
 
-* ``ix_tasks_room_id`` — non-UNIQUE single-column index on ``room_id`` for
-  ``count_by_room`` WHERE filters.
-* ``ix_tasks_status_updated_id`` — composite ``(status, updated_at, id)``
-  non-UNIQUE index that optimises ``find_blocked``
-  ``WHERE status = 'BLOCKED' ORDER BY updated_at DESC, id DESC`` with a
-  single B-tree scan. The status prefix also accelerates
-  ``count_by_status``.
+* ``ix_tasks_room_id`` — ``count_by_room`` の WHERE フィルタ用。``room_id`` 上の
+  非 UNIQUE 単一カラム インデックス。
+* ``ix_tasks_status_updated_id`` — 複合 ``(status, updated_at, id)`` 非 UNIQUE
+  インデックス。``find_blocked`` の ``WHERE status = 'BLOCKED' ORDER BY
+  updated_at DESC, id DESC`` を 1 回の B-tree スキャンで最適化する。status
+  プレフィックスは ``count_by_status`` にも効く。
 """
 
 from __future__ import annotations
@@ -51,7 +47,7 @@ from bakufu.infrastructure.persistence.sqlite.base import (
 
 
 class TaskRow(Base):
-    """ORM mapping for the ``tasks`` table."""
+    """``tasks`` テーブルの ORM マッピング。"""
 
     __tablename__ = "tasks"
 
@@ -66,26 +62,26 @@ class TaskRow(Base):
         ForeignKey("directives.id", ondelete="CASCADE"),
         nullable=False,
     )
-    # current_stage_id: intentionally NO FK onto workflow_stages.id.
-    # Task and Workflow are separate Aggregates; Aggregate boundary dictates
-    # that Task must not depend on Workflow's internal stage table directly.
-    # Existence validation is TaskService's responsibility (§確定 R1-G).
+    # current_stage_id: workflow_stages.id への FK は意図的に持たない。
+    # Task と Workflow は別の Aggregate であり、Aggregate 境界により Task は
+    # Workflow の内部 stage テーブルに直接依存してはならない。
+    # 存在検証は TaskService の責務（§確定 R1-G）。
     current_stage_id: Mapped[UUID] = mapped_column(UUIDStr, nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
-    # last_error: MaskedText — LLM error messages may contain API keys /
-    # auth tokens. MaskedText.process_bind_param redacts secrets before
-    # SQLite storage (§確定 R1-E, masking is irreversible).
+    # last_error: MaskedText — LLM のエラー メッセージは API キー / 認証トークンを
+    # 含み得る。MaskedText.process_bind_param が SQLite 格納前にシークレットを
+    # 伏字化する（§確定 R1-E、伏字化は不可逆）。
     last_error: Mapped[str | None] = mapped_column(MaskedText, nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
 
     __table_args__ = (
-        # §確定 R1-K: non-UNIQUE single-column index for count_by_room.
+        # §確定 R1-K: count_by_room 用の非 UNIQUE 単一カラム インデックス。
         Index("ix_tasks_room_id", "room_id"),
-        # §確定 R1-K: composite (status, updated_at, id) index.
-        # WHERE status = 'BLOCKED' in find_blocked uses the leading prefix;
-        # ORDER BY updated_at DESC, id DESC uses the trailing columns.
-        # count_by_status also benefits from the status prefix.
+        # §確定 R1-K: 複合 (status, updated_at, id) インデックス。
+        # find_blocked の WHERE status = 'BLOCKED' は先頭プレフィックスを使い、
+        # ORDER BY updated_at DESC, id DESC は後続カラムを使う。
+        # count_by_status も status プレフィックスの恩恵を受ける。
         Index("ix_tasks_status_updated_id", "status", "updated_at", "id"),
     )
 

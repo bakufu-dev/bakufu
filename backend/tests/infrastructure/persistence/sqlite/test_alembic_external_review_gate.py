@@ -1,25 +1,25 @@
-"""Alembic 8th revision tests — ExternalReviewGate aggregate (TC-IT-ERGR-001〜008).
+"""Alembic 第 8 リビジョンテスト ── ExternalReviewGate アグリゲート (TC-IT-ERGR-001〜008)。
 
 RQ-ERGR-007 / §確定 R1-B / §確定 R1-K / §設計決定 ERGR-001.
 
-Real Alembic upgrade/downgrade against a real SQLite file plus chain
-integrity check that makes sure 0001→…→0008 chain stays linear.
+実 SQLite ファイルに対する Alembic upgrade/downgrade を実行し、
+0001→…→0008 のチェーンが線形であることのチェーン整合性も確認する。
 
-Also verifies:
-* 3 tables created: external_review_gates / external_review_gate_attachments /
+加えて以下を検証する:
+* 3 テーブル作成: external_review_gates / external_review_gate_attachments /
   external_review_audit_entries.
-* 3 indexes: ix_external_review_gates_task_id_created /
+* 3 インデックス: ix_external_review_gates_task_id_created /
   ix_external_review_gates_reviewer_decision /
   ix_external_review_gates_decision.
 * FK: external_review_gates.task_id → tasks.id ON DELETE CASCADE.
-* §設計決定 ERGR-001: reviewer_id / snapshot_committed_by have NO FK.
+* §設計決定 ERGR-001: reviewer_id / snapshot_committed_by は FK を持たない。
 * 0008.down_revision == "0007_task_aggregate".
-* upgrade → downgrade → upgrade is idempotent.
-* Task CASCADE: deleting task removes associated Gates.
+* upgrade → downgrade → upgrade が冪等。
+* Task CASCADE: task を削除すると関連する Gate も削除される。
 
-Per ``docs/features/external-review-gate-repository/test-design.md``
-TC-IT-ERGR-001〜008.
-Issue #36 — M2 0008.
+``docs/features/external-review-gate-repository/test-design.md``
+TC-IT-ERGR-001〜008 準拠。
+Issue #36 — M2 0008。
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ pytestmark = pytest.mark.asyncio
 # ---------------------------------------------------------------------------
 @pytest_asyncio.fixture
 async def empty_engine(tmp_path: Path) -> AsyncIterator[AsyncEngine]:
-    """Fresh app engine with no migrations applied."""
+    """マイグレーション未適用の新規 app engine。"""
     url = f"sqlite+aiosqlite:///{tmp_path / 'bakufu.db'}"
     engine = engine_mod.create_engine(url)
     try:
@@ -58,7 +58,7 @@ async def empty_engine(tmp_path: Path) -> AsyncIterator[AsyncEngine]:
 
 
 def _alembic_config() -> Config:
-    """Resolve bakufu Alembic config for ScriptDirectory inspection."""
+    """ScriptDirectory 検査用に bakufu の Alembic config を解決する。"""
     backend_root = Path(__file__).resolve().parents[4]
     cfg = Config(str(backend_root / "alembic.ini"))
     cfg.set_main_option("script_location", str(backend_root / "alembic"))
@@ -69,13 +69,13 @@ def _alembic_config() -> Config:
 # TC-IT-ERGR-001: 0008 creates 3 ExternalReviewGate tables (受入基準 6)
 # ---------------------------------------------------------------------------
 class TestEighthRevisionThreeTablesPresent:
-    """TC-IT-ERGR-001: alembic upgrade head adds the 3 ExternalReviewGate tables."""
+    """TC-IT-ERGR-001: alembic upgrade head が 3 つの ExternalReviewGate テーブルを追加する。"""
 
     async def test_three_erg_tables_present_after_upgrade(
         self,
         empty_engine: AsyncEngine,
     ) -> None:
-        """TC-IT-ERGR-001: 3 ERG tables exist after upgrade head."""
+        """TC-IT-ERGR-001: upgrade head 後に 3 つの ERG テーブルが存在する。"""
         await run_upgrade_head(empty_engine)
         async with empty_engine.connect() as conn:
             result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
@@ -97,13 +97,13 @@ class TestEighthRevisionThreeTablesPresent:
 # TC-IT-ERGR-002: 3 INDEXes on external_review_gates (§確定 R1-K)
 # ---------------------------------------------------------------------------
 class TestExternalReviewGateIndexesPresent:
-    """TC-IT-ERGR-002: All 3 required INDEXes exist on external_review_gates."""
+    """TC-IT-ERGR-002: external_review_gates に必須の 3 つの INDEX がすべて存在する。"""
 
     async def test_three_indexes_present(
         self,
         empty_engine: AsyncEngine,
     ) -> None:
-        """TC-IT-ERGR-002: ix_task_id_created / ix_reviewer_decision / ix_decision exist."""
+        """TC-IT-ERGR-002: ix_task_id_created / ix_reviewer_decision / ix_decision が存在する。"""
         await run_upgrade_head(empty_engine)
         async with empty_engine.connect() as conn:
             result = await conn.execute(
@@ -130,13 +130,13 @@ class TestExternalReviewGateIndexesPresent:
 # TC-IT-ERGR-003: FK external_review_gates.task_id → tasks.id CASCADE
 # ---------------------------------------------------------------------------
 class TestExternalReviewGateForeignKey:
-    """TC-IT-ERGR-003: external_review_gates.task_id → tasks.id ON DELETE CASCADE."""
+    """TC-IT-ERGR-003: external_review_gates.task_id → tasks.id ON DELETE CASCADE。"""
 
     async def test_task_id_fk_to_tasks_cascade(
         self,
         empty_engine: AsyncEngine,
     ) -> None:
-        """TC-IT-ERGR-003: PRAGMA foreign_key_list confirms tasks CASCADE FK."""
+        """TC-IT-ERGR-003: PRAGMA foreign_key_list で tasks への CASCADE FK を確認する。"""
         await run_upgrade_head(empty_engine)
         async with empty_engine.connect() as conn:
             result = await conn.execute(text("PRAGMA foreign_key_list('external_review_gates')"))
@@ -159,10 +159,10 @@ class TestExternalReviewGateForeignKey:
 # TC-IT-ERGR-004: Alembic chain 0001→...→0008 is a single head
 # ---------------------------------------------------------------------------
 class TestAlembicChainSingleHead:
-    """TC-IT-ERGR-004: ScriptDirectory has exactly 1 head (no branch divergence)."""
+    """TC-IT-ERGR-004: ScriptDirectory の head が 1 つだけ（ブランチ分岐なし）。"""
 
     def test_alembic_chain_has_single_head(self) -> None:
-        """TC-IT-ERGR-004: len(heads) == 1 — chain is linear 0001→...→0008."""
+        """TC-IT-ERGR-004: len(heads) == 1 ── チェーンは 0001→...→0008 の線形。"""
         cfg = _alembic_config()
         script_dir = ScriptDirectory.from_config(cfg)
         heads = script_dir.get_heads()
@@ -177,20 +177,21 @@ class TestAlembicChainSingleHead:
 # TC-IT-ERGR-005: upgrade → downgrade → upgrade is idempotent (受入基準 6)
 # ---------------------------------------------------------------------------
 class TestUpgradeDowngradeIdempotent:
-    """TC-IT-ERGR-005: upgrade head → downgrade base → upgrade head restores 3 tables."""
+    """TC-IT-ERGR-005: upgrade head → downgrade base → upgrade head で 3 テーブルが復元される。"""
 
     async def test_upgrade_downgrade_upgrade_idempotent(
         self,
         empty_engine: AsyncEngine,
     ) -> None:
-        """TC-IT-ERGR-005: Double migration cycle — final state has 3 ERG tables."""
+        """TC-IT-ERGR-005: 2 回マイグレーションサイクルを回し、最終状態に 3 つの ERG テーブル。"""
         import asyncio
 
         from alembic import command as alembic_command
 
         await run_upgrade_head(empty_engine)
 
-        # Downgrade to base via alembic command (runs in a thread to avoid event-loop deadlock)
+        # alembic command 経由で base まで downgrade
+        # （event-loop デッドロック回避のためスレッド実行）
         cfg = _alembic_config()
         cfg.set_main_option("sqlalchemy.url", str(empty_engine.url))
 
@@ -199,7 +200,7 @@ class TestUpgradeDowngradeIdempotent:
 
         await asyncio.to_thread(_do_downgrade)
 
-        # Verify ERG tables are gone after downgrade
+        # downgrade 後に ERG テーブルが消えていることを確認
         async with empty_engine.connect() as conn:
             result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
             tables_after_down = {row[0] for row in result}
@@ -208,7 +209,7 @@ class TestUpgradeDowngradeIdempotent:
             f"Tables: {tables_after_down}"
         )
 
-        # Re-upgrade
+        # 再 upgrade
         await run_upgrade_head(empty_engine)
 
         async with empty_engine.connect() as conn:
@@ -229,10 +230,10 @@ class TestUpgradeDowngradeIdempotent:
 # TC-IT-ERGR-006: 0008.down_revision == "0007_task_aggregate"
 # ---------------------------------------------------------------------------
 class TestDownRevisionChain:
-    """TC-IT-ERGR-006: 0008 down_revision points to 0007_task_aggregate."""
+    """TC-IT-ERGR-006: 0008 の down_revision が 0007_task_aggregate を指す。"""
 
     def test_0008_down_revision_is_0007(self) -> None:
-        """TC-IT-ERGR-006: Chain is 0007_task_aggregate → 0008_external_review_gate_aggregate."""
+        """TC-IT-ERGR-006: チェーンは 0007_task_aggregate → 0008_external_review_gate_aggregate。"""
         cfg = _alembic_config()
         script_dir = ScriptDirectory.from_config(cfg)
         rev = script_dir.get_revision("0008_external_review_gate_aggregate")
@@ -247,13 +248,13 @@ class TestDownRevisionChain:
 # TC-IT-ERGR-007: Task CASCADE FK deletes Gates (受入基準 7)
 # ---------------------------------------------------------------------------
 class TestTaskCascadeDeletesGate:
-    """TC-IT-ERGR-007: DELETE FROM tasks cascades to external_review_gates."""
+    """TC-IT-ERGR-007: DELETE FROM tasks が external_review_gates に CASCADE する。"""
 
     async def test_delete_task_cascades_to_external_review_gates(
         self,
         empty_engine: AsyncEngine,
     ) -> None:
-        """TC-IT-ERGR-007: Deleting a Task row removes its associated Gate rows."""
+        """TC-IT-ERGR-007: Task 行を削除すると関連 Gate 行が削除される。"""
         await run_upgrade_head(empty_engine)
 
         empire_id = uuid4().hex
@@ -330,7 +331,7 @@ class TestTaskCascadeDeletesGate:
                 },
             )
 
-        # Verify gate exists before delete
+        # 削除前に gate が存在することを確認
         async with empty_engine.connect() as conn:
             row = (
                 await conn.execute(
@@ -340,12 +341,12 @@ class TestTaskCascadeDeletesGate:
             ).first()
         assert row is not None and row[0] == 1, "[FAIL] Gate row not inserted."
 
-        # Delete task — CASCADE should remove gate
+        # task を削除 ── CASCADE で gate も削除されるはず
         async with empty_engine.begin() as conn:
             await conn.execute(text("PRAGMA foreign_keys = ON"))
             await conn.execute(text("DELETE FROM tasks WHERE id = :id"), {"id": task_id})
 
-        # Gate must be gone
+        # Gate が消えていなければならない
         async with empty_engine.connect() as conn:
             row = (
                 await conn.execute(
@@ -362,20 +363,22 @@ class TestTaskCascadeDeletesGate:
 # TC-IT-ERGR-008: §設計決定 ERGR-001 — reviewer_id / snapshot_committed_by have NO FK
 # ---------------------------------------------------------------------------
 class TestAggregrateBoundaryNoForeignKeys:
-    """TC-IT-ERGR-008: reviewer_id / snapshot_committed_by have no FK (§設計決定 ERGR-001)."""
+    """TC-IT-ERGR-008: reviewer_id / snapshot_committed_by は
+    FK を持たない (§設計決定 ERGR-001)。"""
 
     async def test_reviewer_id_has_no_fk(
         self,
         empty_engine: AsyncEngine,
     ) -> None:
-        """TC-IT-ERGR-008: PRAGMA foreign_key_list — no FK to owners/agents for reviewer_id."""
+        """TC-IT-ERGR-008: PRAGMA foreign_key_list ── reviewer_id
+        の owners/agents への FK が存在しない。"""
         await run_upgrade_head(empty_engine)
         async with empty_engine.connect() as conn:
             result = await conn.execute(text("PRAGMA foreign_key_list('external_review_gates')"))
             fk_list = [dict(row) for row in result.mappings()]
 
         referenced_tables = {fk.get("table") for fk in fk_list}
-        # The only FK must be tasks (CASCADE). Owner / Agent Aggregate tables must not appear.
+        # FK は tasks（CASCADE）のみであるべき。Owner / Agent Aggregate のテーブルは現れない。
         forbidden = {"owners", "agents", "users", "members"}
         leaked = referenced_tables & forbidden
         assert not leaked, (
@@ -388,7 +391,7 @@ class TestAggregrateBoundaryNoForeignKeys:
         self,
         empty_engine: AsyncEngine,
     ) -> None:
-        """TC-IT-ERGR-008: The only FK from external_review_gates is to tasks."""
+        """TC-IT-ERGR-008: external_review_gates から伸びる FK は tasks のみ。"""
         await run_upgrade_head(empty_engine)
         async with empty_engine.connect() as conn:
             result = await conn.execute(text("PRAGMA foreign_key_list('external_review_gates')"))

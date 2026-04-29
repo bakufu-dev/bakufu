@@ -52,18 +52,18 @@ def upgrade() -> None:
             sa.ForeignKey("rooms.id", ondelete="CASCADE"),
             nullable=False,
         ),
-        # created_at uses Text storage (UTCDateTime TypeDecorator stores
-        # ISO-8601 string). Always UTC-aware at the Python layer.
+        # created_at は Text 形式で保存する（UTCDateTime TypeDecorator が
+        # ISO-8601 文字列を格納する）。Python 側では常に UTC-aware。
         sa.Column("created_at", sa.Text(), nullable=False),
-        # task_id: nullable CHAR(32) with NO FK at this level — see §BUG-DRR-001.
-        # The FK closure (fk_directives_task_id → tasks.id RESTRICT) is deferred
-        # to the task-repository PR.
+        # task_id: このレベルでは FK 無しの nullable CHAR(32) — §BUG-DRR-001 を参照。
+        # FK クロージャ（fk_directives_task_id → tasks.id RESTRICT）は
+        # task-repository PR に延期される。
         sa.Column("task_id", sa.CHAR(32), nullable=True),
     )
 
-    # §確定 R1-D: composite index for Room-scoped find_by_room query.
-    # Left-prefix covers ``WHERE target_room_id = ?`` and
-    # ``WHERE target_room_id = ? ORDER BY created_at DESC``.
+    # §確定 R1-D: Room スコープの find_by_room クエリ用の複合インデックス。
+    # 左プレフィックスが ``WHERE target_room_id = ?`` と
+    # ``WHERE target_room_id = ? ORDER BY created_at DESC`` をカバーする。
     op.create_index(
         "ix_directives_target_room_id_created_at",
         "directives",
@@ -73,6 +73,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Reverse order: index first, then table.
+    # 逆順: まずインデックス、次にテーブル。
     op.drop_index("ix_directives_target_room_id_created_at", table_name="directives")
     op.drop_table("directives")

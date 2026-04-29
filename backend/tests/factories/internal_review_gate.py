@@ -1,24 +1,24 @@
-"""Factories for the InternalReviewGate aggregate and its VOs.
+"""InternalReviewGate アグリゲートと VO のファクトリ群.
 
-Per ``docs/features/internal-review-gate/domain/test-design.md`` §外部 I/O 依存マップ.
-Mirrors the M1 sibling pattern (external_review_gate / agent / room / directive / task /
-workflow): every factory returns a *valid* default instance built through the production
-constructor, allows keyword overrides, and registers the result in a
-:class:`WeakValueDictionary` so :func:`is_synthetic` can later flag test-built objects
-without mutating the frozen Pydantic models.
+``docs/features/internal-review-gate/domain/test-design.md`` §外部 I/O 依存マップ
+準拠。M1 兄弟パターン (external_review_gate / agent / room / directive / task /
+workflow) を踏襲: 各ファクトリは本番コンストラクタ経由で *妥当* なデフォルト
+インスタンスを返し、キーワード上書きを許可し、結果を :class:`WeakValueDictionary`
+に登録する。これにより :func:`is_synthetic` が後から、frozen Pydantic モデルを
+変更せずにテスト由来オブジェクトをフラグ付けできる。
 
-Four factories are exposed:
+公開ファクトリ 4 種:
 
-* :func:`make_verdict` — a single APPROVED :class:`Verdict` VO.
-* :func:`make_gate` — a PENDING :class:`InternalReviewGate` (empty verdicts).
-* :func:`make_all_approved_gate` — ALL_APPROVED Gate with all required roles voted.
-* :func:`make_rejected_gate` — REJECTED Gate with one REJECTED verdict.
+* :func:`make_verdict` ── 単一 APPROVED の :class:`Verdict` VO。
+* :func:`make_gate` ── PENDING の :class:`InternalReviewGate` (verdicts 空)。
+* :func:`make_all_approved_gate` ── 全 required role が投票した ALL_APPROVED Gate。
+* :func:`make_rejected_gate` ── REJECTED verdict 1 件を持つ REJECTED Gate。
 
-Factories build directly via ``model_validate`` — they do **NOT** call ``submit_verdict``
-— because unit tests for the behavior methods need a clean entry state without prior
-method-driven mutation.
+ファクトリは ``model_validate`` で直接構築する ── ``submit_verdict`` は **呼ばない**
+── behavior メソッドのユニットテストにはメソッド駆動の事前変更なしの
+クリーンな入口状態が必要なため。
 
-Production code MUST NOT import this module.
+本モジュールを本番コードから import してはならない。
 """
 
 from __future__ import annotations
@@ -35,21 +35,21 @@ from bakufu.domain.value_objects import (
 )
 from pydantic import BaseModel
 
-# Module-scope registry: synthetic instances are tracked weakly so GC pressure
-# stays neutral while the object is alive.
+# モジュールスコープのレジストリ: 合成インスタンスを弱参照で追跡し、
+# オブジェクト生存中の GC 圧を中立に保つ。
 _SYNTHETIC_REGISTRY: WeakValueDictionary[int, BaseModel] = WeakValueDictionary()
 
-# Default role set shared by PENDING / REJECTED factories.
+# PENDING / REJECTED ファクトリで共有するデフォルト role 集合。
 _DEFAULT_ROLES: frozenset[str] = frozenset({"reviewer", "ux", "security"})
-# Smaller role set used by ALL_APPROVED factory (keeps verdicts minimal).
+# ALL_APPROVED ファクトリで使う小さめの role 集合 (verdicts を最小に保つ)。
 _APPROVED_ROLES: frozenset[str] = frozenset({"reviewer", "ux"})
 
 
 def is_synthetic(instance: BaseModel) -> bool:
-    """Return ``True`` when ``instance`` was created by a factory in this module.
+    """``instance`` が本モジュールのファクトリで生成されたものなら ``True`` を返す。
 
-    Check is identity-based (``id()``) so two independently-produced equal
-    instances are still distinguishable.
+    検査は ID ベース (``id()``) ── 独立に生成された等値の 2 インスタンスは
+    区別される。
     """
     cached = _SYNTHETIC_REGISTRY.get(id(instance))
     return cached is instance
@@ -60,7 +60,7 @@ def _register(instance: BaseModel) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Verdict factory
+# Verdict ファクトリ
 # ---------------------------------------------------------------------------
 def make_verdict(
     *,
@@ -70,10 +70,10 @@ def make_verdict(
     comment: str = "",
     decided_at: datetime | None = None,
 ) -> Verdict:
-    """Build a valid :class:`Verdict` VO.
+    """妥当な :class:`Verdict` VO を構築する。
 
-    Defaults to an APPROVED verdict from the ``"reviewer"`` role with an
-    empty comment — the simplest legal shape for unit test setup.
+    デフォルトは ``"reviewer"`` role からの APPROVED verdict、空 comment ──
+    ユニットテストのセットアップに最適な最小の正当形。
     """
     verdict = Verdict(
         role=role,
@@ -87,7 +87,7 @@ def make_verdict(
 
 
 # ---------------------------------------------------------------------------
-# InternalReviewGate factories
+# InternalReviewGate ファクトリ
 # ---------------------------------------------------------------------------
 def make_gate(
     *,
@@ -99,15 +99,16 @@ def make_gate(
     gate_decision: GateDecision = GateDecision.PENDING,
     created_at: datetime | None = None,
 ) -> InternalReviewGate:
-    """Build a valid PENDING :class:`InternalReviewGate` directly via ``model_validate``.
+    """妥当な PENDING :class:`InternalReviewGate` を ``model_validate`` で直接構築する。
 
-    Defaults:
+    デフォルト:
     * ``gate_decision = PENDING``
     * ``verdicts = []``
     * ``required_gate_roles = {"reviewer", "ux", "security"}``
 
-    Pass ``verdicts`` + matching ``gate_decision`` to build terminal-state Gates
-    (prefer :func:`make_all_approved_gate` / :func:`make_rejected_gate` for that).
+    terminal 状態の Gate を構築する場合は ``verdicts`` と整合する
+    ``gate_decision`` を渡す (専用 :func:`make_all_approved_gate` /
+    :func:`make_rejected_gate` を優先するのが望ましい)。
     """
     now = datetime.now(UTC)
     roles = required_gate_roles if required_gate_roles is not None else _DEFAULT_ROLES
@@ -134,11 +135,11 @@ def make_all_approved_gate(
     task_id: UUID | None = None,
     stage_id: UUID | None = None,
 ) -> InternalReviewGate:
-    """Build an ALL_APPROVED :class:`InternalReviewGate`.
+    """ALL_APPROVED :class:`InternalReviewGate` を構築する。
 
-    Defaults to ``required_gate_roles={"reviewer","ux"}`` — the smallest
-    valid set that demonstrates full consensus (2 APPROVED verdicts).
-    Every required role gets an APPROVED Verdict.
+    デフォルトは ``required_gate_roles={"reviewer","ux"}`` ── 全コンセンサス
+    (2 件の APPROVED verdict) を示す最小の妥当集合。required role 全てに
+    APPROVED Verdict を割り当てる。
     """
     roles = required_gate_roles if required_gate_roles is not None else _APPROVED_ROLES
     ts = datetime.now(UTC)
@@ -165,11 +166,10 @@ def make_rejected_gate(
     task_id: UUID | None = None,
     stage_id: UUID | None = None,
 ) -> InternalReviewGate:
-    """Build a REJECTED :class:`InternalReviewGate`.
+    """REJECTED :class:`InternalReviewGate` を構築する。
 
-    One REJECTED Verdict from ``rejecting_role``; remaining required roles
-    are *not* submitted (demonstrates the most-pessimistic-wins rule:
-    immediate REJECTED even with pending roles).
+    ``rejecting_role`` からの REJECTED Verdict 1 件 ── 残りの required role は
+    *未提出* (pessimistic-wins ルールを示す: 未提出 role があっても即時 REJECTED)。
     """
     roles = required_gate_roles if required_gate_roles is not None else _DEFAULT_ROLES
     if rejecting_role not in roles:

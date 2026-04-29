@@ -1,25 +1,23 @@
-"""Factories for the ExternalReviewGate aggregate and its VOs.
+"""ExternalReviewGate アグリゲートと VO のファクトリ群.
 
-Per ``docs/features/external-review-gate/test-design.md`` §外部 I/O 依存
-マップ. Mirrors the M1 6-sibling pattern (empire / workflow / agent /
-room / directive / task): every factory returns a *valid* default
-instance built through the production constructor, allows keyword
-overrides, and registers the result in a :class:`WeakValueDictionary`
-so :func:`is_synthetic` can later flag test-built objects without
-mutating the frozen Pydantic models.
+``docs/features/external-review-gate/test-design.md`` §外部 I/O 依存
+マップ 準拠。M1 の 6 兄弟パターン (empire / workflow / agent /
+room / directive / task) を踏襲: 各ファクトリは本番コンストラクタ経由で
+*妥当* なデフォルトインスタンスを返し、キーワード上書きを許可し、結果を
+:class:`WeakValueDictionary` に登録する。これにより :func:`is_synthetic`
+が後から、frozen Pydantic モデルを変更せずにテスト由来オブジェクトを
+フラグ付けできる。
 
-Five Gate factories are exposed (one per ``ReviewDecision`` + a
-PendingGateFactory baseline) so each lifecycle position can be
-reached without walking the state machine in setup. The factories
-build directly via ``ExternalReviewGate.model_validate`` — they do
-NOT call the behavior methods — because tests for the behavior
-methods need a clean entry state without prior method-driven
-mutation (and the §確定 C audit_trail append-only contract means
-factory-set audit_trail bytes are pinned for every subsequent
-mutation).
+5 つの Gate ファクトリを公開する (``ReviewDecision`` ごと + PendingGateFactory
+ベースライン)。これによりセットアップでステートマシンを歩かずに任意の
+ライフサイクル位置へ到達できる。ファクトリは ``ExternalReviewGate.model_validate``
+で直接構築する ── behavior メソッドは呼ばない ── behavior メソッドのテストには
+メソッド駆動の事前変更なしのクリーンな入口状態が必要なため (加えて
+§確定 C audit_trail append-only 契約により、ファクトリで設定した audit_trail
+バイト列は後続のあらゆる mutation に対して固定される)。
 
-Production code MUST NOT import this module — it lives under
-``tests/`` to keep the synthetic-data boundary auditable.
+本モジュールを本番コードから import してはならない ── 合成データ境界を
+監査可能に保つため ``tests/`` 配下に配置されている。
 """
 
 from __future__ import annotations
@@ -43,31 +41,29 @@ from tests.factories.task import make_deliverable
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-# Module-scope registry. Values are kept weakly so GC pressure stays
-# neutral; we only want to know "did a factory produce this object"
-# while it's alive.
+# モジュールスコープのレジストリ。値は弱参照で保持するので GC 圧は中立 ──
+# 「このオブジェクトはファクトリ由来か」をオブジェクト生存中だけ知ればよい。
 _SYNTHETIC_REGISTRY: WeakValueDictionary[int, BaseModel] = WeakValueDictionary()
 
 
 def is_synthetic(instance: BaseModel) -> bool:
-    """Return ``True`` when ``instance`` was created by a factory in this module.
+    """``instance`` が本モジュールのファクトリで生成されたものなら ``True`` を返す。
 
-    The check is identity-based (``id``) rather than structural so
-    two independently-produced equal instances are still
-    distinguishable: only the actual object the factory returned is
-    marked synthetic.
+    検査は構造的ではなく ID ベース (``id``)。これにより独立に生成された
+    等値の 2 インスタンスは区別される ── ファクトリが返した実オブジェクトのみ
+    合成印が付く。
     """
     cached = _SYNTHETIC_REGISTRY.get(id(instance))
     return cached is instance
 
 
 def _register(instance: BaseModel) -> None:
-    """Record ``instance`` in the synthetic registry."""
+    """``instance`` を合成レジストリに記録する。"""
     _SYNTHETIC_REGISTRY[id(instance)] = instance
 
 
 # ---------------------------------------------------------------------------
-# AuditEntry factory
+# AuditEntry ファクトリ
 # ---------------------------------------------------------------------------
 def make_audit_entry(
     *,
@@ -77,11 +73,11 @@ def make_audit_entry(
     comment: str = "",
     occurred_at: datetime | None = None,
 ) -> AuditEntry:
-    """Build a valid :class:`AuditEntry`.
+    """妥当な :class:`AuditEntry` を構築する。
 
-    Defaults to a VIEWED audit entry — the simplest legal shape that
-    every Gate state can carry. Tests that need APPROVED / REJECTED /
-    CANCELLED audit rows override ``action`` explicitly.
+    デフォルトは VIEWED 監査エントリ ── 全ての Gate 状態が運べる最小の
+    正当形。APPROVED / REJECTED / CANCELLED 監査行が要るテストは
+    ``action`` を明示上書きする。
     """
     entry = AuditEntry(
         id=entry_id if entry_id is not None else uuid4(),
@@ -95,7 +91,7 @@ def make_audit_entry(
 
 
 # ---------------------------------------------------------------------------
-# ExternalReviewGate factories — one per ReviewDecision + a baseline
+# ExternalReviewGate ファクトリ ── ReviewDecision ごと + ベースライン
 # ---------------------------------------------------------------------------
 def make_gate(
     *,
@@ -110,16 +106,16 @@ def make_gate(
     created_at: datetime | None = None,
     decided_at: datetime | None = None,
 ) -> ExternalReviewGate:
-    """Build a valid :class:`ExternalReviewGate` directly via ``model_validate``.
+    """妥当な :class:`ExternalReviewGate` を ``model_validate`` 経由で直接構築する。
 
-    Defaults yield a PENDING Gate with no audit entries, no feedback,
-    and ``decided_at=None`` — the canonical entry state right after
-    ``GateService.create()`` (after Task.request_external_review).
+    デフォルトは監査エントリなし、feedback なし、``decided_at=None`` の
+    PENDING Gate ── ``GateService.create()`` 直後 (Task.request_external_review
+    後) の canonical な入口状態。
 
-    Note: ``decision != PENDING`` requires a non-None ``decided_at``
-    per the consistency invariant; tests that need a terminal Gate
-    should use :func:`make_approved_gate` /
-    :func:`make_rejected_gate` / :func:`make_cancelled_gate`.
+    注意: ``decision != PENDING`` は consistency invariant により非 None の
+    ``decided_at`` を要する。terminal Gate が要るテストは
+    :func:`make_approved_gate` / :func:`make_rejected_gate` /
+    :func:`make_cancelled_gate` を使うこと。
     """
     now = datetime.now(UTC)
     gate = ExternalReviewGate.model_validate(
@@ -149,7 +145,7 @@ def make_approved_gate(
     decided_at: datetime | None = None,
     **overrides: object,
 ) -> ExternalReviewGate:
-    """Build an APPROVED Gate. ``decided_at`` is mandatory for the consistency invariant."""
+    """APPROVED Gate を構築する。consistency invariant のため ``decided_at`` 必須。"""
     decided_at = decided_at if decided_at is not None else datetime.now(UTC)
     if audit_trail is None:
         audit_trail = [
@@ -171,7 +167,7 @@ def make_rejected_gate(
     decided_at: datetime | None = None,
     **overrides: object,
 ) -> ExternalReviewGate:
-    """Build a REJECTED Gate."""
+    """REJECTED Gate を構築する。"""
     decided_at = decided_at if decided_at is not None else datetime.now(UTC)
     if audit_trail is None:
         audit_trail = [
@@ -193,7 +189,7 @@ def make_cancelled_gate(
     decided_at: datetime | None = None,
     **overrides: object,
 ) -> ExternalReviewGate:
-    """Build a CANCELLED Gate."""
+    """CANCELLED Gate を構築する。"""
     decided_at = decided_at if decided_at is not None else datetime.now(UTC)
     if audit_trail is None:
         audit_trail = [

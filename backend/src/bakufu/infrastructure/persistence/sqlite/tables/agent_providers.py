@@ -1,27 +1,23 @@
-"""``agent_providers`` table — Agent ↔ ProviderConfig child rows.
+"""``agent_providers`` テーブル — Agent ↔ ProviderConfig 子行。
 
-Stores :class:`bakufu.domain.agent.value_objects.ProviderConfig` values
-as a side table of the Agent aggregate. ``ON DELETE CASCADE`` purges
-provider rows when the parent Agent is deleted; UNIQUE(agent_id,
-provider_kind) mirrors the
-``_validate_provider_kind_unique`` aggregate invariant at the row
-level.
+:class:`bakufu.domain.agent.value_objects.ProviderConfig` の値を Agent Aggregate
+の関連テーブルとして保存する。``ON DELETE CASCADE`` は親 Agent 削除時に provider
+行を消去する。UNIQUE(agent_id, provider_kind) は ``_validate_provider_kind_unique``
+Aggregate 不変条件を行レベルでミラーする。
 
-The interesting constraint is the **partial unique index**
-``WHERE is_default = 1`` — see
-``docs/features/agent-repository/detailed-design.md`` §確定 G. This
-gives the "exactly one default provider per Agent" invariant a
-**Defense-in-Depth** floor: the Aggregate-level helper
-``_validate_default_provider_count`` already enforces it, but if a
-future PR introduces a corrupted SQL path (raw INSERT, hand-rolled
-migration) the DB still refuses to host two ``is_default=1`` rows on
-the same Agent. SQLite ships partial indexes natively
-(https://www.sqlite.org/partialindex.html); the same construct ports
-to PostgreSQL with identical syntax.
+興味深い制約は **部分一意インデックス** ``WHERE is_default = 1`` —
+``docs/features/agent-repository/detailed-design.md`` §確定 G を参照。これにより
+「Agent ごとに default プロバイダはちょうど 1 つ」不変条件に **多層防御** の基盤
+が与えられる: Aggregate レベルのヘルパ ``_validate_default_provider_count`` が
+既に強制しているが、将来の PR が破損 SQL 経路（raw INSERT、手書きマイグレーション）
+を導入しても、DB は同じ Agent 上で 2 つの ``is_default=1`` 行をホストすることを
+拒否し続ける。SQLite は部分インデックスを標準で提供する
+（https://www.sqlite.org/partialindex.html）。同じ構文は PostgreSQL にも完全に
+ポートできる。
 
-No ``Masked*`` TypeDecorator on any column. ``provider_kind`` is an
-enum string, ``model`` is an LLM model identifier with no secret
-semantics, and ``is_default`` is a boolean flag.
+どのカラムにも ``Masked*`` TypeDecorator は付けない。``provider_kind`` は enum
+文字列、``model`` はシークレット意味を持たない LLM モデル識別子、``is_default``
+は真偽フラグ。
 """
 
 from __future__ import annotations
@@ -35,7 +31,7 @@ from bakufu.infrastructure.persistence.sqlite.base import Base, UUIDStr
 
 
 class AgentProviderRow(Base):
-    """ORM mapping for the ``agent_providers`` table."""
+    """``agent_providers`` テーブルの ORM マッピング。"""
 
     __tablename__ = "agent_providers"
 
@@ -55,10 +51,10 @@ class AgentProviderRow(Base):
             "provider_kind",
             name="uq_agent_providers_pair",
         ),
-        # Partial unique index — at most one row per agent_id may have
-        # ``is_default = 1``. SQLite / PostgreSQL syntax is the same.
-        # detailed-design §確定 G: Defense-in-Depth alongside the
-        # Aggregate-level ``_validate_default_provider_count`` check.
+        # 部分一意インデックス — 1 つの agent_id に対し ``is_default = 1`` の行は
+        # 最大 1 つ。SQLite / PostgreSQL の構文は同一。詳細設計 §確定 G:
+        # Aggregate レベルの ``_validate_default_provider_count`` チェックと並ぶ
+        # 多層防御。
         Index(
             "uq_agent_providers_default",
             "agent_id",

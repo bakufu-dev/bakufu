@@ -1,17 +1,16 @@
-"""``bakufu_pid_registry`` table (orphan-process tracking).
+"""``bakufu_pid_registry`` テーブル（オーファン プロセス追跡）。
 
-Bootstrap stage 4 sweeps this table to kill leftover claude/codex/etc.
-subprocesses from a previous run. The ``cmd`` column may carry CLI
-arguments containing secrets (``--api-key=sk-ant-...``) so the masking
-gateway is mandatory — see Schneier 申し送り #5.
-Secret-column masking is enforced via the :class:`MaskedText`
-TypeDecorator in
-:mod:`bakufu.infrastructure.persistence.sqlite.base`. Its
-``process_bind_param`` hook fires for both ORM ``Session.add()`` and
-Core ``insert(table).values(...)`` paths so the gateway is honored
-end-to-end (BUG-PF-001 fix; see
-``docs/features/persistence-foundation/requirements-analysis.md``
-§確定 R1-D for the design rationale).
+Bootstrap stage 4 がこのテーブルをスイープし、前回実行から残った claude /
+codex 等のサブプロセスを kill する。``cmd`` カラムはシークレット
+（``--api-key=sk-ant-...``）を含む CLI 引数を保持し得るため、マスキング
+ゲートウェイは必須 — Schneier 申し送り #5 を参照。
+シークレット カラムのマスキングは
+:mod:`bakufu.infrastructure.persistence.sqlite.base` の :class:`MaskedText`
+TypeDecorator で強制する。その ``process_bind_param`` フックは ORM の
+``Session.add()`` と Core の ``insert(table).values(...)`` の両経路で発火する
+ため、ゲートウェイは端から端まで尊重される（BUG-PF-001 修正、設計根拠は
+``docs/features/persistence-foundation/requirements-analysis.md`` §確定 R1-D
+を参照）。
 """
 
 from __future__ import annotations
@@ -31,11 +30,10 @@ from bakufu.infrastructure.persistence.sqlite.base import (
 
 
 class PidRegistryRow(Base):
-    """ORM mapping for the ``bakufu_pid_registry`` table.
+    """``bakufu_pid_registry`` テーブルの ORM マッピング。
 
-    ``cmd`` uses :class:`MaskedText` so secrets in CLI flags
-    (``--api-key=sk-ant-...``) are redacted on every persist path
-    (BUG-PF-001 fix).
+    ``cmd`` は :class:`MaskedText` を使うため、CLI フラグ（``--api-key=sk-ant-...``）
+    内のシークレットがすべての永続化経路で伏字化される（BUG-PF-001 修正）。
     """
 
     __tablename__ = "bakufu_pid_registry"

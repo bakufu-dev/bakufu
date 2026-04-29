@@ -1,21 +1,21 @@
-"""Room Aggregate Root package.
+"""Room Aggregate Root パッケージ。
 
-Implements ``REQ-RM-001``〜``REQ-RM-006`` per ``docs/features/room``. Split
-into three sibling modules along the design's responsibility lines so each
-file stays well under the 270-line readability budget and the file-level
-boundary mirrors the agent / workflow precedent:
+``docs/features/room`` に従って ``REQ-RM-001``〜``REQ-RM-006`` を実装する。
+設計の責務境界に沿って 3 つの兄弟モジュールに分割し、各ファイルが 270 行の
+可読性予算を十分に下回るようにし、ファイル レベル境界が agent / workflow の
+先例を踏襲するようにする:
 
-* :mod:`bakufu.domain.room.value_objects` — :class:`AgentMembership` and
-  :class:`PromptKit` Pydantic VOs with their self-checks.
-* :mod:`bakufu.domain.room.aggregate_validators` — four module-level
-  invariant helpers covering name range / description length / member
-  uniqueness / member capacity.
-* :mod:`bakufu.domain.room.room` — :class:`Room` Aggregate Root that
-  dispatches over the helpers in deterministic order.
+* :mod:`bakufu.domain.room.value_objects` — :class:`AgentMembership` と
+  :class:`PromptKit` の Pydantic VO（自己チェック付き）。
+* :mod:`bakufu.domain.room.aggregate_validators` — name range / description
+  length / member 一意性 / member 容量を網羅するモジュール レベルの不変条件
+  ヘルパ 4 つ。
+* :mod:`bakufu.domain.room.room` — ヘルパを決定的順序でディスパッチする
+  :class:`Room` Aggregate Root。
 
-This ``__init__`` re-exports the public surface plus the underscore-prefixed
-helpers tests need to invoke directly (same pattern Norman approved for the
-agent package).
+この ``__init__`` はパブリック表面に加え、テストが直接呼ぶ必要のある
+アンダースコア プレフィックス ヘルパも再 export する（Norman が agent
+パッケージで承認したのと同じパターン）。
 """
 
 from __future__ import annotations

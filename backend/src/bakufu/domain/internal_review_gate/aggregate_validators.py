@@ -1,32 +1,30 @@
-"""Aggregate-level invariant helpers for :class:`InternalReviewGate`.
+""":class:`InternalReviewGate` のための Aggregate レベル不変条件ヘルパ。
 
-Each helper is a **module-level pure function** so tests can ``import``
-and invoke directly — the same testability pattern used by the
-agent / room / directive / task / external_review_gate aggregate
-validators.
+各ヘルパは **モジュール レベルの純粋関数** であるため、テストから ``import``
+して直接呼べる — agent / room / directive / task / external_review_gate の
+Aggregate バリデータと同じテスタビリティ パターン。
 
-Four invariants (matching internal-review-gate detailed-design §確定 J):
+internal-review-gate detailed-design §確定 J に対応する 4 つの不変条件:
 
 1. :func:`_validate_required_gate_roles_nonempty` — ``required_gate_roles``
-   must contain at least one role; an empty set would make
-   ALL_APPROVED unreachable by design and is a workflow-author mistake
-   that should surface immediately.
-2. :func:`_validate_verdict_roles_in_required` — every verdict's
-   ``role`` must appear in ``required_gate_roles``; a verdict from an
-   unrecognized role indicates a stale or misconfigured agent and should
-   be rejected before it influences the decision.
-3. :func:`_validate_no_duplicate_roles` — each GateRole may have at most
-   one verdict; duplicate submissions are rejected (the agent must be
-   ``submit_verdict``-guarded at the behavior layer too, but the
-   aggregate validator provides a second line of defense during
-   hydration).
-4. :func:`_validate_gate_decision_consistency` — the stored
-   ``gate_decision`` must equal what ``compute_decision`` produces from
-   the current ``verdicts`` and ``required_gate_roles``; detects
-   Repository row corruption or a misbehaving behavior method.
+   は少なくとも 1 つのロールを含まなければならない。空集合では設計上
+   ALL_APPROVED に到達できなくなり、ワークフロー作成者の間違いが即座に表面化
+   すべきである。
+2. :func:`_validate_verdict_roles_in_required` — 各 verdict の ``role`` は
+   ``required_gate_roles`` に含まれなければならない。認識されないロールから
+   の verdict は、stale または誤構成のエージェントを示しており、決定に影響を
+   与える前に拒否すべきである。
+3. :func:`_validate_no_duplicate_roles` — 各 GateRole は最大 1 つの verdict
+   しか持てない。重複提出は拒否される（エージェントは振る舞い層でも
+   ``submit_verdict`` でガードされなければならないが、Aggregate バリデータは
+   水和時に第二の防御線を提供する）。
+4. :func:`_validate_gate_decision_consistency` — 保存された ``gate_decision``
+   は現在の ``verdicts`` と ``required_gate_roles`` から ``compute_decision``
+   が生成する値と等しくなければならない。リポジトリ行破損や誤動作する振る舞い
+   メソッドを検出する。
 
-The public :func:`validate_all` function runs all four in order and is
-called by :meth:`InternalReviewGate._check_invariants`.
+パブリックな :func:`validate_all` 関数は全 4 つを順序通りに実行し、
+:meth:`InternalReviewGate._check_invariants` から呼ばれる。
 """
 
 from __future__ import annotations
@@ -41,15 +39,14 @@ if TYPE_CHECKING:
 
 
 def _validate_required_gate_roles_nonempty(gate: InternalReviewGate) -> None:
-    """``required_gate_roles`` must not be empty (invariant 1).
+    """``required_gate_roles`` は空であってはならない（不変条件 1）。
 
-    An empty set would make ``GateDecision.ALL_APPROVED`` structurally
-    unreachable (no roles to approve means the condition ``all required
-    roles approved`` is vacuously true from the state-machine's
-    perspective, but the business rule intends that at least one human
-    reviewer category participates).  Raising here at construction time
-    surfaces the workflow-author mistake before any agent can interact
-    with the Gate.
+    空集合では ``GateDecision.ALL_APPROVED`` が構造的に到達不可能になる（承認
+    すべきロールが無いことは state machine の観点では「全 required ロールが
+    承認」条件が真空に真となるが、ビジネス ルールは少なくとも 1 つの人間
+    レビュアー カテゴリが参加することを意図している）。構築時にここで送出する
+    ことで、ワークフロー作成者の間違いがエージェントが Gate と相互作用する前に
+    表面化する。
     """
     if not gate.required_gate_roles:
         raise InternalReviewGateInvariantViolation(
@@ -63,14 +60,12 @@ def _validate_required_gate_roles_nonempty(gate: InternalReviewGate) -> None:
 
 
 def _validate_verdict_roles_in_required(gate: InternalReviewGate) -> None:
-    """Every verdict role must be in ``required_gate_roles`` (invariant 2).
+    """全 verdict のロールは ``required_gate_roles`` に含まれなければならない（不変条件 2）。
 
-    A verdict whose ``role`` is absent from ``required_gate_roles``
-    indicates either a stale Gate configuration (the role was removed
-    after the Gate was created) or a misconfigured agent (it is
-    presenting a role it was never granted). Either case is a data
-    integrity violation that should surface before the Gate's decision
-    is computed.
+    ``role`` が ``required_gate_roles`` に不在の verdict は、stale な Gate 構成
+    （Gate 作成後にロールが削除された）または誤構成のエージェント（付与されて
+    いないロールを名乗る）のいずれかを示す。どちらのケースも Gate 決定計算前に
+    表面化すべきデータ整合性違反。
     """
     required = gate.required_gate_roles
     for verdict in gate.verdicts:
@@ -92,12 +87,11 @@ def _validate_verdict_roles_in_required(gate: InternalReviewGate) -> None:
 
 
 def _validate_no_duplicate_roles(gate: InternalReviewGate) -> None:
-    """Each GateRole must appear at most once in ``verdicts`` (invariant 3).
+    """各 GateRole は ``verdicts`` 内に最大 1 回しか現れてはならない（不変条件 3）。
 
-    Duplicate role verdicts are a programming error — ``submit_verdict``
-    guards against re-submission at the behavior layer, but the
-    aggregate validator enforces the same invariant during hydration so
-    a corrupt Repository row does not yield a silently-inconsistent Gate.
+    重複ロール verdict はプログラミング エラー — ``submit_verdict`` が振る舞い層
+    で再提出をガードするが、Aggregate バリデータは水和時にも同じ不変条件を強制
+    するため、破損したリポジトリ行がサイレントに一貫性のない Gate を生成しない。
     """
     seen: set[str] = set()
     for verdict in gate.verdicts:
@@ -117,11 +111,11 @@ def _validate_no_duplicate_roles(gate: InternalReviewGate) -> None:
 
 
 def _validate_gate_decision_consistency(gate: InternalReviewGate) -> None:
-    """``gate_decision`` must equal ``compute_decision(...)`` (invariant 4).
+    """``gate_decision`` は ``compute_decision(...)`` と等しくなければならない（不変条件 4）。
 
-    Detects Repository row corruption (e.g. ``gate_decision=ALL_APPROVED``
-    when no verdicts exist) or a misbehaving behavior method that updated
-    the decision field without going through the state machine.
+    リポジトリ行破損（例 verdict が存在しないのに ``gate_decision=ALL_APPROVED``）
+    や、state machine を経由せずに decision フィールドを更新する誤動作な振る舞い
+    メソッドを検出する。
     """
     expected = compute_decision(gate.verdicts, gate.required_gate_roles)
     if gate.gate_decision != expected:
@@ -142,17 +136,16 @@ def _validate_gate_decision_consistency(gate: InternalReviewGate) -> None:
 
 
 def validate_all(gate: InternalReviewGate) -> None:
-    """Run all four aggregate invariants in order.
+    """4 つの Aggregate 不変条件を順序通りに実行する。
 
-    Called by :meth:`InternalReviewGate._check_invariants` so every
-    construction path (direct instantiation, ``model_validate``, and
-    Repository hydration) runs the same checks. The invariants are
-    ordered from cheapest to most expensive:
+    :meth:`InternalReviewGate._check_invariants` から呼ばれるため、すべての構築
+    経路（直接インスタンス化、``model_validate``、リポジトリ水和）で同じチェック
+    が走る。不変条件は安価な順から最も高価な順に並ぶ:
 
-    1. Non-empty roles (O(1) set truth check).
-    2. Verdict roles subset check (O(n) over verdicts).
-    3. Duplicate role detection (O(n) with a ``set`` accumulator).
-    4. Decision consistency (O(n) ``compute_decision`` fold).
+    1. 非空ロール（O(1) 集合真偽チェック）。
+    2. Verdict ロールの部分集合チェック（verdict 数 n に対し O(n)）。
+    3. 重複ロール検出（``set`` アキュムレータで O(n)）。
+    4. 決定の一貫性（O(n) ``compute_decision`` 畳み込み）。
     """
     _validate_required_gate_roles_nonempty(gate)
     _validate_verdict_roles_in_required(gate)

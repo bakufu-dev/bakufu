@@ -1,28 +1,28 @@
-"""Aggregate-level invariant helpers for :class:`Task`.
+""":class:`Task` のための Aggregate レベル不変条件ヘルパ。
 
-Each helper is a **module-level pure function** so tests can ``import``
-and invoke directly — same testability pattern Norman / Steve approved
-for the agent / room / directive ``aggregate_validators.py`` modules
-(M1 5 兄弟).
+各ヘルパは **モジュール レベルの純粋関数** であるため、テストから ``import``
+して直接呼べる — Norman / Steve が agent / room / directive の
+``aggregate_validators.py`` モジュール（M1 5 兄弟）で承認したのと同じテスタ
+ビリティ パターン。
 
-Helpers:
+ヘルパ:
 
-1. :func:`_validate_assigned_agents_unique` — no duplicate ``AgentId`` in
-   ``assigned_agent_ids``.
-2. :func:`_validate_assigned_agents_capacity` — at most 5 agents per Task.
+1. :func:`_validate_assigned_agents_unique` — ``assigned_agent_ids`` に重複
+   ``AgentId`` を含めない。
+2. :func:`_validate_assigned_agents_capacity` — Task あたり最大 5 エージェント。
 3. :func:`_validate_last_error_consistency` — ``status == BLOCKED`` ⇔
-   ``last_error`` is a non-empty string; otherwise ``last_error is None``.
-   Detects Repository-side row corruption at hydration time.
-4. :func:`_validate_blocked_has_last_error` — when ``status == BLOCKED``,
-   ``last_error`` length (NFC code-points) must be 1〜10000. Bridges the
-   §確定 R1-C "no strip" rule with the structural consistency check.
-5. :func:`_validate_timestamp_order` — ``created_at <= updated_at``.
+   ``last_error`` が非空文字列。それ以外では ``last_error is None``。水和時に
+   リポジトリ側の行破損を検出する。
+4. :func:`_validate_blocked_has_last_error` — ``status == BLOCKED`` のとき、
+   ``last_error`` の長さ（NFC コードポイント）は 1〜10000 でなければならない。
+   §確定 R1-C「strip 無し」ルールと構造的一貫性チェックを橋渡しする。
+5. :func:`_validate_timestamp_order` — ``created_at <= updated_at``。
 
-All helpers raise :class:`TaskInvariantViolation` with the matching
-``kind`` discriminator from §確定 J. ``message`` strings follow the
-two-line "[FAIL] ... / Next: ..." structure (§確定 J § MSG ID 確定文言)
-so the CI assertion ``assert "Next:" in str(exc)`` (TC-UT-TS-046〜052)
-fires consistently across all paths.
+すべてのヘルパは §確定 J に対応する ``kind`` 識別子を持つ
+:class:`TaskInvariantViolation` を送出する。``message`` 文字列は 2 行の
+「[FAIL] ... / Next: ...」構造（§確定 J § MSG ID 確定文言）に従うため、
+CI アサート ``assert "Next:" in str(exc)``（TC-UT-TS-046〜052）が全経路で
+一貫して発火する。
 """
 
 from __future__ import annotations
@@ -34,14 +34,14 @@ from uuid import UUID
 from bakufu.domain.exceptions import TaskInvariantViolation
 from bakufu.domain.value_objects import TaskStatus
 
-# Confirmation A: hard caps frozen by detailed-design §クラス設計.
+# Confirmation A: detailed-design §クラス設計 で凍結されたハード上限。
 MAX_ASSIGNED_AGENTS: int = 5
 MIN_LAST_ERROR_LENGTH: int = 1
 MAX_LAST_ERROR_LENGTH: int = 10_000
 
 
 def _validate_assigned_agents_unique(assigned_agent_ids: list[UUID]) -> None:
-    """``assigned_agent_ids`` may not contain duplicate values (MSG-TS-003)."""
+    """``assigned_agent_ids`` に重複値を含めない（MSG-TS-003）。"""
     counts = Counter(assigned_agent_ids)
     duplicates = sorted({str(agent_id) for agent_id, count in counts.items() if count > 1})
     if duplicates:
@@ -58,7 +58,7 @@ def _validate_assigned_agents_unique(assigned_agent_ids: list[UUID]) -> None:
 
 
 def _validate_assigned_agents_capacity(assigned_agent_ids: list[UUID]) -> None:
-    """``len(assigned_agent_ids) <= MAX_ASSIGNED_AGENTS`` (MSG-TS-004)."""
+    """``len(assigned_agent_ids) <= MAX_ASSIGNED_AGENTS``（MSG-TS-004）。"""
     count = len(assigned_agent_ids)
     if count > MAX_ASSIGNED_AGENTS:
         raise TaskInvariantViolation(
@@ -78,13 +78,12 @@ def _validate_last_error_consistency(
     status: TaskStatus,
     last_error: str | None,
 ) -> None:
-    """``status == BLOCKED`` ⇔ ``last_error`` is non-empty string (MSG-TS-005).
+    """``status == BLOCKED`` ⇔ ``last_error`` が非空文字列（MSG-TS-005）。
 
-    Detects Repository row corruption such as
-    ``status=DONE, last_error='AuthExpired: ...'`` (terminal Task with
-    leftover error text) — that combination is structurally illegal and
-    catching it here means hydration paths cannot smuggle an inconsistent
-    state into the application layer.
+    ``status=DONE, last_error='AuthExpired: ...'`` のようなリポジトリ行破損
+    （エラー テキストが残った終端 Task）を検出する — その組み合わせは構造的に
+    違法であり、ここで捕捉することで水和経路が一貫性のない状態をアプリケーション
+    層に持ち込めなくなる。
     """
     is_blocked = status == TaskStatus.BLOCKED
     has_error = isinstance(last_error, str) and last_error != ""
@@ -110,18 +109,18 @@ def _validate_blocked_has_last_error(
     status: TaskStatus,
     last_error: str | None,
 ) -> None:
-    """When ``status == BLOCKED``, ``last_error`` length must be 1〜10000 (MSG-TS-006).
+    """``status == BLOCKED`` のとき ``last_error`` の長さは 1〜10000（MSG-TS-006）。
 
-    The check operates on the **NFC-normalized** string per §確定 R1-C —
-    callers (``Task.block()``) run normalization upstream, so this helper
-    sees the canonical form. ``strip`` is intentionally **not** applied:
-    LLM stack traces rely on leading whitespace for indentation.
+    §確定 R1-C に従い、チェックは **NFC 正規化済み** 文字列に対して行う —
+    呼び元（``Task.block()``）が上流で正規化を実行するため、本ヘルパは正準形を
+    見る。``strip`` は意図的に **適用しない**: LLM のスタック トレースは
+    インデントのために先頭空白に依存する。
     """
     if status != TaskStatus.BLOCKED:
         return
-    # ``None`` falls through with length 0 so the kind=blocked_requires_last_error
-    # message stays specific to "BLOCKED but the string is empty";
-    # ``_validate_last_error_consistency`` already catches the structural form.
+    # ``None`` は長さ 0 で通過させる。これにより kind=blocked_requires_last_error の
+    # メッセージは「BLOCKED だが文字列が空」に特化したものになる。
+    # 構造形は ``_validate_last_error_consistency`` が既に捕捉している。
     length = 0 if last_error is None else len(last_error)
     if not (MIN_LAST_ERROR_LENGTH <= length <= MAX_LAST_ERROR_LENGTH):
         raise TaskInvariantViolation(
@@ -142,7 +141,7 @@ def _validate_blocked_has_last_error(
 
 
 def _validate_timestamp_order(created_at: datetime, updated_at: datetime) -> None:
-    """``created_at <= updated_at`` (MSG-TS-007)."""
+    """``created_at <= updated_at``（MSG-TS-007）。"""
     if created_at > updated_at:
         raise TaskInvariantViolation(
             kind="timestamp_order",

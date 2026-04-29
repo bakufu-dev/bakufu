@@ -1,15 +1,13 @@
-"""Deliverable / Attachment VO + enum tests.
+"""Deliverable / Attachment VO + enum テスト.
 
-TC-UT-TS-012 / 013 / 036 / 037 — the value objects Task accumulates
-plus the two ``StrEnum``s that drive its lifecycle and error
-classification.
+TC-UT-TS-012 / 013 / 036 / 037 ── Task が積み上げる値オブジェクト群と、
+ライフサイクルとエラー分類を駆動する 2 つの ``StrEnum``。
 
-The Attachment 6-step sanitization pipeline is covered cell-by-cell
-so a regression on any single rejection rule shows up as a single
-named failure rather than as a generic "filename validation broken"
-sweep failure.
+Attachment の 6 段階サニタイズパイプラインはセル単位で網羅する ──
+任意の 1 ルールへのリグレッションが「filename validation broken」のような
+汎用一括失敗ではなく名前付きの単独失敗として顕在化するように。
 
-Per ``docs/features/task/test-design.md``.
+``docs/features/task/test-design.md`` 準拠。
 """
 
 from __future__ import annotations
@@ -27,42 +25,42 @@ from pydantic import ValidationError
 
 from tests.factories.task import make_attachment, make_deliverable
 
-# Canonical valid sha256 reused in multiple cases.
+# 複数のケースで使い回す canonical な妥当 sha256。
 _VALID_SHA = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-TS-012: Deliverable construction + frozen + body_markdown cap
+# TC-UT-TS-012: Deliverable 構築 + frozen + body_markdown キャップ
 # ---------------------------------------------------------------------------
 class TestDeliverableConstruction:
-    """TC-UT-TS-012: Deliverable VO constructs valid + rejects oversize body."""
+    """TC-UT-TS-012: Deliverable VO は妥当値で構築でき、過大 body は拒絶する。"""
 
     def test_default_deliverable_constructs(self) -> None:
-        """Factory-default Deliverable has empty attachments + non-naive committed_at."""
+        """ファクトリ既定の Deliverable は空の attachments と aware な committed_at を持つ。"""
         d = make_deliverable()
         assert d.attachments == []
         assert d.committed_at.tzinfo is not None
 
     def test_deliverable_is_frozen(self) -> None:
-        """Direct attribute assignment on a Deliverable is rejected."""
+        """Deliverable への直接の属性代入は拒絶される。"""
         d = make_deliverable()
         with pytest.raises(ValidationError):
             d.body_markdown = "mutated"  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_body_markdown_at_max_length_accepted(self) -> None:
-        """1,000,000-char body_markdown is at the cap and accepted."""
+        """1,000,000 文字の body_markdown はキャップ上限で受理される。"""
         body = "x" * 1_000_000
         d = make_deliverable(body_markdown=body)
         assert len(d.body_markdown) == 1_000_000
 
     def test_body_markdown_over_max_length_rejected(self) -> None:
-        """1,000,001-char body_markdown exceeds the cap and raises."""
+        """1,000,001 文字の body_markdown はキャップ超過で例外発火。"""
         body = "x" * 1_000_001
         with pytest.raises(ValidationError):
             make_deliverable(body_markdown=body)
 
     def test_naive_committed_at_rejected(self) -> None:
-        """``committed_at`` without a timezone is rejected."""
+        """tz 情報なしの ``committed_at`` は拒絶される。"""
         naive = datetime.now()
         with pytest.raises(ValidationError):
             Deliverable(
@@ -75,96 +73,96 @@ class TestDeliverableConstruction:
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-TS-013: Attachment 6-step sanitize + sha256 + mime + size
+# TC-UT-TS-013: Attachment 6 段階 sanitize + sha256 + mime + size
 # ---------------------------------------------------------------------------
 class TestAttachmentSha256:
-    """TC-UT-TS-013 step 0: sha256 = 64 lowercase hex chars."""
+    """TC-UT-TS-013 step 0: sha256 = 64 桁の小文字 hex。"""
 
     def test_64_hex_lowercase_accepted(self) -> None:
-        """The canonical happy-path sha256."""
+        """正常系の canonical な sha256。"""
         a = make_attachment(sha256=_VALID_SHA)
         assert a.sha256 == _VALID_SHA
 
     def test_63_chars_rejected(self) -> None:
-        """A 63-char digest (one short) is rejected."""
+        """63 文字 (1 文字足りない) digest は拒絶される。"""
         with pytest.raises(ValidationError):
             make_attachment(sha256=_VALID_SHA[:-1])
 
     def test_uppercase_rejected(self) -> None:
-        """Mixed-case hex is rejected (the regex is lowercase-only)."""
+        """大小混在 hex は拒絶される (正規表現は小文字のみ)。"""
         mixed = "0123456789ABCDEF" + _VALID_SHA[16:]
         with pytest.raises(ValidationError):
             make_attachment(sha256=mixed)
 
     def test_non_hex_rejected(self) -> None:
-        """Non-hex characters in the right length still fail the pattern."""
+        """正しい長さでも非 hex 文字はパターンに失敗する。"""
         bogus = "z" * 64
         with pytest.raises(ValidationError):
             make_attachment(sha256=bogus)
 
 
 class TestAttachmentFilenameSanitization:
-    """TC-UT-TS-013: filename 6-step sanitization pipeline.
+    """TC-UT-TS-013: filename 6 段階サニタイズパイプライン。
 
-    Each step's rejection rule has its own test so regressions
-    surface with a precise label rather than a generic "filename
-    validation broken" wave failure.
+    各ステップの拒絶ルールに専用テストを置く ── リグレッションが
+    汎用 "filename validation broken" 一括失敗ではなく、明確なラベル付き
+    単独失敗として表面化するように。
     """
 
-    # Step 1-2: NFC + length [1, 255]
+    # Step 1-2: NFC + 長さ [1, 255]
     def test_empty_filename_rejected(self) -> None:
-        """Length 0 fails the [1, 255] band."""
+        """長さ 0 は [1, 255] バンドに失敗する。"""
         with pytest.raises(ValidationError):
             make_attachment(filename="")
 
     def test_256_char_filename_rejected(self) -> None:
-        """Length 256 exceeds the cap."""
+        """長さ 256 はキャップ超過。"""
         with pytest.raises(ValidationError):
             make_attachment(filename="a" * 256)
 
     def test_255_char_filename_accepted(self) -> None:
-        """Length 255 is at the cap and accepted."""
+        """長さ 255 はキャップ上限で受理される。"""
         a = make_attachment(filename="a" * 255)
         assert len(a.filename) == 255
 
-    # Step 3: rejected characters (path separators, NUL, control chars)
+    # Step 3: 拒絶文字 (パス区切り、NUL、制御文字)
     @pytest.mark.parametrize(
         "bad",
         ["a/b.txt", "a\\b.txt", "name\x00.png", "name\x01.png", "name\x7f.png"],
         ids=["forward_slash", "back_slash", "null_byte", "control_char", "del_char"],
     )
     def test_rejected_characters(self, bad: str) -> None:
-        """Path separators / NUL / ASCII control chars are rejected."""
+        """パス区切り / NUL / ASCII 制御文字は拒絶される。"""
         with pytest.raises(ValidationError):
             make_attachment(filename=bad)
 
-    # Step 4: rejected sequences
+    # Step 4: 拒絶シーケンス
     def test_dot_dot_path_traversal_rejected(self) -> None:
-        """``..`` anywhere in the name is rejected."""
+        """name 中の任意箇所にある ``..`` は拒絶される。"""
         with pytest.raises(ValidationError):
             make_attachment(filename="..hidden.png")
 
     def test_leading_dot_rejected(self) -> None:
-        """Hidden file (leading ``.``) is rejected."""
+        """先頭が ``.`` の隠しファイルは拒絶される。"""
         with pytest.raises(ValidationError):
             make_attachment(filename=".hidden.png")
 
     def test_trailing_dot_rejected(self) -> None:
-        """Trailing ``.`` (Windows extension trick) is rejected."""
+        """末尾の ``.`` (Windows 拡張子トリック) は拒絶される。"""
         with pytest.raises(ValidationError):
             make_attachment(filename="file.png.")
 
     def test_leading_whitespace_rejected(self) -> None:
-        """Leading whitespace is rejected."""
+        """先頭空白は拒絶される。"""
         with pytest.raises(ValidationError):
             make_attachment(filename=" file.png")
 
     def test_colon_rejected(self) -> None:
-        """``:`` (Windows ADS / drive letter) is rejected."""
+        """``:`` (Windows ADS / ドライブレター) は拒絶される。"""
         with pytest.raises(ValidationError):
             make_attachment(filename="file:stream.png")
 
-    # Step 5: Windows reserved device names
+    # Step 5: Windows 予約デバイス名
     @pytest.mark.parametrize(
         "reserved",
         ["CON", "PRN", "AUX", "NUL", "COM1.txt", "LPT9.bin", "con.png", "Com2.bin"],
@@ -180,28 +178,24 @@ class TestAttachmentFilenameSanitization:
         ],
     )
     def test_windows_reserved_names_rejected(self, reserved: str) -> None:
-        """Windows reserved device names with or without extensions are rejected."""
+        """Windows 予約デバイス名は拡張子の有無を問わず拒絶される。"""
         with pytest.raises(ValidationError):
             make_attachment(filename=reserved)
 
-    # Step 6: basename round-trip
+    # Step 6: basename ラウンドトリップ
     def test_path_component_rejected_via_basename_check(self) -> None:
-        """A path-shaped name fails the basename round-trip."""
-        # ``a/b.txt`` is already caught by step 3, but ``foo/bar`` style
-        # paths embedded with various separators still fail step 6.
-        # We exercise this via a slash-containing name that step 3
-        # already rejects, plus directly through the path round-trip
-        # via a UNC-style prefix that step 3 might miss.
-        # In practice all path-shapes are covered by step 3; step 6 is
-        # the defensive double-check, so the assertion is shape:
-        # any rejection at all is acceptable as long as ValidationError
-        # fires.
+        """パス形状の name は basename ラウンドトリップに失敗する。"""
+        # ``a/b.txt`` は step 3 で既に検出されるが、各種区切りを埋め込んだ
+        # ``foo/bar`` 形のパスは step 6 で失敗する。
+        # 実用上はあらゆるパス形状が step 3 で拾われ、step 6 は防御的な
+        # ダブルチェック ── したがってアサート形は ValidationError が
+        # 発火しさえすれば任意の段階で拒絶されたとみなして良い。
         with pytest.raises(ValidationError):
             make_attachment(filename="dir/file.png")
 
 
 class TestAttachmentMimeWhitelist:
-    """TC-UT-TS-013: mime_type whitelist rejects text/html and text/csv."""
+    """TC-UT-TS-013: mime_type ホワイトリストは text/html と text/csv を拒絶。"""
 
     @pytest.mark.parametrize(
         "mime",
@@ -217,7 +211,7 @@ class TestAttachmentMimeWhitelist:
         ],
     )
     def test_whitelisted_mime_accepted(self, mime: str) -> None:
-        """All 8 whitelisted MIME types construct cleanly."""
+        """ホワイトリスト 8 種の MIME 全てで構築に成功する。"""
         a = make_attachment(mime_type=mime)
         assert a.mime_type == mime
 
@@ -227,37 +221,37 @@ class TestAttachmentMimeWhitelist:
         ids=["text_html", "text_csv", "shell_script", "empty"],
     )
     def test_non_whitelisted_mime_rejected(self, mime: str) -> None:
-        """Non-whitelisted MIME values are rejected — XSS / CSV-injection guard."""
+        """ホワイトリスト外の MIME は拒絶される ── XSS / CSV-injection 防御。"""
         with pytest.raises(ValidationError):
             make_attachment(mime_type=mime)
 
 
 class TestAttachmentSizeBytes:
-    """TC-UT-TS-013: size_bytes ∈ [0, 10 MiB]."""
+    """TC-UT-TS-013: size_bytes ∈ [0, 10 MiB]。"""
 
     def test_zero_bytes_accepted(self) -> None:
-        """An empty attachment (0 bytes) is accepted."""
+        """空の attachment (0 byte) は受理される。"""
         a = make_attachment(size_bytes=0)
         assert a.size_bytes == 0
 
     def test_at_max_accepted(self) -> None:
-        """10 MiB exactly is the cap and accepted."""
+        """ちょうど 10 MiB はキャップ上限で受理される。"""
         a = make_attachment(size_bytes=10 * 1024 * 1024)
         assert a.size_bytes == 10 * 1024 * 1024
 
     def test_over_max_rejected(self) -> None:
-        """10 MiB + 1 byte exceeds the cap."""
+        """10 MiB + 1 byte はキャップ超過。"""
         with pytest.raises(ValidationError):
             make_attachment(size_bytes=10 * 1024 * 1024 + 1)
 
     def test_negative_rejected(self) -> None:
-        """Negative size is rejected."""
+        """負のサイズは拒絶される。"""
         with pytest.raises(ValidationError):
             make_attachment(size_bytes=-1)
 
 
 class TestAttachmentFrozen:
-    """Attachment is frozen — direct attribute assignment is rejected."""
+    """Attachment は frozen ── 直接の属性代入は拒絶される。"""
 
     def test_size_bytes_assignment_rejected(self) -> None:
         a = make_attachment()
@@ -266,18 +260,18 @@ class TestAttachmentFrozen:
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-TS-036: TaskStatus enum values
+# TC-UT-TS-036: TaskStatus enum 値
 # ---------------------------------------------------------------------------
 class TestTaskStatusEnum:
-    """TC-UT-TS-036: 6 StrEnum values; StrEnum equality with raw strings."""
+    """TC-UT-TS-036: StrEnum 6 値、生文字列との等価性。"""
 
     def test_six_values(self) -> None:
-        """Exactly 6 TaskStatus members."""
+        """TaskStatus メンバはちょうど 6 個。"""
         members = list(TaskStatus)
         assert len(members) == 6
 
     def test_str_enum_equality(self) -> None:
-        """StrEnum members compare equal to their string value."""
+        """StrEnum メンバはその文字列値と等価比較される。"""
         assert TaskStatus.PENDING == "PENDING"
         assert TaskStatus.IN_PROGRESS == "IN_PROGRESS"
         assert TaskStatus.AWAITING_EXTERNAL_REVIEW == "AWAITING_EXTERNAL_REVIEW"
@@ -287,18 +281,18 @@ class TestTaskStatusEnum:
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-TS-037: LLMErrorKind enum values
+# TC-UT-TS-037: LLMErrorKind enum 値
 # ---------------------------------------------------------------------------
 class TestLLMErrorKindEnum:
-    """TC-UT-TS-037: 5 StrEnum values for LLM-Adapter classification."""
+    """TC-UT-TS-037: LLM-Adapter 分類のための StrEnum 5 値。"""
 
     def test_five_values(self) -> None:
-        """Exactly 5 LLMErrorKind members."""
+        """LLMErrorKind メンバはちょうど 5 個。"""
         members = list(LLMErrorKind)
         assert len(members) == 5
 
     def test_str_enum_equality(self) -> None:
-        """StrEnum members compare equal to their string value."""
+        """StrEnum メンバはその文字列値と等価比較される。"""
         assert LLMErrorKind.SESSION_LOST == "SESSION_LOST"
         assert LLMErrorKind.RATE_LIMITED == "RATE_LIMITED"
         assert LLMErrorKind.AUTH_EXPIRED == "AUTH_EXPIRED"
@@ -307,13 +301,13 @@ class TestLLMErrorKindEnum:
 
 
 # ---------------------------------------------------------------------------
-# Sanity: a Deliverable carries Attachments and round-trips cleanly
+# サニティ: Deliverable は Attachment を運び、ラウンドトリップに耐える
 # ---------------------------------------------------------------------------
 class TestDeliverableWithAttachments:
-    """A Deliverable with attachments carries them through to the model."""
+    """attachments を持つ Deliverable はそのままモデルに伝搬する。"""
 
     def test_attachments_preserved(self) -> None:
-        """Attachments list is preserved verbatim in Deliverable."""
+        """attachments リストは Deliverable で逐字保持される。"""
         a = make_attachment()
         d = Deliverable(
             stage_id=uuid4(),
@@ -325,7 +319,7 @@ class TestDeliverableWithAttachments:
         assert d.attachments == [a]
 
     def test_make_attachment_synthetic(self) -> None:
-        """The factory's :func:`is_synthetic` flag fires on freshly-built attachments."""
+        """ファクトリの :func:`is_synthetic` フラグは新規構築 attachment で発火する。"""
         from tests.factories.task import is_synthetic
 
         a = make_attachment()

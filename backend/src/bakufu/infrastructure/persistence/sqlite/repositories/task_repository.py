@@ -1,48 +1,44 @@
-"""SQLite adapter for :class:`bakufu.application.ports.TaskRepository`.
+""":class:`bakufu.application.ports.TaskRepository` の SQLite アダプタ。
 
-Implements the §確定 R1-B 6-step save flow over four tables
-(``tasks`` / ``task_assigned_agents`` / ``deliverables`` /
-``deliverable_attachments``):
+§確定 R1-B の 6 ステップ保存フローを 4 つのテーブル
+（``tasks`` / ``task_assigned_agents`` / ``deliverables`` /
+``deliverable_attachments``）に対して実装する:
 
-1. ``DELETE FROM deliverables WHERE task_id = :id`` — CASCADE removes
-   ``deliverable_attachments`` automatically.
-2. ``DELETE FROM task_assigned_agents WHERE task_id = :id`` — no CASCADE,
-   direct DELETE.
-3. ``tasks`` UPSERT (id-conflict → ``current_stage_id`` + ``status`` +
-   ``last_error`` + ``updated_at`` update; ``room_id``, ``directive_id``,
-   and ``created_at`` are intentionally **not** updated — Task ownership
-   and origin never change after creation).
-4. ``INSERT INTO task_assigned_agents`` — one row per AgentId with
-   ``order_index`` = list position (0-indexed).
-5. ``INSERT INTO deliverables`` — one row per Deliverable in
-   ``task.deliverables.values()``. A fresh ``uuid4()`` PK is generated for
-   each row on every save (DELETE-then-INSERT pattern guarantees no PK
-   collision).
-6. ``INSERT INTO deliverable_attachments`` — one row per Attachment per
-   Deliverable, linked via the ``deliverable_id`` FK generated in step 5.
+1. ``DELETE FROM deliverables WHERE task_id = :id`` — CASCADE で
+   ``deliverable_attachments`` も自動削除される。
+2. ``DELETE FROM task_assigned_agents WHERE task_id = :id`` — CASCADE 無し、直接 DELETE。
+3. ``tasks`` UPSERT（id 衝突時に ``current_stage_id`` + ``status`` + ``last_error``
+   + ``updated_at`` を更新。``room_id``、``directive_id``、``created_at`` は意図的に
+   **更新しない** — Task の所有権と起源は作成後に変化しない）。
+4. ``INSERT INTO task_assigned_agents`` — AgentId ごとに 1 行、``order_index`` は
+   リスト位置（0 始まり）。
+5. ``INSERT INTO deliverables`` — ``task.deliverables.values()`` の Deliverable
+   ごとに 1 行。保存ごとに各行で新しい ``uuid4()`` PK を生成する（DELETE-then-INSERT
+   パターンが PK 衝突しないことを保証する）。
+6. ``INSERT INTO deliverable_attachments`` — Deliverable ごとの Attachment 1 つに対し
+   1 行。step 5 で生成した ``deliverable_id`` FK でリンクされる。
 
-``conversations`` / ``conversation_messages`` tables are excluded from this
-flow (§BUG-TR-002 凍結済み): Task Aggregate currently has no
-``conversations`` attribute. These tables will be added in the future PR
-that introduces ``Task.conversations: list[Conversation]``.
+``conversations`` / ``conversation_messages`` テーブルはこのフローから除外
+（§BUG-TR-002 凍結済み）: Task Aggregate には現状 ``conversations`` 属性が無い。
+これらのテーブルは ``Task.conversations: list[Conversation]`` を導入する将来 PR
+で追加される。
 
-The repository **never** calls ``session.commit()`` / ``session.rollback()``:
-the caller-side service runs ``async with session.begin():`` so all 6 steps
-stay in one transaction (empire-repo §確定 B Tx 境界の責務分離).
+リポジトリは ``session.commit()`` / ``session.rollback()`` を **決して** 呼ばない。
+呼び元のサービスが ``async with session.begin():`` を実行することで、6 ステップ全てを
+1 トランザクションに収める（empire-repo §確定 B Tx 境界の責務分離）。
 
-``save(task)`` uses the **standard 1-argument pattern** (§確定 R1-F):
-:class:`Task` carries ``room_id`` and ``directive_id`` as own attributes,
-so the Repository reads them directly.
+``save(task)`` は **標準の 1 引数パターン**（§確定 R1-F）を使う:
+:class:`Task` は ``room_id`` と ``directive_id`` を自身の属性として保持するため、
+リポジトリはそれらを直接読む。
 
-``_to_rows`` / ``_from_rows`` are kept as private methods on the class so
-both conversion directions live next to each other and tests don't
-accidentally acquire a public conversion API to depend on (empire-repo
-§確定 C).
+``_to_rows`` / ``_from_rows`` はクラスのプライベートメソッドのまま保持し、双方向の
+変換が隣接して存在するようにする。これにより、テストが公開された変換 API を誤って
+取得して依存することを避ける（empire-repo §確定 C）。
 
-TypeDecorator-trust pattern (PR #48 v2 確立): :class:`UUIDStr` returns
-``UUID`` instances from ``process_result_value``, so ``row.id`` etc. are
-already ``UUID``. Direct attribute access without defensive ``UUID(row.id)``
-wrapping is correct and required (§確定 R1-A).
+TypeDecorator-trust パターン（PR #48 v2 で確立）: :class:`UUIDStr` は
+``process_result_value`` で ``UUID`` インスタンスを返すため、``row.id`` 等は
+すでに ``UUID`` である。防御的な ``UUID(row.id)`` ラッピング無しで属性を直接
+参照するのが正しく、必須である（§確定 R1-A）。
 """
 
 from __future__ import annotations
@@ -75,17 +71,16 @@ from bakufu.infrastructure.persistence.sqlite.tables.tasks import TaskRow
 
 
 class SqliteTaskRepository:
-    """SQLite implementation of :class:`TaskRepository`."""
+    """:class:`TaskRepository` の SQLite 実装。"""
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
     async def find_by_id(self, task_id: TaskId) -> Task | None:
-        """SELECT tasks row + 3 child tables, hydrate via :meth:`_from_rows`.
+        """tasks 行と 3 つの子テーブルを SELECT し、:meth:`_from_rows` で水和する。
 
-        Returns ``None`` when the tasks row is absent. On success, all three
-        child tables are queried with their §確定 R1-H ORDER BY clauses so
-        the hydrated Aggregate is deterministic.
+        tasks 行が存在しない場合は ``None`` を返す。成功時は §確定 R1-H の ORDER BY
+        句で 3 つの子テーブル全てを問い合わせるため、水和された Aggregate は決定的になる。
         """
         task_row = (
             await self._session.execute(select(TaskRow).where(TaskRow.id == task_id))
@@ -93,8 +88,8 @@ class SqliteTaskRepository:
         if task_row is None:
             return None
 
-        # §確定 R1-H: ORDER BY order_index ASC preserves assigned-agent list
-        # order from the Aggregate's ``assigned_agent_ids``.
+        # §確定 R1-H: ORDER BY order_index ASC により、Aggregate の
+        # ``assigned_agent_ids`` から得たアサイン エージェント リスト順を保つ。
         agent_rows = list(
             (
                 await self._session.execute(
@@ -107,7 +102,7 @@ class SqliteTaskRepository:
             .all()
         )
 
-        # §確定 R1-H: ORDER BY stage_id ASC (UNIQUE per task, deterministic).
+        # §確定 R1-H: ORDER BY stage_id ASC（task ごとに UNIQUE で決定的）。
         deliv_rows = list(
             (
                 await self._session.execute(
@@ -120,8 +115,8 @@ class SqliteTaskRepository:
             .all()
         )
 
-        # §確定 R1-H: fetch all attachments in one query, group by deliverable_id.
-        # ORDER BY sha256 ASC (UNIQUE per deliverable scope, deterministic).
+        # §確定 R1-H: 全 attachment を 1 クエリで取得し、deliverable_id でグルーピング。
+        # ORDER BY sha256 ASC（deliverable スコープで UNIQUE で決定的）。
         attach_rows_by_deliv: dict[UUID, list[DeliverableAttachmentRow]] = {}
         if deliv_rows:
             deliv_ids = [r.id for r in deliv_rows]
@@ -137,35 +132,34 @@ class SqliteTaskRepository:
         return self._from_rows(task_row, agent_rows, deliv_rows, attach_rows_by_deliv)
 
     async def count(self) -> int:
-        """``SELECT COUNT(*) FROM tasks``.
+        """``SELECT COUNT(*) FROM tasks``。
 
-        SQLAlchemy's ``func.count()`` issues a proper ``SELECT COUNT(*)``
-        so SQLite returns one scalar row instead of streaming every PK back
-        to Python (empire-repo §確定 D 踏襲).
+        SQLAlchemy の ``func.count()`` は適切な ``SELECT COUNT(*)`` を発行するため、
+        SQLite は全 PK を Python にストリームせずスカラー 1 行だけ返す
+        （empire-repo §確定 D 踏襲）。
         """
         return (await self._session.execute(select(func.count()).select_from(TaskRow))).scalar_one()
 
     async def save(self, task: Task) -> None:
-        """Persist ``task`` via the §確定 R1-B 6-step delete-then-insert.
+        """§確定 R1-B の 6 ステップ delete-then-insert で ``task`` を永続化する。
 
-        The caller is responsible for the surrounding
-        ``async with session.begin():`` block; failures propagate untouched
-        so the Unit-of-Work boundary in the application service can rollback
-        cleanly (empire-repo §確定 B 踏襲).
+        外側の ``async with session.begin():`` ブロックは呼び元の責任。失敗はそのまま
+        伝播するため、アプリケーション サービスの Unit-of-Work 境界はクリーンに
+        ロールバックできる（empire-repo §確定 B 踏襲）。
         """
         task_row, agent_rows, deliv_rows, attach_rows = self._to_rows(task)
 
-        # Step 1: DELETE deliverables — CASCADE removes deliverable_attachments.
+        # Step 1: DELETE deliverables — CASCADE で deliverable_attachments も削除。
         await self._session.execute(delete(DeliverableRow).where(DeliverableRow.task_id == task.id))
 
-        # Step 2: DELETE task_assigned_agents (no CASCADE, direct DELETE).
+        # Step 2: DELETE task_assigned_agents（CASCADE 無し、直接 DELETE）。
         await self._session.execute(
             delete(TaskAssignedAgentRow).where(TaskAssignedAgentRow.task_id == task.id)
         )
 
-        # Step 3: tasks UPSERT.
-        # room_id / directive_id / created_at are excluded from DO UPDATE —
-        # Task ownership and origin are immutable after creation.
+        # Step 3: tasks UPSERT。
+        # room_id / directive_id / created_at は DO UPDATE から除外 — Task の所有権と
+        # 起源は作成後に不変。
         upsert_stmt = sqlite_insert(TaskRow).values(task_row)
         upsert_stmt = upsert_stmt.on_conflict_do_update(
             index_elements=["id"],
@@ -178,24 +172,24 @@ class SqliteTaskRepository:
         )
         await self._session.execute(upsert_stmt)
 
-        # Step 4: INSERT task_assigned_agents.
+        # Step 4: INSERT task_assigned_agents。
         if agent_rows:
             await self._session.execute(insert(TaskAssignedAgentRow), agent_rows)
 
-        # Step 5: INSERT deliverables.
+        # Step 5: INSERT deliverables。
         if deliv_rows:
             await self._session.execute(insert(DeliverableRow), deliv_rows)
 
-        # Step 6: INSERT deliverable_attachments.
+        # Step 6: INSERT deliverable_attachments。
         if attach_rows:
             await self._session.execute(insert(DeliverableAttachmentRow), attach_rows)
 
     async def count_by_status(self, status: TaskStatus) -> int:
-        """``SELECT COUNT(*) FROM tasks WHERE status = :status``.
+        """``SELECT COUNT(*) FROM tasks WHERE status = :status``。
 
-        The composite INDEX ``ix_tasks_status_updated_id`` prefix on
-        ``(status)`` accelerates this WHERE filter (§確定 R1-K).
-        Returns 0 when no Tasks exist with the given status.
+        複合 INDEX ``ix_tasks_status_updated_id`` の ``(status)`` プレフィックスが
+        この WHERE フィルタを高速化する（§確定 R1-K）。指定 status の Task が
+        存在しない場合は 0 を返す。
         """
         return (
             await self._session.execute(
@@ -204,10 +198,10 @@ class SqliteTaskRepository:
         ).scalar_one()
 
     async def count_by_room(self, room_id: RoomId) -> int:
-        """``SELECT COUNT(*) FROM tasks WHERE room_id = :room_id``.
+        """``SELECT COUNT(*) FROM tasks WHERE room_id = :room_id``。
 
-        The INDEX ``ix_tasks_room_id`` accelerates this WHERE filter
-        (§確定 R1-K). Returns 0 when no Tasks exist for the given Room.
+        INDEX ``ix_tasks_room_id`` がこの WHERE フィルタを高速化する（§確定 R1-K）。
+        指定 Room の Task が存在しない場合は 0 を返す。
         """
         return (
             await self._session.execute(
@@ -216,15 +210,14 @@ class SqliteTaskRepository:
         ).scalar_one()
 
     async def find_blocked(self) -> list[Task]:
-        """Return all BLOCKED Tasks ordered by ``updated_at DESC, id DESC``.
+        """``updated_at DESC, id DESC`` 順で全 BLOCKED Task を返す。
 
-        The composite INDEX ``ix_tasks_status_updated_id`` on
-        ``(status, updated_at, id)`` covers both the WHERE filter and the
-        ORDER BY in a single B-tree scan (§確定 R1-K). For each BLOCKED
-        TaskRow, child tables are fetched individually — the same pattern
-        as :meth:`find_by_id`.
+        ``(status, updated_at, id)`` 上の複合 INDEX ``ix_tasks_status_updated_id``
+        は WHERE フィルタと ORDER BY の両方を 1 回の B-tree スキャンでカバーする
+        （§確定 R1-K）。各 BLOCKED TaskRow について子テーブルを個別に取得する —
+        :meth:`find_by_id` と同じパターン。
 
-        Returns ``[]`` when no BLOCKED Tasks exist.
+        BLOCKED Task が存在しない場合は ``[]`` を返す。
         """
         task_rows = list(
             (
@@ -258,28 +251,25 @@ class SqliteTaskRepository:
         list[dict[str, Any]],
         list[dict[str, Any]],
     ]:
-        """Convert ``task`` to ``(task_row, agent_rows, deliv_rows, attach_rows)``.
+        """``task`` を ``(task_row, agent_rows, deliv_rows, attach_rows)`` に変換する。
 
-        SQLAlchemy ``Row`` objects are avoided so the domain layer never
-        gains an accidental dependency on the SQLAlchemy type hierarchy.
+        ドメイン層が SQLAlchemy の型階層に偶発的に依存しないよう、SQLAlchemy ``Row``
+        オブジェクトは使わない。
 
-        TypeDecorator-trust (§確定 R1-A): raw domain values are passed
-        directly; ``UUIDStr`` / ``MaskedText`` / ``UTCDateTime``
-        TypeDecorators perform all conversions at bind-parameter time.
-        ``last_error`` and ``body_markdown`` are passed as plain strings —
-        ``MaskedText.process_bind_param`` applies the masking gate
-        automatically without manual ``MaskingGateway.mask()`` calls.
+        TypeDecorator-trust（§確定 R1-A）: 生のドメイン値を直接渡す。``UUIDStr`` /
+        ``MaskedText`` / ``UTCDateTime`` の TypeDecorator がバインド パラメータ時点で
+        全ての変換を行う。``last_error`` と ``body_markdown`` は素の文字列として渡す
+        — ``MaskedText.process_bind_param`` が手動の ``MaskingGateway.mask()`` 呼び
+        出し無しに自動的にマスキング ゲートを適用する。
 
-        Deliverable PKs: ``deliverables.id`` has no domain-level identity
-        (the Aggregate identifies Deliverables by ``stage_id``). A fresh
-        ``uuid4()`` is generated for each deliverable row on every save.
-        Because steps 1→5 are DELETE-then-INSERT, there is never a PK
-        collision. The same fresh UUID is used as ``deliverable_id`` in the
-        corresponding attachment rows built in the same call.
+        Deliverable の PK: ``deliverables.id`` はドメインレベルのアイデンティティを
+        持たない（Aggregate は Deliverable を ``stage_id`` で識別する）。保存ごとに
+        各 deliverable 行で新しい ``uuid4()`` を生成する。step 1→5 が
+        DELETE-then-INSERT のため PK 衝突は起きない。同じ呼び出しで構築される対応する
+        attachment 行の ``deliverable_id`` には同じ新規 UUID が使われる。
 
-        ``conversations`` / ``conversation_messages`` rows are excluded
-        (§BUG-TR-002 凍結済み): Task domain currently has no ``conversations``
-        attribute.
+        ``conversations`` / ``conversation_messages`` 行は除外（§BUG-TR-002 凍結済み）:
+        Task ドメインには現状 ``conversations`` 属性が無い。
         """
         task_row: dict[str, Any] = {
             "id": task.id,
@@ -287,7 +277,7 @@ class SqliteTaskRepository:
             "directive_id": task.directive_id,
             "current_stage_id": task.current_stage_id,
             "status": task.status.value,
-            # MaskedText.process_bind_param redacts secrets at bind time.
+            # MaskedText.process_bind_param がバインド時にシークレットを伏字化する。
             "last_error": task.last_error,
             "created_at": task.created_at,
             "updated_at": task.updated_at,
@@ -306,16 +296,16 @@ class SqliteTaskRepository:
         attach_rows: list[dict[str, Any]] = []
 
         for deliverable in task.deliverables.values():
-            # Fresh UUID for this deliverable's PK.  The same UUID is
-            # used below as ``deliverable_id`` in all attachment rows for
-            # this deliverable — linking them within this save() call.
+            # 当該 deliverable の PK 用に新規 UUID を生成。同じ UUID をこの deliverable
+            # に属する全 attachment 行の ``deliverable_id`` に再利用する — この save()
+            # 呼び出し内でリンクを成立させる。
             deliv_pk = _uuid.uuid4()
             deliv_rows.append(
                 {
                     "id": deliv_pk,
                     "task_id": task.id,
                     "stage_id": deliverable.stage_id,
-                    # MaskedText.process_bind_param redacts secrets at bind time.
+                    # MaskedText.process_bind_param がバインド時にシークレットを伏字化する。
                     "body_markdown": deliverable.body_markdown,
                     "committed_by": deliverable.committed_by,
                     "committed_at": deliverable.committed_at,
@@ -342,30 +332,28 @@ class SqliteTaskRepository:
         deliv_rows: list[DeliverableRow],
         attach_rows_by_deliv: dict[UUID, list[DeliverableAttachmentRow]],
     ) -> Task:
-        """Hydrate a :class:`Task` Aggregate Root from its row types.
+        """行型から :class:`Task` Aggregate Root を水和する。
 
-        ``Task.model_validate`` / direct construction re-runs the
-        post-validator so Repository-side hydration goes through the same
-        invariant checks that ``TaskService.create()`` does at construction
-        time (empire §確定 C contract: "Repository hydration produces a valid
-        Task or raises").
+        ``Task.model_validate`` / 直接構築は post-validator を再実行するため、リポジトリ
+        側の水和も ``TaskService.create()`` が構築時に走らせるのと同じ不変条件チェック
+        を通る（empire §確定 C コントラクト「リポジトリ水和は妥当な Task を生成するか
+        例外を送出する」）。
 
-        TypeDecorator-trust (§確定 R1-A): ``UUIDStr`` returns ``UUID``
-        instances from ``process_result_value``; ``UTCDateTime`` returns
-        tz-aware ``datetime``; ``MaskedText`` returns the already-masked
-        string. No defensive wrapping (e.g. ``UUID(row.id)``) needed.
+        TypeDecorator-trust（§確定 R1-A）: ``UUIDStr`` は ``process_result_value`` で
+        ``UUID`` インスタンスを返し、``UTCDateTime`` は tz-aware ``datetime`` を返し、
+        ``MaskedText`` は伏字化済みの文字列を返す。``UUID(row.id)`` のような防御的
+        ラッピングは不要。
 
-        §確定 R1-J §不可逆性: ``last_error`` and deliverable
-        ``body_markdown`` carry the already-masked text from disk. Both
-        fields accept any string within the length cap so the masked form
-        constructs cleanly; LLM-facing dispatch must apply its own
-        masked-prompt guard (``feature/llm-adapter`` scope).
+        §確定 R1-J §不可逆性: ``last_error`` と deliverable の ``body_markdown`` は
+        ディスクから既に伏字化されたテキストを保持する。両フィールドは長さ上限内の
+        任意の文字列を受理するため伏字化された形でも構築は通る。LLM へのディスパッチ
+        は独自の masked-prompt ガードを適用する必要がある（``feature/llm-adapter`` 範囲）。
         """
-        # §確定 R1-H: agent_rows already sorted order_index ASC by the caller.
+        # §確定 R1-H: agent_rows は呼び元側で order_index ASC でソート済み。
         assigned_agent_ids = [row.agent_id for row in agent_rows]
 
-        # §確定 R1-J: reconstruct deliverables dict keyed by StageId.
-        # deliv_rows already sorted stage_id ASC by the caller.
+        # §確定 R1-J: StageId をキーとした deliverables 辞書を再構築する。
+        # deliv_rows は呼び元側で stage_id ASC でソート済み。
         deliverables: dict[StageId, Deliverable] = {}
         for deliv_row in deliv_rows:
             stage_id: StageId = deliv_row.stage_id

@@ -1,25 +1,21 @@
-"""Task Aggregate Root package.
+"""Task Aggregate Root パッケージ。
 
-Implements ``REQ-TS-001``〜``REQ-TS-009`` per ``docs/features/task``.
-M1 6 兄弟目 (after empire / workflow / agent / room / directive). The
-package is split along the responsibility lines that the design
-calls out:
+``docs/features/task`` に従って ``REQ-TS-001``〜``REQ-TS-009`` を実装する。
+M1 6 兄弟目（empire / workflow / agent / room / directive の後）。設計が指摘する
+責務境界に沿ってパッケージを分割する:
 
-* :mod:`bakufu.domain.task.state_machine` — decision-table state
-  machine (``Final[Mapping]`` + :class:`types.MappingProxyType`,
-  §確定 B). 13 entries matching §確定 A-2's dispatch table 1:1.
-* :mod:`bakufu.domain.task.aggregate_validators` — five module-level
-  ``_validate_*`` helpers for the structural invariants (§確定 J
-  kinds 3〜7).
-* :mod:`bakufu.domain.task.task` — :class:`Task` Aggregate Root
-  exposing ten behavior methods whose names map 1:1 to the state
-  machine action names (§確定 A-2 Steve R2 凍結 — no internal
-  dispatch, no ``advance(...)`` umbrella method).
+* :mod:`bakufu.domain.task.state_machine` — decision-table state machine
+  （``Final[Mapping]`` + :class:`types.MappingProxyType`、§確定 B）。
+  §確定 A-2 ディスパッチ表と 1:1 で対応する 13 エントリ。
+* :mod:`bakufu.domain.task.aggregate_validators` — 構造的不変条件
+  （§確定 J kinds 3〜7）のためのモジュール レベル ``_validate_*`` ヘルパ 5 つ。
+* :mod:`bakufu.domain.task.task` — state machine アクション名と 1:1 対応する
+  10 個の振る舞いメソッドを公開する :class:`Task` Aggregate Root（§確定 A-2 Steve
+  R2 凍結 — 内部ディスパッチ無し、``advance(...)`` umbrella メソッド無し）。
 
-This ``__init__`` re-exports the public surface plus the
-underscore-prefixed validators tests need to invoke directly (the
-same pattern Norman approved for the agent / room / directive
-packages).
+この ``__init__`` はパブリック表面に加え、テストが直接呼ぶ必要のあるアンダー
+スコア プレフィックス バリデータも再 export する（Norman が agent / room /
+directive パッケージで承認したのと同じパターン）。
 """
 
 from __future__ import annotations

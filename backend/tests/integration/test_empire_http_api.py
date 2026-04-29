@@ -30,14 +30,14 @@ from httpx import AsyncClient
 pytestmark = pytest.mark.asyncio
 
 # ---------------------------------------------------------------------------
-# Helpers
+# ヘルパ
 # ---------------------------------------------------------------------------
 
 _EMPIRE_NAME = "山田の幕府"
 
 
 async def _create_empire(client: AsyncClient, name: str = _EMPIRE_NAME) -> dict[str, object]:
-    """POST /api/empires and return parsed JSON body (assert 201 internally)."""
+    """POST /api/empires してパース済み JSON ボディを返す（内部で 201 を assert）。"""
     resp = await client.post("/api/empires", json={"name": name})
     assert resp.status_code == 201, f"Empire creation failed: {resp.text}"
     return resp.json()  # type: ignore[return-value]
@@ -47,7 +47,7 @@ async def _create_empire(client: AsyncClient, name: str = _EMPIRE_NAME) -> dict[
 # TC-IT-EM-HTTP-001: POST /api/empires → 201 EmpireResponse
 # ---------------------------------------------------------------------------
 class TestCreateEmpire:
-    """TC-IT-EM-HTTP-001: POST /api/empires creates new Empire (REQ-EM-HTTP-001)."""
+    """TC-IT-EM-HTTP-001: POST /api/empires が新しい Empire を作成する (REQ-EM-HTTP-001)。"""
 
     async def test_create_returns_201(self, empire_app_client: AsyncClient) -> None:
         resp = await empire_app_client.post("/api/empires", json={"name": _EMPIRE_NAME})
@@ -82,7 +82,7 @@ class TestCreateEmpire:
 # TC-IT-EM-HTTP-002: POST 重複 → 409 conflict (MSG-EM-HTTP-001, R1-5)
 # ---------------------------------------------------------------------------
 class TestCreateEmpireConflict:
-    """TC-IT-EM-HTTP-002: second POST → 409 conflict (EmpireAlreadyExistsError, R1-5)."""
+    """TC-IT-EM-HTTP-002: 2 回目の POST → 409 conflict (EmpireAlreadyExistsError, R1-5)。"""
 
     async def test_duplicate_returns_409(self, empire_app_client: AsyncClient) -> None:
         await _create_empire(empire_app_client)
@@ -128,7 +128,7 @@ class TestCreateEmpireConflict:
 # TC-IT-EM-HTTP-003: GET /api/empires → 200 EmpireListResponse
 # ---------------------------------------------------------------------------
 class TestListEmpires:
-    """TC-IT-EM-HTTP-003: GET /api/empires (REQ-EM-HTTP-002)."""
+    """TC-IT-EM-HTTP-003: GET /api/empires (REQ-EM-HTTP-002)。"""
 
     async def test_list_empty_returns_200(self, empire_app_client: AsyncClient) -> None:
         resp = await empire_app_client.get("/api/empires")
@@ -160,7 +160,7 @@ class TestListEmpires:
 # TC-IT-EM-HTTP-004: GET /api/empires/{id} → 200 EmpireResponse
 # ---------------------------------------------------------------------------
 class TestGetEmpire:
-    """TC-IT-EM-HTTP-004: GET /api/empires/{id} (REQ-EM-HTTP-003)."""
+    """TC-IT-EM-HTTP-004: GET /api/empires/{id} (REQ-EM-HTTP-003)。"""
 
     async def test_get_returns_200(self, empire_app_client: AsyncClient) -> None:
         body = await _create_empire(empire_app_client)
@@ -187,7 +187,7 @@ class TestGetEmpire:
 # TC-IT-EM-HTTP-005: GET 不在 → 404 not_found (MSG-EM-HTTP-002)
 # ---------------------------------------------------------------------------
 class TestGetEmpireNotFound:
-    """TC-IT-EM-HTTP-005: GET /api/empires/{unknown-id} → 404 (EmpireNotFoundError)."""
+    """TC-IT-EM-HTTP-005: GET /api/empires/{unknown-id} → 404 (EmpireNotFoundError)。"""
 
     async def test_not_found_returns_404(self, empire_app_client: AsyncClient) -> None:
         resp = await empire_app_client.get(f"/api/empires/{uuid.uuid4()}")
@@ -207,7 +207,7 @@ class TestGetEmpireNotFound:
 # TC-IT-EM-HTTP-006: PATCH /api/empires/{id} → 200 更新済み (REQ-EM-HTTP-004)
 # ---------------------------------------------------------------------------
 class TestUpdateEmpire:
-    """TC-IT-EM-HTTP-006: PATCH /api/empires/{id} updates empire name (REQ-EM-HTTP-004)."""
+    """TC-IT-EM-HTTP-006: PATCH /api/empires/{id} が empire 名を更新する (REQ-EM-HTTP-004)。"""
 
     async def test_patch_returns_200(self, empire_app_client: AsyncClient) -> None:
         body = await _create_empire(empire_app_client)
@@ -244,7 +244,8 @@ class TestUpdateEmpire:
 # TC-IT-EM-HTTP-007: PATCH アーカイブ済み → 409 conflict (MSG-EM-HTTP-003, R1-8)
 # ---------------------------------------------------------------------------
 class TestUpdateArchivedEmpire:
-    """TC-IT-EM-HTTP-007: PATCH on archived Empire → 409 conflict (EmpireArchivedError, R1-8)."""
+    """TC-IT-EM-HTTP-007: アーカイブ済み Empire への PATCH →
+    409 conflict (EmpireArchivedError, R1-8)。"""
 
     async def test_patch_archived_returns_409(self, empire_app_client: AsyncClient) -> None:
         body = await _create_empire(empire_app_client)
@@ -278,7 +279,7 @@ class TestUpdateArchivedEmpire:
 # TC-IT-EM-HTTP-008: DELETE /api/empires/{id} → 204 + archived=true
 # ---------------------------------------------------------------------------
 class TestDeleteEmpire:
-    """TC-IT-EM-HTTP-008: DELETE /api/empires/{id} → 204 + GET shows archived=true (REQ-EM-HTTP-005)."""  # noqa: E501
+    """TC-IT-EM-HTTP-008: DELETE /api/empires/{id} → 204 + GET で archived=true (REQ-EM-HTTP-005)。"""  # noqa: E501
 
     async def test_delete_returns_204(self, empire_app_client: AsyncClient) -> None:
         body = await _create_empire(empire_app_client)
@@ -311,7 +312,7 @@ class TestDeleteEmpire:
 # TC-IT-EM-HTTP-009: DELETE 不在 → 404 not_found (MSG-EM-HTTP-002)
 # ---------------------------------------------------------------------------
 class TestDeleteEmpireNotFound:
-    """TC-IT-EM-HTTP-009: DELETE /api/empires/{unknown-id} → 404 (EmpireNotFoundError)."""
+    """TC-IT-EM-HTTP-009: DELETE /api/empires/{unknown-id} → 404 (EmpireNotFoundError)。"""
 
     async def test_delete_not_found_returns_404(self, empire_app_client: AsyncClient) -> None:
         resp = await empire_app_client.delete(f"/api/empires/{uuid.uuid4()}")

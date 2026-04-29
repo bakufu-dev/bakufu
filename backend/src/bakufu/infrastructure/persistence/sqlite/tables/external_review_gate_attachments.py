@@ -1,22 +1,20 @@
-"""``external_review_gate_attachments`` table — snapshot Attachment child rows.
+"""``external_review_gate_attachments`` テーブル — スナップショット Attachment 子行。
 
-Stores per-attachment metadata for the ``deliverable_snapshot`` inline copy
-inside each :class:`ExternalReviewGate`. Physical file bytes are out of scope
-for this feature (``feature/attachment-storage``).
+各 :class:`ExternalReviewGate` 内の ``deliverable_snapshot`` インライン コピー用
+の attachment ごとのメタデータを保存する。物理ファイル バイトは本機能の範囲外
+（``feature/attachment-storage`` の責務）。
 
-``gate_id`` carries an ``ON DELETE CASCADE`` foreign key onto
-``external_review_gates.id`` — when a Gate is removed, its snapshot
-attachment rows go with it.
+``gate_id`` は ``external_review_gates.id`` への ``ON DELETE CASCADE`` 外部キーを
+持つ — Gate が削除されるとそのスナップショット attachment 行も一緒に削除される。
 
-``id`` is a **save-internal** primary key regenerated via ``uuid4()`` on
-every :meth:`SqliteExternalReviewGateRepository.save` call (DELETE-then-INSERT
-pattern). External code must not reference this PK; the business key is
-``UNIQUE(gate_id, sha256)``.
+``id`` は :meth:`SqliteExternalReviewGateRepository.save` 呼び出しごとに ``uuid4()``
+で再生成される **保存内部** の主キー（DELETE-then-INSERT パターン）。外部コードは
+この PK を参照してはならない。ビジネス キーは ``UNIQUE(gate_id, sha256)``。
 
-**masking 対象カラム**: なし (全カラム masking 対象外)。Attachment metadata
-(sha256 / filename / mime_type / size_bytes) carries no Schneier #6 secret
-semantics; the content hash identifies a file but reveals nothing about its
-contents.
+**マスキング対象カラム**: なし（全カラム マスキング対象外）。Attachment メタ
+データ（sha256 / filename / mime_type / size_bytes）は Schneier #6 のシークレット
+意味を持たない。コンテンツ ハッシュはファイルを識別するが、その内容については
+何も明かさない。
 """
 
 from __future__ import annotations
@@ -30,27 +28,27 @@ from bakufu.infrastructure.persistence.sqlite.base import Base, UUIDStr
 
 
 class ExternalReviewGateAttachmentRow(Base):
-    """ORM mapping for the ``external_review_gate_attachments`` table."""
+    """``external_review_gate_attachments`` テーブルの ORM マッピング。"""
 
     __tablename__ = "external_review_gate_attachments"
 
-    # id: internal PK regenerated on each save(); external code must use
-    # UNIQUE(gate_id, sha256) as the business key (§確定 R1-B).
+    # id: save() ごとに再生成される内部 PK。外部コードは UNIQUE(gate_id, sha256) を
+    # ビジネス キーとして使うこと（§確定 R1-B）。
     id: Mapped[UUID] = mapped_column(UUIDStr, primary_key=True)
     gate_id: Mapped[UUID] = mapped_column(
         UUIDStr,
         ForeignKey("external_review_gates.id", ondelete="CASCADE"),
         nullable=False,
     )
-    # sha256: 64-char lowercase hex; validated by Attachment VO.
+    # sha256: 64 文字小文字 hex。Attachment VO で検証される。
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     mime_type: Mapped[str] = mapped_column(String(128), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
 
     __table_args__ = (
-        # UNIQUE(gate_id, sha256): prevents duplicate content within one Gate;
-        # sha256 provides deterministic ORDER BY anchor (§確定 R1-H).
+        # UNIQUE(gate_id, sha256): 1 つの Gate 内のコンテンツ重複を防ぐ。
+        # sha256 は決定的な ORDER BY アンカーを提供する（§確定 R1-H）。
         UniqueConstraint("gate_id", "sha256", name="uq_erg_attachments_gate_sha256"),
     )
 

@@ -1,20 +1,18 @@
-"""Directive Aggregate Root package.
+"""Directive Aggregate Root パッケージ。
 
-Implements ``REQ-DR-001``〜``REQ-DR-003`` per ``docs/features/directive``.
-M1 5 兄弟目 (after empire / workflow / agent / room) — slim by design:
-five attributes, two structural invariants, one behavior. Split into
-two sibling modules for the sake of consistency with the older M1
-packages even though everything fits comfortably in one file:
+``docs/features/directive`` に従って ``REQ-DR-001``〜``REQ-DR-003`` を実装する。
+M1 5 兄弟目（empire / workflow / agent / room の後）— 設計上スリム: 5 属性、
+2 構造的不変条件、1 振る舞い。すべて 1 ファイルに快適に収まるが、過去の M1
+パッケージとの整合性のために 2 つの兄弟モジュールに分割する:
 
-* :mod:`bakufu.domain.directive.aggregate_validators` — two
-  module-level invariant helpers (``_validate_text_range`` /
-  ``_validate_task_link_immutable``).
-* :mod:`bakufu.domain.directive.directive` — :class:`Directive`
-  Aggregate Root.
+* :mod:`bakufu.domain.directive.aggregate_validators` — モジュール レベルの
+  不変条件ヘルパ 2 つ（``_validate_text_range`` /
+  ``_validate_task_link_immutable``）。
+* :mod:`bakufu.domain.directive.directive` — :class:`Directive` Aggregate Root。
 
-This ``__init__`` re-exports the public surface plus the
-underscore-prefixed helpers tests need to invoke directly (the same
-pattern Norman approved for the agent / room packages).
+この ``__init__`` はパブリック表面に加え、テストが直接呼ぶ必要のある
+アンダースコア プレフィックス ヘルパも再 export する（Norman が agent / room
+パッケージで承認したのと同じパターン）。
 """
 
 from __future__ import annotations

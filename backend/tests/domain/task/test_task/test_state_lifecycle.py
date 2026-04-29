@@ -1,13 +1,13 @@
-"""Task state machine: BLOCKED contract + pre-validate + lifecycle integration.
+"""Task ステートマシン: BLOCKED 契約 + pre-validate + ライフサイクル統合.
 
-TC-UT-TS-007 (BLOCKED non-empty last_error contract) + TC-UT-TS-038
-(pre-validate leaves original Task untouched) + TC-IT-TS-001〜005
-(multi-method integration scenarios) + ``updated_at`` monotonicity
-across all 13 ✓ transitions.
+TC-UT-TS-007 (BLOCKED 非空 last_error 契約) + TC-UT-TS-038
+(pre-validate は元 Task を変更しない) + TC-IT-TS-001〜005
+(複数メソッドの統合シナリオ) + 13 ✓ 遷移全件における
+``updated_at`` 単調増加。
 
-Per ``docs/features/task/test-design.md``. Split out of
-``test_state_machine.py`` per Norman R-N1 (633 → 3 files). Sibling
-files cover the table lock + 13 ✓ cells and the 47 ✗ cells.
+``docs/features/task/test-design.md`` 準拠。Norman R-N1 に従い
+``test_state_machine.py`` から分割 (633 → 3 ファイル)。
+兄弟ファイルでテーブルロック + 13 ✓ セルおよび 47 ✗ セルを扱う。
 """
 
 from __future__ import annotations
@@ -34,23 +34,23 @@ from tests.factories.task import (
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-TS-007: BLOCKED contract — block() rejects empty last_error
+# TC-UT-TS-007: BLOCKED 契約 ── block() は空 last_error を拒絶する
 # ---------------------------------------------------------------------------
 class TestBlockRequiresNonEmptyLastError:
-    """TC-UT-TS-007: ``block(reason, last_error='')`` Fail-Fast.
+    """TC-UT-TS-007: ``block(reason, last_error='')`` は Fail-Fast。
 
-    BUG-TSK-001 fix landed (commit ``377366e``): ``Task._check_invariants``
-    now runs ``_validate_blocked_has_last_error`` **before**
-    ``_validate_last_error_consistency``, so the empty-string path
-    raises the design-contracted ``MSG-TS-006``
-    (``blocked_requires_last_error``) — the "block() requires non-empty
-    last_error" Next-action hint. The single-kind assertion below pins
-    that contract; a regression that swapped the ordering back would
-    surface here, not behind a permissive ``or`` set.
+    BUG-TSK-001 修正完了 (commit ``377366e``): ``Task._check_invariants``
+    が ``_validate_blocked_has_last_error`` を
+    ``_validate_last_error_consistency`` の **前** に走らせるようになり、
+    空文字列経路では設計契約どおりの ``MSG-TS-006``
+    (``blocked_requires_last_error``) ──「block() は非空 last_error を要する」
+    の Next-action ヒントを発火する。下の単一 kind アサートで契約を固定し、
+    順序を戻すリグレッションをここで検出する (寛容な ``or`` 集合の裏に
+    隠れない)。
     """
 
     def test_block_with_empty_last_error_raises_blocked_requires_last_error(self) -> None:
-        """``block(last_error='')`` raises ``blocked_requires_last_error`` (MSG-TS-006)."""
+        """``block(last_error='')`` は ``blocked_requires_last_error`` (MSG-TS-006) を発火する。"""
         task = make_in_progress_task()
         with pytest.raises(TaskInvariantViolation) as exc_info:
             task.block("retry exhausted", "", updated_at=next_ts(task))
@@ -64,12 +64,11 @@ class TestBlockRequiresNonEmptyLastError:
         )
 
     def test_block_with_too_long_last_error_raises(self) -> None:
-        """A 10001-char ``last_error`` exceeds MAX and raises blocked_requires_last_error.
+        """10001 文字の ``last_error`` は MAX 超過で blocked_requires_last_error を発火する。
 
-        For the over-length path, the consistency check passes
-        (BLOCKED + non-empty string is structurally OK) and the
-        length check fires — same kind as the empty-string path
-        after the BUG-TSK-001 fix.
+        過大長経路では consistency チェックは通過し
+        (BLOCKED + 非空文字列は構造的に OK)、長さチェックが発火する ──
+        BUG-TSK-001 修正後は空文字列経路と同じ kind になる。
         """
         task = make_in_progress_task()
         too_long = "x" * 10_001
@@ -79,41 +78,40 @@ class TestBlockRequiresNonEmptyLastError:
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-TS-038: assign failure leaves the original Task unchanged (§確定 A)
+# TC-UT-TS-038: assign 失敗時に元 Task は不変 (§確定 A)
 # ---------------------------------------------------------------------------
 class TestPreValidateLeavesOriginalUntouched:
-    """TC-UT-TS-038: a failed behavior call does not mutate the original Task.
+    """TC-UT-TS-038: 失敗した behavior 呼び出しは元 Task を変更しない。
 
-    The §確定 A pre-validate rebuild path means a behavior either
-    returns a new Task or raises — never partially-mutates the source
-    instance. We assert this by attempting an illegal action and then
-    inspecting the original Task's full attribute set.
+    §確定 A の pre-validate rebuild 経路は、behavior が新 Task を返すか
+    例外を発するかのいずれかで、元インスタンスを部分的に変更しない。
+    違法アクションを試みた後で、元 Task の全属性集合を検査することで
+    保証を確認する。
     """
 
     def test_failed_assign_on_in_progress_keeps_original_unchanged(self) -> None:
-        """An ``assign`` on IN_PROGRESS raises and does not touch the original."""
+        """IN_PROGRESS に対する ``assign`` は例外を発し、元 Task に触れない。"""
         original = make_in_progress_task()
         snapshot = original.model_dump()
 
         with pytest.raises(TaskInvariantViolation):
             original.assign([uuid4()], updated_at=next_ts(original))
 
-        # Every field byte-identical after the failed call.
+        # 失敗呼び出し後も全フィールドはバイト等価。
         assert original.model_dump() == snapshot
 
 
 # ---------------------------------------------------------------------------
-# Integration scenarios (TC-IT-TS-001〜005)
+# 統合シナリオ (TC-IT-TS-001〜005)
 # ---------------------------------------------------------------------------
 class TestLifecycleIntegration:
-    """Aggregate-internal "integration" — multi-method round-trip scenarios."""
+    """Aggregate 内部「統合」── 複数メソッドのラウンドトリップシナリオ。"""
 
     def test_pending_to_done_full_lifecycle(self) -> None:
-        """TC-IT-TS-002: PENDING → IN_PROGRESS → AWAITING → IN_PROGRESS → DONE.
+        """TC-IT-TS-002: PENDING → IN_PROGRESS → AWAITING → IN_PROGRESS → DONE。
 
-        Walks the §確定 A-2 4-method-separation (approve_review +
-        complete) end-to-end. The final DONE state must reject every
-        subsequent action.
+        §確定 A-2 の 4 メソッド分離 (approve_review + complete) を
+        端から端まで歩く。最終 DONE 状態は後続全アクションを拒絶せねばならない。
         """
         task = make_task()
         agent_a = uuid4()
@@ -137,7 +135,7 @@ class TestLifecycleIntegration:
         task = task.request_external_review(updated_at=next_ts(task))
         assert task.status == TaskStatus.AWAITING_EXTERNAL_REVIEW
 
-        # Step 4: approve_review → IN_PROGRESS at next stage
+        # Step 4: approve_review → 次ステージで IN_PROGRESS
         stage_b = uuid4()
         task = task.approve_review(uuid4(), uuid4(), stage_b, updated_at=next_ts(task))
         assert task.status == TaskStatus.IN_PROGRESS
@@ -155,40 +153,38 @@ class TestLifecycleIntegration:
         assert task.status == TaskStatus.DONE
         assert len(task.deliverables) == 2
 
-        # DONE rejects every subsequent action (cross-check with
-        # TestTerminalGate on a freshly-walked Task).
+        # DONE は後続全アクションを拒絶 (新規 Task に対する TestTerminalGate
+        # との交差確認)。
         for action in ALL_ACTIONS:
             with pytest.raises(TaskInvariantViolation) as exc_info:
                 invoke_action(task, action)
             assert exc_info.value.kind == "terminal_violation"
 
     def test_blocked_recovery_to_done(self) -> None:
-        """TC-IT-TS-003: IN_PROGRESS → BLOCKED → IN_PROGRESS → DONE.
+        """TC-IT-TS-003: IN_PROGRESS → BLOCKED → IN_PROGRESS → DONE。
 
-        Verifies the §確定 D ``last_error`` clear contract: after
-        ``unblock_retry`` the Task is back in IN_PROGRESS with
-        ``last_error is None`` and can complete normally.
+        §確定 D の ``last_error`` クリア契約を検証する: ``unblock_retry``
+        後は IN_PROGRESS に戻り ``last_error is None`` で正常完了できる。
         """
         task = make_in_progress_task()
         agent = task.assigned_agent_ids[0]
         stage = task.current_stage_id
 
-        # Block with a webhook URL in last_error — auto-mask is
-        # exercised at the exception layer, but the Task itself
-        # holds the raw NFC-normalized form (Repository-side masking
-        # is workflow-repository's concern).
+        # last_error に webhook URL を含めて block する ── auto-mask は
+        # 例外層で発動するが、Task 自体は NFC 正規化された生形を保持する
+        # (Repository 側の masking は workflow-repository の関心事)。
         last_err = "AuthExpired: https://discord.com/api/webhooks/123456789012345678/SecretToken-x"
         task = task.block("auth retry exhausted", last_err, updated_at=next_ts(task))
         assert task.status == TaskStatus.BLOCKED
         assert task.last_error is not None
-        assert task.last_error == last_err  # Aggregate keeps raw form
+        assert task.last_error == last_err  # Aggregate は生形のまま保持する
 
-        # Unblock → back to IN_PROGRESS, last_error cleared.
+        # Unblock → IN_PROGRESS に戻り、last_error クリア。
         task = task.unblock_retry(updated_at=next_ts(task))
         assert task.status == TaskStatus.IN_PROGRESS
         assert task.last_error is None
 
-        # Commit + complete.
+        # commit + complete。
         d = make_deliverable(stage_id=stage)
         task = task.commit_deliverable(
             stage_id=stage,
@@ -200,16 +196,16 @@ class TestLifecycleIntegration:
         assert task.status == TaskStatus.DONE
 
     def test_reject_review_and_resubmit_loop(self) -> None:
-        """TC-IT-TS-005: AWAITING → IN_PROGRESS (rejected to rollback) → re-review → DONE.
+        """TC-IT-TS-005: AWAITING → IN_PROGRESS (reject による rollback) → 再 review → DONE。
 
-        Verifies that ``reject_review`` is a real round-trip path:
-        a Task that is rejected can return through a different
-        ``current_stage_id``, re-submit, and eventually complete.
+        ``reject_review`` が真のラウンドトリップ経路となることを検証する:
+        reject された Task は別の ``current_stage_id`` を経て戻ってきて、
+        再投稿し、最終的に完了できる。
         """
         task = make_task_in_status(TaskStatus.AWAITING_EXTERNAL_REVIEW)
         agent = task.assigned_agent_ids[0]
 
-        # Reject — fall back to a "rollback" stage.
+        # Reject ── 「rollback」ステージへ戻す。
         rollback_stage = uuid4()
         task = task.reject_review(
             uuid4(),
@@ -220,7 +216,7 @@ class TestLifecycleIntegration:
         assert task.status == TaskStatus.IN_PROGRESS
         assert task.current_stage_id == rollback_stage
 
-        # Re-commit + re-review.
+        # 再 commit + 再 review。
         d = make_deliverable(stage_id=rollback_stage)
         task = task.commit_deliverable(
             stage_id=rollback_stage,
@@ -231,7 +227,7 @@ class TestLifecycleIntegration:
         task = task.request_external_review(updated_at=next_ts(task))
         assert task.status == TaskStatus.AWAITING_EXTERNAL_REVIEW
 
-        # Approve this time → IN_PROGRESS at next stage.
+        # 今度は approve → 次ステージで IN_PROGRESS。
         next_stage = uuid4()
         task = task.approve_review(
             uuid4(),
@@ -241,17 +237,16 @@ class TestLifecycleIntegration:
         )
         assert task.current_stage_id == next_stage
 
-        # Complete.
+        # complete。
         task = task.complete(uuid4(), uuid4(), updated_at=next_ts(task))
         assert task.status == TaskStatus.DONE
 
     def test_assign_failure_then_alternate_action_succeeds(self) -> None:
-        """TC-IT-TS-001: failed ``assign`` does not break a follow-up valid action.
+        """TC-IT-TS-001: 失敗した ``assign`` が後続の正当アクションを壊さないことを検証する。
 
-        Confirmation H: pre-validate keeps the Task state clean across
-        sequential failures + retries. After an illegal ``assign`` on
-        IN_PROGRESS we should still be able to call ``commit_deliverable``
-        successfully (proving no hidden state corruption).
+        Confirmation H: pre-validate は連続的な失敗 + 再試行を経ても
+        Task 状態をクリーンに保つ。IN_PROGRESS への違法 ``assign`` 後でも
+        ``commit_deliverable`` は成功するはず (隠れた状態破壊なしを示す)。
         """
         task = make_in_progress_task()
         agent = task.assigned_agent_ids[0]
@@ -260,7 +255,7 @@ class TestLifecycleIntegration:
         with pytest.raises(TaskInvariantViolation):
             task.assign([uuid4()], updated_at=next_ts(task))
 
-        # Original Task is unchanged → ``commit_deliverable`` works.
+        # 元 Task は不変 → ``commit_deliverable`` が成功する。
         d = make_deliverable(stage_id=stage)
         out = task.commit_deliverable(
             stage_id=stage,
@@ -272,12 +267,12 @@ class TestLifecycleIntegration:
         assert out.deliverables[stage] == d
 
     def test_cancel_from_each_state_clears_last_error(self) -> None:
-        """TC-IT-TS-004: cancel from PENDING / IN_PROGRESS / AWAITING / BLOCKED clears last_error.
+        """TC-IT-TS-004: PENDING / IN_PROGRESS / AWAITING / BLOCKED
+        いずれからの cancel も last_error をクリア。
 
-        Repeats ``test_cancel_from_each_of_four_states`` (sibling file)
-        with an explicit ``last_error=None`` post-condition assertion
-        even on the BLOCKED-origin path (where ``last_error`` was
-        non-empty before the cancel call).
+        兄弟ファイルの ``test_cancel_from_each_of_four_states`` を、
+        BLOCKED 起点経路 (cancel 前は ``last_error`` が非空) も含めて
+        ``last_error=None`` の事後条件アサートを明示する形で繰り返す。
         """
         for status in (
             TaskStatus.PENDING,
@@ -287,9 +282,9 @@ class TestLifecycleIntegration:
         ):
             task = make_task_in_status(status)
             with contextlib.suppress(TaskInvariantViolation):
-                # PENDING factory yields last_error=None already; the
-                # remaining factories also keep it None except for
-                # BLOCKED which carries the synthetic string.
+                # PENDING ファクトリは既に last_error=None を返す。
+                # 残るファクトリも BLOCKED (合成文字列を持つ) を除いて
+                # None のまま。
                 pass
             out = task.cancel(uuid4(), "manual abort", updated_at=next_ts(task))
             assert out.status == TaskStatus.CANCELLED
@@ -297,10 +292,10 @@ class TestLifecycleIntegration:
 
 
 # ---------------------------------------------------------------------------
-# Reachability sanity: every IN_PROGRESS-incoming method updates updated_at
+# 到達性確認: IN_PROGRESS に入る全メソッドが updated_at を更新する
 # ---------------------------------------------------------------------------
 class TestUpdatedAtAdvances:
-    """All allowed transitions must move ``updated_at`` strictly forward."""
+    """全許可遷移は ``updated_at`` を厳密に前進させなければならない。"""
 
     @pytest.mark.parametrize(
         "status",
@@ -313,17 +308,17 @@ class TestUpdatedAtAdvances:
         ids=lambda s: s.value,
     )
     def test_allowed_action_advances_updated_at(self, status: TaskStatus) -> None:
-        """For every legal (status, action), ``updated_at`` of the result is strictly later."""
-        # ``TRANSITIONS`` keys are tuples of (TaskStatus, TaskAction)
-        # but the iteration loses the Literal narrowing — annotate
-        # explicitly so the action stays typed as TaskAction.
+        """全合法 (status, action) で結果の ``updated_at`` が厳密に未来であることを保証する。"""
+        # ``TRANSITIONS`` のキーは (TaskStatus, TaskAction) のタプルだが、
+        # iteration では Literal narrowing が消える ── action を
+        # TaskAction として明示的に注釈する。
         legal_actions: list[TaskAction] = [a for (s, a) in TRANSITIONS if s == status]
         assert legal_actions, f"status {status} has zero legal actions"
         for action in legal_actions:
             task = make_task_in_status(status)
-            # block requires non-empty last_error which the helper
-            # passes through; commit_deliverable requires a Deliverable
-            # whose stage_id matches; both are handled by invoke_action.
+            # block は非空 last_error を要し、ヘルパが透過する。
+            # commit_deliverable は stage_id 一致の Deliverable を要する ──
+            # いずれも invoke_action 内で吸収される。
             try:
                 out = invoke_action(task, action)
             except TaskInvariantViolation:  # pragma: no cover - defensive

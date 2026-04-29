@@ -1,46 +1,45 @@
-"""Task Aggregate tables: tasks + 3 child tables; BUG-DRR-001 FK closure.
+"""Task Aggregate テーブル群: tasks + 3 子テーブル、BUG-DRR-001 FK クロージャ。
 
-Adds the four tables that back :class:`SqliteTaskRepository`:
+:class:`SqliteTaskRepository` を支える 4 つのテーブルを追加する:
 
-* ``tasks`` (id PK + room_id FK CASCADE + directive_id FK CASCADE +
-  current_stage_id NOT NULL (no FK, Aggregate boundary §確定 R1-G) +
+* ``tasks``（id PK + room_id FK CASCADE + directive_id FK CASCADE +
+  current_stage_id NOT NULL（FK 無し、Aggregate 境界 §確定 R1-G） +
   status String(32) NOT NULL + last_error MaskedText NULL +
-  created_at / updated_at UTCDateTime NOT NULL).
-  Two indexes: ``ix_tasks_room_id`` (single-column) and
-  ``ix_tasks_status_updated_id`` (composite, §確定 R1-K).
-* ``task_assigned_agents`` (composite PK (task_id, agent_id) + FK CASCADE on
-  task_id + NO FK on agent_id per §設計決定 TR-001 + UNIQUE(task_id, agent_id)
-  Defense-in-Depth).
-* ``deliverables`` (id PK + task_id FK CASCADE + stage_id NOT NULL (no FK,
-  Aggregate boundary) + body_markdown MaskedText NOT NULL + committed_by
-  NOT NULL (no FK) + committed_at UTCDateTime NOT NULL +
-  UNIQUE(task_id, stage_id)).
-* ``deliverable_attachments`` (id PK + deliverable_id FK CASCADE + sha256
+  created_at / updated_at UTCDateTime NOT NULL）。
+  インデックス 2 つ: ``ix_tasks_room_id``（単一カラム）と
+  ``ix_tasks_status_updated_id``（複合、§確定 R1-K）。
+* ``task_assigned_agents``（複合 PK (task_id, agent_id) + task_id への FK CASCADE
+  + §設計決定 TR-001 により agent_id への FK 無し + UNIQUE(task_id, agent_id) の
+  多層防御）。
+* ``deliverables``（id PK + task_id FK CASCADE + stage_id NOT NULL（FK 無し、
+  Aggregate 境界） + body_markdown MaskedText NOT NULL + committed_by NOT NULL
+  （FK 無し） + committed_at UTCDateTime NOT NULL + UNIQUE(task_id, stage_id)）。
+* ``deliverable_attachments``（id PK + deliverable_id FK CASCADE + sha256
   String(64) NOT NULL + filename String(255) NOT NULL + mime_type
   String(128) NOT NULL + size_bytes Integer NOT NULL +
-  UNIQUE(deliverable_id, sha256)).
+  UNIQUE(deliverable_id, sha256)）。
 
-``conversations`` / ``conversation_messages`` tables are excluded (§BUG-TR-002
-凍結済み): Task Aggregate currently has no ``conversations`` attribute. These
-tables will be added in the future migration that wires up
-``Task.conversations: list[Conversation]``.
+``conversations`` / ``conversation_messages`` テーブルは除外（§BUG-TR-002
+凍結済み）: Task Aggregate には現状 ``conversations`` 属性が無い。これらの
+テーブルは ``Task.conversations: list[Conversation]`` を配線する将来の
+マイグレーションで追加される。
 
-Also closes BUG-DRR-001 FK申し送り:
+加えて BUG-DRR-001 FK 申し送りを完了する:
 
-* ``directives.task_id → tasks.id`` FK (ON DELETE RESTRICT) is added via
-  ``op.batch_alter_table('directives', recreate='always')`` because SQLite
-  does not support ``ALTER TABLE ... ADD CONSTRAINT FOREIGN KEY`` directly.
-  The batch operation rebuilds the table internally, copying existing rows,
-  then renames. This is the same pattern as BUG-EMR-001 closure in
-  0005_room_aggregate (empire-repository PR #47).
+* ``directives.task_id → tasks.id`` FK（ON DELETE RESTRICT）を
+  ``op.batch_alter_table('directives', recreate='always')`` 経由で追加する。
+  SQLite は ``ALTER TABLE ... ADD CONSTRAINT FOREIGN KEY`` を直接サポートしない
+  ため。バッチ操作は内部でテーブルを再構築し、既存行をコピーして名前を変更する。
+  0005_room_aggregate の BUG-EMR-001 クロージャ（empire-repository PR #47）と
+  同じパターン。
 
-ON DELETE RESTRICT rationale: a Directive that references a Task must not
-silently lose that reference when the Task is deleted. The application layer
-must call ``directive.unlink_task()`` + ``save()`` before deleting a Task
-(Fail Fast §確定 R1-C).
+ON DELETE RESTRICT の根拠: Task を参照する Directive は、Task が削除された際に
+サイレントに参照を失ってはならない。アプリケーション層は Task 削除前に
+``directive.unlink_task()`` + ``save()`` を呼ばなければならない
+（Fail Fast §確定 R1-C）。
 
-Per ``docs/features/task-repository/detailed-design.md`` §確定 R1-B,
-§確定 R1-C, §確定 R1-K.
+``docs/features/task-repository/detailed-design.md`` §確定 R1-B、§確定 R1-C、
+§確定 R1-K に従う。
 
 Revision ID: 0007_task_aggregate
 Revises: 0006_directive_aggregate
@@ -61,7 +60,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # ---- tasks table -------------------------------------------------------
+    # ---- tasks テーブル ----------------------------------------------------
     op.create_table(
         "tasks",
         sa.Column("id", sa.CHAR(32), primary_key=True, nullable=False),
@@ -77,24 +76,26 @@ def upgrade() -> None:
             sa.ForeignKey("directives.id", ondelete="CASCADE"),
             nullable=False,
         ),
-        # current_stage_id: intentionally NO FK onto workflow_stages.id —
-        # Aggregate boundary (§確定 R1-G). TaskService validates existence.
+        # current_stage_id: workflow_stages.id への FK は意図的に持たない —
+        # Aggregate 境界（§確定 R1-G）。TaskService が存在性を検証する。
         sa.Column("current_stage_id", sa.CHAR(32), nullable=False),
         sa.Column("status", sa.String(32), nullable=False),
-        # last_error: MaskedText serialises as TEXT. The Python-side TypeDecorator
-        # does the masking gate (base.py MaskedText). NULL = not BLOCKED.
+        # last_error: MaskedText は TEXT としてシリアライズされる。Python 側の
+        # TypeDecorator がマスキング ゲートを実行する（base.py MaskedText）。
+        # NULL = BLOCKED ではない。
         sa.Column("last_error", sa.Text(), nullable=True),
-        # UTCDateTime TypeDecorator stores ISO-8601 text; always tz-aware at Python.
+        # UTCDateTime TypeDecorator は ISO-8601 テキストを格納し、Python 側では
+        # 常に tz-aware。
         sa.Column("created_at", sa.Text(), nullable=False),
         sa.Column("updated_at", sa.Text(), nullable=False),
     )
 
-    # §確定 R1-K: single-column index for count_by_room WHERE filter.
+    # §確定 R1-K: count_by_room WHERE フィルタ用の単一カラム インデックス。
     op.create_index("ix_tasks_room_id", "tasks", ["room_id"], unique=False)
 
-    # §確定 R1-K: composite (status, updated_at, id) index.
-    # Covers find_blocked WHERE status = 'BLOCKED' ORDER BY updated_at DESC, id DESC
-    # and count_by_status WHERE status = ? in one B-tree scan.
+    # §確定 R1-K: 複合 (status, updated_at, id) インデックス。
+    # find_blocked の WHERE status = 'BLOCKED' ORDER BY updated_at DESC, id DESC
+    # と count_by_status の WHERE status = ? を 1 回の B-tree スキャンでカバーする。
     op.create_index(
         "ix_tasks_status_updated_id",
         "tasks",
@@ -102,7 +103,7 @@ def upgrade() -> None:
         unique=False,
     )
 
-    # ---- task_assigned_agents table ----------------------------------------
+    # ---- task_assigned_agents テーブル ------------------------------------
     op.create_table(
         "task_assigned_agents",
         sa.Column(
@@ -112,16 +113,16 @@ def upgrade() -> None:
             primary_key=True,
             nullable=False,
         ),
-        # agent_id: intentionally NO FK onto agents.id — Aggregate boundary
-        # (§設計決定 TR-001, room_members.agent_id 前例同方針).
+        # agent_id: agents.id への FK は意図的に持たない — Aggregate 境界
+        # （§設計決定 TR-001、room_members.agent_id 先例と同方針）。
         sa.Column("agent_id", sa.CHAR(32), primary_key=True, nullable=False),
         sa.Column("order_index", sa.Integer(), nullable=False),
-        # Defense-in-Depth: explicit UNIQUE mirrors Aggregate invariant
-        # _validate_assigned_agents_unique at the DB level.
+        # 多層防御: 明示的な UNIQUE が Aggregate 不変条件
+        # _validate_assigned_agents_unique を DB レベルでミラーする。
         sa.UniqueConstraint("task_id", "agent_id", name="uq_task_assigned_agents"),
     )
 
-    # ---- deliverables table ------------------------------------------------
+    # ---- deliverables テーブル --------------------------------------------
     op.create_table(
         "deliverables",
         sa.Column("id", sa.CHAR(32), primary_key=True, nullable=False),
@@ -131,22 +132,22 @@ def upgrade() -> None:
             sa.ForeignKey("tasks.id", ondelete="CASCADE"),
             nullable=False,
         ),
-        # stage_id: intentionally NO FK onto workflow_stages.id — Aggregate
-        # boundary (§確定 R1-G, same rationale as tasks.current_stage_id).
+        # stage_id: workflow_stages.id への FK は意図的に持たない — Aggregate
+        # 境界（§確定 R1-G、tasks.current_stage_id と同じ理由）。
         sa.Column("stage_id", sa.CHAR(32), nullable=False),
-        # body_markdown: MaskedText serialises as TEXT (§確定 R1-E).
+        # body_markdown: MaskedText は TEXT としてシリアライズされる（§確定 R1-E）。
         sa.Column("body_markdown", sa.Text(), nullable=False),
-        # committed_by: intentionally NO FK onto agents.id — Aggregate
-        # boundary (§設計決定 TR-001, same as task_assigned_agents.agent_id).
+        # committed_by: agents.id への FK は意図的に持たない — Aggregate 境界
+        # （§設計決定 TR-001、task_assigned_agents.agent_id と同じ）。
         sa.Column("committed_by", sa.CHAR(32), nullable=False),
-        # UTCDateTime TypeDecorator stores ISO-8601 text.
+        # UTCDateTime TypeDecorator は ISO-8601 テキストを格納する。
         sa.Column("committed_at", sa.Text(), nullable=False),
-        # UNIQUE(task_id, stage_id): mirrors Aggregate's dict[StageId, Deliverable]
-        # key-uniqueness invariant at the DB level.
+        # UNIQUE(task_id, stage_id): Aggregate の dict[StageId, Deliverable] キー
+        # 一意性不変条件を DB レベルでミラーする。
         sa.UniqueConstraint("task_id", "stage_id", name="uq_deliverables_task_stage"),
     )
 
-    # ---- deliverable_attachments table -------------------------------------
+    # ---- deliverable_attachments テーブル ---------------------------------
     op.create_table(
         "deliverable_attachments",
         sa.Column("id", sa.CHAR(32), primary_key=True, nullable=False),
@@ -156,13 +157,13 @@ def upgrade() -> None:
             sa.ForeignKey("deliverables.id", ondelete="CASCADE"),
             nullable=False,
         ),
-        # sha256: 64-char lowercase hex; validated by Attachment VO.
+        # sha256: 64 文字の小文字 hex。Attachment VO で検証される。
         sa.Column("sha256", sa.String(64), nullable=False),
         sa.Column("filename", sa.String(255), nullable=False),
         sa.Column("mime_type", sa.String(128), nullable=False),
         sa.Column("size_bytes", sa.Integer(), nullable=False),
-        # UNIQUE(deliverable_id, sha256): prevents duplicate content within
-        # one Deliverable; sha256 provides deterministic ORDER BY anchor.
+        # UNIQUE(deliverable_id, sha256): 単一 Deliverable 内のコンテンツ重複を
+        # 防ぐ。sha256 は決定的な ORDER BY アンカーを提供する。
         sa.UniqueConstraint(
             "deliverable_id",
             "sha256",
@@ -170,14 +171,14 @@ def upgrade() -> None:
         ),
     )
 
-    # ---- BUG-DRR-001 FK closure -------------------------------------------
-    # ``directives.task_id → tasks.id`` FK (ON DELETE RESTRICT).
-    # SQLite does not support ``ALTER TABLE ... ADD CONSTRAINT FOREIGN KEY``
-    # directly. Alembic's ``batch_alter_table(recreate='always')`` rebuilds
-    # the table internally, copying existing rows, then renames.
-    # The ``recreate='always'`` flag forces the rebuild even when no column
-    # changes are detected — necessary for FK addition in SQLite
-    # (same pattern as BUG-EMR-001 closure in 0005_room_aggregate).
+    # ---- BUG-DRR-001 FK クロージャ ----------------------------------------
+    # ``directives.task_id → tasks.id`` FK（ON DELETE RESTRICT）。
+    # SQLite は ``ALTER TABLE ... ADD CONSTRAINT FOREIGN KEY`` を直接
+    # サポートしない。Alembic の ``batch_alter_table(recreate='always')`` が
+    # 内部でテーブルを再構築し、既存行をコピーして名前を変更する。
+    # ``recreate='always'`` フラグはカラム変更が検出されない場合でも再構築を
+    # 強制する — SQLite での FK 追加に必要（0005_room_aggregate での
+    # BUG-EMR-001 クロージャと同じパターン）。
     with op.batch_alter_table("directives", recreate="always") as batch_op:
         batch_op.create_foreign_key(
             "fk_directives_task_id",
@@ -189,21 +190,21 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Reverse order:
-    # 1. Drop BUG-DRR-001 FK closure first (directives depends on tasks).
+    # 逆順:
+    # 1. まず BUG-DRR-001 FK クロージャを削除する（directives は tasks に依存）。
     with op.batch_alter_table("directives", recreate="always") as batch_op:
         batch_op.drop_constraint("fk_directives_task_id", type_="foreignkey")
 
-    # 2. Drop child tables (CASCADE dependency order: deepest first).
+    # 2. 子テーブルを削除する（CASCADE 依存順、最深から）。
     op.drop_table("deliverable_attachments")
 
-    # 3. Drop mid-level child tables.
+    # 3. 中間レベルの子テーブルを削除する。
     op.drop_table("deliverables")
     op.drop_table("task_assigned_agents")
 
-    # 4. Drop indexes before dropping root table.
+    # 4. ルート テーブル削除前にインデックスを削除する。
     op.drop_index("ix_tasks_status_updated_id", table_name="tasks")
     op.drop_index("ix_tasks_room_id", table_name="tasks")
 
-    # 5. Drop root table.
+    # 5. ルート テーブルを削除する。
     op.drop_table("tasks")

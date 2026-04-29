@@ -1,11 +1,10 @@
-"""``async_sessionmaker`` factory (Unit-of-Work boundary).
+"""``async_sessionmaker`` ファクトリ（Unit-of-Work 境界）。
 
-Aggregate Repositories obtain an :class:`AsyncSession` from the
-factory created here; each ``async with session.begin():`` block
-encloses one Unit-of-Work. Sessions are configured for explicit
-flushing (``autoflush=False``) so listener-driven masking applies
-exactly once per row write — auto-flushing inside read queries would
-add ambiguity nobody wants.
+Aggregate リポジトリはここで作成されたファクトリから :class:`AsyncSession`
+を取得する。各 ``async with session.begin():`` ブロックが 1 Unit-of-Work を
+構成する。セッションは明示フラッシュ（``autoflush=False``）に設定する。
+これによりリスナ駆動のマスキングが行書き込みごとに正確に 1 回適用される —
+read クエリ内部で自動フラッシュすると誰も望まない曖昧さが生じる。
 """
 
 from __future__ import annotations
@@ -16,15 +15,15 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 def make_session_factory(
     engine: AsyncEngine,
 ) -> async_sessionmaker[AsyncSession]:
-    """Build the session factory for ``engine``.
+    """``engine`` 用のセッション ファクトリを構築する。
 
     Args:
-        engine: Application-level engine from
-            :func:`bakufu.infrastructure.persistence.sqlite.engine.create_engine`.
+        engine: :func:`bakufu.infrastructure.persistence.sqlite.engine.create_engine`
+            から得るアプリケーション レベルのエンジン。
 
-    The factory is async, ``expire_on_commit=False`` (so domain objects
-    survive across commit boundaries), and ``autoflush=False`` (so
-    masking listeners are predictable).
+    ファクトリは async で、``expire_on_commit=False``（コミット境界を跨いでも
+    ドメイン オブジェクトが生き続けるよう）、``autoflush=False``（マスキング
+    リスナが予測可能になるよう）。
     """
     return async_sessionmaker(
         engine,

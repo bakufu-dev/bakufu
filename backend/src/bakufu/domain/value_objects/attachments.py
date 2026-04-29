@@ -1,7 +1,7 @@
-"""Attachment and Deliverable value objects for the Task feature.
+"""Task feature 用の Attachment / Deliverable Value Object。
 
-Implements Task detailed-design §確定 R1-E: per-Stage deliverable snapshots
-and the file-reference (Attachment) VO with storage.md validation rules.
+Task detailed-design §確定 R1-E を実装する: Stage ごとの成果物スナップショット、
+および storage.md のバリデーション規則を備えたファイル参照（Attachment）VO。
 """
 
 from __future__ import annotations
@@ -16,10 +16,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from bakufu.domain.value_objects.identifiers import AgentId, StageId
 
 # ---------------------------------------------------------------------------
-# Attachment / Deliverable VOs (Task feature §確定 R1-E)
+# Attachment / Deliverable VO（Task feature §確定 R1-E）
 # ---------------------------------------------------------------------------
-# §Attachment storage.md 凍結値. Mirror them as module-level constants so the
-# field validators read clearly and tests can import the same source.
+# §Attachment storage.md 凍結値。フィールド バリデータが読みやすく、テストも
+# 同じ情報源を import できるよう、モジュール レベルの定数としてミラーする。
 
 _ATTACHMENT_SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
 _ATTACHMENT_MAX_BYTES: int = 10 * 1024 * 1024  # 10 MiB
@@ -27,13 +27,13 @@ _ATTACHMENT_MAX_FILENAME_CHARS: int = 255
 _ATTACHMENT_FILENAME_REJECTED_CHARS: frozenset[str] = frozenset(
     {"/", "\\", "\0"} | {chr(c) for c in range(0x00, 0x20)} | {chr(0x7F)}
 )
-# Windows reserved device names — case-insensitive, with or without extensions.
+# Windows 予約デバイス名 — 大文字小文字を区別せず、拡張子の有無も問わない。
 _ATTACHMENT_WINDOWS_RESERVED: frozenset[str] = frozenset(
     {"CON", "PRN", "AUX", "NUL"}
     | {f"COM{i}" for i in range(1, 10)}
     | {f"LPT{i}" for i in range(1, 10)}
 )
-# Whitelist per storage.md §MIME タイプ検証 (text/html / text/csv 拒否).
+# storage.md §MIME タイプ検証によるホワイトリスト（text/html / text/csv は拒否）。
 _ATTACHMENT_MIME_WHITELIST: frozenset[str] = frozenset(
     {
         "text/markdown",
@@ -50,14 +50,13 @@ _DELIVERABLE_BODY_MAX_CHARS: int = 1_000_000
 
 
 class Attachment(BaseModel):
-    """File reference held inside :class:`Deliverable`.
+    """:class:`Deliverable` 内部に保持されるファイル参照。
 
-    Implements the storage.md §filename サニタイズ規則 6 段階, the MIME
-    whitelist, the 10 MiB byte cap, and the 64-hex sha256 contract per
-    Task detailed-design §VO: Attachment. The Aggregate (Task) does not
-    re-validate these — the VO ``model_validator(mode='after')`` is the
-    single gate so a hydration path (Repository round-trip) hits the same
-    checks as construction time.
+    storage.md §filename サニタイズ規則 6 段階、MIME ホワイトリスト、10 MiB バイト
+    上限、64-hex sha256 コントラクト（Task detailed-design §VO: Attachment）を
+    実装する。Aggregate（Task）はこれらを再検証しない — VO の
+    ``model_validator(mode='after')`` が単一ゲートとなり、水和経路（リポジトリ往復）
+    でも構築時と同じチェックが走る。
     """
 
     model_config = ConfigDict(
@@ -83,8 +82,8 @@ class Attachment(BaseModel):
     @field_validator("filename", mode="before")
     @classmethod
     def _normalize_filename(cls, value: object) -> object:
-        # Storage.md §filename サニタイズ規則 step 1-2: NFC normalize first
-        # so the length / character checks below see the canonical form.
+        # Storage.md §filename サニタイズ規則 step 1-2: 以降の長さ／文字チェックが
+        # 正規形を見るよう、まず NFC 正規化する。
         if isinstance(value, str):
             return unicodedata.normalize("NFC", value)
         return value
@@ -92,21 +91,21 @@ class Attachment(BaseModel):
     @field_validator("filename", mode="after")
     @classmethod
     def _validate_filename(cls, value: str) -> str:
-        # Step 1: length (NFC-normalized code-point count).
+        # Step 1: 長さ（NFC 正規化済みコードポイント数）。
         length = len(value)
         if not (1 <= length <= _ATTACHMENT_MAX_FILENAME_CHARS):
             raise ValueError(
                 f"Attachment.filename must be 1-{_ATTACHMENT_MAX_FILENAME_CHARS} "
                 f"NFC-normalized characters (got length={length})"
             )
-        # Step 3: rejected characters (path separators, NUL, control chars).
+        # Step 3: 拒否文字（パス区切り、NUL、制御文字）。
         bad_chars = sorted({ch for ch in value if ch in _ATTACHMENT_FILENAME_REJECTED_CHARS})
         if bad_chars:
             raise ValueError(
                 f"Attachment.filename contains rejected characters: {bad_chars!r} "
                 "(path separators / NUL / ASCII control chars are not allowed)"
             )
-        # Step 4: rejected sequences.
+        # Step 4: 拒否シーケンス。
         if ".." in value:
             raise ValueError("Attachment.filename must not contain '..' (path traversal sequence)")
         if value.startswith(".") or value.endswith("."):
@@ -120,14 +119,13 @@ class Attachment(BaseModel):
             raise ValueError(
                 "Attachment.filename must not contain ':' (Windows ADS / drive-letter trick)"
             )
-        # Step 5: Windows reserved device names (with or without extension).
+        # Step 5: Windows 予約デバイス名（拡張子の有無を問わず）。
         stem = value.split(".", 1)[0].upper()
         if stem in _ATTACHMENT_WINDOWS_RESERVED:
             raise ValueError(f"Attachment.filename uses a reserved Windows device name: {stem!r}")
-        # Step 6: basename round-trip (path-traversal double-defense).
-        # ``PurePosixPath`` reads ``/`` as a separator regardless of the
-        # host OS, mirroring the storage.md sanitization rule which
-        # rejects POSIX path components by design.
+        # Step 6: basename 往復（パス トラバーサル ダブル防御）。
+        # ``PurePosixPath`` はホスト OS に関わらず ``/`` を区切り文字として扱うため、
+        # 設計上 POSIX パス成分を拒否する storage.md サニタイズ規則と一致する。
         if PurePosixPath(value).name != value:
             raise ValueError(
                 "Attachment.filename must equal its basename (path components are not allowed)"
@@ -157,14 +155,13 @@ class Attachment(BaseModel):
 
 
 class Deliverable(BaseModel):
-    """Per-Stage deliverable snapshot held inside :class:`Task`.
+    """:class:`Task` 内部に保持される Stage ごとの成果物スナップショット。
 
-    The Aggregate Root keeps a ``dict[StageId, Deliverable]`` so the
-    "Stage ごとに最新 1 件" contract (Task detailed-design §確定 R1-E)
-    is enforced by Python dict semantics. ``body_markdown`` is the
-    raw CEO/Agent-authored content — masking happens at the Repository
-    layer (``MaskedText`` TypeDecorator on ``task_deliverables.body_markdown``,
-    landed in ``feature/task-repository``).
+    Aggregate Root は ``dict[StageId, Deliverable]`` を保持するため、「Stage ごとに
+    最新 1 件」コントラクト（Task detailed-design §確定 R1-E）が Python の dict
+    セマンティクスで強制される。``body_markdown`` は CEO / Agent が書いた生のコンテ
+    ンツである — 伏字化はリポジトリ層で行う（``feature/task-repository`` で投入された
+    ``task_deliverables.body_markdown`` 上の ``MaskedText`` TypeDecorator）。
     """
 
     model_config = ConfigDict(

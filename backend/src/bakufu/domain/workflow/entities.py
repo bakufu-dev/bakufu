@@ -1,18 +1,17 @@
-"""Workflow inner Entities: :class:`Stage` and :class:`Transition`.
+"""Workflow 内部 Entity: :class:`Stage` と :class:`Transition`。
 
-Both are Pydantic v2 frozen models. They live separately from
-:mod:`bakufu.domain.workflow.workflow` so the file-level boundary mirrors the
-*responsibility* boundary the design document calls out:
+両者は Pydantic v2 frozen モデル。設計ドキュメントが指摘する *責務* 境界を
+ファイル レベル境界に反映するため :mod:`bakufu.domain.workflow.workflow` から
+分離して配置する:
 
-* Entities own **self**-invariants (Stage's ``required_role`` non-empty and
-  ``EXTERNAL_REVIEW`` notify_channels rule). These fire even when the entity
-  is constructed standalone (preset definition, factory) so violations are
-  caught before a Workflow ever sees the value.
-* The Aggregate Root owns **collection** invariants (DAG, uniqueness,
-  capacity). Those are implemented as pure functions in
-  :mod:`bakufu.domain.workflow.dag_validators` so the file-level boundary
-  enforces "Stage self-validation does not share code with the aggregate
-  helpers" — the physical ground for Confirmation F's twin-defense.
+* Entity は **自己** 不変条件（Stage の ``required_role`` 非空および
+  ``EXTERNAL_REVIEW`` notify_channels ルール）を所有する。これらは entity が
+  単独で構築された場合（preset 定義、ファクトリ）でも発火するため、Workflow
+  が値を目にする前に違反を捕捉できる。
+* Aggregate Root は **コレクション** 不変条件（DAG、一意性、容量）を所有する。
+  それらは :mod:`bakufu.domain.workflow.dag_validators` の純粋関数として実装
+  されており、ファイル レベル境界が「Stage 自己検証は Aggregate ヘルパとコード
+  を共有しない」を強制する — Confirmation F twin-defense の物理的根拠。
 """
 
 from __future__ import annotations
@@ -41,14 +40,14 @@ from bakufu.domain.value_objects import (
 
 
 class Stage(BaseModel):
-    """Workflow stage with **self**-invariants checked in ``model_validator``.
+    """``model_validator`` で **自己** 不変条件をチェックする Workflow Stage。
 
-    Self-check raises :class:`StageInvariantViolation` so a Stage built outside
-    a Workflow (e.g. preset definition, factory) still surfaces violations
-    early. The Workflow aggregate later re-validates the same conditions in
+    自己チェックは :class:`StageInvariantViolation` を送出するため、Workflow の
+    外で構築された Stage（例 preset 定義、ファクトリ）でも違反が早期に表面化する。
+    Workflow Aggregate は後で同じ条件を
     :func:`bakufu.domain.workflow.dag_validators._validate_external_review_notify`
-    and ``_validate_required_role_non_empty`` — the dual path is by design
-    (Confirmation F twin-defense).
+    と ``_validate_required_role_non_empty`` で再検証する — この二重経路は
+    設計通り（Confirmation F twin-defense）。
     """
 
     model_config = ConfigDict(
@@ -72,14 +71,15 @@ class Stage(BaseModel):
 
     @model_validator(mode="after")
     def _check_self_invariants(self) -> Self:
-        # REQ-WF-007-① required_role non-empty (MSG-WF-007).
+        # REQ-WF-007-① required_role 非空（MSG-WF-007）。
         if not self.required_role:
             raise StageInvariantViolation(
                 kind="empty_required_role",
                 message=f"[FAIL] Stage {self.id} required_role must not be empty",
                 detail={"stage_id": str(self.id)},
             )
-        # REQ-WF-007-② EXTERNAL_REVIEW must declare notify_channels (MSG-WF-006).
+        # REQ-WF-007-② EXTERNAL_REVIEW は notify_channels を宣言しなければならない
+        # （MSG-WF-006）。
         if self.kind is StageKind.EXTERNAL_REVIEW and not self.notify_channels:
             raise StageInvariantViolation(
                 kind="missing_notify",
@@ -92,13 +92,12 @@ class Stage(BaseModel):
 
 
 class Transition(BaseModel):
-    """Directed edge between two Stages. Reference integrity is the aggregate's job.
+    """2 つの Stage 間の有向エッジ。参照整合性は Aggregate の責務。
 
-    Transition holds no self-invariants beyond Pydantic field-level type
-    coercion: its meaning depends on the surrounding ``stages`` collection,
-    so structural validation lives in
-    :func:`bakufu.domain.workflow.dag_validators._validate_transition_refs`
-    and ``_validate_transition_determinism``.
+    Transition は Pydantic フィールド レベルの型強制を超える自己不変条件を
+    持たない: その意味は周囲の ``stages`` コレクションに依存するため、構造
+    検証は :func:`bakufu.domain.workflow.dag_validators._validate_transition_refs`
+    および ``_validate_transition_determinism`` に置く。
     """
 
     model_config = ConfigDict(

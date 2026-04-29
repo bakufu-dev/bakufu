@@ -1,30 +1,27 @@
-"""``rooms`` table — Room Aggregate root row.
+"""``rooms`` テーブル — Room Aggregate ルート行。
 
-Holds the seven scalar columns of the Room aggregate root. The member
-collection (``room_members``) lives in the companion module
-:mod:`...tables.room_members` so the root row width stays bounded and
-CASCADE targets are obvious.
+Room Aggregate ルートの 7 個のスカラー カラムを保持する。メンバ コレクション
+（``room_members``）はコンパニオン モジュール :mod:`...tables.room_members` に
+置き、ルート行の幅を抑え CASCADE 対象を明確にする。
 
-``empire_id`` carries an ``ON DELETE CASCADE`` foreign key onto
-``empires.id`` — when an Empire is removed, its Rooms go with it.
+``empire_id`` は ``empires.id`` への ``ON DELETE CASCADE`` 外部キーを持つ —
+Empire が削除されると Room も一緒に削除される。
 
-``workflow_id`` carries an ``ON DELETE RESTRICT`` foreign key onto
-``workflows.id`` — Workflow is a reference target, not an owner, so
-deleting a Workflow while Rooms still reference it is a hard failure
-(§確定 R1-I: Defense-in-Depth alongside the application-layer check).
+``workflow_id`` は ``workflows.id`` への ``ON DELETE RESTRICT`` 外部キーを持つ —
+Workflow は所有者ではなく参照対象であるため、Room がまだ参照している状態で
+Workflow を削除しようとすると hard failure する（§確定 R1-I: アプリケーション層
+チェックと並ぶ多層防御）。
 
-``name`` is intentionally **not** declared UNIQUE at the DB level. The
-"name unique within an Empire" invariant is enforced by the application
-layer via :meth:`RoomRepository.find_by_name` (agent §R1-B same logic)
-so MSG-RM-NNN wording stays in the application layer's voice rather than
-being preempted by ``IntegrityError``.
+``name`` は意図的に DB レベルで UNIQUE として **宣言しない**。「Empire 内で名前
+一意」の不変条件は :meth:`RoomRepository.find_by_name` 経由でアプリケーション層
+が強制する（agent §R1-B と同じロジック）。これにより、``IntegrityError`` に
+先取りされず、MSG-RM-NNN 文言がアプリケーション層の声で出る。
 
-``prompt_kit_prefix_markdown`` is a :class:`MaskedText` column (room
-§確定 G 実適用). ``MaskingGateway`` replaces embedded API keys / OAuth
-tokens / Discord webhook secrets etc. with ``<REDACTED:*>`` *before* the
-row hits SQLite — preventing DB-dump / SQL-log secret leaks. The masking
-is irreversible; see §確定 R1-J and :mod:`...repositories.room_repository`
-for the full contract.
+``prompt_kit_prefix_markdown`` は :class:`MaskedText` カラム（room §確定 G 実適用）。
+``MaskingGateway`` が、行が SQLite に到達する *前* に埋め込まれた API キー /
+OAuth トークン / Discord webhook シークレット等を ``<REDACTED:*>`` に置換する —
+DB ダンプ / SQL ログのシークレット漏洩を防ぐ。マスキングは不可逆。完全な
+コントラクトは §確定 R1-J および :mod:`...repositories.room_repository` を参照。
 """
 
 from __future__ import annotations
@@ -42,7 +39,7 @@ from bakufu.infrastructure.persistence.sqlite.base import (
 
 
 class RoomRow(Base):
-    """ORM mapping for the ``rooms`` table."""
+    """``rooms`` テーブルの ORM マッピング。"""
 
     __tablename__ = "rooms"
 
@@ -63,9 +60,9 @@ class RoomRow(Base):
     archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     __table_args__ = (
-        # §確定 R1-F: non-UNIQUE composite index for Empire-scoped find_by_name
-        # lookup. Left-prefix optimises both ``WHERE empire_id = ?`` and
-        # ``WHERE empire_id = ? AND name = ?`` queries.
+        # §確定 R1-F: Empire スコープの find_by_name ルックアップ用の非 UNIQUE
+        # 複合インデックス。左プレフィックスが ``WHERE empire_id = ?`` と
+        # ``WHERE empire_id = ? AND name = ?`` の両方のクエリを最適化する。
         Index("ix_rooms_empire_id_name", "empire_id", "name", unique=False),
     )
 

@@ -1,23 +1,22 @@
-"""SQLite adapter for :class:`bakufu.application.ports.EmpireRepository`.
+""":class:`bakufu.application.ports.EmpireRepository` の SQLite アダプタ。
 
-Implements the §確定 B "delete-then-insert" save flow:
+§確定 B の "delete-then-insert" 保存フローを実装する:
 
-1. ``empires`` UPSERT (id-conflict → name update)
+1. ``empires`` UPSERT（id 衝突時に name を更新）
 2. ``empire_room_refs`` DELETE WHERE empire_id = ?
-3. ``empire_room_refs`` bulk INSERT (one row per ``RoomRef``)
+3. ``empire_room_refs`` 一括 INSERT（``RoomRef`` ごとに 1 行）
 4. ``empire_agent_refs`` DELETE WHERE empire_id = ?
-5. ``empire_agent_refs`` bulk INSERT (one row per ``AgentRef``)
+5. ``empire_agent_refs`` 一括 INSERT（``AgentRef`` ごとに 1 行）
 
-The repository **never** calls ``session.commit()`` /
-``session.rollback()``: the caller-side service runs
-``async with session.begin():`` so the five steps above stay in one
-transaction (§確定 B Tx 境界の責務分離). This also lets a single
-service combine multiple Repositories in the same Unit-of-Work
-(``EmpireRepository.save`` + Outbox row append, etc.).
+リポジトリは ``session.commit()`` / ``session.rollback()`` を **決して** 呼ばない。
+呼び元のサービスが ``async with session.begin():`` を実行することで、上記 5 ステップ
+を 1 トランザクションに収める（§確定 B Tx 境界の責務分離）。これにより 1 つの
+サービスが同じ Unit-of-Work で複数のリポジトリを組み合わせられる
+（``EmpireRepository.save`` + Outbox 行追加など）。
 
-``_to_row`` / ``_from_row`` are kept as private methods on the class
-so both directions live next to each other and tests don't accidentally
-acquire a public conversion API to depend on (§確定 C).
+``_to_row`` / ``_from_row`` はクラスのプライベートメソッドのまま保持し、双方向の
+変換が隣接して存在するようにする。これにより、テストが公開された変換 API を誤って
+取得して依存することを避ける（§確定 C）。
 """
 
 from __future__ import annotations
@@ -46,32 +45,29 @@ from bakufu.infrastructure.persistence.sqlite.tables.empires import EmpireRow
 
 
 class SqliteEmpireRepository:
-    """SQLite implementation of :class:`EmpireRepository`."""
+    """:class:`EmpireRepository` の SQLite 実装。"""
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
     async def find_by_id(self, empire_id: EmpireId) -> Empire | None:
-        """SELECT empires + side tables, hydrate via :meth:`_from_row`.
+        """empires と関連テーブルを SELECT し、:meth:`_from_row` で水和する。
 
-        Returns ``None`` when the empires row is absent. The two side
-        SELECTs run sequentially to keep the SQL trivial; bulk Empires
-        will not exceed Confirmation C's ``len(rooms) ≤ 100`` cap, so
-        IN-clause batching is unnecessary for MVP.
+        empires 行が存在しない場合は ``None`` を返す。2 つの関連 SELECT は SQL を
+        単純に保つため逐次実行する。バルクの Empire は Confirmation C の
+        ``len(rooms) ≤ 100`` 上限を超えないため、MVP では IN 句バッチ化は不要。
         """
         empire_stmt = select(EmpireRow).where(EmpireRow.id == empire_id)
         empire_row = (await self._session.execute(empire_stmt)).scalar_one_or_none()
         if empire_row is None:
             return None
 
-        # BUG-EMR-001 fix: ORDER BY room_id / agent_id makes the
-        # hydrated list deterministic. Without it SQLite returns rows
-        # in internal-scan order, which broke ``Empire == Empire``
-        # round-trip equality (the Aggregate VO compares list-by-list).
-        # See docs/features/empire-repository/detailed-design.md
-        # §Known Issues for the design resolution; basic-design.md
-        # L127-128 froze ``ORDER BY room_id`` / ``ORDER BY agent_id``
-        # as the design contract.
+        # BUG-EMR-001 修正: ORDER BY room_id / agent_id により、水和されたリストを
+        # 決定的にする。これがないと SQLite は内部スキャン順で行を返し、
+        # ``Empire == Empire`` の往復等価性が壊れていた（Aggregate VO はリスト同士
+        # で比較する）。設計解決は docs/features/empire-repository/detailed-design.md
+        # §Known Issues を参照。basic-design.md L127-128 が ``ORDER BY room_id`` /
+        # ``ORDER BY agent_id`` を設計コントラクトとして凍結している。
         room_stmt = (
             select(EmpireRoomRefRow)
             .where(EmpireRoomRefRow.empire_id == empire_id)
@@ -89,12 +85,11 @@ class SqliteEmpireRepository:
         return self._from_row(empire_row, room_rows, agent_rows)
 
     async def find_all(self) -> list[Empire]:
-        """``SELECT * FROM empires`` with side-table hydration.
+        """``SELECT * FROM empires`` を関連テーブル水和込みで実行する。
 
-        Bakufu's Empire is a singleton (R1-5), so the result list is
-        0 or 1 element. The implementation fetches all ``empires`` rows
-        then hydrates each via :meth:`find_by_id` semantics, keeping
-        the hydration logic centralized.
+        bakufu の Empire はシングルトン（R1-5）であるため、結果リストは 0 または 1
+        要素になる。実装は全 ``empires`` 行を取得した後、:meth:`find_by_id` セマン
+        ティクスで各行を水和することで水和ロジックを集約する。
         """
         empire_stmt = select(EmpireRow)
         empire_rows = list((await self._session.execute(empire_stmt)).scalars().all())
@@ -121,35 +116,32 @@ class SqliteEmpireRepository:
         return result
 
     async def count(self) -> int:
-        """``SELECT COUNT(*) FROM empires``.
+        """``SELECT COUNT(*) FROM empires``。
 
-        ``EmpireService.create()`` consumes this to enforce the
-        singleton invariant (§確定 D); the Repository itself is silent
-        about whether ``count != 0`` is an error — that decision is
-        the application service's.
+        ``EmpireService.create()`` がこれを呼んでシングルトン不変条件を強制する
+        （§確定 D）。リポジトリ自体は ``count != 0`` がエラーかどうかについて
+        沈黙する — その判断はアプリケーション サービスのもの。
 
-        Implementation detail: SQLAlchemy's ``func.count()`` issues a
-        proper ``SELECT COUNT(*)`` so SQLite returns one scalar row
-        instead of streaming every PK back to Python. This matters as
-        a **template responsibility** for the six follow-up Repository
-        PRs (workflow / agent / room / directive / task /
-        external-review-gate) — Stage / Task tables can hold hundreds
-        of rows, so the pattern emitted here propagates downstream.
+        実装詳細: SQLAlchemy の ``func.count()`` は適切な ``SELECT COUNT(*)`` を
+        発行するため、SQLite は全 PK を Python にストリームせずスカラー 1 行だけ
+        返す。これは 6 つの後続リポジトリ PR（workflow / agent / room / directive
+        / task / external-review-gate）に対する **テンプレート責任** として重要
+        である — Stage / Task テーブルは数百行を保持し得るため、ここで提示する
+        パターンが下流に伝播する。
         """
         stmt = select(func.count()).select_from(EmpireRow)
         return (await self._session.execute(stmt)).scalar_one()
 
     async def save(self, empire: Empire) -> None:
-        """Persist ``empire`` via the §確定 B five-step delete-then-insert.
+        """§確定 B の 5 ステップ delete-then-insert で ``empire`` を永続化する。
 
-        The caller is responsible for the surrounding
-        ``async with session.begin():`` block; failures inside any
-        step propagate untouched so the Unit-of-Work boundary in the
-        application service can rollback cleanly.
+        外側の ``async with session.begin():`` ブロックは呼び元の責任。各ステップ
+        内部の失敗はそのまま伝播するため、アプリケーション サービスの Unit-of-Work
+        境界はクリーンにロールバックできる。
         """
         empire_row, room_refs, agent_refs = self._to_row(empire)
 
-        # Step 1: empires UPSERT (id PK, ON CONFLICT update name).
+        # Step 1: empires UPSERT（id PK、ON CONFLICT で name を更新）。
         upsert_stmt = sqlite_insert(EmpireRow).values(empire_row)
         upsert_stmt = upsert_stmt.on_conflict_do_update(
             index_elements=["id"],
@@ -160,21 +152,21 @@ class SqliteEmpireRepository:
         )
         await self._session.execute(upsert_stmt)
 
-        # Step 2: empire_room_refs DELETE.
+        # Step 2: empire_room_refs DELETE。
         await self._session.execute(
             delete(EmpireRoomRefRow).where(EmpireRoomRefRow.empire_id == empire.id)
         )
 
-        # Step 3: empire_room_refs bulk INSERT (skip when no rooms).
+        # Step 3: empire_room_refs 一括 INSERT（rooms が無い場合はスキップ）。
         if room_refs:
             await self._session.execute(insert(EmpireRoomRefRow), room_refs)
 
-        # Step 4: empire_agent_refs DELETE.
+        # Step 4: empire_agent_refs DELETE。
         await self._session.execute(
             delete(EmpireAgentRefRow).where(EmpireAgentRefRow.empire_id == empire.id)
         )
 
-        # Step 5: empire_agent_refs bulk INSERT (skip when no agents).
+        # Step 5: empire_agent_refs 一括 INSERT（agents が無い場合はスキップ）。
         if agent_refs:
             await self._session.execute(insert(EmpireAgentRefRow), agent_refs)
 
@@ -183,12 +175,11 @@ class SqliteEmpireRepository:
         self,
         empire: Empire,
     ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
-        """Split ``empire`` into ``(empires_row, room_refs, agent_refs)``.
+        """``empire`` を ``(empires_row, room_refs, agent_refs)`` に分割する。
 
-        The three return values match the three tables that
-        :meth:`save` writes. SQLAlchemy ``Row`` objects are
-        intentionally avoided here so the domain layer never gains an
-        accidental dependency on the SQLAlchemy type hierarchy.
+        3 つの返り値は :meth:`save` が書き込む 3 つのテーブルに対応する。SQLAlchemy
+        ``Row`` オブジェクトは意図的に使わない — ドメイン層が SQLAlchemy の型階層に
+        偶発的に依存することを防ぐため。
         """
         empire_row: dict[str, Any] = {
             "id": empire.id,
@@ -221,13 +212,12 @@ class SqliteEmpireRepository:
         room_rows: list[EmpireRoomRefRow],
         agent_rows: list[EmpireAgentRefRow],
     ) -> Empire:
-        """Hydrate an :class:`Empire` Aggregate Root from its three rows.
+        """3 つの行から :class:`Empire` Aggregate Root を水和する。
 
-        ``Empire.model_validate`` re-runs the post-validator so
-        Repository-side hydration goes through the same invariant
-        checks that ``EmpireService.create()`` does at construction
-        time. The contract (§確定 C) is "Repository hydration produces
-        a valid Empire or raises".
+        ``Empire.model_validate`` は post-validator を再実行するため、リポジトリ側
+        の水和も ``EmpireService.create()`` が構築時に走らせるのと同じ不変条件
+        チェックを通る。コントラクト（§確定 C）は「リポジトリ水和は妥当な Empire
+        を生成するか例外を送出する」。
         """
         rooms = [
             RoomRef(
@@ -255,12 +245,11 @@ class SqliteEmpireRepository:
 
 
 def _uuid(value: UUID | str) -> UUID:
-    """Coerce a row value to :class:`uuid.UUID`.
+    """行の値を :class:`uuid.UUID` に強制変換する。
 
-    SQLAlchemy's UUIDStr TypeDecorator already returns ``UUID``
-    instances on ``process_result_value``, but defensive coercion lets
-    raw-SQL hydration paths route through the same code without an
-    extra ``isinstance`` ladder at every call site.
+    SQLAlchemy の UUIDStr TypeDecorator は ``process_result_value`` で既に ``UUID``
+    インスタンスを返すが、防御的な強制変換により、raw SQL 経路の水和も同じコードを
+    通せる — 各呼び出し箇所で ``isinstance`` の階段を書かずに済む。
     """
     if isinstance(value, UUID):
         return value

@@ -1,21 +1,21 @@
-"""Workflow Aggregate Root package.
+"""Workflow Aggregate Root パッケージ。
 
-Implements ``REQ-WF-001``〜``REQ-WF-007`` per ``docs/features/workflow``.
-Split into three sibling modules along the design's responsibility lines so
-each file stays under the 500-line readability budget and the file-level
-boundary mirrors Confirmation F's twin-defense:
+``docs/features/workflow`` に従って ``REQ-WF-001``〜``REQ-WF-007`` を実装する。
+設計の責務境界に沿って 3 つの兄弟モジュールに分割し、各ファイルが 500 行の
+可読性予算を下回るようにし、ファイル レベル境界が Confirmation F の twin-defense
+を踏襲する:
 
 * :mod:`bakufu.domain.workflow.entities` — :class:`Stage` / :class:`Transition`
-  Pydantic models with **self**-invariants only.
-* :mod:`bakufu.domain.workflow.dag_validators` — 10 module-level pure helper
-  functions enforcing **collection** invariants (DAG, uniqueness, capacity).
-* :mod:`bakufu.domain.workflow.workflow` — :class:`Workflow` Aggregate Root
-  that dispatches over the helpers in deterministic order.
+  の Pydantic モデル（**自己** 不変条件のみ）。
+* :mod:`bakufu.domain.workflow.dag_validators` — **コレクション** 不変条件
+  （DAG、一意性、容量）を強制するモジュール レベルの純粋ヘルパ関数 10 個。
+* :mod:`bakufu.domain.workflow.workflow` — ヘルパを決定的順序でディスパッチする
+  :class:`Workflow` Aggregate Root。
 
-This ``__init__`` re-exports the public surface plus the ``_validate_*``
-helpers that tests need to invoke directly (TC-UT-WF-060). The leading
-underscore is preserved to keep the "private to the aggregate" intent clear
-even though they are technically importable.
+この ``__init__`` はパブリック表面に加え、テスト（TC-UT-WF-060）が直接呼ぶ
+必要のある ``_validate_*`` ヘルパも再 export する。先頭アンダースコアは技術的に
+import 可能だが「Aggregate に対してプライベート」の意図を明確に保つために維持
+する。
 """
 
 from __future__ import annotations
