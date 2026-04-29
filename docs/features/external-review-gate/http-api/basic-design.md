@@ -112,7 +112,7 @@ backend/src/bakufu/
 |---|---|---|---|
 | ランタイム | Python 3.12+ | `pyproject.toml` | 既存 |
 | HTTP | FastAPI / Pydantic v2 / httpx | `pyproject.toml` | http-api-foundation で確定済み |
-| application | `ExternalReviewGateService` | 本 sub-feature で肉付け | Repository + session UoW を保持 |
+| application | `ExternalReviewGateService` | 本 sub-feature で肉付け | Gate Repository + Task Repository + Room Repository + WorkflowStageResolver + session UoW を保持 |
 | repository | `ExternalReviewGateRepository` | 既存 | `find_by_id` / `find_pending_by_reviewer` / `find_by_task_id` / `save` を使用 |
 | domain | `ExternalReviewGate` / `ReviewDecision` / `AuditEntry` | 既存 | 状態遷移は Domain に委譲 |
 | auth | `AuthenticatedSubject` dependency | 本 sub-feature | `Authorization: Bearer <token>` をサーバ設定の `BAKUFU_OWNER_API_TOKEN` と照合し、成功時だけ `BAKUFU_OWNER_ID` を `subject.owner_id` として返す。`reviewer_id` / `viewer_id` / `actor_id` の自己申告入力は禁止 |
@@ -132,6 +132,9 @@ classDiagram
     }
     class ExternalReviewGateService {
         -_repo
+        -_task_repo
+        -_room_repo
+        -_workflow_stage_resolver
         -_session
         +list_pending(subject)
         +list_by_task(task_id, subject)
@@ -152,6 +155,9 @@ classDiagram
 
     ExternalReviewGatesRouter --> ExternalReviewGateService
     ExternalReviewGateService --> ExternalReviewGateRepository
+    ExternalReviewGateService --> TaskRepository
+    ExternalReviewGateService --> RoomRepository
+    ExternalReviewGateService --> WorkflowStageResolver
     ExternalReviewGatesRouter ..> ExternalReviewGateResponse
     ExternalReviewGatesRouter ..> ExternalReviewGateDecisionRequest
 ```
@@ -160,6 +166,7 @@ classDiagram
 - HTTP router は入出力変換と status code だけを持つ。
 - reviewer / actor の認可境界は application service に閉じる。ただし主体 ID は認証済み subject からのみ取得し、query/body の自己申告値は使わない。
 - 状態遷移は Domain に「やれ」と命じ、HTTP 層は decision を直接書き換えない。
+- approve / reject 後の Task 遷移は Workflow の APPROVED / REJECTED transition 契約から `transition_id` と遷移先 Stage を解決する。`gate.stage_id` を次 Stage として使う設計は誤りだ。
 - DB masking は Repository 責務。HTTP レスポンスは Repository 復元値を返し、schema serializer で再マスクしない。`MaskedText.process_result_value` は復号しないため、保存済み secret は redacted のまま表示される。
 
 ## 処理フロー

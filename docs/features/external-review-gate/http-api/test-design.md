@@ -23,8 +23,8 @@
 | REQ-ERG-HTTP-001 | `routers/external_review_gates.py` | TC-IT-ERG-HTTP-001 | 結合 | 正常系 | §9 #14 |
 | REQ-ERG-HTTP-002 | `ExternalReviewGateService.list_by_task` | TC-IT-ERG-HTTP-002 | 結合 | 正常系 | §9 #14 |
 | REQ-ERG-HTTP-003 | `get_and_record_view` | TC-IT-ERG-HTTP-003, TC-UT-ERG-HTTP-003 | 結合 / ユニット | 正常系 | §9 #6 |
-| REQ-ERG-HTTP-004 | `approve` | TC-IT-ERG-HTTP-004, TC-IT-ERG-HTTP-007 | 結合 | 正常 / 異常 | §9 #3, #5 |
-| REQ-ERG-HTTP-005 | `reject` | TC-IT-ERG-HTTP-005, TC-UT-ERG-HTTP-005 | 結合 / ユニット | 正常 / 異常 | §9 #4, #10 |
+| REQ-ERG-HTTP-004 | `approve` + Workflow APPROVED transition resolver | TC-IT-ERG-HTTP-004, TC-IT-ERG-HTTP-007, TC-UT-ERG-HTTP-009 | 結合 / ユニット | 正常 / 異常 | §9 #3, #5 |
+| REQ-ERG-HTTP-005 | `reject` + Workflow REJECTED transition resolver | TC-IT-ERG-HTTP-005, TC-UT-ERG-HTTP-005, TC-UT-ERG-HTTP-010 | 結合 / ユニット | 正常 / 異常 | §9 #4, #10 |
 | REQ-ERG-HTTP-006 | `cancel` | TC-IT-ERG-HTTP-006 | 結合 | 正常系 | §9 #4 |
 | MSG-ERG-HTTP-001 | error handler | TC-UT-ERG-HTTP-011 | ユニット | 異常系 | — |
 | MSG-ERG-HTTP-002 | authorization guard | TC-IT-ERG-HTTP-008 | 結合 | 異常系 | — |
@@ -57,6 +57,7 @@
 | 外部 I/O | 用途 | raw fixture | schema | factory | characterization 状態 | テスト戦略 |
 |---|---|---|---|---|---|---|
 | SQLite tempfile DB | Gate 永続化 / 再取得 | 不要（内部 DB。結合は実接続） | 不要 | `tests/factories/db.py`, `tests/factories/external_review_gate.py` | 対象外 | 実 DB + TestClient。DB 直接 assert は seed / fixture 準備に限定し、検証は API ラウンドトリップで行う |
+| Workflow transition resolver | approve / reject 後の Task 遷移先解決 | 不要（内部 DB。結合は実接続） | 不要 | `WorkflowTransitionContract` factory 相当の値 | 対象外 | 結合は実 DB、unit は port fake で APPROVED / REJECTED の `to_stage_id` を明示する |
 | FastAPI app | ルーティング / error handler | 不要（プロセス内 ASGI） | 不要 | `HttpApplicationFactory.create()` fixture | 対象外 | httpx ASGITransport / TestClient で公開 API から呼ぶ |
 | Clock | decided_at / viewed_at | 不要（外部サービスではない） | 不要 | monkeypatch 可能な service clock / fixed datetime factory | 対象外 | UTC aware datetime の存在、単調な順序、audit action との対応を検証 |
 | Auth subject provider | reviewer 認可境界 | 不要（外部サービスではない） | 不要 | subject factory | 対象外 | `Authorization: Bearer <token>` と test config の `BAKUFU_OWNER_ID` から検証済み subject を作る。query/body/header の自己申告 ID は使わない |
@@ -107,6 +108,8 @@
 | TC-UT-ERG-HTTP-006 | conflict mapper | 異常系 | `decision_already_decided` violation | `ExternalReviewGateDecisionConflictError` |
 | TC-UT-ERG-HTTP-007 | list_by_task reviewer filter | セキュリティ | fake repo + A/B 混在 Gate | A の Gate だけ返る |
 | TC-UT-ERG-HTTP-008 | cancel request validation | 境界値 | `reason` 10000 / 10001 文字 | 10000 は受理、10001 は validation error |
+| TC-UT-ERG-HTTP-009 | approve Task transition resolver | 正常系 | awaiting Task + Gate + APPROVED `WorkflowTransitionContract` | Task は APPROVED transition の `to_stage_id` に進む。`gate.stage_id` は次 Stage として使わない |
+| TC-UT-ERG-HTTP-010 | reject Task transition resolver | 正常系 | awaiting Task + Gate + REJECTED `WorkflowTransitionContract` | Task は REJECTED transition の `to_stage_id` に戻る。`gate.stage_id` は差し戻し先として使わない |
 | TC-UT-ERG-HTTP-011 | error handlers | 異常系 | 各 application exception | MSG-ERG-HTTP-001〜004 の 2 行文言一致（Next 行を含む） |
 | TC-UT-ERG-HTTP-012 | bearer token resolver | セキュリティ | token factory / env config | constant-time 比較を使い、欠落 / 不一致 / 不正 owner ID は 401。Authorization 値を log / response に出さない |
 | TC-CI-ERG-HTTP-001 | dependency audit | セキュリティ | CI `audit` job | FastAPI / Starlette / Pydantic / httpx / SQLAlchemy / SQLite 関連の critical/high CVE が未解決なら fail |
@@ -171,7 +174,7 @@ backend/tests/
 - `backend/tests/integration/test_external_review_gate_http_api/conftest.py`: 実 DB セッションと HTTP 結合テスト用 app fixture を提供する。
 - `backend/tests/integration/test_external_review_gate_http_api/helpers.py`: 結合テストの seed と HTTP request helper を提供する。
 - `backend/tests/unit/test_external_review_gate_http_api/test_schemas.py`: TC-UT-ERG-HTTP-001 / 002 / 005 / 008。
-- `backend/tests/unit/test_external_review_gate_http_api/test_service.py`: TC-UT-ERG-HTTP-003 / 004 / 006 / 007。
+- `backend/tests/unit/test_external_review_gate_http_api/test_service.py`: TC-UT-ERG-HTTP-003 / 004 / 006 / 007 / 009 / 010。
 - `backend/tests/unit/test_external_review_gate_http_api/test_handlers.py`: TC-UT-ERG-HTTP-011 / 012。
 
 ## 未決課題
