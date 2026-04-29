@@ -25,6 +25,7 @@ ai-team 開発室の運用合意（[`../analysis/business-context.md`](../analys
 4. `feature/agent-aggregate`: Agent Aggregate
 5. `feature/task-aggregate`: Task Aggregate + 状態遷移
 6. `feature/external-review-gate`: ExternalReviewGate Aggregate
+7. `feature/internal-review-gate`: InternalReviewGate Aggregate（ExternalReviewGate 前段の AI 並列レビューゲート、Issue #65）
 
 各 feature は単一 Aggregate に閉じる粒度で起票する（[`../features/`](../features/) 配下に Vモデル設計書セットを配置）。
 
