@@ -58,10 +58,10 @@
 
 | 外部 I/O | 用途 | raw fixture | factory | テスト戦略 |
 |---|---|---|---|---|
-| SQLite（テスト用 DB）| `get_session()` DI / lifespan 経由の Session / DirectiveRepository / TaskRepository / RoomRepository / EmpireRepository | `tests/fixtures/test_db.db`（tempdir）| `tests/factories/db.py`（http-api-foundation 定義済み）/ `tests/factories/directive.py`（**要新規作成** — TBD-1 参照）| 実 DB（pytest `tmp_path` 配下 tempfile）|
+| SQLite（テスト用 DB）| `get_session()` DI / lifespan 経由の Session / DirectiveRepository / TaskRepository / RoomRepository / EmpireRepository | `tests/fixtures/test_db.db`（tempdir）| `tests/factories/db.py`（http-api-foundation 定義済み）/ `tests/factories/directive.py`（実装済み: `make_directive` / `make_linked_directive` / `make_long_text_directive`）| 実 DB（pytest `tmp_path` 配下 tempfile）|
 | FastAPI ASGI | HTTP リクエスト送信 | — | — | `httpx.AsyncClient(app=app, base_url="http://test")`（http-api-foundation 確定済み）|
 
-**`tests/factories/directive.py` ステータス**: **要起票（TBD-1）**。`make_directive()` を実装着手前に作成すること。空欄のまま IT 実装に進むことはできない。
+**`tests/factories/directive.py` ステータス**: **完了**。`make_directive()` は実装済みで、TC-UT-DRH-006 静的解析テストも同 PR で実装済み。
 
 ## 結合テストケース
 
@@ -137,7 +137,7 @@
 ```
 backend/tests/
 ├── factories/
-│   └── directive.py                              # 要新規作成（TBD-1）: make_directive
+│   └── directive.py                              # 実装済み: make_directive
 ├── unit/
 │   └── test_directive_http_api/
 │       ├── __init__.py
@@ -151,12 +151,12 @@ backend/tests/
         └── test_security.py                      # TC-IT-DRH-014〜016
 ```
 
-## 未決課題・要起票 characterization task
+## 未決課題・characterization task
 
 | # | 内容 | 起票先 |
 |---|---|---|
-| TBD-1 | `tests/factories/directive.py` 新規作成（`make_directive`）。実装着手前に完了必須。空欄のまま IT 実装に進んだ場合レビューで却下する。**完了条件**: `make_directive` 実装 + TC-UT-DRH-006 静的解析テスト（`ast.walk()` 全ノード走査 / PR #105 退行禁止ルール準拠 / `TestStaticDependencyAnalysisDirective` クラス名）の実装も同時に完了すること | 実装 PR 着手前 |
-| ~~TBD-2~~ | ~~`[FAIL]` / `\nNext:` 前処理ルール適用要否~~ → **解消（設計フェーズで凍結）**: `detailed-design.md §MSG-DR-HTTP-001` にて「全先行 sub-feature と同一の `_FAIL_PREFIX_RE` 前処理ルール（`[FAIL]` プレフィックス除去 + `\nNext:.*` サフィックス除去）を適用」として設計書内凍結済み。TC-UT-DRH-001 の期待結果に前処理検証を明示凍結。本 TBD は**クローズ**。 | 完了（同ブランチ）|
+| 完了-1 | `tests/factories/directive.py` 新規作成（`make_directive`）+ TC-UT-DRH-006 静的解析テスト（`ast.walk()` 全ノード走査 / PR #105 退行禁止ルール準拠 / `TestStaticDependencyAnalysisDirective` クラス名） | 完了（PR #111: `backend/tests/factories/directive.py`, `backend/tests/unit/test_directive_http_api/test_handlers.py`） |
+| 完了-2 | `[FAIL]` / `\nNext:` 前処理ルール適用要否 → **解消（設計フェーズで凍結）**: `detailed-design.md §MSG-DR-HTTP-001` にて「全先行 sub-feature と同一の `_FAIL_PREFIX_RE` 前処理ルール（`[FAIL]` プレフィックス除去 + `\nNext:.*` サフィックス除去）を適用」として設計書内凍結済み。TC-UT-DRH-001 の期待結果に前処理検証を明示凍結。 | 完了（同ブランチ）|
 
 ## 関連
 

@@ -75,10 +75,10 @@
 
 | 外部 I/O | 用途 | raw fixture | factory | テスト戦略 |
 |---|---|---|---|---|
-| SQLite（テスト用 DB）| `get_session()` DI / lifespan 経由の Session / TaskRepository / DirectiveRepository / RoomRepository / EmpireRepository | `tests/fixtures/test_db.db`（tempdir）| `tests/factories/db.py`（http-api-foundation 定義済み）/ `tests/factories/task.py`（**要新規作成** — TBD-1 参照）| 実 DB（pytest `tmp_path` 配下 tempfile）|
+| SQLite（テスト用 DB）| `get_session()` DI / lifespan 経由の Session / TaskRepository / DirectiveRepository / RoomRepository / EmpireRepository | `tests/fixtures/test_db.db`（tempdir）| `tests/factories/db.py`（http-api-foundation 定義済み）/ `tests/factories/task.py`（実装済み: `make_task` / `make_deliverable` / `make_attachment`）| 実 DB（pytest `tmp_path` 配下 tempfile）|
 | FastAPI ASGI | HTTP リクエスト送信 | — | — | `httpx.AsyncClient(app=app, base_url="http://test")`（http-api-foundation 確定済み）|
 
-**`tests/factories/task.py` ステータス**: **要起票（TBD-1）**。`make_task()` / `make_deliverable()` / `make_attachment()` を実装着手前に作成すること。空欄のまま IT 実装に進むことはできない。
+**`tests/factories/task.py` ステータス**: **完了**。`make_task()` / `make_deliverable()` / `make_attachment()` は実装済みで、TC-UT-TSH-011 静的解析テストも同 PR で実装済み。
 
 ## 結合テストケース
 
@@ -180,7 +180,7 @@
 ```
 backend/tests/
 ├── factories/
-│   └── task.py                                  # 要新規作成（TBD-1）: make_task / make_deliverable / make_attachment
+│   └── task.py                                  # 実装済み: make_task / make_deliverable / make_attachment
 ├── unit/
 │   └── test_task_http_api/
 │       ├── __init__.py
@@ -199,13 +199,13 @@ backend/tests/
         └── test_security.py                      # TC-IT-TSH-031〜034
 ```
 
-## 未決課題・要起票 characterization task
+## 未決課題・characterization task
 
 | # | 内容 | 起票先 |
 |---|---|---|
-| TBD-1 | `tests/factories/task.py` 新規作成（`make_task` / `make_deliverable` / `make_attachment`）。実装着手前に完了必須。空欄のまま IT 実装に進んだ場合レビューで却下する | 実装 PR 着手前 |
-| TBD-2 | `SqliteTaskRepository.find_all_by_room` 実装完了確認（確定B / P-2）。TC-IT-TSH-009〜011 実行前に必須 | 実装担当確認 |
-| TBD-3 | `task_exceptions.py` 新規作成（確定C / P-1）。`TaskNotFoundError(task_id)` / `TaskStateConflictError(task_id, current_status, action)` が定義済みであること | 実装着手前 |
+| 完了-1 | `tests/factories/task.py` 新規作成（`make_task` / `make_deliverable` / `make_attachment`） | 完了（PR #111: `backend/tests/factories/task.py`） |
+| 完了-2 | `SqliteTaskRepository.find_all_by_room` 実装完了確認（確定B / P-2）。TC-IT-TSH-009〜011 実行前に必須 | 完了（PR #111: `backend/src/bakufu/infrastructure/persistence/sqlite/repositories/task_repository.py`） |
+| 完了-3 | `task_exceptions.py` 新規作成（確定C / P-1）。`TaskNotFoundError(task_id)` / `TaskStateConflictError(task_id, current_status, action)` / `TaskAuthorizationError(task_id, action, reason)` が定義済みであること | 完了（PR #111: `backend/src/bakufu/application/exceptions/task_exceptions.py`） |
 
 ## 関連
 
