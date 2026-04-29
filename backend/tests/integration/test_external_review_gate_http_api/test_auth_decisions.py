@@ -7,6 +7,7 @@ from uuid import uuid4
 import pytest
 
 from .helpers import (
+    RAW_SECRET,
     TOKEN,
     ExternalReviewGateHttpCtx,
     error_message,
@@ -60,6 +61,35 @@ async def test_cancel_flow_removes_gate_from_pending_list_and_keeps_history(
     history = await ctx.client.get(f"/api/tasks/{ids['task_id']}/gates", headers=ctx.headers)
     assert history.status_code == 200, history.text
     assert history.json()["items"][0]["decision"] == "CANCELLED"
+
+
+@pytest.mark.parametrize(
+    ("action", "payload"),
+    [
+        ("approve", {"comment": RAW_SECRET}),
+        ("reject", {"feedback_text": RAW_SECRET}),
+        ("cancel", {"reason": RAW_SECRET}),
+    ],
+)
+async def test_decision_responses_mask_secret_text_immediately(
+    external_review_gate_http_ctx: ExternalReviewGateHttpCtx,
+    action: str,
+    payload: dict[str, str],
+) -> None:
+    """TC-IT-ERG-HTTP-017: approve/reject/cancel の即時応答は保存後の masked 値を返す。"""
+    ctx = external_review_gate_http_ctx
+    ids = await seed_gate(ctx)
+    response = await ctx.client.post(
+        f"/api/gates/{ids['gate_id']}/{action}",
+        headers=ctx.headers,
+        json=payload,
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert RAW_SECRET not in response.text
+    assert "<REDACTED:GITHUB_PAT>" in body["feedback_text"]
+    assert "<REDACTED:GITHUB_PAT>" in body["audit_trail"][-1]["comment"]
 
 
 async def test_other_reviewer_cannot_read_or_decide_gate(

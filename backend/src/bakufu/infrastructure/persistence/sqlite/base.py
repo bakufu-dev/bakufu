@@ -33,8 +33,7 @@ from sqlalchemy.orm import DeclarativeBase
 
 from bakufu.infrastructure.security.masking import (
     REDACT_LISTENER_ERROR,
-    mask,
-    mask_in,
+    MaskingGateway,
 )
 
 
@@ -150,13 +149,13 @@ class JSONEncoded(TypeDecorator[Any]):
 class MaskedJSONEncoded(TypeDecorator[Any]):
     """秘密情報のマスキング付き ``dict`` / ``list`` ↔ JSON テキストカラム。
 
-    ``json.dumps`` の前に bound 値を :func:`mask_in` に通す。
+    ``json.dumps`` の前に bound 値を :meth:`MaskingGateway.mask_in` に通す。
     ``process_bind_param`` は ORM フラッシュによる insert と
     Core の ``insert(table).values(...)`` の **両方** で発火する
     （BUG-PF-001 の修正）。これにより本クラスは真のゲートウェイとなり、
     呼び出し側がリダクションをバイパスする構文を選ぶ余地はない。
 
-    確定 F（Fail-Secure）: :func:`mask_in` 自身が例外を送出した場合、
+    確定 F（Fail-Secure）: :meth:`MaskingGateway.mask_in` 自身が例外を送出した場合、
     生のバイト列をディスクに到達させずペイロード全体を listener-error の
     sentinel に置き換える。
     """
@@ -173,7 +172,7 @@ class MaskedJSONEncoded(TypeDecorator[Any]):
         if value is None:
             return None
         try:
-            masked = mask_in(value)
+            masked = MaskingGateway.mask_in(value)
         except Exception:  # pragma: no cover — Fail-Secure
             return json.dumps(REDACT_LISTENER_ERROR)
         return json.dumps(masked, ensure_ascii=False, sort_keys=True)
@@ -190,7 +189,7 @@ class MaskedJSONEncoded(TypeDecorator[Any]):
 
 
 class MaskedText(TypeDecorator[str]):
-    """:func:`mask` による秘密情報のマスキング付き ``str`` テキストカラム。
+    """:meth:`MaskingGateway.mask` による秘密情報のマスキング付き ``str`` テキストカラム。
 
     :class:`MaskedJSONEncoded` と同じゲートウェイ保証: すべての bound 値
     （ORM／Core）は永続化前にマスクされ、masker が失敗した場合は
@@ -209,7 +208,7 @@ class MaskedText(TypeDecorator[str]):
         if value is None:
             return None
         try:
-            return mask(value)
+            return MaskingGateway.mask(value)
         except Exception:  # pragma: no cover — Fail-Secure
             return REDACT_LISTENER_ERROR
 

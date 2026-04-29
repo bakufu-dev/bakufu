@@ -19,7 +19,7 @@ from bakufu.infrastructure.persistence.sqlite import engine as engine_mod
 from bakufu.infrastructure.persistence.sqlite import session as session_mod
 from bakufu.infrastructure.persistence.sqlite.migrations import run_upgrade_head
 from bakufu.infrastructure.persistence.sqlite.outbox import handler_registry
-from bakufu.infrastructure.security import masking
+from bakufu.infrastructure.security.masking import MaskingGateway
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
@@ -56,7 +56,7 @@ def _initialize_masking(  # pyright: ignore[reportUnusedFunction]
         "BAKUFU_DISCORD_BOT_TOKEN",
     ):
         monkeypatch.delenv(env_key, raising=False)
-    masking.init()
+    MaskingGateway.init()
 
 
 @pytest_asyncio.fixture

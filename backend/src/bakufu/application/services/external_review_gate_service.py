@@ -84,7 +84,7 @@ class ExternalReviewGateService:
             updated = self._decide(gate, subject.owner_id, "approve", comment)
             await self._repo.save(updated)
             await self._advance_task_if_available(updated, subject.owner_id, approved=True)
-        return updated
+            return await self._find_saved_gate(updated.id)
 
     async def reject(
         self,
@@ -98,7 +98,7 @@ class ExternalReviewGateService:
             updated = self._decide(gate, subject.owner_id, "reject", feedback_text)
             await self._repo.save(updated)
             await self._advance_task_if_available(updated, subject.owner_id, approved=False)
-        return updated
+            return await self._find_saved_gate(updated.id)
 
     async def cancel(
         self,
@@ -111,7 +111,7 @@ class ExternalReviewGateService:
             gate = await self._find_authorized_gate(gate_id, subject)
             updated = self._decide(gate, subject.owner_id, "cancel", reason)
             await self._repo.save(updated)
-        return updated
+            return await self._find_saved_gate(updated.id)
 
     async def _find_authorized_gate(
         self,
@@ -123,6 +123,12 @@ class ExternalReviewGateService:
             raise ExternalReviewGateNotFoundError(gate_id)
         if gate.reviewer_id != subject.owner_id:
             raise ExternalReviewGateAuthorizationError(gate.id, subject.owner_id)
+        return gate
+
+    async def _find_saved_gate(self, gate_id: GateId) -> ExternalReviewGate:
+        gate = await self._repo.find_by_id(gate_id)
+        if gate is None:
+            raise ExternalReviewGateNotFoundError(gate_id)
         return gate
 
     def _decide(

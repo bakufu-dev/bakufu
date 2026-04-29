@@ -8,17 +8,17 @@ sentinel 定数（``REDACT_MASK_ERROR`` / ``REDACTED_MASK_OVERFLOW``
 （*ゲートウェイが raise → DB SELECT が sentinel を返す*）は欠けていた。
 本ファイルは Norman が指摘した 3 つのインジェクションパターンを補う:
 
-1. :func:`mask_in` が ``payload_json`` のエンコード中に raise →
+1. :meth:`MaskingGateway.mask_in` が ``payload_json`` のエンコード中に raise →
    ``MaskedJSONEncoded.process_bind_param`` が例外を捕捉し、
    代わりに ``json.dumps(REDACT_LISTENER_ERROR)`` を書き込む。
    後続の SELECT は sentinel 文字列を返す。
-2. :func:`mask` が ``last_error`` のエンコード中に raise →
+2. :meth:`MaskingGateway.mask` が ``last_error`` のエンコード中に raise →
    ``MaskedText.process_bind_param`` が代わりに ``REDACT_LISTENER_ERROR``
    を書き込む。SELECT は sentinel を返す。
 3. ``audit_log.error_text`` でも同経路 → ゲートウェイが秘密を持つ
    3 テーブルすべてに配線されていることを確認する。
 
-インジェクションは**ゲートウェイ**（`mask` / `mask_in`）で行うため、
+インジェクションは**ゲートウェイ**（`MaskingGateway.mask` / `MaskingGateway.mask_in`）で行うため、
 このテストは TypeDecorator の配線実装に依存しない。Linus がマスク
 実装を差し替えても契約は維持される。
 """
@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING
 import pytest
 from bakufu.infrastructure.persistence.sqlite.tables.audit_log import AuditLogRow
 from bakufu.infrastructure.persistence.sqlite.tables.outbox import OutboxRow
-from bakufu.infrastructure.security.masking import REDACT_LISTENER_ERROR
+from bakufu.infrastructure.security.masking import REDACT_LISTENER_ERROR, MaskingGateway
 from sqlalchemy import select
 
 from tests.factories.persistence_rows import make_audit_log_row, make_outbox_row
@@ -43,31 +43,25 @@ pytestmark = pytest.mark.asyncio
 
 
 def _force_mask_in_to_raise(monkeypatch: pytest.MonkeyPatch) -> None:
-    """TypeDecorator が :func:`mask_in` を呼んだとき raise させる。
+    """TypeDecorator が :meth:`MaskingGateway.mask_in` を呼んだとき raise させる。"""
 
-    パッチ対象は TypeDecorator がインポートしたシンボル
-    （``base`` モジュール内のローカル ``mask_in`` バインディング）であり、
-    masking モジュール側ではない。Python の ``from X import Y`` は
-    インポート時に参照を捕捉するためである。
-    """
-    from bakufu.infrastructure.persistence.sqlite import base as base_mod
-
-    def _explode(_value: object) -> object:
+    def _explode(cls: type[MaskingGateway], _value: object) -> object:
+        del cls
         msg = "simulated mask_in failure"
         raise RuntimeError(msg)
 
-    monkeypatch.setattr(base_mod, "mask_in", _explode)
+    monkeypatch.setattr(MaskingGateway, "mask_in", classmethod(_explode))
 
 
 def _force_mask_to_raise(monkeypatch: pytest.MonkeyPatch) -> None:
-    """TypeDecorator が :func:`mask` を呼んだとき raise させる。"""
-    from bakufu.infrastructure.persistence.sqlite import base as base_mod
+    """TypeDecorator が :meth:`MaskingGateway.mask` を呼んだとき raise させる。"""
 
-    def _explode(_value: object) -> str:
+    def _explode(cls: type[MaskingGateway], _value: object) -> str:
+        del cls
         msg = "simulated mask failure"
         raise RuntimeError(msg)
 
-    monkeypatch.setattr(base_mod, "mask", _explode)
+    monkeypatch.setattr(MaskingGateway, "mask", classmethod(_explode))
 
 
 class TestMaskInFailureRedactsPayloadJson:

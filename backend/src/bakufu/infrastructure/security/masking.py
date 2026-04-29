@@ -21,8 +21,7 @@ Fail-Secure 契約（§確定 F）
 を犠牲にする方針である。
 
 ``Bootstrap`` は起動時に ``MaskingGateway.init`` を 1 度呼び出して本モジュールを
-初期化する。以降の ``mask`` / ``mask_in`` 呼び出しは互換 alias を通じて
-``MaskingGateway`` の状態を参照する。
+初期化する。以降の呼び出しも ``MaskingGateway`` の classmethod を明示的に使う。
 """
 
 from __future__ import annotations
@@ -102,7 +101,7 @@ class MaskingGateway:
     """Fail-Secure な伏字化ゲートウェイ。
 
     環境変数・正規表現・ホームパスの順序と内部状態をこのクラスへ閉じる。
-    モジュール直下には互換 alias だけを置き、実ロジックの公開関数を残さない。
+    モジュール直下に公開 callable alias を置かず、入口を classmethod に一本化する。
     """
 
     _env_patterns: ClassVar[list[tuple[str, re.Pattern[str]]]] = []
@@ -186,20 +185,10 @@ class MaskingGateway:
         return cls._initialized
 
 
-init = MaskingGateway.init
-mask = MaskingGateway.mask
-mask_in = MaskingGateway.mask_in
-is_initialized = MaskingGateway.is_initialized
-
-
 __all__ = [
     "MAX_BYTES_FOR_RECURSION",
     "REDACT_LISTENER_ERROR",
     "REDACT_MASK_ERROR",
     "REDACT_MASK_OVERFLOW",
     "MaskingGateway",
-    "init",
-    "is_initialized",
-    "mask",
-    "mask_in",
 ]

@@ -210,6 +210,7 @@ http-api-foundation の `error_handlers.py` に以下のハンドラ関数を追
 |---|---|---|---|---|---|
 | POST | `/api/rooms/{room_id}/workflows` | `room_id: UUID` | `WorkflowCreate` | `WorkflowResponse` | 201 |
 | GET | `/api/rooms/{room_id}/workflows` | `room_id: UUID` | なし | `WorkflowListResponse` | 200 |
+| POST | `/api/workflows` | なし | `WorkflowCreate` | `WorkflowResponse` | 201 |
 | GET | `/api/workflows/presets` | なし | なし | `WorkflowPresetListResponse` | 200 |
 | GET | `/api/workflows/{id}` | `id: UUID` | なし | `WorkflowResponse` | 200 |
 | PATCH | `/api/workflows/{id}` | `id: UUID` | `WorkflowUpdate` | `WorkflowResponse` | 200 |
@@ -221,11 +222,12 @@ Router は 2 つの `APIRouter` で構成する:
 - `workflows_router`: `prefix="/api/workflows"`, `tags=["workflow"]`（workflow_id スコープ + presets）
 
 **ルーティング登録順序**（workflows_router 内）:
-1. `GET /presets`（リテラルパス — 先に登録）
-2. `GET /{id}`
-3. `PATCH /{id}`
-4. `DELETE /{id}`
-5. `GET /{id}/stages`
+1. `POST /`
+2. `GET /presets`（リテラルパス — 先に登録）
+3. `GET /{id}`
+4. `PATCH /{id}`
+5. `DELETE /{id}`
+6. `GET /{id}/stages`
 
 FastAPI はリテラルパスをパスパラメータより優先するが、登録順でも二重に担保する。
 

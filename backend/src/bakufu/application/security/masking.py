@@ -1,8 +1,7 @@
 """application 層 masking ユーティリティ（§確定 I）。
 
-``infrastructure.security.masking.mask`` を application 層から再エクスポートする
-薄いアダプタ。masking ロジックの実体は ``infrastructure/security/masking.py`` が
-唯一の真実源として保持する（DRY 原則）。
+``MaskingGateway`` を application 層から呼ぶ薄いアダプタ。masking ロジックの実体は
+``infrastructure/security/masking.py`` が唯一の真実源として保持する（DRY 原則）。
 
 依存方向:
     interfaces → application（許容）/ application → infrastructure（許容）
@@ -15,6 +14,17 @@
 
 from __future__ import annotations
 
-from bakufu.infrastructure.security.masking import mask as mask
+from bakufu.infrastructure.security.masking import MaskingGateway
+
+
+class ApplicationMasking:
+    """application 層から使う伏字化入口。"""
+
+    @classmethod
+    def mask(cls, value: object) -> str:
+        return MaskingGateway.mask(value)
+
+
+mask = ApplicationMasking.mask
 
 __all__ = ["mask"]

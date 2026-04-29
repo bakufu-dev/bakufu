@@ -47,7 +47,7 @@ from bakufu.infrastructure.persistence.sqlite.outbox import (
 from bakufu.infrastructure.persistence.sqlite.outbox import (
     handler_registry,
 )
-from bakufu.infrastructure.security import masking
+from bakufu.infrastructure.security.masking import MaskingGateway
 from bakufu.infrastructure.storage import attachment_root
 
 if TYPE_CHECKING:
@@ -191,7 +191,7 @@ class Bootstrap:
         # 群は import 時にリスナを登録し、リスナは即座に ``mask`` を呼ぶ
         # ためである。
         try:
-            masking.init()
+            MaskingGateway.init()
         except BakufuConfigError:
             # MSG-PF-008 のケースはそのまま再送出する。マスキング初期化
             # 失敗時の Bootstrap 終了は Fail-Fast 契約である。
