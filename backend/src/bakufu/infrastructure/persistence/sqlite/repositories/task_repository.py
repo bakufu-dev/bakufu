@@ -131,6 +131,29 @@ class SqliteTaskRepository:
 
         return self._from_rows(task_row, agent_rows, deliv_rows, attach_rows_by_deliv)
 
+    async def find_all_by_room(self, room_id: RoomId) -> list[Task]:
+        """指定 Room に紐付く Task 全件を ``updated_at DESC, id DESC`` 順で返す。"""
+        task_rows = list(
+            (
+                await self._session.execute(
+                    select(TaskRow)
+                    .where(TaskRow.room_id == room_id)
+                    .order_by(TaskRow.updated_at.desc(), TaskRow.id.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not task_rows:
+            return []
+
+        results: list[Task] = []
+        for task_row in task_rows:
+            task = await self.find_by_id(task_row.id)
+            if task is not None:
+                results.append(task)
+        return results
+
     async def count(self) -> int:
         """``SELECT COUNT(*) FROM tasks``。
 
