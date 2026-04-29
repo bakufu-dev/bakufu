@@ -20,7 +20,7 @@ from pydantic import ValidationError
 
 
 class TestRoomCreateSchema:
-    """TC-UT-RM-HTTP-001: RoomCreate の name / description / prompt_kit_prefix_markdown バリデーション。"""
+    """TC-UT-RM-HTTP-001: RoomCreate スキーマ検証 (name / description / prompt_kit) (Q-3)。"""
 
     def test_valid_name_workflow_id_passes(self) -> None:
         """(a) name="Vモデル開発室", workflow_id=uuid4() → バリデーション通過."""

@@ -80,6 +80,6 @@ class TestStaticDependencyAnalysisRoom:
                     if module_name.startswith("bakufu.infrastructure"):
                         violations.append(f"{py_file.name}:{lineno}: import of {module_name}")
         assert violations == [], (
-            "routers/ または schemas/ で bakufu.infrastructure の import を検出（遅延 import 含む）:\n"
-            + "\n".join(violations)
+            "routers/ または schemas/ で bakufu.infrastructure の import を検出"
+            "（遅延 import 含む）:\n" + "\n".join(violations)
         )
