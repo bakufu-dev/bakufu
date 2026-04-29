@@ -3,8 +3,8 @@
 The CLI launches :func:`main` which wires the production
 :class:`Bootstrap` (with the Alembic migration runner attached) and
 runs the eight-stage cold start. Stage 8 (FastAPI bind) is supplied
-by a future ``feature/http-api`` PR; until then the entry point exits
-cleanly after the dispatcher / scheduler are running.
+via the ``listener_starter`` coroutine that runs uvicorn in-process
+(REQ-HAF-007, 確定 G).
 
 Execution: ``uv run python -m bakufu.main``.
 """
@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 
 from bakufu.infrastructure.bootstrap import Bootstrap
@@ -20,9 +21,26 @@ from bakufu.infrastructure.exceptions import BakufuConfigError
 from bakufu.infrastructure.persistence.sqlite.migrations import run_upgrade_head
 
 
+async def _uvicorn_starter() -> None:
+    """Stage-8 listener_starter: run uvicorn serving the FastAPI app (確定 G)。"""
+    import uvicorn
+
+    from bakufu.interfaces.http.app import app
+
+    config = uvicorn.Config(
+        app,
+        host=os.environ.get("BAKUFU_BIND_HOST", "127.0.0.1"),
+        port=int(os.environ.get("BAKUFU_BIND_PORT", "8000")),
+        loop="asyncio",
+        log_level="info",
+    )
+    server = uvicorn.Server(config)
+    await server.serve()
+
+
 async def _run() -> int:
     bootstrap = Bootstrap(
-        listener_starter=None,  # ``feature/http-api`` will inject the FastAPI bind.
+        listener_starter=_uvicorn_starter,
         migration_runner=run_upgrade_head,
     )
     try:
