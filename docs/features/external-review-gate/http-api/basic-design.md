@@ -20,7 +20,7 @@
 |---|---|---|---|
 | REQ-ERG-HTTP-001〜006 | `external_review_gates_router` | `backend/src/bakufu/interfaces/http/routers/external_review_gates.py` | Gate 一覧 / Task 履歴 / 単件 / approve / reject / cancel の 6 エンドポイント |
 | REQ-ERG-HTTP-001〜006 | `ExternalReviewGateService` | `backend/src/bakufu/application/services/external_review_gate_service.py` | Repository 取得、reviewer 境界検証、Domain ふるまい呼び出し、UoW 保存 |
-| REQ-ERG-HTTP-001〜006 | `ExternalReviewGateSchemas` | `backend/src/bakufu/interfaces/http/schemas/external_review_gate.py` | Pydantic v2 request / response model、VO 変換、HTTP レスポンスは Domain / Repository から復元された値をそのまま返す |
+| REQ-ERG-HTTP-001〜006 | `ExternalReviewGateSchemas` | `backend/src/bakufu/interfaces/http/schemas/external_review_gate.py` | Pydantic v2 request / response model、VO 変換、HTTP レスポンスは Repository 復元値をそのまま返す。`MaskedText` が保存時に不可逆マスクした secret は redacted のまま返る |
 | REQ-ERG-HTTP-003〜006 | error handlers | `backend/src/bakufu/interfaces/http/error_handlers.py` | NotFound / Forbidden / Conflict / InvariantViolation を `ErrorResponse` へ変換 |
 | REQ-ERG-HTTP-001〜006 | DI / app wiring | `backend/src/bakufu/interfaces/http/dependencies.py` / `app.py` | `ExternalReviewGateService` 注入と router 登録 |
 
@@ -116,7 +116,7 @@ backend/src/bakufu/
 | repository | `ExternalReviewGateRepository` | 既存 | `find_by_id` / `find_pending_by_reviewer` / `find_by_task_id` / `save` を使用 |
 | domain | `ExternalReviewGate` / `ReviewDecision` / `AuditEntry` | 既存 | 状態遷移は Domain に委譲 |
 | auth | `AuthenticatedSubject` dependency | 本 sub-feature | `Authorization: Bearer <token>` をサーバ設定の `BAKUFU_OWNER_API_TOKEN` と照合し、成功時だけ `BAKUFU_OWNER_ID` を `subject.owner_id` として返す。`reviewer_id` / `viewer_id` / `actor_id` の自己申告入力は禁止 |
-| security | `MaskedText` | 既存 | DB 保存時に `body_markdown` / `feedback_text` / audit comment をマスクする。HTTP レスポンス層では再マスクせず、Issue #61 どおり復元値を返す |
+| security | `MaskedText` | 既存 | DB 保存時に `body_markdown` / `feedback_text` / audit comment を不可逆マスクする。HTTP レスポンス層では再マスクも原文復号もせず、Repository 復元値（secret は redacted）を返す |
 
 ## クラス設計（概要）
 
@@ -160,7 +160,7 @@ classDiagram
 - HTTP router は入出力変換と status code だけを持つ。
 - reviewer / actor の認可境界は application service に閉じる。ただし主体 ID は認証済み subject からのみ取得し、query/body の自己申告値は使わない。
 - 状態遷移は Domain に「やれ」と命じ、HTTP 層は decision を直接書き換えない。
-- DB masking は Repository 責務。HTTP レスポンスは Issue #61 の契約どおり API 利用者に表示する値を返し、schema serializer で再マスクしない。
+- DB masking は Repository 責務。HTTP レスポンスは Repository 復元値を返し、schema serializer で再マスクしない。`MaskedText.process_result_value` は復号しないため、保存済み secret は redacted のまま表示される。
 
 ## 処理フロー
 
@@ -211,7 +211,7 @@ sequenceDiagram
 
 - [`docs/design/domain-model.md`](../../../design/domain-model.md) への変更: なし。
 - [`docs/design/tech-stack.md`](../../../design/tech-stack.md) への変更: なし。既存 FastAPI / Pydantic v2 を使用する。
-- 既存 feature への波及: `interfaces/http/app.py` に router / handler 登録を追加する。親 `feature-spec.md` は凍結済みのため更新しない。
+- 既存 feature への波及: `interfaces/http/app.py` に router / handler 登録を追加する。親 `feature-spec.md` は本 sub-feature を現行 scope として更新済み。
 
 ## 外部連携
 
@@ -237,10 +237,35 @@ sequenceDiagram
 |---|---|---|---|
 | **T1: BOLA** | 他 reviewer の `gate_id` を推測して単件取得 / 判断 | Deliverable snapshot / audit_trail / decision | 認証済み `subject.owner_id` と `gate.reviewer_id` の一致を service で必須化し、不一致は 403。`reviewer_id` / `viewer_id` / `actor_id` は API 入力として受け付けない |
 | **T2: 既決 Gate の再判断** | APPROVED 後に reject / cancel を再送 | Gate の判断一回性 | Domain state machine の `decision_already_decided` を 409 に変換 |
-| **T3: secret 露出** | snapshot / feedback / audit comment に webhook URL が混入 | webhook URL / API key | Repository `MaskedText` による DB 保存時マスキングで at-rest とログを保護する。HTTP API は reviewer への表示契約として復元値を返すため再マスクしない |
+| **T3: secret 露出** | snapshot / feedback / audit comment に webhook URL が混入 | webhook URL / API key | Repository `MaskedText` による DB 保存時マスキングで at-rest とログを保護する。HTTP API は Repository 復元値を再マスクせず返すが、`MaskedText` は復号しないため保存済み secret は redacted のまま返る |
 | **T4: audit 改ざん** | 詳細取得を audit なしで返す | 閲覧監査ログ | `GET /api/gates/{id}` は `record_view` 保存後の Gate を返す |
 | **T5: CSRF** | ブラウザ経由で approve / reject / cancel を不正送信 | Gate の判断完全性 | http-api-foundation 確定D: 状態変更 POST は `Origin` ヘッダ検証ミドルウェアを通す。不一致 Origin は 403 |
 | **T6: vulnerable components** | FastAPI / Starlette / Pydantic / httpx / SQLAlchemy / SQLite の既知脆弱性 | API 実行環境 | `just audit` / CI `audit` で依存 CVE を確認し、既知 critical/high を残したまま実装 PR を通さない |
+
+### OWASP API Security Top 10 2023 対応表
+
+| ID | リスク | 本 sub-feature の対応 | テスト |
+|---|---|---|---|
+| API1 | Broken Object Level Authorization | `subject.owner_id == gate.reviewer_id` を全単件 / 状態変更で検証し、自己申告 ID を禁止 | TC-IT-ERG-HTTP-008 / 015 |
+| API2 | Broken Authentication | Bearer token 必須、constant-time 比較、欠落 / 不一致は Service 前で 401 | TC-IT-ERG-HTTP-015 / 016 |
+| API3 | Broken Object Property Level Authorization | request body は `extra="forbid"`。`actor_id` 等の権限属性注入と audit 直接編集を禁止 | TC-IT-ERG-HTTP-009 |
+| API4 | Unrestricted Resource Consumption | comment / feedback / reason を 10000 文字上限、一覧は MVP で PENDING のみ | TC-IT-ERG-HTTP-009 / TC-UT-ERG-HTTP-008 |
+| API5 | Broken Function Level Authorization | reviewer 以外は approve / reject / cancel 不可。管理者用の横断操作は設けない | TC-IT-ERG-HTTP-008 |
+| API6 | Unrestricted Access to Sensitive Business Flows | 状態変更は PENDING 1 回のみ、CSRF Origin 検証を通す | TC-IT-ERG-HTTP-007 / 014 |
+| API7 | Server Side Request Forgery | 本 API は外部 URL へ送信しない。入力 URL は保存対象であり fetch 対象ではない | 該当なし（外部通信なし） |
+| API8 | Security Misconfiguration | auth / CSRF / error handler を app wiring で登録し、CORS は許可 Origin のみに限定 | TC-IT-ERG-HTTP-014 / 015 |
+| API9 | Improper Inventory Management | 6 API を本書で棚卸しし、OpenAPI とテストマトリクスで孤児 API を禁止 | TC-IT-ERG-HTTP-011〜013 |
+| API10 | Unsafe Consumption of APIs | 外部 API 消費なし。将来追加時は timeout / retry / schema validation を個別 sub-feature で凍結 | 該当なし（外部 API なし） |
+
+### Bearer token 運用
+
+| 項目 | 凍結内容 |
+|---|---|
+| 生成強度 | `BAKUFU_OWNER_API_TOKEN` は 32 bytes 以上の CSPRNG 由来 URL-safe secret。短い固定語は禁止 |
+| 保管 | token は環境変数または secrets manager で注入し、Git / docs / DB に保存しない |
+| 照合 | request token と設定値は constant-time 比較する |
+| ローテーション | 漏洩時は設定値を差し替えてプロセス再起動する。MVP は単一 token のため同時二重 token は扱わない |
+| ログ非露出 | `Authorization` ヘッダ、token 値、比較失敗時の入力値は application / access log に出さない |
 
 詳細な信頼境界は [`docs/design/threat-model.md`](../../../design/threat-model.md)。
 

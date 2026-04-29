@@ -32,16 +32,23 @@
 | MSG-ERG-HTTP-004 | FastAPI validation | TC-IT-ERG-HTTP-009 | 結合 | 異常系 | — |
 | T1 | subject authorization guard | TC-IT-ERG-HTTP-008, TC-IT-ERG-HTTP-015 | 結合 | 異常系 | — |
 | T2 | decision conflict | TC-IT-ERG-HTTP-007 | 結合 | 異常系 | §9 #5 |
-| T3 | HTTP raw response / DB masking boundary | TC-IT-ERG-HTTP-010 | 結合 | セキュリティ | §9 #15 |
+| T3 | HTTP Repository restored response / DB masking boundary | TC-IT-ERG-HTTP-010 | 結合 | セキュリティ | §9 #15 |
 | T4 | record_view side effect | TC-IT-ERG-HTTP-003 | 結合 | 監査 | §9 #6 |
 | T5 | CSRF Origin guard | TC-IT-ERG-HTTP-014 | 結合 | セキュリティ | — |
 | T6 | dependency CVE audit | TC-CI-ERG-HTTP-001 | CI | セキュリティ | — |
+| API1 / API5 | reviewer object / function authorization | TC-IT-ERG-HTTP-008 / 015 | 結合 | セキュリティ | — |
+| API2 | Bearer token operation | TC-IT-ERG-HTTP-015 / 016 | 結合 | セキュリティ | — |
+| API3 | forbidden authority properties | TC-IT-ERG-HTTP-009 | 結合 | セキュリティ | — |
+| API4 | request size limits | TC-IT-ERG-HTTP-009 / TC-UT-ERG-HTTP-008 | 結合 / ユニット | セキュリティ | §9 #10 |
+| API6 | sensitive flow protection | TC-IT-ERG-HTTP-007 / 014 | 結合 | セキュリティ | — |
+| API7 / API10 | no outbound API consumption | TC-STATIC-ERG-HTTP-001 | 静的確認 | セキュリティ | — |
+| API8 / API9 | app wiring / API inventory | TC-STATIC-ERG-HTTP-002 | 静的確認 | セキュリティ | — |
 
 **マトリクス充足の証拠**:
 - REQ-ERG-HTTP-001〜006 すべてに最低 1 件の結合テストを割り当てる。
 - MSG-ERG-HTTP-001〜004 すべてに文言照合を割り当てる。
 - 親受入基準 #3〜6 / #10 / #12 / #14 / #15 は結合テストまたは既存 domain / repository テストで検証する。
-- T1〜T6 すべてに有効性確認ケースがある。
+- T1〜T6 と OWASP API Security Top 10 2023 API1〜API10 すべてに有効性確認または非該当根拠ケースがある。
 - 孤児要件なし。
 
 ## 外部 I/O 依存マップ
@@ -78,12 +85,13 @@
 | TC-IT-ERG-HTTP-007 | 再承認不能 | なし | APPROVED Gate | `POST /api/gates/{id}/approve` | 409、MSG-ERG-HTTP-003 |
 | TC-IT-ERG-HTTP-008 | subject 不一致拒否 | なし | Gate reviewer=A、認証済み subject=B | B が GET / approve / reject / cancel | 403、MSG-ERG-HTTP-002 の 2 行文言 |
 | TC-IT-ERG-HTTP-009 | validation | なし | なし | 不正 UUID / `decision=APPROVED` / 空 feedback / body に `actor_id` 混入 | 422、MSG-ERG-HTTP-004 |
-| TC-IT-ERG-HTTP-010 | HTTP raw response / DB masking boundary | なし | snapshot / feedback / audit comment に webhook URL を含む Gate | 認可済み subject で GET detail | 200、HTTP response は Issue #61 どおり復元値を返す。DB 保存値の masking は repository TC-IT-ERGR-020-masking-* が担当 |
+| TC-IT-ERG-HTTP-010 | HTTP Repository restored response / DB masking boundary | なし | snapshot / feedback / audit comment に webhook URL を含む Gate を Repository 経由で保存済み | 認可済み subject で GET detail | 200、HTTP response は Repository 復元値を返す。保存済み secret は redacted のまま、HTTP schema は再マスクも原文復号もしない。DB 保存値の masking は repository TC-IT-ERGR-020-masking-* が担当 |
 | TC-IT-ERG-HTTP-011 | HTTP API flow smoke | なし | PENDING Gate、reviewer A | 一覧 → 詳細閲覧 → approve → 詳細再取得 | 6 API のうち一覧 / 詳細 / approve がユーザー観測可能な一連の経路として成立し、audit に VIEWED と APPROVED が見える |
 | TC-IT-ERG-HTTP-012 | reject API flow smoke | なし | PENDING Gate、reviewer A | 詳細閲覧 → reject with feedback → Task 履歴取得 | feedback と REJECTED が履歴 API から観測できる |
 | TC-IT-ERG-HTTP-013 | cancel API flow smoke | なし | PENDING Gate、reviewer A | cancel with reason → 一覧取得 | CANCELLED 後の Gate は PENDING 一覧から消え、Task 履歴に残る |
 | TC-IT-ERG-HTTP-014 | CSRF Origin guard | なし | PENDING Gate、subject=A | `Origin: http://evil.example.com` 付きで approve / reject / cancel | 403、http-api-foundation MSG-HAF-004 |
 | TC-IT-ERG-HTTP-015 | auth subject required | なし | PENDING Gate | Authorization 欠落 / 不正 token / `X-Reviewer-Id` のみ指定 | 401 または 403。Service は呼ばれず、自己申告 ID では成功しない |
+| TC-IT-ERG-HTTP-016 | Bearer token operation | なし | `BAKUFU_OWNER_API_TOKEN` と `BAKUFU_OWNER_ID` を test config に設定 | 32 bytes 以上の token で成功、短い token 設定 / 不一致 token / 不正 owner UUID を送る | 成功時だけ subject が作られる。失敗時は 401、token 値と Authorization ヘッダはログに出ない |
 
 ## ユニットテストケース
 
@@ -99,6 +107,8 @@
 | TC-UT-ERG-HTTP-008 | cancel request validation | 境界値 | `reason` 10000 / 10001 文字 | 10000 は受理、10001 は validation error |
 | TC-UT-ERG-HTTP-011 | error handlers | 異常系 | 各 application exception | MSG-ERG-HTTP-001〜004 の 2 行文言一致（Next 行を含む） |
 | TC-CI-ERG-HTTP-001 | dependency audit | セキュリティ | CI `audit` job | FastAPI / Starlette / Pydantic / httpx / SQLAlchemy / SQLite 関連の critical/high CVE が未解決なら fail |
+| TC-STATIC-ERG-HTTP-001 | outbound call inventory | セキュリティ | router / service / schema | HTTP client / webhook fetch / URL dereference が追加されていない |
+| TC-STATIC-ERG-HTTP-002 | API inventory and wiring | セキュリティ | app wiring / OpenAPI | 6 API だけが登録され、auth / CSRF / error handler が有効 |
 
 ## E2E 受入基準との接続
 
@@ -111,14 +121,14 @@
 | #10 feedback 境界 | TC-IT-ERG-HTTP-005 / 009, TC-UT-ERG-HTTP-005 / 008 | 1〜10000 文字は受理、空 reject と 10001 文字は拒否 |
 | #12 Next 文 | TC-UT-ERG-HTTP-011、TC-IT-ERG-HTTP-007 / 008 / 009 | 業務エラー時、ユーザーが次に取る行動を `Next:` 行として観測する |
 | #14 再起動跨ぎ永続化 | TC-IT-ERG-HTTP-001〜006 は API ラウンドトリップ、親 `TC-E2E-ERG-001〜003` は repository 再起動 | 親 system-test-design が担当 |
-| #15 secret masking | repository TC-IT-ERGR-020-masking-* | HTTP は Issue #61 の原文返却契約を優先する。DB 保存値 masking は repository IT が確認し、本 sub-feature は HTTP で再マスクしないことを TC-IT-ERG-HTTP-010 で固定する |
+| #15 secret masking | repository TC-IT-ERGR-020-masking-* | HTTP は Repository 復元値を返す。DB 保存値 masking は repository IT が確認し、本 sub-feature は HTTP で再マスクも原文復号もしないことを TC-IT-ERG-HTTP-010 で固定する |
 
 ## カバレッジ基準
 
 - REQ-ERG-HTTP-001〜006 の各要件が最低 1 件の結合テストで検証されている。
 - MSG-ERG-HTTP-001〜004 の各文言が静的文字列で照合されている。
 - 親受入基準 #3〜6 / #10 / #12 / #14 / #15 が既存 domain / repository テストまたは本 sub-feature 結合テストで検証されている。
-- T1〜T6 の各脅威に対する対策が最低 1 件のテストケースで有効性確認されている。
+- T1〜T6 と OWASP API Security Top 10 2023 API1〜API10 の各脅威に対する対策または非該当根拠が最低 1 件のテストケースで確認されている。
 - API 6 本すべてが単発ケースとユーザー観測可能な API flow smoke のどちらかで最低 1 回通る。
 - 行カバレッジ目標: `external_review_gate_service.py` / `external_review_gates.py` / `schemas/external_review_gate.py` / `external_review_gate_exceptions.py` 合計 90% 以上。
 
