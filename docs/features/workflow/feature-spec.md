@@ -168,9 +168,15 @@ bakufu システム全体ペルソナは [`docs/analysis/personas.md`](../../ana
 
 **理由**: CEO が Stage 設計時に webhook URL を含めた場合、DB 直読み / バックアップ / 監査ログ経路への token 流出を防ぐ。domain 層は raw URL を保持し、Repository 層で永続化前に token 部を `<REDACTED:DISCORD_WEBHOOK>` に置換する。
 
+### 確定 R1-13: Stage に `required_gate_roles` を設定できる（Issue #65 で追加）
+
+CEO は Workflow 設計時に、各 Stage に `required_gate_roles`（内部レビューを担当する GateRole 名のセット）を設定できる。空集合は「内部レビュー不要の Stage」を意味し合法。非空の場合、各要素は 1〜40 文字の小文字英数字ハイフン（slug 形式）でなければならない。
+
+**理由**: InternalReviewGate feature（Issue #65）が、Workflow Stage ごとに内部審査観点（reviewer / ux / security 等）を定義できる要件（[`../internal-review-gate/feature-spec.md §9 AC#1`](../internal-review-gate/feature-spec.md)）を満たすために必要。Stage の `required_gate_roles` が空集合の場合は InternalReviewGate が生成されない（application 層の責務）。実装詳細は [`domain/basic-design.md §REQ-WF-008`](domain/basic-design.md) を参照。
+
 ### 確定 R1-14: Workflow はアーカイブ状態を持つ
 
-CEO は Workflow をアーカイブ（論理削除）できる。アーカイブ済み Workflow は更新操作（PATCH）を受け付けない。ただし取得（GET）は可能。アーカイブされた Workflow を Room への新規割り当て（POST /api/rooms/{room_id}/workflows）に指定することは禁止される。
+CEO は Workflow をアーカイブ（論理削除）できる。アーカイブ済み Workflow は更新操作（PATCH）を受け付けない。ただし取得（GET）は可能。
 
 **理由**: 運用中の Workflow を誤って削除・変更する事故を防ぐため、論理削除（アーカイブ）で保全しつつ参照可能な状態を維持する。物理削除は現在 Room.workflow_id FK が存在するため許容できない（FK 参照整合性の破壊）。
 
@@ -179,12 +185,6 @@ CEO は Workflow をアーカイブ（論理削除）できる。アーカイブ
 POST /api/rooms/{room_id}/workflows で新しい Workflow を作成・割り当てると、Room の workflow_id が新しい Workflow ID に更新される。古い Workflow は自動アーカイブされず、引き続き取得可能。
 
 **理由**: Workflow の更新履歴を保全しつつ、Room が常に一つの「現役 Workflow」を参照する単純な構造を維持する。Room は 1 つの Workflow のみを参照する（1:1 参照）。
-
-### 確定 R1-13: Stage に `required_gate_roles` を設定できる（Issue #65 で追加）
-
-CEO は Workflow 設計時に、各 Stage に `required_gate_roles`（内部レビューを担当する GateRole 名のセット）を設定できる。空集合は「内部レビュー不要の Stage」を意味し合法。非空の場合、各要素は 1〜40 文字の小文字英数字ハイフン（slug 形式）でなければならない。
-
-**理由**: InternalReviewGate feature（Issue #65）が、Workflow Stage ごとに内部審査観点（reviewer / ux / security 等）を定義できる要件（[`../internal-review-gate/feature-spec.md §9 AC#1`](../internal-review-gate/feature-spec.md)）を満たすために必要。Stage の `required_gate_roles` が空集合の場合は InternalReviewGate が生成されない（application 層の責務）。実装詳細は [`domain/basic-design.md §REQ-WF-008`](domain/basic-design.md) を参照。
 
 ## 8. 制約・前提
 

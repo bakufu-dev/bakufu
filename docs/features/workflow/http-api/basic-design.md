@@ -127,7 +127,6 @@ backend/
 |---|---|---|---|
 | MSG-WF-HTTP-001 | エラー（不在）| Workflow が見つからない | 404 |
 | MSG-WF-HTTP-002 | エラー（競合）| アーカイブ済み Workflow への更新操作（R1-14 違反）| 409 |
-| MSG-WF-HTTP-003 | エラー（競合）| アーカイブ済み Workflow を Room に割り当てようとした（R1-14 違反）| 409 |
 | MSG-WF-HTTP-004 | エラー（不在）| 指定したプリセット名が存在しない | 404 |
 | MSG-WF-HTTP-005 | エラー（検証）| `WorkflowInvariantViolation` の DAG 業務ルール違反本文（R1-1〜9）| 422 |
 | MSG-WF-HTTP-006 | エラー（不在）| Room が見つからない（room_id スコープのエラー）| 404 |
@@ -171,7 +170,7 @@ classDiagram
         +find_by_id(workflow_id) Workflow
         +update(workflow_id, name, stages, transitions, entry_stage_id) Workflow
         +archive(workflow_id) None
-        +find_stages(workflow_id) tuple[list[Stage], list[Transition]]
+        +find_stages(workflow_id) tuple[list[Stage], list[Transition], StageId]
         +get_presets() list[WorkflowPreset]
     }
     class WorkflowRepository {
@@ -364,7 +363,7 @@ sequenceDiagram
     WFRepo->>DB: UPSERT workflows + DELETE/INSERT stages + transitions
     DB-->>WFRepo: ok
     Service->>RoomRepo: find_empire_id_by_room_id(room_id)
-    RoomRepo->>DB: SELECT empire_id FROM room_members WHERE room_id=?
+    RoomRepo->>DB: SELECT empire_id FROM rooms WHERE id=?
     DB-->>RoomRepo: empire_id
     RoomRepo-->>Service: EmpireId
     Service->>Domain: Room.model_validate(room_dict | {workflow_id: new_id})
@@ -425,7 +424,7 @@ sequenceDiagram
 | # | カテゴリ | 対応状況 |
 |---|---------|---------|
 | A01 | Broken Access Control | loopback バインド（`127.0.0.1:8000`）+ CSRF Origin 検証（http-api-foundation 確定D）|
-| A02 | Cryptographic Failures | `Stage.notify_channels` は domain 層で URL 形式検査のみ（token はレスポンスに含まれない設計 — DB から取得した notify_channels は masking 済み）|
+| A02 | Cryptographic Failures | `Stage.notify_channels` は domain 層で URL 形式検査のみ。**GET**: DB から取得した notify_channels は repository 層で masking 済み（`<REDACTED:DISCORD_WEBHOOK>`）。**POST/PATCH**: in-memory `NotifyChannel` を `model_dump(mode='json')['target']` でシリアライズし `field_serializer` による masking を適用（詳細: [`detailed-design.md §確定A StageResponse`](detailed-design.md)）|
 | A03 | Injection | SQLAlchemy ORM 経由（raw SQL 不使用）|
 | A04 | Insecure Design | domain の pre-validate + frozen Workflow で不整合状態を物理的に防止 |
 | A05 | Security Misconfiguration | http-api-foundation の lifespan / CORS 設定を引き継ぐ |
@@ -446,7 +445,7 @@ ER は [`../repository/basic-design.md §ER 図`](../repository/basic-design.md)
 | 例外種別 | 発生箇所 | 処理方針 | HTTP ステータス |
 |---------|---------|---------|---------------|
 | `WorkflowNotFoundError` | `WorkflowService.find_by_id`（None 時）/ archive（None 時）| `error_handlers.py` 専用ハンドラ → HTTP 404 | 404 |
-| `WorkflowArchivedError` | `WorkflowService.update`（archived=True 時）/ create_for_room（アーカイブ済み Workflow を割り当て時）| 専用ハンドラ → HTTP 409 (MSG-WF-HTTP-002 / 003) | 409 |
+| `WorkflowArchivedError` | `WorkflowService.update`（archived=True 時）| 専用ハンドラ → HTTP 409 (MSG-WF-HTTP-002) | 409 |
 | `WorkflowPresetNotFoundError` | `WorkflowService.create_for_room`（未知 preset_name）| 専用ハンドラ → HTTP 404 (MSG-WF-HTTP-004) | 404 |
 | `WorkflowInvariantViolation` | domain Workflow 構築 / update 時（DAG / 容量 / SSRF 等）| 専用ハンドラ → HTTP 422 (MSG-WF-HTTP-005 前処理済み本文)| 422 |
 | `RoomNotFoundError` | `WorkflowService.create_for_room` / `find_by_room`（Room 不在時）| room http-api 既存ハンドラが処理 | 404 |

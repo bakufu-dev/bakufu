@@ -19,7 +19,7 @@
 
 | 項目 | 内容 |
 |------|------|
-| 入力 | `id: WorkflowId`、`name: str`（1〜80）、`stages: list[Stage]`（1 件以上）、`transitions: list[Transition]`（0 件以上）、`entry_stage_id: StageId` |
+| 入力 | `id: WorkflowId`、`name: str`（1〜80）、`stages: list[Stage]`（1 件以上）、`transitions: list[Transition]`（0 件以上）、`entry_stage_id: StageId`、`archived: bool`（デフォルト: `False`）|
 | 処理 | Pydantic 型バリデーション → `model_validator(mode='after')` で DAG 不変条件 7 種を集約検査（①entry 存在 ②Transition 参照整合 ③決定論性 ④BFS 到達可能性 ⑤終端 Stage ⑥EXTERNAL_REVIEW notify_channels 集約 ⑦required_role 非空 集約） → 通過時のみ Workflow を返す |
 | 出力 | `Workflow` インスタンス（frozen） |
 | エラー時 | `WorkflowInvariantViolation` を raise。MSG-WF-001〜007 のいずれかを格納 |
