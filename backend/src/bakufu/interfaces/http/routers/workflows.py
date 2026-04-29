@@ -6,6 +6,7 @@
     GET   /api/rooms/{room_id}/workflows   -> 200 WorkflowListResponse
 
   workflows_router (prefix="/api/workflows"):
+    POST  /api/workflows                   -> 201 WorkflowResponse
     GET   /api/workflows/presets           -> 200 WorkflowPresetListResponse  (登録優先)
     GET   /api/workflows/{id}              -> 200 WorkflowResponse
     PATCH /api/workflows/{id}              -> 200 WorkflowResponse
@@ -45,6 +46,24 @@ WorkflowServiceDep = Annotated[WorkflowService, Depends(HttpDependencies.get_wor
 
 class WorkflowHttpRoutes:
     """Workflow HTTP 入口をクラスメソッドに閉じる。"""
+
+    @classmethod
+    async def create_standalone_workflow(
+        cls,
+        body: WorkflowCreate,
+        service: WorkflowServiceDep,
+    ) -> WorkflowResponse:
+        """Workflow を単独作成する。"""
+        workflow = await service.create(
+            preset_name=body.preset_name,
+            name=body.name,
+            stages=([s.model_dump() for s in body.stages] if body.stages is not None else None),
+            transitions=(
+                [t.model_dump() for t in body.transitions] if body.transitions is not None else None
+            ),
+            entry_stage_id=body.entry_stage_id,
+        )
+        return WorkflowResponse.model_validate(workflow)
 
     @classmethod
     async def create_workflow(
@@ -163,6 +182,13 @@ room_workflows_router.add_api_route(
     methods=["GET"],
     status_code=200,
     response_model=WorkflowListResponse,
+)
+workflows_router.add_api_route(
+    "",
+    WorkflowHttpRoutes.create_standalone_workflow,
+    methods=["POST"],
+    status_code=201,
+    response_model=WorkflowResponse,
 )
 workflows_router.add_api_route(
     "/presets",

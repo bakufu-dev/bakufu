@@ -28,7 +28,6 @@ from tests.integration.test_external_review_gate_http_api.helpers import TOKEN, 
 from tests.integration.test_room_http_api.helpers import (
     _create_empire,
     _create_room,
-    _seed_workflow,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -120,11 +119,12 @@ async def _create_gate_through_public_http(
 ) -> dict[str, str]:
     unique = uuid4().hex[:12]
     empire = await _create_empire(client, name=f"ERG E2E {unique}")
-    workflow = await _seed_workflow(ctx.session_factory)
+    workflow = await client.post("/api/workflows", json={"preset_name": "v-model"})
+    assert workflow.status_code == 201, workflow.text
     room = await _create_room(
         client,
         str(empire["id"]),
-        str(workflow.id),  # type: ignore[attr-defined]
+        workflow.json()["id"],
         name=f"ERG E2E Room {unique}",
     )
     agent = await _create_agent_via_http(client, str(empire["id"]), name=f"ERG Agent {unique}")

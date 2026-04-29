@@ -37,6 +37,26 @@ class WorkflowService:
         self._room_repo = room_repo
         self._session = session
 
+    async def create(
+        self,
+        preset_name: str | None,
+        name: str | None,
+        stages: list[dict[str, Any]] | None,
+        transitions: list[dict[str, Any]] | None,
+        entry_stage_id: UUID | None,
+    ) -> Workflow:
+        """Workflow を単独作成する。"""
+        workflow = self._build_workflow(
+            preset_name=preset_name,
+            name=name,
+            stages=stages,
+            transitions=transitions,
+            entry_stage_id=entry_stage_id,
+        )
+        async with self._session.begin():
+            await self._workflow_repo.save(workflow)
+        return workflow
+
     async def create_for_room(
         self,
         room_id: RoomId,
@@ -53,18 +73,13 @@ class WorkflowService:
         Workflow 構築 (純粋なドメイン処理 — DB アクセスなし) を先に行い、
         Room 確認 / 保存は全て単一の ``async with session.begin():`` 内で完結させる。
         """
-        # 1. Workflow を構築 (DB アクセスなし)
-        # WorkflowPresetNotFoundError / WorkflowInvariantViolation を早期送出
-        if preset_name is not None:
-            workflow = self._build_from_preset(preset_name)
-        else:
-            # stages/transitions/entry_stage_id are all non-None (guaranteed by schema validation)
-            workflow = self._build_from_dicts(
-                name=name,  # type: ignore[arg-type]
-                stages=stages,  # type: ignore[arg-type]
-                transitions=transitions,  # type: ignore[arg-type]
-                entry_stage_id=entry_stage_id,  # type: ignore[arg-type]
-            )
+        workflow = self._build_workflow(
+            preset_name=preset_name,
+            name=name,
+            stages=stages,
+            transitions=transitions,
+            entry_stage_id=entry_stage_id,
+        )
         # 2. UoW: Room 確認 + Workflow 保存 + Room.workflow_id 更新
         async with self._session.begin():
             room = await self._room_repo.find_by_id(room_id)
@@ -159,6 +174,24 @@ class WorkflowService:
         return list(WORKFLOW_PRESETS.values())
 
     # ---- private helpers ------------------------------------------------
+
+    def _build_workflow(
+        self,
+        preset_name: str | None,
+        name: str | None,
+        stages: list[dict[str, Any]] | None,
+        transitions: list[dict[str, Any]] | None,
+        entry_stage_id: UUID | None,
+    ) -> Workflow:
+        """Workflow を構築する。DB アクセスは行わない。"""
+        if preset_name is not None:
+            return self._build_from_preset(preset_name)
+        return self._build_from_dicts(
+            name=name,  # type: ignore[arg-type]
+            stages=stages,  # type: ignore[arg-type]
+            transitions=transitions,  # type: ignore[arg-type]
+            entry_stage_id=entry_stage_id,  # type: ignore[arg-type]
+        )
 
     def _build_from_preset(self, preset_name: str) -> Workflow:
         """プリセット名から Workflow を構築する。"""
