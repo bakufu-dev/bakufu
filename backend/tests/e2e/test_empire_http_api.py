@@ -75,14 +75,14 @@ class TestEmpireLifecycleE2E:
         assert delete_resp.status_code == 204
         assert delete_resp.content == b""
 
-        # ── Step 5: GET → archived=true（論理削除確認）─────────────────────
+        # ── Step 5: GET → archived=true(論理削除確認)─────────────────────
         get_archived = await empire_e2e_client.get(f"/api/empires/{empire_id}")
         assert get_archived.status_code == 200
         assert get_archived.json()["archived"] is True
         # name は保持されている
         assert get_archived.json()["name"] == "新山田の幕府"
 
-        # ── Step 6: PATCH → 409 Conflict（アーカイブ済み, R1-8）─────────────
+        # ── Step 6: PATCH → 409 Conflict(アーカイブ済み, R1-8)─────────────
         patch_archived = await empire_e2e_client.patch(
             f"/api/empires/{empire_id}",
             json={"name": "もう一度"},
@@ -92,7 +92,7 @@ class TestEmpireLifecycleE2E:
         assert err["code"] == "conflict"
         assert err["message"] == "Empire is archived and cannot be modified."
 
-        # ── Step 7: POST → 409 Conflict（R1-5: 既存 Empire あり）──────────
+        # ── Step 7: POST → 409 Conflict(R1-5: 既存 Empire あり)──────────
         post_duplicate = await empire_e2e_client.post(
             "/api/empires",
             json={"name": "別の幕府"},

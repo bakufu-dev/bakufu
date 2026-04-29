@@ -89,19 +89,21 @@ class TestEmpireServiceSkeleton:
     """TC-UT-HAF-003: EmpireService.__init__ stores repo in _repo."""
 
     def test_empire_service_stores_repo_in_private_field(self) -> None:
-        """EmpireService(repo=mock) stores mock in _repo."""
+        """EmpireService(repo=mock, session=mock) stores repo mock in _repo."""
         from bakufu.application.services.empire_service import EmpireService
 
         mock_repo = MagicMock()
-        service = EmpireService(repo=mock_repo)
+        mock_session = MagicMock()
+        service = EmpireService(repo=mock_repo, session=mock_session)
         assert service._repo is mock_repo  # pyright: ignore[reportPrivateUsage]
 
     def test_empire_service_instantiation_succeeds(self) -> None:
-        """EmpireService construction with mock repo does not raise."""
+        """EmpireService construction with mock repo and session does not raise."""
         from bakufu.application.services.empire_service import EmpireService
 
         mock_repo = MagicMock()
-        service = EmpireService(repo=mock_repo)
+        mock_session = MagicMock()
+        service = EmpireService(repo=mock_repo, session=mock_session)
         assert service is not None
 
 

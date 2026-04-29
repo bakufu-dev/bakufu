@@ -62,11 +62,15 @@ class TestCreateEmpire:
         resp = await empire_app_client.post("/api/empires", json={"name": _EMPIRE_NAME})
         assert resp.json()["archived"] is False
 
-    async def test_create_response_rooms_is_empty_list(self, empire_app_client: AsyncClient) -> None:
+    async def test_create_response_rooms_is_empty_list(
+        self, empire_app_client: AsyncClient
+    ) -> None:
         resp = await empire_app_client.post("/api/empires", json={"name": _EMPIRE_NAME})
         assert resp.json()["rooms"] == []
 
-    async def test_create_response_agents_is_empty_list(self, empire_app_client: AsyncClient) -> None:
+    async def test_create_response_agents_is_empty_list(
+        self, empire_app_client: AsyncClient
+    ) -> None:
         resp = await empire_app_client.post("/api/empires", json={"name": _EMPIRE_NAME})
         assert resp.json()["agents"] == []
 
@@ -93,7 +97,9 @@ class TestCreateEmpireConflict:
         resp = await empire_app_client.post("/api/empires", json={"name": "2つ目の幕府"})
         assert resp.json()["error"]["message"] == "Empire already exists."
 
-    async def test_duplicate_response_has_error_envelope(self, empire_app_client: AsyncClient) -> None:
+    async def test_duplicate_response_has_error_envelope(
+        self, empire_app_client: AsyncClient
+    ) -> None:
         await _create_empire(empire_app_client)
         resp = await empire_app_client.post("/api/empires", json={"name": "2つ目の幕府"})
         body = resp.json()
@@ -102,7 +108,10 @@ class TestCreateEmpireConflict:
         assert "message" in body["error"]
 
     async def test_csrf_evil_origin_returns_403(self, empire_app_client: AsyncClient) -> None:
-        """T1: POST /api/empires + evil Origin → 403 (CSRF ミドルウェアが適用されることの物理保証)."""
+        """T1: POST /api/empires + evil Origin → 403.
+
+        CSRF middleware が適用されることの物理保証。
+        """
         resp = await empire_app_client.post(
             "/api/empires",
             headers={"Origin": "http://evil.example.com"},
@@ -131,7 +140,9 @@ class TestListEmpires:
         resp = await empire_app_client.get("/api/empires")
         assert resp.json()["total"] == 1
 
-    async def test_list_with_empire_items_has_one_entry(self, empire_app_client: AsyncClient) -> None:
+    async def test_list_with_empire_items_has_one_entry(
+        self, empire_app_client: AsyncClient
+    ) -> None:
         await _create_empire(empire_app_client)
         resp = await empire_app_client.get("/api/empires")
         assert len(resp.json()["items"]) == 1
@@ -240,7 +251,9 @@ class TestUpdateArchivedEmpire:
         )
         assert resp.status_code == 409
 
-    async def test_patch_archived_error_code_is_conflict(self, empire_app_client: AsyncClient) -> None:
+    async def test_patch_archived_error_code_is_conflict(
+        self, empire_app_client: AsyncClient
+    ) -> None:
         body = await _create_empire(empire_app_client)
         await empire_app_client.delete(f"/api/empires/{body['id']}")
         resp = await empire_app_client.patch(
@@ -262,7 +275,7 @@ class TestUpdateArchivedEmpire:
 # TC-IT-EM-HTTP-008: DELETE /api/empires/{id} → 204 + archived=true
 # ---------------------------------------------------------------------------
 class TestDeleteEmpire:
-    """TC-IT-EM-HTTP-008: DELETE /api/empires/{id} → 204 + GET shows archived=true (REQ-EM-HTTP-005)."""
+    """TC-IT-EM-HTTP-008: DELETE /api/empires/{id} → 204 + GET shows archived=true (REQ-EM-HTTP-005)."""  # noqa: E501
 
     async def test_delete_returns_204(self, empire_app_client: AsyncClient) -> None:
         body = await _create_empire(empire_app_client)
@@ -281,8 +294,10 @@ class TestDeleteEmpire:
         get_resp = await empire_app_client.get(f"/api/empires/{body['id']}")
         assert get_resp.json()["archived"] is True
 
-    async def test_delete_empire_still_retrievable_after_archive(self, empire_app_client: AsyncClient) -> None:
-        """論理削除後も GET で取得可能（物理削除ではない）."""
+    async def test_delete_empire_still_retrievable_after_archive(
+        self, empire_app_client: AsyncClient
+    ) -> None:
+        """論理削除後も GET で取得可能(物理削除ではない)."""
         body = await _create_empire(empire_app_client)
         await empire_app_client.delete(f"/api/empires/{body['id']}")
         get_resp = await empire_app_client.get(f"/api/empires/{body['id']}")

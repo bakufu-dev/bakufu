@@ -73,4 +73,3 @@ class EmpireRepository(Protocol):
 
 
 __all__ = ["EmpireRepository"]
-

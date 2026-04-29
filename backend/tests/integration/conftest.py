@@ -87,6 +87,7 @@ async def empire_app_client(tmp_path: Path) -> AsyncIterator[AsyncClient]:
     ``create_all_tables`` so CRUD operations hit a real SQLite DB.
     """
     from bakufu.interfaces.http.app import create_app
+
     from tests.factories.db import create_all_tables, make_test_engine, make_test_session_factory
 
     app = create_app()

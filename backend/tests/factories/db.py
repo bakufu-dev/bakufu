@@ -36,7 +36,7 @@ async def create_all_tables(engine: AsyncEngine) -> None:
     every ORM model is registered with ``Base.metadata`` before ``create_all``
     executes.  Production code must NOT import this function.
     """
-    import bakufu.infrastructure.persistence.sqlite.tables  # noqa: F401 — side-effect import
+    import bakufu.infrastructure.persistence.sqlite.tables  # noqa: F401  # pyright: ignore[reportUnusedImport]
     from bakufu.infrastructure.persistence.sqlite.base import Base
 
     async with engine.begin() as conn:

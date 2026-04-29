@@ -243,4 +243,3 @@ __all__ = [
     "MIN_NAME_LENGTH",
     "Empire",
 ]
-

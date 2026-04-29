@@ -77,7 +77,7 @@ class TestEmpireUpdateSchema:
         assert schema.name == "新名前"
 
     def test_name_none_passes(self) -> None:
-        """name=None は部分更新（変更なし）として有効."""
+        """name=None は部分更新(変更なし)として有効."""
         from bakufu.interfaces.http.schemas.empire import EmpireUpdate
 
         schema = EmpireUpdate(name=None)
@@ -211,7 +211,10 @@ class TestEmpireInvariantViolationHandler:
 
         exc = EmpireInvariantViolation(
             kind="name_range",
-            message="[FAIL] Empire name は 1〜80 文字でなければなりません。\nNext: 1〜80 文字の名前を指定してください。",
+            message=(
+                "[FAIL] Empire name は 1〜80 文字でなければなりません。"
+                "\nNext: 1〜80 文字の名前を指定してください。"
+            ),
         )
         resp = await empire_invariant_violation_handler(self._make_request(), exc)  # type: ignore[arg-type]
         assert resp.status_code == 422  # type: ignore[union-attr]
@@ -224,7 +227,10 @@ class TestEmpireInvariantViolationHandler:
 
         exc = EmpireInvariantViolation(
             kind="name_range",
-            message="[FAIL] Empire name は 1〜80 文字でなければなりません。\nNext: 1〜80 文字の名前を指定してください。",
+            message=(
+                "[FAIL] Empire name は 1〜80 文字でなければなりません。"
+                "\nNext: 1〜80 文字の名前を指定してください。"
+            ),
         )
         resp = await empire_invariant_violation_handler(self._make_request(), exc)  # type: ignore[arg-type]
         body = json.loads(resp.body)  # type: ignore[union-attr]
@@ -239,7 +245,10 @@ class TestEmpireInvariantViolationHandler:
 
         exc = EmpireInvariantViolation(
             kind="name_range",
-            message="[FAIL] Empire name は 1〜80 文字でなければなりません。\nNext: 1〜80 文字の名前を指定してください。",
+            message=(
+                "[FAIL] Empire name は 1〜80 文字でなければなりません。"
+                "\nNext: 1〜80 文字の名前を指定してください。"
+            ),
         )
         resp = await empire_invariant_violation_handler(self._make_request(), exc)  # type: ignore[arg-type]
         body = json.loads(resp.body)  # type: ignore[union-attr]
@@ -254,7 +263,10 @@ class TestEmpireInvariantViolationHandler:
 
         exc = EmpireInvariantViolation(
             kind="name_range",
-            message="[FAIL] Empire name は 1〜80 文字でなければなりません。\nNext: 1〜80 文字の名前を指定してください。",
+            message=(
+                "[FAIL] Empire name は 1〜80 文字でなければなりません。"
+                "\nNext: 1〜80 文字の名前を指定してください。"
+            ),
         )
         resp = await empire_invariant_violation_handler(self._make_request(), exc)  # type: ignore[arg-type]
         body = json.loads(resp.body)  # type: ignore[union-attr]
@@ -269,13 +281,14 @@ class TestEmpireInvariantViolationHandler:
 
         exc = EmpireInvariantViolation(
             kind="name_range",
-            message="[FAIL] Empire name は 1〜80 文字でなければなりません。\nNext: 1〜80 文字の名前を指定してください。",
+            message=(
+                "[FAIL] Empire name は 1〜80 文字でなければなりません。"
+                "\nNext: 1〜80 文字の名前を指定してください。"
+            ),
         )
         resp = await empire_invariant_violation_handler(self._make_request(), exc)  # type: ignore[arg-type]
         body = json.loads(resp.body)  # type: ignore[union-attr]
-        assert (
-            body["error"]["message"] == "Empire name は 1〜80 文字でなければなりません。"
-        )
+        assert body["error"]["message"] == "Empire name は 1〜80 文字でなければなりません。"
 
     async def test_handler_wrong_type_raises_type_error(self) -> None:
         """非 EmpireInvariantViolation → TypeError (Fail Fast 確認)."""
@@ -369,14 +382,14 @@ class TestStaticDependencyAnalysisEmpire:
     """TC-UT-EM-HTTP-010: routers/ と schemas/ の依存方向を ast.walk() で全検査.
 
     旧実装 (_collect_toplevel_imports) は tree.body のみ走査していたため、
-    関数内遅延 import（例: ``_to_empire_response`` 内の
-    ``from bakufu.domain.empire import Empire``）を見逃す盲点があった。
+    関数内遅延 import(例: ``_to_empire_response`` 内の
+    ``from bakufu.domain.empire import Empire``)を見逃す盲点があった。
     ヘルスバーグ指摘 (PR #95 却下理由) を受け ast.walk() へ拡張し、
     トップレベル・関数内・クラス内を含む全 import 文を検査する。
 
     スコープを ``routers/`` と ``schemas/`` に絞る理由:
     * ``app.py``        : lifespan・handler 登録のため infra/domain deferred import が設計上正当
-    * ``dependencies.py``: DI Factory が infra を deferred import する設計（コメントで明示）
+    * ``dependencies.py``: DI Factory が infra を deferred import する設計(コメントで明示)
     * ``error_handlers.py``: domain 例外を isinstance チェックするため domain deferred import が正当
     上記ファイルは「例外許可ファイル」であり、routers / schemas は例外なく
     bakufu.domain / bakufu.infrastructure への import が禁止される。
@@ -388,7 +401,7 @@ class TestStaticDependencyAnalysisEmpire:
         return Path(_app_mod.__file__).parent  # type: ignore[arg-type]
 
     def _collect_all_imports(self, py_file: Path) -> list[tuple[str, int]]:
-        """ast.walk() でファイル内の全 import 文（関数内遅延 import 含む）を収集する。
+        """ast.walk() でファイル内の全 import 文(関数内遅延 import 含む)を収集する。
 
         旧 ``_collect_toplevel_imports`` は ``tree.body`` のみを走査していたが、
         本メソッドは ``ast.walk(tree)`` で AST 全ノードを走査するため、
@@ -406,10 +419,10 @@ class TestStaticDependencyAnalysisEmpire:
         return results
 
     def test_empire_router_has_no_domain_import(self) -> None:
-        """routers/ と schemas/ は bakufu.domain を一切 import してはならない（遅延含む）.
+        """routers/ と schemas/ は bakufu.domain を一切 import してはならない(遅延含む).
 
         ast.walk() で関数内遅延 import も検出する。旧 BUG-EM-002 相当の違反
-        （例: router 関数内 ``from bakufu.domain.empire import Empire``）が
+        (例: router 関数内 ``from bakufu.domain.empire import Empire``)が
         再混入した場合にこのテストが失敗する。
         """
         interfaces_dir = self._interfaces_http_dir()
@@ -419,16 +432,14 @@ class TestStaticDependencyAnalysisEmpire:
             for py_file in sorted(scan_dir.rglob("*.py")):
                 for module_name, lineno in self._collect_all_imports(py_file):
                     if module_name.startswith("bakufu.domain"):
-                        violations.append(
-                            f"{py_file.name}:{lineno}: import of {module_name}"
-                        )
+                        violations.append(f"{py_file.name}:{lineno}: import of {module_name}")
         assert violations == [], (
             "bakufu.domain imports detected in routers/ or schemas/ (including deferred):\n"
             + "\n".join(violations)
         )
 
     def test_empire_router_has_no_infrastructure_import(self) -> None:
-        """routers/ と schemas/ は bakufu.infrastructure を一切 import してはならない（遅延含む）.
+        """routers/ と schemas/ は bakufu.infrastructure を一切 import してはならない(遅延含む).
 
         ast.walk() で関数内遅延 import も検出する。
         ``dependencies.py`` は DI Factory として infra deferred import が設計上正当なため
@@ -441,9 +452,7 @@ class TestStaticDependencyAnalysisEmpire:
             for py_file in sorted(scan_dir.rglob("*.py")):
                 for module_name, lineno in self._collect_all_imports(py_file):
                     if module_name.startswith("bakufu.infrastructure"):
-                        violations.append(
-                            f"{py_file.name}:{lineno}: import of {module_name}"
-                        )
+                        violations.append(f"{py_file.name}:{lineno}: import of {module_name}")
         assert violations == [], (
             "bakufu.infrastructure imports detected in routers/ or schemas/ (including deferred):\n"
             + "\n".join(violations)

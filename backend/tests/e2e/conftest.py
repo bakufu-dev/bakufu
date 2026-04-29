@@ -21,6 +21,7 @@ async def empire_e2e_client(tmp_path: Path) -> AsyncClient:  # type: ignore[over
     E2E tests are structurally independent of integration fixtures.
     """
     from bakufu.interfaces.http.app import create_app
+
     from tests.factories.db import create_all_tables, make_test_engine, make_test_session_factory
 
     app = create_app()
