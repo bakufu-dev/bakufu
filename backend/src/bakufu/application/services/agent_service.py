@@ -43,17 +43,14 @@ class AgentService:
     ) -> Agent:
         """Agent を採用して永続化する（REQ-AG-HTTP-001）。
 
-        Empire 存在確認 → Agent 構築（純粋 domain 処理）→ UoW: 名前重複確認 + 保存
-        の順で実行する。autobegin 競合を避けるため保存は単一の
-        ``async with session.begin():`` 内で完結させる。
+        Agent 構築（純粋 domain 処理）→ UoW: Empire 存在確認 + 名前重複確認 + 保存
+        の順で実行する。BUG-EM-001 パターン準拠: Empire 存在確認を begin() の外で
+        実行すると autobegin が起動し、後続の ``async with session.begin():`` が
+        ``InvalidRequestError: A transaction is already begun`` で失敗するため、
+        全 DB アクセスを単一の ``async with session.begin():`` 内に収める。
         """
-        # 1. Empire 存在確認（トランザクション外）
-        empire = await self._empire_repo.find_by_id(empire_id)
-        if empire is None:
-            raise EmpireNotFoundError(str(empire_id))
-
-        # 2. Agent 構築（純粋なドメイン処理 — DB アクセスなし）
-        # AgentInvariantViolation は早期送出
+        # 1. Agent 構築（純粋なドメイン処理 — DB アクセスなし）
+        # AgentInvariantViolation は早期送出（begin() の外で失敗できる）
         agent = self._build_agent(
             empire_id=empire_id,
             name=name,
@@ -63,8 +60,12 @@ class AgentService:
             skills=skills,
         )
 
-        # 3. UoW: 名前重複確認 + 保存
+        # 2. UoW: Empire 存在確認 + 名前重複確認 + 保存
+        # BUG-EM-001: Empire check を begin() 内に移動して autobegin 競合を回避
         async with self._session.begin():
+            empire = await self._empire_repo.find_by_id(empire_id)
+            if empire is None:
+                raise EmpireNotFoundError(str(empire_id))
             existing = await self._agent_repo.find_by_name(empire_id, name)
             if existing is not None:
                 raise AgentNameAlreadyExistsError(str(empire_id), name)
