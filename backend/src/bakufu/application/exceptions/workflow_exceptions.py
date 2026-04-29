@@ -1,4 +1,5 @@
 """Workflow application-layer exceptions (確定 F)."""
+
 from __future__ import annotations
 
 

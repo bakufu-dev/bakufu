@@ -180,8 +180,7 @@ class WorkflowService:
                 s["completion_policy"] = {"kind": "manual", "description": ""}
             # notify_channels: URL strings → NotifyChannel dict format
             s["notify_channels"] = [
-                {"kind": "discord", "target": url}
-                for url in s.get("notify_channels", [])
+                {"kind": "discord", "target": url} for url in s.get("notify_channels", [])
             ]
             result.append(s)
         return result

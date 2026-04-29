@@ -167,22 +167,16 @@ async def workflow_archived_handler(request: Request, exc: Exception) -> JSONRes
     return _error_response(CONFLICT, "Workflow is archived and cannot be modified.", 409)
 
 
-async def workflow_preset_not_found_handler(
-    request: Request, exc: Exception
-) -> JSONResponse:
+async def workflow_preset_not_found_handler(request: Request, exc: Exception) -> JSONResponse:
     """``WorkflowPresetNotFoundError`` → HTTP 404 / not_found (MSG-WF-HTTP-004)。"""
     from bakufu.application.exceptions.workflow_exceptions import WorkflowPresetNotFoundError
 
     if not isinstance(exc, WorkflowPresetNotFoundError):
-        raise TypeError(
-            f"Expected WorkflowPresetNotFoundError, got {type(exc).__name__}"
-        )
+        raise TypeError(f"Expected WorkflowPresetNotFoundError, got {type(exc).__name__}")
     return _error_response(NOT_FOUND, "Workflow preset not found.", 404)
 
 
-async def workflow_invariant_violation_handler(
-    request: Request, exc: Exception
-) -> JSONResponse:
+async def workflow_invariant_violation_handler(request: Request, exc: Exception) -> JSONResponse:
     """``WorkflowInvariantViolation`` → HTTP 422 / validation_error (MSG-WF-HTTP-005)。
 
     前処理ルール (確定 C):
@@ -192,9 +186,7 @@ async def workflow_invariant_violation_handler(
     from bakufu.domain.exceptions import WorkflowInvariantViolation
 
     if not isinstance(exc, WorkflowInvariantViolation):
-        raise TypeError(
-            f"Expected WorkflowInvariantViolation, got {type(exc).__name__}"
-        )
+        raise TypeError(f"Expected WorkflowInvariantViolation, got {type(exc).__name__}")
     raw = str(exc)
     cleaned = _FAIL_PREFIX_RE.sub("", raw).split("\nNext:")[0].strip()
     return _error_response(VALIDATION_ERROR, cleaned, 422)

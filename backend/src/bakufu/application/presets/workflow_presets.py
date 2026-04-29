@@ -1,4 +1,5 @@
 """Workflow preset definitions (V-model / Agile)."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

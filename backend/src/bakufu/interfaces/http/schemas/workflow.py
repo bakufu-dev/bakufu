@@ -56,9 +56,7 @@ class StageCreate(BaseModel):
     @classmethod
     def _validate_kind(cls, value: object) -> object:
         if isinstance(value, str) and value not in _VALID_STAGE_KINDS:
-            raise ValueError(
-                f"kind must be one of {sorted(_VALID_STAGE_KINDS)!r}, got {value!r}"
-            )
+            raise ValueError(f"kind must be one of {sorted(_VALID_STAGE_KINDS)!r}, got {value!r}")
         return value
 
     @field_validator("required_role", mode="before")
@@ -71,8 +69,7 @@ class StageCreate(BaseModel):
         for item in roles:
             if isinstance(item, str) and item not in _VALID_ROLES:
                 raise ValueError(
-                    f"required_role element must be one of {sorted(_VALID_ROLES)!r},"
-                    f" got {item!r}"
+                    f"required_role element must be one of {sorted(_VALID_ROLES)!r}, got {item!r}"
                 )
         out: Any = roles
         return out
@@ -94,8 +91,7 @@ class TransitionCreate(BaseModel):
     def _validate_condition(cls, value: object) -> object:
         if isinstance(value, str) and value not in _VALID_TRANSITION_CONDITIONS:
             raise ValueError(
-                f"condition must be one of {sorted(_VALID_TRANSITION_CONDITIONS)!r},"
-                f" got {value!r}"
+                f"condition must be one of {sorted(_VALID_TRANSITION_CONDITIONS)!r}, got {value!r}"
             )
         return value
 
@@ -117,10 +113,7 @@ class WorkflowCreate(BaseModel):
         preset_name が None の場合は name/stages/transitions/entry_stage_id が全て非 None。
         """
         if self.preset_name is not None:
-            if any(
-                v is not None
-                for v in (self.stages, self.transitions, self.entry_stage_id)
-            ):
+            if any(v is not None for v in (self.stages, self.transitions, self.entry_stage_id)):
                 raise ValueError(
                     "When preset_name is set, stages/transitions/entry_stage_id must be None."
                 )
@@ -195,13 +188,9 @@ class StageResponse(BaseModel):
             "kind": str(data.kind),
             "required_role": sorted(str(r) for r in data.required_role),
             "completion_policy": (
-                data.completion_policy.model_dump(mode="json")
-                if data.completion_policy
-                else None
+                data.completion_policy.model_dump(mode="json") if data.completion_policy else None
             ),
-            "notify_channels": [
-                c.model_dump(mode="json")["target"] for c in data.notify_channels
-            ],
+            "notify_channels": [c.model_dump(mode="json")["target"] for c in data.notify_channels],
             "deliverable_template": data.deliverable_template,
         }
         return result
