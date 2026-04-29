@@ -14,8 +14,8 @@ domain 層への import はゼロ (Q-3 interfaces->domain 直接依存禁止)。
 ``Empire`` → ``EmpireResponse`` の変換は ``EmpireResponse.model_validate(empire)``
 が ``from_attributes=True`` + schema 側 ``field_validator`` で完結する。
 
-``empire_id`` パスパラメータは ``str`` で受け取り ``UUID(empire_id)`` に変換する。
-不正な UUID 形式は FastAPI の path validation で 422 を返す。
+``empire_id`` パスパラメータは ``UUID`` 型で宣言し、FastAPI の path validation に
+UUID 形式検証を委ねる。不正な UUID 形式は FastAPI が 422 を返す。
 ``EmpireId`` は ``UUID`` の型エイリアスのため domain import は不要。
 """
 
@@ -69,22 +69,21 @@ async def list_empires(
 
 @router.get("/{empire_id}", status_code=200, response_model=EmpireResponse)
 async def get_empire(
-    empire_id: str,
+    empire_id: UUID,
     service: EmpireServiceDep,
 ) -> EmpireResponse:
     """Empire を単件取得する (REQ-EM-HTTP-003)。
 
     - 404: 対象 Empire が存在しない場合 (``EmpireNotFoundError``)
-    - 422: ``empire_id`` が不正な UUID 形式の場合
+    - 422: ``empire_id`` が不正な UUID 形式の場合 (FastAPI path validation)
     """
-    eid: UUID = UUID(empire_id)
-    empire = await service.find_by_id(eid)
+    empire = await service.find_by_id(empire_id)
     return EmpireResponse.model_validate(empire)
 
 
 @router.patch("/{empire_id}", status_code=200, response_model=EmpireResponse)
 async def update_empire(
-    empire_id: str,
+    empire_id: UUID,
     body: EmpireUpdate,
     service: EmpireServiceDep,
 ) -> EmpireResponse:
@@ -92,16 +91,15 @@ async def update_empire(
 
     - 404: 対象 Empire が存在しない場合 (``EmpireNotFoundError``)
     - 409: アーカイブ済み Empire への更新 (``EmpireArchivedError``)
-    - 422: name が 1-80 文字を超える場合 / 不正 UUID
+    - 422: name が 1-80 文字を超える場合 / 不正 UUID (FastAPI path validation)
     """
-    eid: UUID = UUID(empire_id)
-    empire = await service.update(eid, body.name)
+    empire = await service.update(empire_id, body.name)
     return EmpireResponse.model_validate(empire)
 
 
 @router.delete("/{empire_id}", status_code=204)
 async def delete_empire(
-    empire_id: str,
+    empire_id: UUID,
     service: EmpireServiceDep,
 ) -> Response:
     """Empire を論理削除する (REQ-EM-HTTP-005 / UC-EM-010)。
@@ -110,9 +108,9 @@ async def delete_empire(
 
     - 204: 成功 (No Content)
     - 404: 対象 Empire が存在しない場合 (``EmpireNotFoundError``)
+    - 422: ``empire_id`` が不正な UUID 形式の場合 (FastAPI path validation)
     """
-    eid: UUID = UUID(empire_id)
-    await service.archive(eid)
+    await service.archive(empire_id)
     return Response(status_code=204)
 
 
