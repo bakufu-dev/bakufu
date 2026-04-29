@@ -52,7 +52,7 @@
 | REQ-AG-HTTP-004（R1-9 masking / A02）| PATCH レスポンス `persona.prompt_body` masked | TC-IT-AGH-020 | 結合 | セキュリティ | feature-spec.md §9 #16 |
 | REQ-AG-HTTP-005（正常系）| `agent_router` DELETE + `AgentService.archive` + `SqliteAgentRepository.save` | TC-IT-AGH-021 | 結合 | 正常系 | feature-spec.md §9 #17 |
 | REQ-AG-HTTP-005（Agent 不在）| `AgentService.archive` → `AgentNotFoundError` | TC-IT-AGH-022 | 結合 | 異常系 | — |
-| REQ-AG-HTTP-005（冪等性: §確定G）| DELETE 2 回目 → 204（※設計不整合 BUG-AG-001 参照） | TC-IT-AGH-023 | 結合 | 正常系 | — |
+| REQ-AG-HTTP-005（冪等性: §確定G）| DELETE 2 回目 → 204（§確定G 凍結・BUG-AG-001 解消済み・system-test-design.md と整合済み）| TC-IT-AGH-023 | 結合 | 正常系 | — |
 | T3（不正 UUID）| FastAPI `UUID` 型強制 → 422 | TC-IT-AGH-024 | 結合 | 異常系 | — |
 | T1（CSRF）| `Origin: http://evil.example.com` → POST → 403 | TC-IT-AGH-025 | 結合 | セキュリティ | — |
 | T2（スタックトレース非露出）| generic_exception_handler → 500 body に stacktrace なし | TC-IT-AGH-026 | 結合 | セキュリティ | — |
@@ -77,17 +77,15 @@
 
 ## 設計上の発見事項
 
-### ⚠️ BUG-AG-001: DELETE 冪等性の設計不整合（要リーダー判断）
+### ✅ BUG-AG-001: DELETE 冪等性の設計不整合 — **解消済み**
 
 | 文書 | 記述 |
 |---|---|
 | `detailed-design.md §確定G` | `archive` の冪等性: 2 回目の DELETE も **204** を返す |
 | `basic-design.md §UX 設計` | `DELETE` を 2 回呼び出し（冪等）→ 2 回目も **204** |
-| `system-test-design.md` TC-E2E-AG-004 ステップ 8 | DELETE（再試行）→ **404** |
+| `system-test-design.md` TC-E2E-AG-004 ステップ 8 | DELETE（再試行）→ **204（冪等）**（修正済み）|
 
-`detailed-design.md` と `basic-design.md` は **2 回目 204** を凍結。`system-test-design.md` は **2 回目 404** を記述しており矛盾する。
-
-**本 test-design.md の判定**: `detailed-design.md §確定G` に従い TC-IT-AGH-023 は **2 回目 204** で検証する。`system-test-design.md` の TC-E2E-AG-004 ステップ 8 は別 PR で修正が必要。リーダーに確認を要請。
+ジェンセン【決定】により `detailed-design.md §確定G`（2 回目 204）を正とし、`system-test-design.md` を同ブランチ内のコミット `94e28fd` で修正済み。TC-IT-AGH-023 は **2 回目 204** で検証する。全設計書間の矛盾は解消された。
 
 ## 外部 I/O 依存マップ
 
@@ -114,7 +112,7 @@
 | TC-IT-AGH-010 | `AgentService.find_by_empire` → アーカイブ済み含む | 実 SQLite tempdb | Empire 存在・Agent 2 件（active 1 + archived 1）| `GET /api/empires/{empire_id}/agents` | HTTP 200, `{"total": 2}`（アーカイブ済みも含む — 設計 REQ-AG-HTTP-002 より）|
 | TC-IT-AGH-011 | `agent_router` → `AgentService.find_by_id` → `SqliteAgentRepository.find_by_id` | 実 SQLite tempdb | Agent 存在 | `GET /api/agents/{agent_id}` | HTTP 200, `AgentResponse`（id / name 等が保存時と一致）|
 | TC-IT-AGH-012 | `AgentService.find_by_id` → `AgentNotFoundError` → `agent_not_found_handler` | 実 SQLite tempdb | Agent 未存在 | `GET /api/agents/{ランダム UUID}` | HTTP 404, `{"error": {"code": "not_found", "message": "Agent not found."}}` |
-| TC-IT-AGH-013 | GET レスポンス `persona.prompt_body` masking（R1-9 / T4 / A02）| 実 SQLite tempdb | prompt_body に raw token を含む Agent が永続化済み | `GET /api/agents/{agent_id}` | HTTP 200, `persona.prompt_body` が `<REDACTED:*>` 形式（raw token 不在）|
+| TC-IT-AGH-013 | GET レスポンス `persona.prompt_body` masking — **R1-8 バイパス経路（R1-9 独立防御証明）**（R1-9 / T4 / A02）| 実 SQLite tempdb | **R1-8 を経由せず** `SqliteAgentRepository.save()` で raw token（例: `"GITHUB_PAT=ghp_xxxx"`）を含む `prompt_body` を直接 DB に INSERT（API を使わないダイレクトシード — R1-8 が仮に無効でも R1-9 が独立して機能することを証明する）| `GET /api/agents/{agent_id}` | HTTP 200, `persona.prompt_body` が `<REDACTED:*>` 形式（raw token 不在）— R1-9 HTTP masking が R1-8 と独立して動作することを assert |
 | TC-IT-AGH-014 | `agent_router` → `AgentService.update` → `SqliteAgentRepository.save` | 実 SQLite tempdb | Agent 存在（archived=false）| `PATCH /api/agents/{agent_id}` `{"name": "新名前"}` | HTTP 200, `AgentResponse`（name="新名前", その他フィールド変化なし）|
 | TC-IT-AGH-015 | `AgentService.update` → providers 全置換 | 実 SQLite tempdb | Agent 存在（archived=false）| `PATCH /api/agents/{agent_id}` 新 providers list（全置換）| HTTP 200, `AgentResponse`（providers が新 list に差し替わる）|
 | TC-IT-AGH-016 | `AgentService.update` → `AgentNotFoundError` → `agent_not_found_handler` | 実 SQLite tempdb | Agent 未存在 | `PATCH /api/agents/{ランダム UUID}` `{"name": "変更"}` | HTTP 404, `{"error": {"code": "not_found", "message": "Agent not found."}}` |
@@ -124,7 +122,7 @@
 | TC-IT-AGH-020 | PATCH レスポンス `persona.prompt_body` masking（R1-9 / T4 / A02）| 実 SQLite tempdb | Agent 存在（archived=false）| `PATCH /api/agents/{agent_id}` `{"persona": {"prompt_body": "GITHUB_PAT=ghp_xxxx"}}` | HTTP 200, `persona.prompt_body` に raw token が含まれない（`<REDACTED:*>` 形式）|
 | TC-IT-AGH-021 | `agent_router` → `AgentService.archive` → `SqliteAgentRepository.save` | 実 SQLite tempdb | Agent 存在（archived=false）| `DELETE /api/agents/{agent_id}` | HTTP 204 No Content |
 | TC-IT-AGH-022 | `AgentService.archive` → `AgentNotFoundError` → `agent_not_found_handler` | 実 SQLite tempdb | Agent 未存在 | `DELETE /api/agents/{ランダム UUID}` | HTTP 404, `{"error": {"code": "not_found", "message": "Agent not found."}}` |
-| TC-IT-AGH-023 | DELETE 冪等性（§確定G — ⚠️ BUG-AG-001 確認後に更新要）| 実 SQLite tempdb | Agent 存在（archived=false）| `DELETE /api/agents/{agent_id}` を 2 回連続 | 1 回目 HTTP 204 / 2 回目 HTTP 204（§確定G 凍結値 — `system-test-design.md` の 404 記述と不整合、リーダー判断待ち）|
+| TC-IT-AGH-023 | DELETE 冪等性（§確定G / BUG-AG-001 解消済み・system-test-design.md と整合済み）| 実 SQLite tempdb | Agent 存在（archived=false）| `DELETE /api/agents/{agent_id}` を 2 回連続 | 1 回目 HTTP 204 / 2 回目 HTTP 204（§確定G 凍結値、冪等性確認）|
 | TC-IT-AGH-024 | FastAPI `UUID` 型強制（T3）| — | — | `GET /api/agents/not-a-valid-uuid` 等、パスパラメータに不正 UUID 文字列 | HTTP 422 |
 | TC-IT-AGH-025 | CSRF ミドルウェア（T1）| 実 SQLite tempdb | Empire 存在 | `POST /api/empires/{empire_id}/agents` に `Origin: http://evil.example.com` ヘッダ付与 | HTTP 403（http-api-foundation 確定D）|
 | TC-IT-AGH-026 | generic_exception_handler（T2 スタックトレース非露出）| 実 SQLite tempdb | — | 内部エラーを誘発（例: リポジトリを意図的に壊す）| HTTP 500, レスポンス body に `"stacktrace"` / `"traceback"` / `"Traceback"` 等が含まれない（`{"error": {"code": "internal_error", ...}}` のみ）|
@@ -203,7 +201,7 @@ backend/tests/
 | # | 内容 | 起票先 |
 |---|---|---|
 | TBD-1 | `tests/factories/agent.py` 新規作成（`make_agent` / `make_persona` / `make_provider_config` / `make_skill_ref`）。実装着手前に完了必須。空欄のまま IT 実装に進んだ場合レビューで却下する | 実装 PR 着手前 |
-| TBD-2 | **BUG-AG-001**: `system-test-design.md` TC-E2E-AG-004 ステップ 8「2 回目 DELETE → 404」と `detailed-design.md §確定G`「2 回目 DELETE → 204」の設計不整合をリーダーに確認し、設計書 PR で修正すること | 設計書 PR |
+| ~~TBD-2~~ | ~~**BUG-AG-001**: `system-test-design.md` TC-E2E-AG-004 ステップ 8「2 回目 DELETE → 404」と `detailed-design.md §確定G`「2 回目 DELETE → 204」の設計不整合~~  → **解消済み**: ジェンセン【決定】により 204 を正とし、コミット `94e28fd` で `system-test-design.md` ステップ 8 を「204（冪等）」に修正完了。本 TBD は**クローズ**。 | 完了（同ブランチ）|
 | TBD-3 | `AgentRepository.find_all_by_empire`（前提条件 P-1）実装完了を TC-IT-AGH-007〜010 実行前に確認すること | 実装担当確認 |
 | TBD-4 | `AgentNotFoundError` の `room_exceptions.py` → `agent_exceptions.py` 正式移転（前提条件 P-2）完了を本 IT 実行前に確認すること | 実装担当確認 |
 
