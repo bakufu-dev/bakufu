@@ -8,7 +8,8 @@ Covers:
   TC-IT-HAF-003  POST no body → 422 validation_error (REQ-HAF-003, MSG-HAF-002, §9 #3)
   TC-IT-HAF-004  GET raises RuntimeError → 500 no stack trace (REQ-HAF-003, MSG-HAF-003, §9 #4, T3)
   TC-IT-HAF-006  get_session() yields AsyncSession (REQ-HAF-004, §9 #6)
-  TC-IT-HAF-007  lifespan: startup sets session_factory; shutdown disposes engine (REQ-HAF-001/007, §9 #7)
+  TC-IT-HAF-007  lifespan: startup sets session_factory; shutdown disposes engine
+                 (REQ-HAF-001/007, §9 #7)
   TC-IT-HAF-008  POST + evil Origin → 403 CSRF failed (MSG-HAF-004, T2, §9 #8)
 
 Issue: #55
@@ -82,7 +83,9 @@ class TestValidationErrorHandler:
         response = await app_client.post("/test/validation-required")
         assert response.json()["error"]["code"] == "validation_error"
 
-    async def test_validation_error_message_starts_with_prefix(self, app_client: AsyncClient) -> None:
+    async def test_validation_error_message_starts_with_prefix(
+        self, app_client: AsyncClient
+    ) -> None:
         response = await app_client.post("/test/validation-required")
         assert response.json()["error"]["message"].startswith("Request validation failed")
 
@@ -269,8 +272,9 @@ class TestLifespan:
 
         data_dir.reset()
 
-        from sqlalchemy.ext.asyncio import AsyncEngine
         from unittest.mock import patch as mock_patch
+
+        from sqlalchemy.ext.asyncio import AsyncEngine
 
         dispose_calls: list[int] = []
         original_dispose = AsyncEngine.dispose
@@ -382,7 +386,7 @@ class TestHttpExceptionHandlerBranching:
         assert response.json()["error"]["code"] == "not_found"
 
     async def test_404_returns_msg_haf_001_message(self, app_client: AsyncClient) -> None:
-        """GET /nonexistent → message is exactly MSG-HAF-001 "Resource not found." not "Not Found"."""
+        """GET /nonexistent → message equals MSG-HAF-001 "Resource not found.", not "Not Found"."""
         response = await app_client.get("/nonexistent")
         assert response.json()["error"]["message"] == "Resource not found."
 

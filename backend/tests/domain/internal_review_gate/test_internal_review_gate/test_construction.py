@@ -2,12 +2,12 @@
 
 Per ``docs/features/internal-review-gate/domain/test-design.md`` §構築 + 不変条件.
 Covers:
-  TC-UT-IRG-001  正常構築（REQ-IRG-001, AC#2）
-  TC-UT-IRG-002  required_gate_roles 空集合拒否（REQ-IRG-001/004, AC#2）
-  TC-UT-IRG-010  gate_decision / verdicts 整合性違反（REQ-IRG-004, AC#4, 5）
-  TC-UT-IRG-018  frozen 不変性（Q-3）
-  TC-UT-IRG-019  frozen 構造的等価 / hash（Q-3）
-  TC-UT-IRG-020  extra='forbid' 未知フィールド拒否（Q-3）
+  TC-UT-IRG-001  正常構築(REQ-IRG-001, AC#2)
+  TC-UT-IRG-002  required_gate_roles 空集合拒否(REQ-IRG-001/004, AC#2)
+  TC-UT-IRG-010  gate_decision / verdicts 整合性違反(REQ-IRG-004, AC#4, 5)
+  TC-UT-IRG-018  frozen 不変性(Q-3)
+  TC-UT-IRG-019  frozen 構造的等価 / hash(Q-3)
+  TC-UT-IRG-020  extra='forbid' 未知フィールド拒否(Q-3)
 
 Issue: #65
 """

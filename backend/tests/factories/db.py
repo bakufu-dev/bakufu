@@ -9,10 +9,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
-
 from bakufu.infrastructure.persistence.sqlite.engine import create_engine
 from bakufu.infrastructure.persistence.sqlite.session import make_session_factory
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 
 def make_test_engine(db_path: Path) -> AsyncEngine:

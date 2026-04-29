@@ -180,17 +180,19 @@ readonly PARTIAL_MASK_FILES=(
 )
 
 # Collect unique file paths from PARTIAL_MASK_FILES.
+# Use the ${arr[@]+"${arr[@]}"} pattern so that expanding an empty array
+# does not trip `set -u` on bash 3.x (the macOS default).
 _partial_files=()
 for _entry in "${PARTIAL_MASK_FILES[@]}"; do
     IFS=':' read -r _f _col _typ <<< "$_entry"
     _already_seen=false
-    for _seen in "${_partial_files[@]}"; do
+    for _seen in ${_partial_files[@]+"${_partial_files[@]}"}; do
         [[ "$_seen" == "$_f" ]] && _already_seen=true && break
     done
     [[ "$_already_seen" == false ]] && _partial_files+=("$_f")
 done
 
-for _file in "${_partial_files[@]}"; do
+for _file in ${_partial_files[@]+"${_partial_files[@]}"}; do
     if [[ ! -f "$_file" ]]; then
         # ファイル未作成（後続 PR が追加予定）。スキップ。
         continue

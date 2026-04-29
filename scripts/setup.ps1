@@ -324,7 +324,11 @@ function Install-NodeTools {
 # Step 13. リポジトリ依存の解決（uv sync + pnpm install）
 function Install-RepoDeps {
     if (Test-Path 'pyproject.toml') {
-        & uv sync
+        # workspace 全 package の dev グループまで含めて同期する。
+        # backend/pyproject.toml の dev グループ（httpx / pytest-asyncio 等）は
+        # 素の `uv sync` だと root の .venv に取り込まれず、CI の
+        # test-backend / typecheck が ModuleNotFoundError で落ちる。
+        & uv sync --all-packages --all-groups
     }
     if (Test-Path 'package.json') {
         & pnpm install --frozen-lockfile
