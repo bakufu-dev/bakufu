@@ -29,35 +29,35 @@ from tests.factories.workflow import (
 
 
 class TestNotifyChannelMasking:
-    """TC-UT-WF-057 / 058 / 059 — token masked on JSON serialization & exceptions."""
+    """TC-UT-WF-057 / 058 / 059 — JSON シリアライズと例外でトークンマスキング。"""
 
     def test_057_model_dump_json_mode_masks_token(self) -> None:
-        """TC-UT-WF-057: model_dump(mode='json') replaces token with REDACTED."""
+        """TC-UT-WF-057: model_dump(mode='json') はトークンを REDACTED に置換。"""
         channel = make_notify_channel()
         dumped = channel.model_dump(mode="json")
         assert "<REDACTED:DISCORD_WEBHOOK>" in dumped["target"]
         assert "SyntheticToken_-abcXYZ" not in dumped["target"]
 
     def test_057_model_dump_python_mode_preserves_token(self) -> None:
-        """TC-UT-WF-057: model_dump(mode='python') keeps raw target for in-process use."""
+        """TC-UT-WF-057: model_dump(mode='python') はプロセス内使用のため raw target を保持。"""
         channel = make_notify_channel()
         dumped = channel.model_dump()
         assert dumped["target"] == DEFAULT_DISCORD_WEBHOOK
 
     def test_058_model_dump_json_workflow_scans_clean(self) -> None:
-        """TC-UT-WF-058: workflow.model_dump_json() shows no plaintext token segment."""
+        """TC-UT-WF-058: workflow.model_dump_json() は平文トークンセグメントなし。"""
         wf_payload = build_v_model_payload()
         wf = Workflow.from_dict(wf_payload)
         json_text = wf.model_dump_json()
-        # Token segment "SyntheticToken_-abcXYZ" must not appear in JSON output.
+        # トークンセグメント "SyntheticToken_-abcXYZ" は JSON 出力に出現してはならない。
         assert "SyntheticToken_-abcXYZ" not in json_text
         assert "<REDACTED:DISCORD_WEBHOOK>" in json_text
-        # Sanity check: the dumped JSON parses back as well-formed JSON.
+        # サニティチェック: ダンプ JSON は整形式 JSON で解析可能。
         parsed = json.loads(json_text)
         assert parsed["name"] == "V モデル開発フロー"
 
     def test_059_exception_detail_does_not_leak_token(self) -> None:
-        """TC-UT-WF-059: WorkflowInvariantViolation message/detail mask Discord tokens."""
+        """TC-UT-WF-059: WorkflowInvariantViolation message/detail は Discord トークンをマスク。"""
         fake_message = (
             f"[FAIL] something happened with https://discord.com/api/webhooks/123/{'a' * 30}"
         )
@@ -70,12 +70,12 @@ class TestNotifyChannelMasking:
             },
         )
         assert "a" * 30 not in exc.message
-        # Verify masking applied to nested detail dict too.
+        # ネスト detail 辞書にもマスキング適用を検証。
         nested = cast("dict[str, object]", exc.detail["nested"])
         assert "c" * 30 not in str(nested["u"])
 
     def test_mask_helper_is_idempotent(self) -> None:
-        """Applying mask_discord_webhook twice yields the same result (smoke)."""
+        """mask_discord_webhook を 2 回適用すると同じ結果 (スモーク)。"""
         original = f"https://discord.com/api/webhooks/123/{'x' * 20}"
         once = mask_discord_webhook(original)
         twice = mask_discord_webhook(once)
