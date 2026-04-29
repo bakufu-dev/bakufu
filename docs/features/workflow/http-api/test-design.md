@@ -42,7 +42,6 @@
 | REQ-WF-HTTP-001（DAG 違反）| `workflows_router` POST + `WorkflowInvariantViolation` | TC-IT-WFH-014 | 結合 | 異常系 | Q-3 |
 | REQ-WF-HTTP-001（排他バリデーション：両方指定）| `WorkflowCreate` model_validator | TC-IT-WFH-015 | 結合 | 異常系 | Q-3 |
 | REQ-WF-HTTP-001（排他バリデーション：両方 None）| `WorkflowCreate` model_validator | TC-IT-WFH-016 | 結合 | 異常系 | Q-3 |
-| REQ-WF-HTTP-001（Workflow archived 再割り当て）| `workflows_router` POST + `WorkflowArchivedError(kind="assign")` | TC-IT-WFH-010 | 結合 | 異常系 | feature-spec.md §9 #22 |
 | REQ-WF-HTTP-002（正常系）| `workflows_router` GET by room + `WorkflowService.find_by_room` | TC-IT-WFH-003 | 結合 | 正常系 | feature-spec.md §9 #15 |
 | REQ-WF-HTTP-002（Room 不在）| `workflows_router` GET by room + `RoomNotFoundError` | TC-IT-WFH-017 | 結合 | 異常系 | Q-3 |
 | REQ-WF-HTTP-003（正常系）| `workflows_router` GET by id + `WorkflowService.find_by_id` | TC-IT-WFH-004 | 結合 | 正常系 | feature-spec.md §9 #16 |
@@ -62,9 +61,9 @@
 | REQ-WF-HTTP-007（ルーティング順序）| `GET /api/workflows/presets` リテラルパス優先 | TC-IT-WFH-027 | 結合 | 境界値 | Q-3 |
 | T1（CSRF）| CSRF ミドルウェア → POST workflows | TC-IT-WFH-028 | 結合 | 異常系 | Q-3 |
 | T3（不正 UUID パスインジェクション）| FastAPI UUID 型強制 → 422 | TC-IT-WFH-026 | 結合 | 異常系 | Q-3 |
+| A02（notify_channels マスキング — POST/PATCH 経路）| `StageResponse.notify_channels` が POST 201 / PATCH 200 レスポンスで masked になること（`detailed-design.md §確定A`）| TC-IT-WFH-029 | 結合 | 正常系 | Q-3 |
 | MSG-WF-HTTP-001 | `workflow_not_found_handler` | TC-IT-WFH-018 / TC-UT-WFH-006 | 結合 / ユニット | 異常系 | Q-3 |
 | MSG-WF-HTTP-002 | `workflow_archived_handler(kind="update")` | TC-IT-WFH-020 / TC-UT-WFH-007 | 結合 / ユニット | 異常系 | Q-3 |
-| MSG-WF-HTTP-003 | `workflow_archived_handler(kind="assign")` | TC-IT-WFH-010 / TC-UT-WFH-007 | 結合 / ユニット | 異常系 | Q-3 |
 | MSG-WF-HTTP-004 | `workflow_preset_not_found_handler` | TC-IT-WFH-013 / TC-UT-WFH-008 | 結合 / ユニット | 異常系 | Q-3 |
 | MSG-WF-HTTP-005 | `workflow_invariant_violation_handler`（前処理ルール）| TC-IT-WFH-014 / TC-UT-WFH-009 | 結合 / ユニット | 異常系 | Q-3 |
 | `StageCreate` スキーマ | `schemas/workflow.py` | TC-UT-WFH-001 | ユニット | 正常系 / 異常系 | Q-3 |
@@ -80,11 +79,12 @@
 **マトリクス充足の証拠**:
 - REQ-WF-HTTP-001〜007 すべてに最低 1 件の正常系テストケース（TC-IT-WFH-001〜009）
 - REQ-WF-HTTP-001〜006 の主要な異常系（Room 不在 / Room archived / プリセット不明 / DAG 違反 / 排他バリデーション / Workflow 不在 / archived 操作 / UUID 注入）が各 TC-IT で網羅（001〜028）
-- MSG-WF-HTTP-001〜005 の全件が `response.json()["error"]["code"]` / `"message"` の静的照合テストで確認（IT + UT 二重検証）
-- 親受入基準 #13〜22 のすべてが TC-IT-WFH-001〜010 で対応（1:1 網羅）
+- MSG-WF-HTTP-001/002/004/005 の全件が `response.json()["error"]["code"]` / `"message"` の静的照合テストで確認（IT + UT 二重検証）（MSG-WF-HTTP-003 は設計変更により削除済み）
+- 親受入基準 #13〜21 のすべてが TC-IT-WFH-001〜009 で対応（受入基準 #22 は設計変更により削除済み — `WorkflowArchivedError(kind="assign")` は到達不能パスとして除去）
 - T1（CSRF）/ T3（不正 UUID）脅威への対策が最低 1 件で有効性確認
 - T4（SSRF: notify_channels allow list）は domain 層責務のため `domain/test-design.md` 参照（TC-UT-WF-006a/b — 孤児ではない）
 - T5（static プリセット定数保護）は TC-IT-WFH-009（GET /api/workflows/presets が常に成功）で間接検証
+- A02（notify_channels masking — POST/PATCH 経路）は TC-IT-WFH-029 で物理検証（`detailed-design.md §確定A` 凍結の実装保証）
 - 孤児要件なし
 
 ## 外部 I/O 依存マップ
@@ -124,7 +124,6 @@
 | TC-IT-WFH-007 | `workflows_router` → `WorkflowService.archive` → `SqliteWorkflowRepository.save` → 後続 PATCH で 409 確認 | Workflow 存在（archived=false）| `DELETE /api/workflows/{workflow_id}` → 後続 `PATCH /api/workflows/{workflow_id}` `{"name": "変更試み"}` | DELETE: HTTP 204 No Content / 後続 PATCH: HTTP 409 `{"error": {"code": "conflict", "message": "Workflow is archived and cannot be modified."}}` |
 | TC-IT-WFH-008 | `workflows_router` → `WorkflowService.find_stages` → `SqliteWorkflowRepository.find_by_id` | Workflow 存在（多ステージ）| `GET /api/workflows/{workflow_id}/stages` | HTTP 200, `StageListResponse`（stages リスト / transitions リスト / entry_stage_id を含む）|
 | TC-IT-WFH-009 | `workflows_router` → `WorkflowService.get_presets`（DB クエリなし）| なし | `GET /api/workflows/presets` | HTTP 200, `WorkflowPresetListResponse`（items に "v-model" と "agile" が含まれる / total=2）|
-| TC-IT-WFH-010 | `workflows_router` → `WorkflowService.create_for_room` → `WorkflowArchivedError(kind="assign")` → `workflow_archived_handler` | Empire 存在 / Room 存在 / 既存アーカイブ済み Workflow（archived=true）が DB に存在 | `POST /api/rooms/{room_id}/workflows` を archived 済み Workflow ID を参照する形で試行（再割り当てシナリオ: 業務ルール R1-14 / R1-15 — archived 済み Workflow は Room への割り当て禁止）| HTTP 409, `{"error": {"code": "conflict", "message": "Workflow is archived and cannot be assigned to a room."}}` |
 | TC-IT-WFH-011 | `workflows_router` → `WorkflowService.create_for_room` → `RoomNotFoundError` → room 既存ハンドラ | Room 不存在（ランダム UUID）| `POST /api/rooms/{random_uuid}/workflows` `{"name": "X", "stages": [...], "transitions": [], "entry_stage_id": <uuid>}` | HTTP 404, `{"error": {"code": "not_found", "message": "Room not found."}}` |
 | TC-IT-WFH-012 | `workflows_router` → `WorkflowService.create_for_room` → `RoomArchivedError` → room 既存ハンドラ | Room 存在（archived=true）| `POST /api/rooms/{room_id}/workflows` `{"name": "X", "stages": [...], "transitions": [], "entry_stage_id": <uuid>}` | HTTP 409, `{"error": {"code": "conflict", "message": "Room is archived and cannot be modified."}}` |
 | TC-IT-WFH-013 | `workflows_router` → `WorkflowService.create_for_room` → `WorkflowPresetNotFoundError` → `workflow_preset_not_found_handler` | Room 存在（archived=false）| `POST /api/rooms/{room_id}/workflows` `{"preset_name": "unknown-preset-xyz"}` | HTTP 404, `{"error": {"code": "not_found", "message": "Workflow preset not found."}}` |
@@ -143,6 +142,7 @@
 | TC-IT-WFH-026 | FastAPI UUID パス検証 → `RequestValidationError` | — | (a) `GET /api/workflows/not-a-uuid` (b) `PATCH /api/workflows/not-a-uuid` (c) `DELETE /api/workflows/not-a-uuid` (d) `GET /api/workflows/not-a-uuid/stages` (e) `POST /api/rooms/not-a-uuid/workflows` (f) `GET /api/rooms/not-a-uuid/workflows` | (a)〜(f) すべて HTTP 422（500 ではないことを確認 — T3: UUID パスインジェクション防御）|
 | TC-IT-WFH-027 | `GET /api/workflows/presets` リテラルパス優先（ルーティング順序検証）| — | `GET /api/workflows/presets` を `GET /api/workflows/{id}` より先に登録されているか確認（TestClient 経由）| HTTP 200（404 / パスパラメータ解釈エラーではないこと）— 設計書 §確定E「ルーティング登録順序」の物理保証 |
 | TC-IT-WFH-028 | CSRF ミドルウェア → `POST /api/rooms/{room_id}/workflows` | Room 存在 | `Origin: http://evil.example.com` ヘッダ付きの `POST /api/rooms/{room_id}/workflows` | HTTP 403（T1: CSRF 保護 — http-api-foundation TC-IT-HAF-008 と同一パターン。workflows_router でも CSRF ミドルウェアが適用されることの物理保証）|
+| TC-IT-WFH-029 | A02 masking — `StageResponse.notify_channels` が POST 201 / PATCH 200 レスポンスで masked になること（`detailed-design.md §確定A` 物理保証）| Empire 存在 / Room 存在（archived=false）/ テスト用 Discord webhook URL として `tests/factories/workflow.py` の `DEFAULT_DISCORD_WEBHOOK`（`"https://discord.com/api/webhooks/123456789012345678/SyntheticToken_-abcXYZ"`）を使用 | (a) `notify_channels=["https://discord.com/api/webhooks/123456789012345678/SyntheticToken_-abcXYZ"]` を持つ `EXTERNAL_REVIEW` kind Stage を含む JSON で `POST /api/rooms/{room_id}/workflows` を送信。(b) 作成した Workflow に対して `PATCH /api/workflows/{id}` で名前変更（DAG 維持）を送信。 | (a) HTTP 201 レスポンスの当該 Stage `notify_channels` フィールドが `<REDACTED:DISCORD_WEBHOOK>` を含む文字列であること — raw URL のトークン部（`SyntheticToken_-abcXYZ` 等）がレスポンス JSON に現れないことを `assert "SyntheticToken_-abcXYZ" not in ...` で確認。(b) HTTP 200 レスポンスでも同様に masked 文字列（POST 直後の in-memory domain object と PATCH 後 DB 再取得の両経路で masking が保証されることを物理検証 — A02 Cryptographic Failures 防御）|
 
 ## ユニットテストケース
 
@@ -154,7 +154,7 @@
 | TC-UT-WFH-004 | `WorkflowUpdate` スキーマ（整合バリデーション）| 正常系 / 異常系 | (a) `name="新名前"` のみ（DAG 更新なし）(b) `stages=[...], transitions=[...], entry_stage_id=<uuid>`（DAG 全置換）(c) 全フィールド None（変更なし）(d) `stages=[...]` のみ（transitions=None — 整合バリデーション違反）(e) `name=""`（min_length 違反）(f) `extra_field="z"` | (a)(b)(c) 通過 / (d) model_validator → ValidationError（DAG の部分更新は整合性を壊す）/ (e) min_length 違反 → ValidationError / (f) extra 禁止 → ValidationError |
 | TC-UT-WFH-005 | `WorkflowResponse` / `StageListResponse` / `WorkflowPresetListResponse` レスポンススキーマ | 正常系 | `tests/factories/workflow.py` の `make_workflow()` から生成した domain オブジェクトをスキーマに渡す | `id` が str（UUID 文字列 `str(workflow.id)`）/ `stages` が `list[StageResponse]`（各 id / kind / required_role が str リスト）/ `transitions` が `list[TransitionResponse]` / `entry_stage_id` が str / `archived` が bool / `WorkflowListResponse.total` が `len(items)` と一致 / `StageListResponse` が stages + transitions + entry_stage_id を持つ / `WorkflowPresetListResponse.total=2`（v-model / agile）|
 | TC-UT-WFH-006 | `workflow_not_found_handler`（`detailed-design.md §確定C`）| 異常系 | `WorkflowNotFoundError(workflow_id="test-id")` | HTTP 404, `{"error": {"code": "not_found", "message": "Workflow not found."}}` — MSG-WF-HTTP-001 確定文言と完全一致 |
-| TC-UT-WFH-007 | `workflow_archived_handler`（`detailed-design.md §確定C`）kind 分岐 | 異常系 | (a) `WorkflowArchivedError(workflow_id="test-id", kind="update")` (b) `WorkflowArchivedError(workflow_id="test-id", kind="assign")` | (a) HTTP 409, `{"error": {"code": "conflict", "message": "Workflow is archived and cannot be modified."}}` — MSG-WF-HTTP-002 / (b) HTTP 409, `{"error": {"code": "conflict", "message": "Workflow is archived and cannot be assigned to a room."}}` — MSG-WF-HTTP-003 / kind="update" と kind="assign" の分岐が正しく動作すること |
+| TC-UT-WFH-007 | `workflow_archived_handler`（`detailed-design.md §確定C`）| 異常系 | `WorkflowArchivedError(workflow_id="test-id", kind="update")` | HTTP 409, `{"error": {"code": "conflict", "message": "Workflow is archived and cannot be modified."}}` — MSG-WF-HTTP-002 確定文言と完全一致（`kind="assign"` は設計変更により削除済み）|
 | TC-UT-WFH-008 | `workflow_preset_not_found_handler`（`detailed-design.md §確定C`）| 異常系 | `WorkflowPresetNotFoundError(preset_name="unknown")` | HTTP 404, `{"error": {"code": "not_found", "message": "Workflow preset not found."}}` — MSG-WF-HTTP-004 確定文言と完全一致 |
 | TC-UT-WFH-009 | `workflow_invariant_violation_handler`（`detailed-design.md §確定C` 前処理ルール）| 異常系 | (a) `WorkflowInvariantViolation` で message=`"[FAIL] entry_stage_id が stages に存在しません。\nNext: 有効な stage_id を指定してください。"` (b) message=`"[FAIL] Stage 数が上限を超えています。"` （Next: なし）| (a) HTTP 422, `{"error": {"code": "validation_error", "message": "entry_stage_id が stages に存在しません。"}}` — `[FAIL]` プレフィックスと `\nNext:.*` が除去されていること / (b) HTTP 422, `{"error": {"code": "validation_error", "message": "Stage 数が上限を超えています。"}}` — strip 後に Next: が残らないこと |
 | TC-UT-WFH-010 | `WorkflowService.__init__`（3 引数構造 — `detailed-design.md §確定G`）| 正常系 | `workflow_repo=MagicMock()` / `room_repo=MagicMock()` / `session=MagicMock()` | インスタンス生成成功 / `_workflow_repo` / `_room_repo` / `_session` に各 mock が格納される（http-api-foundation の単一 repo 骨格から 3 引数構造への拡張を検証）|
@@ -164,9 +164,10 @@
 
 | 対象 | 方針 |
 |---|---|
-| `interfaces/http/routers/workflows.py` | TC-IT-WFH-001〜028 で全 7 エンドポイントを網羅。branch coverage 90% 以上 |
+| `interfaces/http/routers/workflows.py` | TC-IT-WFH-001〜029 で全 7 エンドポイントを網羅。branch coverage 90% 以上 |
 | `interfaces/http/schemas/workflow.py` | TC-UT-WFH-001〜005 で全スキーマの全フィールド / 全 validation ルール（排他バリデーション・整合バリデーション含む）を検証 |
-| `interfaces/http/error_handlers.py`（workflow 追記分）| TC-IT-WFH-010/013/014/018/019/020/021/023 + TC-UT-WFH-006〜009 で全ハンドラ（`workflow_not_found_handler` / `workflow_archived_handler` / `workflow_preset_not_found_handler` / `workflow_invariant_violation_handler`）を網羅。`kind="update"` と `kind="assign"` 分岐を TC-UT-WFH-007(a)/(b) で単独検証 |
-| `application/services/workflow_service.py` | TC-IT-WFH-001〜009 の結合テストで全メソッド（create_for_room / find_by_room / find_by_id / update / archive / find_stages / get_presets）を起動。TC-UT-WFH-010 でインスタンス化・3 引数構造を確認 |
-| `application/exceptions/workflow_exceptions.py` | TC-IT-WFH-010/013/018/019/020/021/023/024/025 の結合テストで全例外クラス（`WorkflowNotFoundError` / `WorkflowArchivedError` / `WorkflowPresetNotFoundError`）が発火 → ハンドラを経由することを確認 |
-| 孤児要件なし | REQ-WF-HTTP-001〜007・MSG-WF-HTTP-001〜005・受入基準 #13〜22 の全件がテストマトリクスに紐付けられている（上表 §テストマトリクス で確認）|
+| `interfaces/http/error_handlers.py`（workflow 追記分）| TC-IT-WFH-013/014/018/019/020/021/023 + TC-UT-WFH-006〜009 で全ハンドラ（`workflow_not_found_handler` / `workflow_archived_handler` / `workflow_preset_not_found_handler` / `workflow_invariant_violation_handler`）を網羅。TC-UT-WFH-007 で `kind="update"` を単独検証（`kind="assign"` は設計変更により削除済み）|
+| `application/services/workflow_service.py` | TC-IT-WFH-001〜009/029 の結合テストで全メソッド（create_for_room / find_by_room / find_by_id / update / archive / find_stages / get_presets）を起動。TC-UT-WFH-010 でインスタンス化・3 引数構造を確認 |
+| `application/exceptions/workflow_exceptions.py` | TC-IT-WFH-013/018/019/020/021/023/024/025 の結合テストで全例外クラス（`WorkflowNotFoundError` / `WorkflowArchivedError` / `WorkflowPresetNotFoundError`）が発火 → ハンドラを経由することを確認 |
+| A02 masking（POST/PATCH 経路）| TC-IT-WFH-029 で EXTERNAL_REVIEW Stage を含む POST/PATCH レスポンスの `notify_channels` が `<REDACTED:DISCORD_WEBHOOK>` masked であることを物理検証（`detailed-design.md §確定A`）|
+| 孤児要件なし | REQ-WF-HTTP-001〜007・MSG-WF-HTTP-001/002/004/005・受入基準 #13〜21 の全件がテストマトリクスに紐付けられている（MSG-WF-HTTP-003 / 受入基準 #22 は設計変更により削除済み）|
