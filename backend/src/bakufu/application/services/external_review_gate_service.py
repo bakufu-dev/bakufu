@@ -58,10 +58,27 @@ class ExternalReviewGateService:
         self,
         repo: ExternalReviewGateRepository,
         session: AsyncSession,
-        task_repo: TaskRepository | None = None,
-        room_repo: RoomRepository | None = None,
-        workflow_stage_resolver: WorkflowStageResolver | None = None,
+        task_repo: TaskRepository | None,
+        room_repo: RoomRepository | None,
+        workflow_stage_resolver: WorkflowStageResolver | None,
     ) -> None:
+        missing = [
+            name
+            for name, dependency in (
+                ("task_repo", task_repo),
+                ("room_repo", room_repo),
+                ("workflow_stage_resolver", workflow_stage_resolver),
+            )
+            if dependency is None
+        ]
+        if missing:
+            raise ValueError(
+                "ExternalReviewGateService requires task transition dependencies: "
+                + ", ".join(missing)
+            )
+        assert task_repo is not None
+        assert room_repo is not None
+        assert workflow_stage_resolver is not None
         self._repo = repo
         self._session = session
         self._task_repo = task_repo
@@ -227,14 +244,6 @@ class ExternalReviewGateService:
         await dependencies.task_repo.save(updated_task)
 
     def _task_advancement_dependencies(self) -> _TaskAdvancementDependencies:
-        if self._task_repo is None:
-            raise RuntimeError("ExternalReviewGateService requires task_repo for task advancement.")
-        if self._room_repo is None:
-            raise RuntimeError("ExternalReviewGateService requires room_repo for task advancement.")
-        if self._workflow_stage_resolver is None:
-            raise RuntimeError(
-                "ExternalReviewGateService requires workflow_stage_resolver for task advancement."
-            )
         return _TaskAdvancementDependencies(
             task_repo=self._task_repo,
             room_repo=self._room_repo,

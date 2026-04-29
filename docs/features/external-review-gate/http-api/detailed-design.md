@@ -147,6 +147,8 @@ HTTP schema serializer は `deliverable_snapshot.body_markdown` / `feedback_text
 
 `ExternalReviewGateService.approve()` / `reject()` は Gate を保存した後、同一 UoW で Task を進める。ただし `gate.stage_id` を `next_stage_id` として再利用してはならない。Service は `TaskRepository` で Task を取得し、`RoomRepository` で `room.workflow_id` を解決し、`WorkflowStageResolver.find_transition_by_workflow_stage_condition(workflow_id, gate.stage_id, APPROVED|REJECTED)` から `transition_id` と `to_stage_id` を得る。承認は APPROVED 遷移の `to_stage_id`、差し戻しは REJECTED 遷移の `to_stage_id` だけを `task.approve_review()` / `task.reject_review()` に渡す。
 
+`ExternalReviewGateService.__init__` は `TaskRepository` / `RoomRepository` / `WorkflowStageResolver` を必須依存として受け取る。いずれかが欠落する構成は Gate 判断後の Task 遷移契約を満たせないため、初期化時に fail fast し、`approve()` / `reject()` で黙って Task 遷移を省略してはならない。
+
 ### 確定 F: CSRF Origin 検証
 
 approve / reject / cancel は状態変更 POST なので、http-api-foundation 確定Dの CSRF Origin 検証ミドルウェアを必ず通る。`Origin` ヘッダが存在し、許可 Origin 一覧と不一致なら 403 / MSG-HAF-004 を返す。MVP では curl / SDK / AI エージェント用に `Origin` なしは通過する既存契約を維持する。

@@ -53,12 +53,12 @@ class _Repo:
 
 
 class _TaskRepo:
-    def __init__(self, task: Any) -> None:
+    def __init__(self, task: Any | None) -> None:
         self.task = task
         self.saved: list[Any] = []
 
     async def find_by_id(self, task_id: Any) -> Any | None:
-        if self.task.id == task_id:
+        if self.task is not None and self.task.id == task_id:
             return self.task
         return None
 
@@ -102,13 +102,56 @@ class _TransitionResolver:
         return self.transition
 
 
+def _make_service(gates: list[Any], repo: _Repo | None = None) -> Any:
+    from bakufu.application.services.external_review_gate_service import (
+        ExternalReviewGateService,
+    )
+
+    room_id = uuid4()
+    return ExternalReviewGateService(
+        repo if repo is not None else _Repo(gates),
+        _Session(),  # type: ignore[arg-type]
+        _TaskRepo(None),  # type: ignore[arg-type]
+        _RoomRepo(room_id=room_id, workflow_id=uuid4()),  # type: ignore[arg-type]
+        _TransitionResolver(None),  # type: ignore[arg-type]
+    )
+
+
 @pytest.mark.asyncio
 class TestExternalReviewGateService:
+    @pytest.mark.parametrize(
+        ("missing_name", "task_repo", "room_repo", "workflow_stage_resolver"),
+        [
+            ("task_repo", None, object(), object()),
+            ("room_repo", object(), None, object()),
+            ("workflow_stage_resolver", object(), object(), None),
+        ],
+    )
+    async def test_init_rejects_missing_task_transition_dependency(
+        self,
+        missing_name: str,
+        task_repo: object | None,
+        room_repo: object | None,
+        workflow_stage_resolver: object | None,
+    ) -> None:
+        """TC-UT-ERG-HTTP-015: Task 遷移依存の欠落は初期化時に fail fast する。"""
+        from bakufu.application.services.external_review_gate_service import (
+            ExternalReviewGateService,
+        )
+
+        with pytest.raises(ValueError, match=missing_name):
+            ExternalReviewGateService(
+                _Repo([]),
+                _Session(),  # type: ignore[arg-type]
+                task_repo,  # type: ignore[arg-type]
+                room_repo,  # type: ignore[arg-type]
+                workflow_stage_resolver,  # type: ignore[arg-type]
+            )
+
     async def test_get_and_record_view_saves_viewed_gate(self) -> None:
         """TC-UT-ERG-HTTP-003: 詳細取得は VIEWED 追記後に save する。"""
         from bakufu.application.services.external_review_gate_service import (
             AuthenticatedSubject,
-            ExternalReviewGateService,
         )
 
         from tests.factories.external_review_gate import make_gate
@@ -116,7 +159,7 @@ class TestExternalReviewGateService:
         reviewer_id = uuid4()
         gate = make_gate(reviewer_id=reviewer_id)
         repo = _Repo([gate])
-        service = ExternalReviewGateService(repo, _Session())  # type: ignore[arg-type]
+        service = _make_service([gate], repo)
 
         viewed = await service.get_and_record_view(
             gate.id,
@@ -133,13 +176,12 @@ class TestExternalReviewGateService:
         )
         from bakufu.application.services.external_review_gate_service import (
             AuthenticatedSubject,
-            ExternalReviewGateService,
         )
 
         from tests.factories.external_review_gate import make_gate
 
         gate = make_gate(reviewer_id=uuid4())
-        service = ExternalReviewGateService(_Repo([gate]), _Session())  # type: ignore[arg-type]
+        service = _make_service([gate])
 
         with pytest.raises(ExternalReviewGateAuthorizationError):
             await service.get_and_record_view(
@@ -154,14 +196,13 @@ class TestExternalReviewGateService:
         )
         from bakufu.application.services.external_review_gate_service import (
             AuthenticatedSubject,
-            ExternalReviewGateService,
         )
 
         from tests.factories.external_review_gate import make_approved_gate
 
         reviewer_id = uuid4()
         gate = make_approved_gate(reviewer_id=reviewer_id)
-        service = ExternalReviewGateService(_Repo([gate]), _Session())  # type: ignore[arg-type]
+        service = _make_service([gate])
 
         with pytest.raises(ExternalReviewGateDecisionConflictError):
             await service.approve(
@@ -170,33 +211,10 @@ class TestExternalReviewGateService:
                 "again",
             )
 
-    async def test_approve_fails_fast_when_task_advancement_dependency_is_missing(
-        self,
-    ) -> None:
-        """TC-UT-ERG-HTTP-013: approve の Task 遷移依存欠落は即失敗する。"""
-        from bakufu.application.services.external_review_gate_service import (
-            AuthenticatedSubject,
-            ExternalReviewGateService,
-        )
-
-        from tests.factories.external_review_gate import make_gate
-
-        reviewer_id = uuid4()
-        gate = make_gate(reviewer_id=reviewer_id)
-        service = ExternalReviewGateService(_Repo([gate]), _Session())  # type: ignore[arg-type]
-
-        with pytest.raises(RuntimeError, match="requires task_repo"):
-            await service.approve(
-                gate.id,
-                AuthenticatedSubject.from_owner_id(reviewer_id),
-                "ok",
-            )
-
     async def test_list_by_task_filters_other_reviewers(self) -> None:
         """TC-UT-ERG-HTTP-007: Task 履歴は subject reviewer の Gate だけ返す。"""
         from bakufu.application.services.external_review_gate_service import (
             AuthenticatedSubject,
-            ExternalReviewGateService,
         )
 
         from tests.factories.external_review_gate import make_gate
@@ -205,7 +223,7 @@ class TestExternalReviewGateService:
         task_id = uuid4()
         own_gate = make_gate(task_id=task_id, reviewer_id=reviewer_id)
         other_gate = make_gate(task_id=task_id, reviewer_id=uuid4())
-        service = ExternalReviewGateService(_Repo([own_gate, other_gate]), _Session())  # type: ignore[arg-type]
+        service = _make_service([own_gate, other_gate])
 
         gates = await service.list_by_task(
             task_id,

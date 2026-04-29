@@ -23,8 +23,8 @@
 | REQ-ERG-HTTP-001 | `routers/external_review_gates.py` | TC-IT-ERG-HTTP-001 | 結合 | 正常系 | §9 #14 |
 | REQ-ERG-HTTP-002 | `ExternalReviewGateService.list_by_task` | TC-IT-ERG-HTTP-002 | 結合 | 正常系 | §9 #14 |
 | REQ-ERG-HTTP-003 | `get_and_record_view` | TC-IT-ERG-HTTP-003, TC-UT-ERG-HTTP-003 | 結合 / ユニット | 正常系 | §9 #6 |
-| REQ-ERG-HTTP-004 | `approve` + Workflow APPROVED transition resolver | TC-IT-ERG-HTTP-004, TC-IT-ERG-HTTP-007, TC-UT-ERG-HTTP-009 | 結合 / ユニット | 正常 / 異常 | §9 #3, #5 |
-| REQ-ERG-HTTP-005 | `reject` + Workflow REJECTED transition resolver | TC-IT-ERG-HTTP-005, TC-UT-ERG-HTTP-005, TC-UT-ERG-HTTP-010 | 結合 / ユニット | 正常 / 異常 | §9 #4, #10 |
+| REQ-ERG-HTTP-004 | `approve` + Workflow APPROVED transition resolver | TC-IT-ERG-HTTP-004, TC-IT-ERG-HTTP-007, TC-UT-ERG-HTTP-009, TC-UT-ERG-HTTP-015 | 結合 / ユニット | 正常 / 異常 | §9 #3, #5 |
+| REQ-ERG-HTTP-005 | `reject` + Workflow REJECTED transition resolver | TC-IT-ERG-HTTP-005, TC-UT-ERG-HTTP-005, TC-UT-ERG-HTTP-010, TC-UT-ERG-HTTP-015 | 結合 / ユニット | 正常 / 異常 | §9 #4, #10 |
 | REQ-ERG-HTTP-006 | `cancel` | TC-IT-ERG-HTTP-006 | 結合 | 正常系 | §9 #4 |
 | MSG-ERG-HTTP-001 | error handler | TC-UT-ERG-HTTP-011 | ユニット | 異常系 | — |
 | MSG-ERG-HTTP-002 | authorization guard | TC-IT-ERG-HTTP-008 | 結合 | 異常系 | — |
@@ -112,7 +112,7 @@
 | TC-UT-ERG-HTTP-010 | reject Task transition resolver | 正常系 | awaiting Task + Gate + REJECTED `WorkflowTransitionContract` | Task は REJECTED transition の `to_stage_id` に戻る。`gate.stage_id` は差し戻し先として使わない |
 | TC-UT-ERG-HTTP-011 | error handlers | 異常系 | 各 application exception | MSG-ERG-HTTP-001〜004 の 2 行文言一致（Next 行を含む） |
 | TC-UT-ERG-HTTP-012 | bearer token resolver | セキュリティ | token factory / env config | constant-time 比較を使い、欠落 / 不一致 / 不正 owner ID は 401。Authorization 値を log / response に出さない |
-| TC-UT-ERG-HTTP-013 | approve Task advancement dependency guard | 異常系 | PENDING Gate + Task 遷移依存なしの Service | `task_repo` / `room_repo` / `workflow_stage_resolver` 欠落を黙って無視せず fail fast する |
+| TC-UT-ERG-HTTP-015 | `ExternalReviewGateService.__init__` Task 遷移依存 | 異常系 | `task_repo` / `room_repo` / `workflow_stage_resolver` のいずれかが `None` | `ValueError`。Gate 判断後の Task 遷移を黙って省略しない |
 | TC-CI-ERG-HTTP-001 | dependency audit | セキュリティ | CI `audit` job | FastAPI / Starlette / Pydantic / httpx / SQLAlchemy / SQLite 関連の critical/high CVE が未解決なら fail |
 | TC-STATIC-ERG-HTTP-001 | outbound call inventory | セキュリティ | router / service / schema | HTTP client / webhook fetch / URL dereference が追加されていない |
 | TC-STATIC-ERG-HTTP-002 | API inventory and wiring | セキュリティ | app wiring / OpenAPI | 6 API だけが登録され、auth / CSRF / error handler が有効 |
@@ -175,7 +175,7 @@ backend/tests/
 - `backend/tests/integration/test_external_review_gate_http_api/conftest.py`: 実 DB セッションと HTTP 結合テスト用 app fixture を提供する。
 - `backend/tests/integration/test_external_review_gate_http_api/helpers.py`: 結合テストの seed と HTTP request helper を提供する。
 - `backend/tests/unit/test_external_review_gate_http_api/test_schemas.py`: TC-UT-ERG-HTTP-001 / 002 / 005 / 008。
-- `backend/tests/unit/test_external_review_gate_http_api/test_service.py`: TC-UT-ERG-HTTP-003 / 004 / 006 / 007 / 009 / 010。
+- `backend/tests/unit/test_external_review_gate_http_api/test_service.py`: TC-UT-ERG-HTTP-003 / 004 / 006 / 007 / 009 / 010 / 015。
 - `backend/tests/unit/test_external_review_gate_http_api/test_handlers.py`: TC-UT-ERG-HTTP-011 / 012。
 
 ## 未決課題
