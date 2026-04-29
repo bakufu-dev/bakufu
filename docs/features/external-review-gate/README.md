@@ -23,7 +23,7 @@ docs/features/external-review-gate/
     basic-design.md
     detailed-design.md
     test-design.md
-  (将来) ui/                         ← CEO レビュー操作 UI
+  (Phase 2 候補) ui/                 ← CEO レビュー操作 UI
 ```
 
 ## sub-feature マイルストーン
@@ -33,11 +33,11 @@ docs/features/external-review-gate/
 | domain | [#38](https://github.com/bakufu-dev/bakufu/issues/38) | 実装済み（PR #46） | [domain/](domain/) |
 | repository | [#36](https://github.com/bakufu-dev/bakufu/issues/36) | 実装済み（PR #53） | [repository/](repository/) |
 | http-api | [#61](https://github.com/bakufu-dev/bakufu/issues/61) | 実装対象（PR #112） | [http-api/](http-api/) |
-| ui | 将来PRで管理 | 将来 | — |
+| ui | 該当なし（Phase 2 候補） | 未着手 | — |
 
 ## 着手順序
 
 1. **domain** (#38) — ExternalReviewGate Aggregate Root + AuditEntry VO + ReviewDecision / AuditAction enum
 2. **repository** (#36) — SQLite 永続化（`external_review_gates` / `external_review_gate_attachments` / `external_review_audit_entries` 3 テーブル + Alembic 0008）
 3. **http-api** (#61) — reviewer 向け 6 API（一覧 / 履歴 / 詳細 / approve / reject / cancel）と GateService application 層
-4. (将来) **ui** — CEO が Deliverable を確認して approve / reject するレビュー画面
+4. **ui**（Phase 2 候補） — CEO が Deliverable を確認して approve / reject するレビュー画面

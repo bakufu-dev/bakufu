@@ -1,6 +1,6 @@
 """MaskingGateway 単体テスト（TC-UT-PF-006 / 016 / 017 / 018 / 019 / 041 / 042）。
 
-REQ-PF-005（masking ゲートウェイの単一化）+ Confirmation A の 9 種の正規表現
+REQ-PF-005（masking ゲートウェイの単一化）+ Confirmation A の 10 種の正規表現
 + Confirmation F の Fail-Secure 契約をカバーする。ゲートウェイは
 **決して例外を投げてはならない** — 内部失敗時は生バイトを漏らす代わりに
 ``<REDACTED:*>`` センチネルへフォールバックする。
@@ -33,8 +33,8 @@ def _initialize_masking(  # pyright: ignore[reportUnusedFunction]
     masking.init()
 
 
-class TestNineRegexPatterns:
-    """TC-UT-PF-006 / 042: 9 種類のシークレットフォーマットそれぞれが redact される。"""
+class TestTenRegexPatterns:
+    """TC-UT-PF-006 / 042: 10 種類のシークレットフォーマットそれぞれが redact される。"""
 
     @pytest.mark.parametrize(
         ("payload", "expected_redaction"),
@@ -54,13 +54,17 @@ class TestNineRegexPatterns:
                 "<REDACTED:DISCORD_TOKEN>",
             ),
             (
+                "https://discord.com/api/webhooks/123456789/SyntheticToken_-abcXYZ",
+                "<REDACTED:DISCORD_WEBHOOK>",
+            ),
+            (
                 "Authorization: Bearer eyJ.tokenpart.signature",
                 "<REDACTED:BEARER>",
             ),
         ],
     )
     def test_each_regex_pattern_redacts(self, payload: str, expected_redaction: str) -> None:
-        """TC-UT-PF-042: 9 種すべての regex ファミリに対するパラメタライズ。"""
+        """TC-UT-PF-042: 10 種すべての regex ファミリに対するパラメタライズ。"""
         masked = masking.mask(payload)
         assert expected_redaction in masked
 
@@ -90,7 +94,7 @@ class TestEnvLengthFloor:
         """TC-UT-PF-017: 5 文字の ANTHROPIC_API_KEY は無視される。"""
         monkeypatch.setenv("ANTHROPIC_API_KEY", "short")
         masking.init()
-        # 'short' は redact されてはならない。9 種の regex / home パスのみが発火する。
+        # 'short' は redact されてはならない。10 種の regex / home パスのみが発火する。
         masked = masking.mask("plain text containing short value")
         assert "short" in masked
         assert "<REDACTED:ENV:ANTHROPIC_API_KEY>" not in masked

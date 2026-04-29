@@ -4,10 +4,10 @@
 
 1. **環境変数値** — 既知のシークレット環境変数を ``<REDACTED:ENV:{NAME}>``
    へ置換する。
-2. **正規表現パターン** — 9 種類の代表的シークレット文字列形式
+2. **正規表現パターン** — 10 種類の代表的シークレット文字列形式
    （Anthropic / OpenAI / GitHub PAT / GitHub fine-grained PAT / AWS
    access key / AWS secret / Slack token / Discord bot token / Bearer
-   token）。
+   token / Discord webhook URL）。
 3. **ホームパス** — 実行ユーザの ``$HOME`` 絶対パスを ``<HOME>`` に
    置換し、ログ出力で FS レイアウトを漏らさないようにする。
 
@@ -47,7 +47,7 @@ REDACT_LISTENER_ERROR: Final = "<REDACTED:LISTENER_ERROR>"
 # 場合は構造ごと一括置換する。
 MAX_BYTES_FOR_RECURSION: Final = 1_048_576  # 1 MiB
 
-# Confirmation A: 9 つの正規表現パターン（順序は重要）。OpenAI パターンが
+# Confirmation A: 10 個の正規表現パターン（順序は重要）。OpenAI パターンが
 # `sk-ant-...` プレフィックスにも一致してしまうため、Anthropic を先に
 # 適用する。優先順位を読者に分かりやすくするため、明示的な Anthropic
 # パターンを先頭に置く。
@@ -83,6 +83,10 @@ _REGEX_PATTERNS: Final[list[tuple[re.Pattern[str], str]]] = [
     (
         re.compile(r"[MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{27,}"),
         "<REDACTED:DISCORD_TOKEN>",
+    ),
+    (
+        re.compile(r"https://discord\.com/api/webhooks/([0-9]{1,30})/([A-Za-z0-9_\-]{1,100})"),
+        r"https://discord.com/api/webhooks/\1/<REDACTED:DISCORD_WEBHOOK>",
     ),
     # Bearer トークン（HTTP Authorization ヘッダ）。可読性のため
     # `Authorization: Bearer ` プレフィックスを残し、トークン部のみを
