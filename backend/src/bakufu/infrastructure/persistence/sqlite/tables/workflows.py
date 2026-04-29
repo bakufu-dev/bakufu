@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import String
+from sqlalchemy import Boolean, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from bakufu.infrastructure.persistence.sqlite.base import Base, UUIDStr
@@ -36,6 +36,9 @@ class WorkflowRow(Base):
     id: Mapped[UUID] = mapped_column(UUIDStr, primary_key=True)
     name: Mapped[str] = mapped_column(String(80), nullable=False)
     entry_stage_id: Mapped[UUID] = mapped_column(UUIDStr, nullable=False)
+    archived: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
 
 
 __all__ = ["WorkflowRow"]

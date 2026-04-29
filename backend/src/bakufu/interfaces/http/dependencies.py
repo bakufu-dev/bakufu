@@ -112,12 +112,16 @@ async def get_workflow_service(session: SessionDep) -> WorkflowService:
     # 遅延 import: interfaces → infrastructure の直接依存を避けるため
     # モジュールロード時の循環参照リスクを回避し、
     # 依存方向 interfaces → application → infrastructure を遵守する
+    from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
+        SqliteRoomRepository,
+    )
     from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
         SqliteWorkflowRepository,
     )
 
-    repo = SqliteWorkflowRepository(session)
-    return WorkflowService(repo)
+    workflow_repo = SqliteWorkflowRepository(session)
+    room_repo = SqliteRoomRepository(session)
+    return WorkflowService(workflow_repo=workflow_repo, room_repo=room_repo, session=session)
 
 
 async def get_agent_service(session: SessionDep) -> AgentService:

@@ -65,6 +65,7 @@ class Workflow(BaseModel):
     stages: list[Stage]
     transitions: list[Transition] = []
     entry_stage_id: StageId
+    archived: bool = False
 
     # ---- 事前検証 -------------------------------------------------------
     @field_validator("name", mode="before")
@@ -196,6 +197,12 @@ class Workflow(BaseModel):
                     # 込みの正準 Pydantic エラーを生成させる。
                     pass
         return cls.model_validate(payload_dict)
+
+    def archive(self) -> Workflow:
+        """``archived=True`` を持つ新しい :class:`Workflow` を返す（冪等）。"""
+        state = self.model_dump()
+        state["archived"] = True
+        return Workflow.model_validate(state)
 
     # ---- 内部実装: 事前検証 rebuild（Confirmation A） -------------------
     def _rebuild_with(

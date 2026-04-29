@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from bakufu.application.exceptions.workflow_exceptions import WorkflowNotFoundError
+
 
 class RoomNotFoundError(Exception):
     """Room が見つからない場合 (MSG-RM-HTTP-002)。"""
@@ -26,18 +28,6 @@ class RoomArchivedError(Exception):
     def __init__(self, room_id: str) -> None:
         super().__init__(f"Room is archived: {room_id}")
         self.room_id = room_id
-
-
-class WorkflowNotFoundError(Exception):
-    """Workflow が見つからない場合 (MSG-RM-HTTP-006)。
-
-    workflow-http-api PR で定義済みの場合はそちらから import する。
-    本 PR 時点で未定義のため暫定定義 (確定 F §Q-OPEN-1)。
-    """
-
-    def __init__(self, workflow_id: str) -> None:
-        super().__init__(f"Workflow not found: {workflow_id}")
-        self.workflow_id = workflow_id
 
 
 class AgentNotFoundError(Exception):
