@@ -64,8 +64,10 @@ async def create_workflow(
         room_id=room_id,
         preset_name=body.preset_name,
         name=body.name,
-        stages=[s.model_dump() for s in body.stages] if body.stages else None,
-        transitions=[t.model_dump() for t in body.transitions] if body.transitions else None,
+        stages=[s.model_dump() for s in body.stages] if body.stages is not None else None,
+        transitions=(
+            [t.model_dump() for t in body.transitions] if body.transitions is not None else None
+        ),
         entry_stage_id=body.entry_stage_id,
     )
     return WorkflowResponse.model_validate(workflow)
@@ -148,8 +150,10 @@ async def update_workflow(
     workflow = await service.update(
         workflow_id=workflow_id,
         name=body.name,
-        stages=[s.model_dump() for s in body.stages] if body.stages else None,
-        transitions=[t.model_dump() for t in body.transitions] if body.transitions else None,
+        stages=[s.model_dump() for s in body.stages] if body.stages is not None else None,
+        transitions=(
+            [t.model_dump() for t in body.transitions] if body.transitions is not None else None
+        ),
         entry_stage_id=body.entry_stage_id,
     )
     return WorkflowResponse.model_validate(workflow)

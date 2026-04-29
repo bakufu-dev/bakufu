@@ -44,15 +44,15 @@ class WorkflowService:
         transitions: list[dict[str, Any]] | None,
         entry_stage_id: UUID | None,
     ) -> Workflow:
-        """Room に Workflow を作成し、Room.workflow_id を更新する。"""
-        # 1. Room 存在確認
-        room = await self._room_repo.find_by_id(room_id)
-        if room is None:
-            raise RoomNotFoundError(str(room_id))
-        # 2. Room archived 確認
-        if room.archived:
-            raise RoomArchivedError(str(room_id))
-        # 3. プリセット解決 or JSON 定義
+        """Room に Workflow を作成し、Room.workflow_id を更新する。
+
+        read-then-write パターンで autobegin が起動したあと再度 begin() を呼ぶと
+        ``InvalidRequestError`` が発生するため (room_service.py BUG-EM-001 凍結と同様)、
+        Workflow 構築 (純粋なドメイン処理 — DB アクセスなし) を先に行い、
+        Room 確認 / 保存は全て単一の ``async with session.begin():`` 内で完結させる。
+        """
+        # 1. Workflow を構築 (DB アクセスなし)
+        # WorkflowPresetNotFoundError / WorkflowInvariantViolation を早期送出
         if preset_name is not None:
             workflow = self._build_from_preset(preset_name)
         else:
@@ -63,8 +63,13 @@ class WorkflowService:
                 transitions=transitions,  # type: ignore[arg-type]
                 entry_stage_id=entry_stage_id,  # type: ignore[arg-type]
             )
-        # 4. UoW: save workflow + update Room.workflow_id
+        # 2. UoW: Room 確認 + Workflow 保存 + Room.workflow_id 更新
         async with self._session.begin():
+            room = await self._room_repo.find_by_id(room_id)
+            if room is None:
+                raise RoomNotFoundError(str(room_id))
+            if room.archived:
+                raise RoomArchivedError(str(room_id))
             await self._workflow_repo.save(workflow)
             empire_id = await self._room_repo.find_empire_id_by_room_id(room_id)
             state = room.model_dump()
@@ -95,33 +100,41 @@ class WorkflowService:
         transitions: list[dict[str, Any]] | None,
         entry_stage_id: UUID | None,
     ) -> Workflow:
-        """Workflow を部分更新する。"""
-        workflow = await self._workflow_repo.find_by_id(workflow_id)
-        if workflow is None:
-            raise WorkflowNotFoundError(str(workflow_id))
-        if workflow.archived:
-            raise WorkflowArchivedError(str(workflow_id), kind="update")
-        # 部分更新: name のみ、または stages/transitions/entry_stage_id を全置換
-        state = workflow.model_dump()
-        if name is not None:
-            state["name"] = name
-        if stages is not None:
-            state["stages"] = self._prepare_stage_dicts(stages)
-            _transitions: list[dict[str, Any]] = transitions if transitions is not None else []
-            state["transitions"] = self._prepare_transition_dicts(_transitions)
-            state["entry_stage_id"] = str(entry_stage_id)
-        updated = Workflow.model_validate(state)
+        """Workflow を部分更新する。
+
+        autobegin 競合を避けるため、read も含めて単一の ``async with session.begin():``
+        ブロック内で完結させる (room_service.py BUG-EM-001 凍結と同様)。
+        """
         async with self._session.begin():
+            workflow = await self._workflow_repo.find_by_id(workflow_id)
+            if workflow is None:
+                raise WorkflowNotFoundError(str(workflow_id))
+            if workflow.archived:
+                raise WorkflowArchivedError(str(workflow_id), kind="update")
+            # 部分更新: name のみ、または stages/transitions/entry_stage_id を全置換
+            state = workflow.model_dump()
+            if name is not None:
+                state["name"] = name
+            if stages is not None:
+                state["stages"] = self._prepare_stage_dicts(stages)
+                _transitions: list[dict[str, Any]] = transitions if transitions is not None else []
+                state["transitions"] = self._prepare_transition_dicts(_transitions)
+                state["entry_stage_id"] = str(entry_stage_id)
+            updated = Workflow.model_validate(state)
             await self._workflow_repo.save(updated)
         return updated
 
     async def archive(self, workflow_id: WorkflowId) -> None:
-        """Workflow を論理削除する (archived=True)。"""
-        workflow = await self._workflow_repo.find_by_id(workflow_id)
-        if workflow is None:
-            raise WorkflowNotFoundError(str(workflow_id))
-        archived_workflow = workflow.archive()
+        """Workflow を論理削除する (archived=True)。
+
+        autobegin 競合を避けるため、read も含めて単一の ``async with session.begin():``
+        ブロック内で完結させる (room_service.py BUG-EM-001 凍結と同様)。
+        """
         async with self._session.begin():
+            workflow = await self._workflow_repo.find_by_id(workflow_id)
+            if workflow is None:
+                raise WorkflowNotFoundError(str(workflow_id))
+            archived_workflow = workflow.archive()
             await self._workflow_repo.save(archived_workflow)
 
     async def find_stages(
