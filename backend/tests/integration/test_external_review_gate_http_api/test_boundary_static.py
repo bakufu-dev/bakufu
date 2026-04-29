@@ -76,3 +76,11 @@ def test_security_masking_does_not_expose_public_callable_aliases() -> None:
         if _public_callable_aliases(path)
     }
     assert violations == {}
+
+
+def test_task_service_does_not_read_owner_environment_directly() -> None:
+    """TaskService は reviewer 解決を注入し、環境設定を直読みしない。"""
+    path = BACKEND_ROOT / "src/bakufu/application/services/task_service.py"
+    source = path.read_text(encoding="utf-8")
+    assert "BAKUFU_OWNER_ID" not in source
+    assert "os.environ" not in source
