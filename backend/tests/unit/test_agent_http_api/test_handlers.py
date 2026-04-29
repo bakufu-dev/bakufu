@@ -509,9 +509,7 @@ class TestStaticDependencyAnalysis:
         for py_file in sorted(interfaces_dir.rglob("*.py")):
             for module_name, lineno in self._collect_toplevel_imports(py_file):
                 if module_name.startswith("bakufu.domain"):
-                    violations.append(
-                        f"{py_file.name}:{lineno}: top-level import of {module_name}"
-                    )
+                    violations.append(f"{py_file.name}:{lineno}: top-level import of {module_name}")
         assert violations == [], (
             "Direct bakufu.domain imports detected at module level:\n" + "\n".join(violations)
         )
@@ -523,9 +521,7 @@ class TestStaticDependencyAnalysis:
         for py_file in sorted(interfaces_dir.rglob("*.py")):
             for module_name, lineno in self._collect_toplevel_imports(py_file):
                 if module_name.startswith("bakufu.infrastructure"):
-                    violations.append(
-                        f"{py_file.name}:{lineno}: top-level import of {module_name}"
-                    )
+                    violations.append(f"{py_file.name}:{lineno}: top-level import of {module_name}")
         assert violations == [], (
             "Direct bakufu.infrastructure imports detected at module level:\n"
             + "\n".join(violations)

@@ -129,6 +129,7 @@ class TestPathTraversalDefense:
         empire = await _create_empire(ag_ctx.client)
         payload = _minimal_agent_payload()
         import uuid
+
         payload["skills"] = [  # type: ignore[assignment]
             {
                 "skill_id": str(uuid.uuid4()),
@@ -147,6 +148,7 @@ class TestPathTraversalDefense:
         empire = await _create_empire(ag_ctx.client)
         payload = _minimal_agent_payload()
         import uuid
+
         payload["skills"] = [  # type: ignore[assignment]
             {
                 "skill_id": str(uuid.uuid4()),
