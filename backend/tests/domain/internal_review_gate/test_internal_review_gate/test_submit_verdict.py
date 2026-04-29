@@ -2,20 +2,20 @@
 
 Per ``docs/features/internal-review-gate/domain/test-design.md`` §submit_verdict.
 Covers:
-  TC-UT-IRG-003  APPROVED 提出 → PENDING 継続（REQ-IRG-002, AC#3）
-  TC-UT-IRG-004  全 GateRole APPROVED → ALL_APPROVED 遷移（REQ-IRG-002/003, AC#4）
-  TC-UT-IRG-005  1件 REJECTED → REJECTED 即遷移（REQ-IRG-002/003, AC#5）
-  TC-UT-IRG-006  同一 GateRole 重複提出 → raise（REQ-IRG-002/004, AC#6）
-  TC-UT-IRG-007  確定後の追加 Verdict → raise（REQ-IRG-002, AC#7）
-  TC-UT-IRG-008  comment 境界値（0 / 5000 / 5001 文字）（REQ-IRG-002, AC#11）
-  TC-UT-IRG-009  invalid_role（REQ-IRG-004, AC#2,3）
-  TC-UT-IRG-011  VerdictDecision 2 値のみ（§確定 F, Q-3）
-  TC-UT-IRG-012  comment NFC + strip しない（§確定 G, Q-3）
-  TC-UT-IRG-013  MSG-IRG-001 2行構造（§確定 H, Q-3）
-  TC-UT-IRG-014  MSG-IRG-002 2行構造（§確定 H, Q-3）
-  TC-UT-IRG-015  MSG-IRG-003 2行構造（§確定 H, Q-3）
-  TC-UT-IRG-016  MSG-IRG-004 2行構造（§確定 H, Q-3）
-  TC-UT-IRG-017  application 層責務（§確定 I, Q-3）
+  TC-UT-IRG-003  APPROVED 提出 → PENDING 継続(REQ-IRG-002, AC#3)
+  TC-UT-IRG-004  全 GateRole APPROVED → ALL_APPROVED 遷移(REQ-IRG-002/003, AC#4)
+  TC-UT-IRG-005  1件 REJECTED → REJECTED 即遷移(REQ-IRG-002/003, AC#5)
+  TC-UT-IRG-006  同一 GateRole 重複提出 → raise(REQ-IRG-002/004, AC#6)
+  TC-UT-IRG-007  確定後の追加 Verdict → raise(REQ-IRG-002, AC#7)
+  TC-UT-IRG-008  comment 境界値(0 / 5000 / 5001 文字)(REQ-IRG-002, AC#11)
+  TC-UT-IRG-009  invalid_role(REQ-IRG-004, AC#2,3)
+  TC-UT-IRG-011  VerdictDecision 2 値のみ(§確定 F, Q-3)
+  TC-UT-IRG-012  comment NFC + strip しない(§確定 G, Q-3)
+  TC-UT-IRG-013  MSG-IRG-001 2行構造(§確定 H, Q-3)
+  TC-UT-IRG-014  MSG-IRG-002 2行構造(§確定 H, Q-3)
+  TC-UT-IRG-015  MSG-IRG-003 2行構造(§確定 H, Q-3)
+  TC-UT-IRG-016  MSG-IRG-004 2行構造(§確定 H, Q-3)
+  TC-UT-IRG-017  application 層責務(§確定 I, Q-3)
 
 Issue: #65
 """
@@ -96,30 +96,42 @@ class TestSubmitVerdictAllApproved:
     def test_all_approved_transitions_to_all_approved(self) -> None:
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
         gate = gate.submit_verdict(
-            role="reviewer", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-            comment="", decided_at=_ts(),
+            role="reviewer",
+            agent_id=uuid4(),
+            decision=VerdictDecision.APPROVED,
+            comment="",
+            decided_at=_ts(),
         )
         gate = gate.submit_verdict(
-            role="ux", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-            comment="", decided_at=_ts(),
+            role="ux",
+            agent_id=uuid4(),
+            decision=VerdictDecision.APPROVED,
+            comment="",
+            decided_at=_ts(),
         )
         assert gate.gate_decision == GateDecision.ALL_APPROVED
 
     def test_all_approved_gate_has_two_verdicts(self) -> None:
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
         gate = gate.submit_verdict(
-            role="reviewer", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-            comment="", decided_at=_ts(),
+            role="reviewer",
+            agent_id=uuid4(),
+            decision=VerdictDecision.APPROVED,
+            comment="",
+            decided_at=_ts(),
         )
         gate = gate.submit_verdict(
-            role="ux", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-            comment="", decided_at=_ts(),
+            role="ux",
+            agent_id=uuid4(),
+            decision=VerdictDecision.APPROVED,
+            comment="",
+            decided_at=_ts(),
         )
         assert len(gate.verdicts) == 2
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-IRG-005: 1件 REJECTED → REJECTED 即遷移（残り未提出でも）(AC#5)
+# TC-UT-IRG-005: 1件 REJECTED → REJECTED 即遷移(残り未提出でも)(AC#5)
 # ---------------------------------------------------------------------------
 class TestSubmitVerdictRejectedImmediate:
     """TC-UT-IRG-005: single REJECTED transitions immediately, pending roles irrelevant."""
@@ -140,8 +152,11 @@ class TestSubmitVerdictRejectedImmediate:
         """Remaining 2 roles are not submitted; only 1 REJECTED verdict present."""
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux", "security"}))
         new_gate = gate.submit_verdict(
-            role="security", agent_id=uuid4(), decision=VerdictDecision.REJECTED,
-            comment="バグ発見", decided_at=_ts(),
+            role="security",
+            agent_id=uuid4(),
+            decision=VerdictDecision.REJECTED,
+            comment="バグ発見",
+            decided_at=_ts(),
         )
         assert len(new_gate.verdicts) == 1
 
@@ -149,8 +164,11 @@ class TestSubmitVerdictRejectedImmediate:
         """Feedback comment from REJECTED verdict is stored (AC#5)."""
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
         new_gate = gate.submit_verdict(
-            role="reviewer", agent_id=uuid4(), decision=VerdictDecision.REJECTED,
-            comment="テスト失敗あり", decided_at=_ts(),
+            role="reviewer",
+            agent_id=uuid4(),
+            decision=VerdictDecision.REJECTED,
+            comment="テスト失敗あり",
+            decided_at=_ts(),
         )
         assert new_gate.verdicts[0].comment == "テスト失敗あり"
 
@@ -164,13 +182,19 @@ class TestRoleAlreadySubmitted:
     def test_duplicate_role_raises(self) -> None:
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
         gate = gate.submit_verdict(
-            role="reviewer", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-            comment="", decided_at=_ts(),
+            role="reviewer",
+            agent_id=uuid4(),
+            decision=VerdictDecision.APPROVED,
+            comment="",
+            decided_at=_ts(),
         )
         with pytest.raises(InternalReviewGateInvariantViolation) as exc_info:
             gate.submit_verdict(
-                role="reviewer", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-                comment="", decided_at=_ts(),
+                role="reviewer",
+                agent_id=uuid4(),
+                decision=VerdictDecision.APPROVED,
+                comment="",
+                decided_at=_ts(),
             )
         assert exc_info.value.kind == "role_already_submitted"
 
@@ -179,15 +203,21 @@ class TestRoleAlreadySubmitted:
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
         # Submit reviewer once — gate stays PENDING.
         gate = gate.submit_verdict(
-            role="reviewer", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-            comment="", decided_at=_ts(),
+            role="reviewer",
+            agent_id=uuid4(),
+            decision=VerdictDecision.APPROVED,
+            comment="",
+            decided_at=_ts(),
         )
         assert gate.gate_decision == GateDecision.PENDING
         # Re-submit same role → role_already_submitted (not gate_already_decided).
         with pytest.raises(InternalReviewGateInvariantViolation) as exc_info:
             gate.submit_verdict(
-                role="reviewer", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-                comment="", decided_at=_ts(),
+                role="reviewer",
+                agent_id=uuid4(),
+                decision=VerdictDecision.APPROVED,
+                comment="",
+                decided_at=_ts(),
             )
         assert exc_info.value.kind == "role_already_submitted"
 
@@ -199,12 +229,16 @@ class TestGateAlreadyDecided:
     """TC-UT-IRG-007: any submission to ALL_APPROVED/REJECTED Gate raises gate_already_decided."""
 
     def test_submit_to_all_approved_gate_raises(self) -> None:
-        # Build a gate with required roles that include "reviewer" so we don't get invalid_role first.
+        # Build a gate whose required roles include "reviewer" so we hit
+        # gate_already_decided rather than invalid_role first.
         all_approved = make_all_approved_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
         with pytest.raises(InternalReviewGateInvariantViolation) as exc_info:
             all_approved.submit_verdict(
-                role="reviewer", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-                comment="", decided_at=_ts(),
+                role="reviewer",
+                agent_id=uuid4(),
+                decision=VerdictDecision.APPROVED,
+                comment="",
+                decided_at=_ts(),
             )
         assert exc_info.value.kind == "gate_already_decided"
 
@@ -214,8 +248,11 @@ class TestGateAlreadyDecided:
         gate = make_rejected_gate()
         with pytest.raises(InternalReviewGateInvariantViolation) as exc_info:
             gate.submit_verdict(
-                role="ux", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-                comment="", decided_at=_ts(),
+                role="ux",
+                agent_id=uuid4(),
+                decision=VerdictDecision.APPROVED,
+                comment="",
+                decided_at=_ts(),
             )
         assert exc_info.value.kind == "gate_already_decided"
 
@@ -227,8 +264,11 @@ class TestGateAlreadyDecided:
         # Step 1 must win.
         with pytest.raises(InternalReviewGateInvariantViolation) as exc_info:
             all_approved.submit_verdict(
-                role="reviewer", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-                comment="", decided_at=_ts(),
+                role="reviewer",
+                agent_id=uuid4(),
+                decision=VerdictDecision.APPROVED,
+                comment="",
+                decided_at=_ts(),
             )
         assert exc_info.value.kind == "gate_already_decided"
 
@@ -242,8 +282,11 @@ class TestCommentBoundary:
     def test_empty_comment_accepted(self) -> None:
         gate = make_gate(required_gate_roles=frozenset({"reviewer"}))
         new_gate = gate.submit_verdict(
-            role="reviewer", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-            comment="", decided_at=_ts(),
+            role="reviewer",
+            agent_id=uuid4(),
+            decision=VerdictDecision.APPROVED,
+            comment="",
+            decided_at=_ts(),
         )
         assert new_gate.verdicts[0].comment == ""
 
@@ -251,8 +294,11 @@ class TestCommentBoundary:
         gate = make_gate(required_gate_roles=frozenset({"reviewer"}))
         comment = "a" * 5000
         new_gate = gate.submit_verdict(
-            role="reviewer", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-            comment=comment, decided_at=_ts(),
+            role="reviewer",
+            agent_id=uuid4(),
+            decision=VerdictDecision.APPROVED,
+            comment=comment,
+            decided_at=_ts(),
         )
         assert len(new_gate.verdicts[0].comment) == 5000
 
@@ -260,8 +306,11 @@ class TestCommentBoundary:
         gate = make_gate(required_gate_roles=frozenset({"reviewer"}))
         with pytest.raises(InternalReviewGateInvariantViolation) as exc_info:
             gate.submit_verdict(
-                role="reviewer", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-                comment="a" * 5001, decided_at=_ts(),
+                role="reviewer",
+                agent_id=uuid4(),
+                decision=VerdictDecision.APPROVED,
+                comment="a" * 5001,
+                decided_at=_ts(),
             )
         assert exc_info.value.kind == "comment_too_long"
 
@@ -274,8 +323,11 @@ class TestCommentBoundary:
         comment = nfd_form * 5000  # 10000 raw code points → 5000 NFC chars
         gate = make_gate(required_gate_roles=frozenset({"reviewer"}))
         new_gate = gate.submit_verdict(
-            role="reviewer", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-            comment=comment, decided_at=_ts(),
+            role="reviewer",
+            agent_id=uuid4(),
+            decision=VerdictDecision.APPROVED,
+            comment=comment,
+            decided_at=_ts(),
         )
         assert len(new_gate.verdicts[0].comment) == 5000
 
@@ -291,8 +343,10 @@ class TestInvalidRole:
         with pytest.raises(InternalReviewGateInvariantViolation) as exc_info:
             gate.submit_verdict(
                 role="security",  # not in required_gate_roles
-                agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-                comment="", decided_at=_ts(),
+                agent_id=uuid4(),
+                decision=VerdictDecision.APPROVED,
+                comment="",
+                decided_at=_ts(),
             )
         assert exc_info.value.kind == "invalid_role"
 
@@ -300,8 +354,11 @@ class TestInvalidRole:
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
         with pytest.raises(InternalReviewGateInvariantViolation) as exc_info:
             gate.submit_verdict(
-                role="security", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-                comment="", decided_at=_ts(),
+                role="security",
+                agent_id=uuid4(),
+                decision=VerdictDecision.APPROVED,
+                comment="",
+                decided_at=_ts(),
             )
         assert exc_info.value.detail.get("role") == "security"
 
@@ -338,8 +395,11 @@ class TestCommentNFCNoStrip:
         gate = make_gate(required_gate_roles=frozenset({"reviewer"}))
         raw = "\n承認コメント\n"
         new_gate = gate.submit_verdict(
-            role="reviewer", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-            comment=raw, decided_at=_ts(),
+            role="reviewer",
+            agent_id=uuid4(),
+            decision=VerdictDecision.APPROVED,
+            comment=raw,
+            decided_at=_ts(),
         )
         assert new_gate.verdicts[0].comment.startswith("\n")
         assert new_gate.verdicts[0].comment.endswith("\n")
@@ -350,8 +410,11 @@ class TestCommentNFCNoStrip:
         nfd_comment = "がレビュー"
         gate = make_gate(required_gate_roles=frozenset({"reviewer"}))
         new_gate = gate.submit_verdict(
-            role="reviewer", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-            comment=nfd_comment, decided_at=_ts(),
+            role="reviewer",
+            agent_id=uuid4(),
+            decision=VerdictDecision.APPROVED,
+            comment=nfd_comment,
+            decided_at=_ts(),
         )
         expected = unicodedata.normalize("NFC", nfd_comment)
         assert new_gate.verdicts[0].comment == expected
@@ -362,19 +425,25 @@ class TestCommentNFCNoStrip:
 # TC-UT-IRG-013〜016: MSG 2 行構造 + Next: hint (§確定 H, Q-3)
 # ---------------------------------------------------------------------------
 class TestMsgTwoLineStructure:
-    """TC-UT-IRG-013〜016: all InternalReviewGateInvariantViolation messages have 2-line structure."""
+    """TC-UT-IRG-013〜016: InternalReviewGateInvariantViolation messages have 2-line structure."""
 
     def test_msg_irg_001_starts_with_fail_and_has_next(self) -> None:
         """TC-UT-IRG-013: MSG-IRG-001 (role_already_submitted) — [FAIL]…\\nNext:…"""
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
         gate = gate.submit_verdict(
-            role="reviewer", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-            comment="", decided_at=_ts(),
+            role="reviewer",
+            agent_id=uuid4(),
+            decision=VerdictDecision.APPROVED,
+            comment="",
+            decided_at=_ts(),
         )
         with pytest.raises(InternalReviewGateInvariantViolation) as exc_info:
             gate.submit_verdict(
-                role="reviewer", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-                comment="", decided_at=_ts(),
+                role="reviewer",
+                agent_id=uuid4(),
+                decision=VerdictDecision.APPROVED,
+                comment="",
+                decided_at=_ts(),
             )
         msg = str(exc_info.value)
         assert msg.startswith("[FAIL]")
@@ -385,8 +454,11 @@ class TestMsgTwoLineStructure:
         all_approved = make_all_approved_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
         with pytest.raises(InternalReviewGateInvariantViolation) as exc_info:
             all_approved.submit_verdict(
-                role="reviewer", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-                comment="", decided_at=_ts(),
+                role="reviewer",
+                agent_id=uuid4(),
+                decision=VerdictDecision.APPROVED,
+                comment="",
+                decided_at=_ts(),
             )
         msg = str(exc_info.value)
         assert msg.startswith("[FAIL]")
@@ -398,8 +470,11 @@ class TestMsgTwoLineStructure:
         gate = make_gate(required_gate_roles=frozenset({"reviewer"}))
         with pytest.raises(InternalReviewGateInvariantViolation) as exc_info:
             gate.submit_verdict(
-                role="reviewer", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-                comment="a" * 5001, decided_at=_ts(),
+                role="reviewer",
+                agent_id=uuid4(),
+                decision=VerdictDecision.APPROVED,
+                comment="a" * 5001,
+                decided_at=_ts(),
             )
         msg = str(exc_info.value)
         assert msg.startswith("[FAIL]")
@@ -411,8 +486,11 @@ class TestMsgTwoLineStructure:
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
         with pytest.raises(InternalReviewGateInvariantViolation) as exc_info:
             gate.submit_verdict(
-                role="security", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-                comment="", decided_at=_ts(),
+                role="security",
+                agent_id=uuid4(),
+                decision=VerdictDecision.APPROVED,
+                comment="",
+                decided_at=_ts(),
             )
         msg = str(exc_info.value)
         assert msg.startswith("[FAIL]")
