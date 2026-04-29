@@ -30,12 +30,12 @@
 
 | 要件 ID | 実装アーティファクト | テストケース ID | テストレベル | 種別 | 受入基準 |
 |---|---|---|---|---|---|
-| REQ-TS-HTTP-001（正常系）| `task_router` GET + `TaskService.get_task` + `SqliteTaskRepository.find_by_id` | TC-IT-TSH-001〜003 | 結合 | 正常系 | feature-spec.md §9 #23 |
-| REQ-TS-HTTP-001（Task 不在）| `TaskService.get_task` → `TaskNotFoundError` → `task_not_found_handler` | TC-IT-TSH-004〜006 | 結合 | 異常系 | feature-spec.md §9 #23 |
+| REQ-TS-HTTP-001（正常系）| `task_router` GET + `TaskService.find_by_id` + `SqliteTaskRepository.find_by_id` | TC-IT-TSH-001〜003 | 結合 | 正常系 | — |
+| REQ-TS-HTTP-001（Task 不在）| `TaskService.find_by_id` → `TaskNotFoundError` → `task_not_found_handler` | TC-IT-TSH-004〜006 | 結合 | 異常系 | feature-spec.md §9 #23 |
 | REQ-TS-HTTP-001（確定A masking: last_error）| GET `last_error` → `<REDACTED:*>` (R1-12 / T4)  | TC-IT-TSH-007 | 結合 | セキュリティ | feature-spec.md §9 #18 |
 | REQ-TS-HTTP-001（確定A masking: body_markdown）| GET deliverable `body_markdown` → `<REDACTED:*>` (R1-12 / T4 / R1-9 独立防御証明）| TC-IT-TSH-008 | 結合 | セキュリティ | feature-spec.md §9 #18 |
-| REQ-TS-HTTP-002（正常系）| `task_router` GET list + `TaskService.list_by_room` + `SqliteTaskRepository.find_all_by_room` | TC-IT-TSH-009〜010 | 結合 | 正常系 | feature-spec.md §9 #19 |
-| REQ-TS-HTTP-002（Room 不在 確定G）| `TaskService.list_by_room` → 空リスト（Room 不在でも 404 を返さない）| TC-IT-TSH-011 | 結合 | 正常系 | — |
+| REQ-TS-HTTP-002（正常系）| `task_router` GET list + `TaskService.find_all_by_room` + `SqliteTaskRepository.find_all_by_room` | TC-IT-TSH-009〜010 | 結合 | 正常系 | — |
+| REQ-TS-HTTP-002（Room 不在 確定G）| `TaskService.find_all_by_room` → 空リスト（Room 不在でも 404 を返さない）| TC-IT-TSH-011 | 結合 | 正常系 | — |
 | REQ-TS-HTTP-003（正常系）| `task_router` POST assign + `TaskService.assign` | TC-IT-TSH-012〜013 | 結合 | 正常系 | feature-spec.md §9 #19 |
 | REQ-TS-HTTP-003（Task 不在）| `TaskService.assign` → `TaskNotFoundError` | TC-IT-TSH-014 | 結合 | 異常系 | — |
 | REQ-TS-HTTP-003（terminal / UC-TS-015）| `TaskService.assign` → `TaskStateConflictError` → 409 | TC-IT-TSH-015 | 結合 | 異常系 | feature-spec.md §9 #19 |
@@ -84,17 +84,17 @@
 
 | テストID | 対象モジュール連携 | 使用 raw fixture | 前提条件 | 操作 | 期待結果 |
 |---|---|---|---|---|---|
-| TC-IT-TSH-001 | `task_router` → `TaskService.get_task` → `SqliteTaskRepository.find_by_id` | 実 SQLite tempdb | Directive 発行で作成済み Task 存在 | `GET /api/tasks/{task_id}` | HTTP 200, `TaskResponse`（id / room_id / status=PENDING / assigned_agent_ids=[] / deliverables=[]）|
-| TC-IT-TSH-002 | `task_router` → `TaskService.get_task` | 実 SQLite tempdb | Task 存在 | `GET /api/tasks/{task_id}` | HTTP 200, response.id == task_id |
-| TC-IT-TSH-003 | `task_router` → `TaskService.get_task` | 実 SQLite tempdb | Task 存在（room_id が既知）| `GET /api/tasks/{task_id}` | HTTP 200, response.room_id == room_id |
-| TC-IT-TSH-004 | `TaskService.get_task` → `TaskNotFoundError` → `task_not_found_handler` | 実 SQLite tempdb | Task 未存在 | `GET /api/tasks/{ランダム UUID}` | HTTP 404, `{"error": {"code": "not_found", "message": "Task not found."}}` |
+| TC-IT-TSH-001 | `task_router` → `TaskService.find_by_id` → `SqliteTaskRepository.find_by_id` | 実 SQLite tempdb | Directive 発行で作成済み Task 存在 | `GET /api/tasks/{task_id}` | HTTP 200, `TaskResponse`（id / room_id / status=PENDING / assigned_agent_ids=[] / deliverables=[]）|
+| TC-IT-TSH-002 | `task_router` → `TaskService.find_by_id` | 実 SQLite tempdb | Task 存在 | `GET /api/tasks/{task_id}` | HTTP 200, response.id == task_id |
+| TC-IT-TSH-003 | `task_router` → `TaskService.find_by_id` | 実 SQLite tempdb | Task 存在（room_id が既知）| `GET /api/tasks/{task_id}` | HTTP 200, response.room_id == room_id |
+| TC-IT-TSH-004 | `TaskService.find_by_id` → `TaskNotFoundError` → `task_not_found_handler` | 実 SQLite tempdb | Task 未存在 | `GET /api/tasks/{ランダム UUID}` | HTTP 404, `{"error": {"code": "not_found", "message": "Task not found."}}` |
 | TC-IT-TSH-005 | `task_not_found_handler` → code | 実 SQLite tempdb | Task 未存在 | `GET /api/tasks/{ランダム UUID}` | HTTP 404, error.code == "not_found" |
 | TC-IT-TSH-006 | `task_not_found_handler` → message | 実 SQLite tempdb | Task 未存在 | `GET /api/tasks/{ランダム UUID}` | HTTP 404, error.message == "Task not found." |
 | TC-IT-TSH-007 | GET `last_error` masking（確定A / T4 / R1-12）— **R1-9 独立防御証明** | 実 SQLite tempdb | BLOCKED 状態 Task を DB に直接シード（`last_error="GITHUB_PAT=ghp_xxxx"` を raw で INSERT）| `GET /api/tasks/{task_id}` | HTTP 200, response.last_error が `<REDACTED:GITHUB_PAT>` 形式（raw token 非露出）— field_serializer が R1-12 と独立して発火することを assert |
 | TC-IT-TSH-008 | GET deliverable `body_markdown` masking（確定A / T4 / R1-12）— **R1-9 独立防御証明** | 実 SQLite tempdb | Task + Deliverable を DB に直接シード（`body_markdown="ANTHROPIC_API_KEY=sk-ant-xxxx"` を raw で INSERT）| `GET /api/tasks/{task_id}` | HTTP 200, response.deliverables[0].body_markdown が `<REDACTED:ANTHROPIC_KEY>` 形式 |
-| TC-IT-TSH-009 | `task_router` → `TaskService.list_by_room` → `SqliteTaskRepository.find_all_by_room` | 実 SQLite tempdb | Room 存在・Task 2 件 | `GET /api/rooms/{room_id}/tasks` | HTTP 200, `{"items": [<TaskResponse>, <TaskResponse>], "total": 2}` |
-| TC-IT-TSH-010 | `TaskService.list_by_room` → 空リスト | 実 SQLite tempdb | Room 存在・Task 0 件 | `GET /api/rooms/{room_id}/tasks` | HTTP 200, `{"items": [], "total": 0}` |
-| TC-IT-TSH-011 | `TaskService.list_by_room` → 空リスト（Room 不在 / 確定G）| 実 SQLite tempdb | Room 未存在 | `GET /api/rooms/{ランダム UUID}/tasks` | HTTP 200, `{"items": [], "total": 0}`（404 ではなく空リストを返す）|
+| TC-IT-TSH-009 | `task_router` → `TaskService.find_all_by_room` → `SqliteTaskRepository.find_all_by_room` | 実 SQLite tempdb | Room 存在・Task 2 件 | `GET /api/rooms/{room_id}/tasks` | HTTP 200, `{"items": [<TaskResponse>, <TaskResponse>], "total": 2}` |
+| TC-IT-TSH-010 | `TaskService.find_all_by_room` → 空リスト | 実 SQLite tempdb | Room 存在・Task 0 件 | `GET /api/rooms/{room_id}/tasks` | HTTP 200, `{"items": [], "total": 0}` |
+| TC-IT-TSH-011 | `TaskService.find_all_by_room` → 空リスト（Room 不在 / 確定G）| 実 SQLite tempdb | Room 未存在 | `GET /api/rooms/{ランダム UUID}/tasks` | HTTP 200, `{"items": [], "total": 0}`（404 ではなく空リストを返す）|
 | TC-IT-TSH-012 | `task_router` → `TaskService.assign` → `SqliteTaskRepository.save` | 実 SQLite tempdb | PENDING Task 存在・Agent 存在 | `POST /api/tasks/{task_id}/assign` `{"agent_ids": ["{agent_id}"]}` | HTTP 200, `TaskResponse` |
 | TC-IT-TSH-013 | `TaskService.assign` → status 遷移 | 実 SQLite tempdb | PENDING Task 存在 | `POST /api/tasks/{task_id}/assign` | HTTP 200, response.status == "IN_PROGRESS" |
 | TC-IT-TSH-014 | `TaskService.assign` → `TaskNotFoundError` | 実 SQLite tempdb | Task 未存在 | `POST /api/tasks/{ランダム UUID}/assign` `{"agent_ids": ["{valid_uuid}"]}` | HTTP 404, error.code == "not_found" |
@@ -126,8 +126,8 @@
 | TC-UT-TSH-001 | `task_not_found_handler`（MSG-TS-HTTP-001）| 異常系 | `TaskNotFoundError(task_id="test-id")` | HTTP 404 |
 | TC-UT-TSH-002 | `task_not_found_handler` → error code | 異常系 | `TaskNotFoundError(task_id="test-id")` | body.error.code == "not_found" |
 | TC-UT-TSH-003 | `task_not_found_handler` → error message | 異常系 | `TaskNotFoundError(task_id="test-id")` | body.error.message == "Task not found." |
-| TC-UT-TSH-004 | `task_state_conflict_handler`（MSG-TS-HTTP-002）| 異常系 | `TaskStateConflictError(task_id="test-id", current_status="CANCELLED", action="assign")` | HTTP 409 |
-| TC-UT-TSH-005 | `task_state_conflict_handler` → error code | 異常系 | `TaskStateConflictError(...)` | body.error.code == "conflict" |
+| TC-UT-TSH-004 | `task_state_conflict_handler`（MSG-TS-HTTP-002 / `[FAIL]` / `\nNext:` 前処理凍結）| 異常系 | (a) `TaskStateConflictError` — 内部メッセージが `"[FAIL] Cannot assign to terminal task.\nNext: do not attempt state transitions on terminal tasks."` の形式 (b) `[FAIL]` なし単純メッセージ | (a) HTTP 409, `message` に `[FAIL]` / `\nNext:` が含まれない（全先行 sub-feature と同一の `_FAIL_PREFIX_RE` 前処理ルール準拠）(b) HTTP 409, message はそのまま返る |
+| TC-UT-TSH-005 | `task_state_conflict_handler` → error code（前処理後も code 不変）| 異常系 | `TaskStateConflictError(...)` | body.error.code == "conflict"（前処理は message のみに適用され code には影響しない）|
 | TC-UT-TSH-006 | `TaskAssign` スキーマ（正常系）| 正常系 | `{"agent_ids": ["{valid_uuid}"]}` | バリデーション通過 |
 | TC-UT-TSH-007 | `TaskAssign` スキーマ（agent_ids=[] / R1-6 違反）| 異常系 | `{"agent_ids": []}` | min_length 違反 `ValidationError` |
 | TC-UT-TSH-008 | `DeliverableCreate` スキーマ（正常系）| 正常系 | `{"body_markdown": "成果物テキスト", "submitted_by": "{agent_uuid}", "attachments": []}` | バリデーション通過 |

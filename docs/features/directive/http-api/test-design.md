@@ -22,7 +22,7 @@
 
 | 番号帯 | 用途 |
 |---|---|
-| TC-IT-DRH-001〜016 | 結合テスト（HTTP リクエスト / DI / 例外ハンドラ）|
+| TC-IT-DRH-001〜017 | 結合テスト（HTTP リクエスト / DI / 例外ハンドラ / アトミック UoW ロールバック）|
 | TC-IT-DRH-020〜 | 予約番号帯（将来の Directive 拡張 API で利用）|
 | TC-UT-DRH-001〜006 | ユニットテスト（スキーマ / ハンドラ / 依存方向）|
 
@@ -31,6 +31,7 @@
 | 要件 ID | 実装アーティファクト | テストケース ID | テストレベル | 種別 | 受入基準 |
 |---|---|---|---|---|---|
 | REQ-DR-HTTP-001（正常系）| `directive_router` POST + `DirectiveService.issue` + アトミック UoW（確定B: Directive + Task 同時生成）| TC-IT-DRH-001〜005 | 結合 | 正常系 | feature-spec.md §9 #12 |
+| REQ-DR-HTTP-001（確定B atomic UoW ロールバック証明）| `TaskRepository.save` 失敗 → session 全体ロールバック → 孤立 Directive なし（確定B 不変条件の物理保証）| TC-IT-DRH-017 | 結合 | 異常系 | feature-spec.md §9 #12 |
 | REQ-DR-HTTP-001（確定A masking: text）| POST レスポンス `directive.text` → `<REDACTED:*>`（R1-F / T4）| TC-IT-DRH-006 | 結合 | セキュリティ | feature-spec.md §9 #13 |
 | REQ-DR-HTTP-001（Room 不在 / UC-DR-006）| `DirectiveService.issue` → `RoomNotFoundError` → `room_not_found_handler` | TC-IT-DRH-007〜009 | 結合 | 異常系 | feature-spec.md §9 #14 |
 | REQ-DR-HTTP-001（Room archived / UC-DR-006 / 確定E）| `DirectiveService.issue` → `RoomArchivedError` → `room_archived_handler` | TC-IT-DRH-010〜012 | 結合 | 異常系 | feature-spec.md §9 #15 |
@@ -46,10 +47,11 @@
 **マトリクス充足の証拠**:
 - REQ-DR-HTTP-001 に最低 1 件の正常系テストケース（TC-IT-DRH-001）
 - REQ-DR-HTTP-001 の異常系（Room 不在 / archived / 業務ルール違反）が各々最低 1 件検証
-- MSG-DR-HTTP-001 の `code` / `message` 文字列が静的照合で確認
+- MSG-DR-HTTP-001 の `code` / `message` 文字列が静的照合で確認（`[FAIL]` / `\nNext:` 除去後の本文を確認）
 - 親受入基準 12〜15（[`../feature-spec.md §9`](../feature-spec.md)）が TC-IT-DRH-001〜012 で 1:1 に対応
 - T1〜T4 脅威への対策が TC-IT-DRH-015/016/014/006/TC-UT-DRH-005 で有効性確認
-- 確定A〜F の全項目が最低 1 件のテストケースでカバー（確定B=TC-IT-DRH-004/005, 確定E=TC-IT-DRH-010）
+- 確定A〜F の全項目が最低 1 件のテストケースでカバー（確定B=TC-IT-DRH-004/005+TC-IT-DRH-017, 確定E=TC-IT-DRH-010）
+- 確定B 核心（アトミック UoW ロールバック）: TC-IT-DRH-017（Task 保存失敗 → 孤立 Directive なし）
 - 孤児要件なし
 
 ## 外部 I/O 依存マップ
@@ -81,12 +83,13 @@
 | TC-IT-DRH-014 | FastAPI `UUID` 型強制（T3）| — | — | `POST /api/rooms/not-a-valid-uuid/directives` | HTTP 422 |
 | TC-IT-DRH-015 | CSRF ミドルウェア（T1）| 実 SQLite tempdb | Empire・Room 存在 | `POST /api/rooms/{room_id}/directives` に `Origin: http://evil.example.com` ヘッダ付与 | HTTP 403, error.code == "forbidden" |
 | TC-IT-DRH-016 | generic_exception_handler（T2 スタックトレース非露出）| 実 SQLite tempdb | — | 内部エラーを誘発（`/test/raise-exception` エンドポイント）| HTTP 500, response body に `"Traceback"` / `"stacktrace"` 含まれない, error.code == "internal_error" |
+| TC-IT-DRH-017 | アトミック UoW ロールバック（確定B 核心 / 孤立 Directive 禁止）| 実 SQLite tempdb | Empire・Room 存在。DI で `TaskRepository.save(task)` が `IntegrityError` を送出するスタブに差し替え | `POST /api/rooms/{room_id}/directives` 正常 payload | HTTP 500（Task 保存失敗）+ `DirectiveRepository.find_by_id(directive_id)` が `None`（session 全体がロールバックされ孤立 Directive が残らない）— 確定B のアトミック性を物理証明する（NOTE: DBへの直接確認は transaction 整合性検証のため例外的に許容）|
 
 ## ユニットテストケース
 
 | テストID | 対象 | 種別 | 入力（factory / 直接）| 期待結果 |
 |---|---|---|---|---|
-| TC-UT-DRH-001 | `directive_invariant_violation_handler`（MSG-DR-HTTP-001）| 異常系 | `DirectiveInvariantViolation("[FAIL] text must not be empty.\nNext: provide non-empty text.")` | HTTP 422 |
+| TC-UT-DRH-001 | `directive_invariant_violation_handler`（MSG-DR-HTTP-001 / `[FAIL]` / `\nNext:` 前処理凍結）| 異常系 | `DirectiveInvariantViolation("[FAIL] text must not be empty.\nNext: provide non-empty text.")` | HTTP 422, `message` が `"text must not be empty."` — `[FAIL]` プレフィックスと `\nNext:.*` が除去されていること（全先行 sub-feature と同一の `_FAIL_PREFIX_RE` 前処理ルール準拠）|
 | TC-UT-DRH-002 | `directive_invariant_violation_handler` → error code | 異常系 | `DirectiveInvariantViolation(...)` | body.error.code == "validation_error" |
 | TC-UT-DRH-003 | `DirectiveCreate` スキーマ（正常系）| 正常系 | `{"text": "ブログ分析機能を実装してください"}` | バリデーション通過 |
 | TC-UT-DRH-004 | `DirectiveCreate` スキーマ（text="" / min_length 違反）| 異常系 | `{"text": ""}` | min_length 違反 `ValidationError` |
@@ -101,7 +104,7 @@
 - 親受入基準 12〜15（[`../feature-spec.md §9`](../feature-spec.md)）が TC-IT-DRH-001〜012 で 1:1 に対応
 - T1〜T4 脅威への対策が TC-IT-DRH-015/016/014/006/TC-UT-DRH-005 で有効性確認
 - 確定A masking: TC-IT-DRH-006 + TC-UT-DRH-005（field_serializer 独立動作）
-- 確定B アトミック UoW: TC-IT-DRH-004/005（Directive + Task 同一 UoW 作成の物理証明）
+- 確定B アトミック UoW: TC-IT-DRH-004/005（正常系 Directive + Task 同一 UoW 作成の物理証明）+ TC-IT-DRH-017（異常系 ロールバック → 孤立 Directive なしの物理証明）
 - 確定E Room archived 確認: TC-IT-DRH-010〜012
 - 行カバレッジ目標: **90% 以上**（`detailed-design.md §カバレッジ基準`）
 
@@ -152,8 +155,8 @@ backend/tests/
 
 | # | 内容 | 起票先 |
 |---|---|---|
-| TBD-1 | `tests/factories/directive.py` 新規作成（`make_directive`）。実装着手前に完了必須。空欄のまま IT 実装に進んだ場合レビューで却下する | 実装 PR 着手前 |
-| TBD-2 | `directive_invariant_violation_handler` の確定文言が domain 層 `str(exc)` に依存するため、`[FAIL]` / `\nNext:` 前処理ルール適用要否を実装時に確認すること（agent の `agent_invariant_violation_handler` 参照）| 実装着手前 |
+| TBD-1 | `tests/factories/directive.py` 新規作成（`make_directive`）。実装着手前に完了必須。空欄のまま IT 実装に進んだ場合レビューで却下する。**完了条件**: `make_directive` 実装 + TC-UT-DRH-006 静的解析テスト（`ast.walk()` 全ノード走査 / PR #105 退行禁止ルール準拠 / `TestStaticDependencyAnalysisDirective` クラス名）の実装も同時に完了すること | 実装 PR 着手前 |
+| ~~TBD-2~~ | ~~`[FAIL]` / `\nNext:` 前処理ルール適用要否~~ → **解消（設計フェーズで凍結）**: `detailed-design.md §MSG-DR-HTTP-001` にて「全先行 sub-feature と同一の `_FAIL_PREFIX_RE` 前処理ルール（`[FAIL]` プレフィックス除去 + `\nNext:.*` サフィックス除去）を適用」として設計書内凍結済み。TC-UT-DRH-001 の期待結果に前処理検証を明示凍結。本 TBD は**クローズ**。 | 完了（同ブランチ）|
 
 ## 関連
 
