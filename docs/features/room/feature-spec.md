@@ -101,7 +101,7 @@ bakufu システム全体ペルソナは [`docs/analysis/personas.md`](../../ana
 | UC-RM-011 | CEO | HTTP API 経由で Room を更新できる（name / description / prompt_kit の部分更新、PATCH /api/rooms/{room_id}）| 必須 | http-api |
 | UC-RM-012 | CEO | HTTP API 経由で Room をアーカイブできる（DELETE /api/rooms/{room_id}、論理削除）| 必須 | http-api |
 | UC-RM-013 | CEO | HTTP API 経由で Room に Agent を割り当てられる（POST /api/rooms/{room_id}/agents）| 必須 | http-api |
-| UC-RM-014 | CEO | HTTP API 経由で Room の Agent 割り当てを解除できる（DELETE /api/rooms/{room_id}/agents/{agent_id}）| 必須 | http-api |
+| UC-RM-014 | CEO | HTTP API 経由で Room の Agent 割り当てを解除できる（DELETE /api/rooms/{room_id}/agents/{agent_id}/roles/{role}）| 必須 | http-api |
 
 ## 6. スコープ
 
@@ -208,7 +208,7 @@ bakufu システム全体ペルソナは [`docs/analysis/personas.md`](../../ana
 | 27 | HTTP API 経由で Room をアーカイブできる（DELETE /api/rooms/{room_id} → 204）| UC-RM-012 | TC-IT-RM-HTTP-009 |
 | 28 | HTTP API 経由で Agent を Room に割り当てられる（POST /api/rooms/{room_id}/agents → 201 + RoomResponse）| UC-RM-013 | TC-IT-RM-HTTP-010 |
 | 29 | アーカイブ済み Room への Agent 割り当ては 409 が返る（業務ルール R1-5）| UC-RM-013 | TC-IT-RM-HTTP-011 |
-| 30 | HTTP API 経由で Agent 割り当てを解除できる（DELETE /api/rooms/{room_id}/agents/{agent_id}?role={role} → 204）| UC-RM-014 | TC-IT-RM-HTTP-012 |
+| 30 | HTTP API 経由で Agent 割り当てを解除できる（DELETE /api/rooms/{room_id}/agents/{agent_id}/roles/{role} → 204）| UC-RM-014 | TC-IT-RM-HTTP-012 |
 | 31 | 不正な UUID パスパラメータ（empire_id / room_id / agent_id）は 422 が返る（業務ルール R1-10）| UC-RM-008〜014 | TC-IT-RM-HTTP-013 |
 
 E2E（受入基準 16, 17）は [`system-test-design.md`](system-test-design.md) で詳細凍結。受入基準 1〜14 は domain sub-feature の IT / UT で検証（[`domain/test-design.md`](domain/test-design.md)）。受入基準 18 は repository IT（TC-IT-RR-008）と E2E（TC-E2E-RM-003）の両方で検証。受入基準 19〜31 は http-api sub-feature の IT で検証（[`http-api/test-design.md`](http-api/test-design.md)）。
