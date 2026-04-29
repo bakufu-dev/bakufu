@@ -5,11 +5,13 @@ Implements ``REQ-EM-HTTP-001``〜``REQ-EM-HTTP-005`` per
 
 Design notes:
 
-* ``create`` / ``update`` / ``archive`` open a Unit-of-Work via
-  ``async with self._session.begin():`` — service layer owns the
-  transaction boundary (確定 G: "service 内で開く").
-* ``find_all`` / ``find_by_id`` are read-only; they do not open a
-  transaction (``session.begin()`` auto-begins on first I/O for reads).
+* **UoW 境界**: write 操作 (``create`` / ``update`` / ``archive``) は read も含め
+  単一の ``async with self._session.begin():`` ブロック内で完結させる。
+  read-then-write パターンで read 操作が SQLAlchemy autobegin を起動したあとに
+  再度 ``begin()`` を呼ぶと ``InvalidRequestError: A transaction is already begun``
+  が発生するため (BUG-EM-001 修正)。
+* ``find_all`` / ``find_by_id`` は read-only。明示的な ``begin()`` は不要。
+  SQLAlchemy が autobegin するため呼び出し元でトランザクションを意識しなくてよい。
 * The service raises application-layer exceptions
   (:class:`EmpireNotFoundError` / :class:`EmpireAlreadyExistsError` /
   :class:`EmpireArchivedError`) rather than returning sentinel values,
@@ -53,7 +55,7 @@ class EmpireService:
 
         Args:
             name: Raw Empire name. Normalized via domain's NFC+strip
-                pipeline; length validated as 1〜80 chars (R1-1).
+                pipeline; length validated as 1-80 chars (R1-1).
 
         Returns:
             The freshly persisted Empire.
@@ -62,17 +64,19 @@ class EmpireService:
             EmpireAlreadyExistsError: if an Empire already exists (R1-5).
             EmpireInvariantViolation: if ``name`` fails domain validation.
         """
-        count = await self._repo.count()
-        if count > 0:
-            raise EmpireAlreadyExistsError()
-
-        # EmpireId is a type alias for UUID — assign uuid4() directly.
-        empire = Empire(
-            id=uuid4(),
-            name=name,
-            archived=False,
-        )
+        # BUG-EM-001: count() triggers autobegin. Put ALL operations
+        # (read + write) inside a single begin() to avoid
+        # "InvalidRequestError: A transaction is already begun".
         async with self._session.begin():
+            count = await self._repo.count()
+            if count > 0:
+                raise EmpireAlreadyExistsError()
+            # EmpireId is a type alias for UUID — uuid4() is the correct type.
+            empire = Empire(
+                id=uuid4(),
+                name=name,
+                archived=False,
+            )
             await self._repo.save(empire)
         return empire
 
@@ -116,22 +120,24 @@ class EmpireService:
             EmpireArchivedError: if the Empire is archived (R1-8).
             EmpireInvariantViolation: if the new name fails domain validation.
         """
-        empire = await self.find_by_id(empire_id)
-        if empire.archived:
-            raise EmpireArchivedError(str(empire_id))
-
-        if name is None:
-            # No fields changed — persist current state and return.
-            return empire
-
-        updated = Empire(
-            id=empire.id,
-            name=name,
-            archived=empire.archived,
-            rooms=list(empire.rooms),
-            agents=list(empire.agents),
-        )
+        # BUG-EM-001: find_by_id triggers autobegin. Keep everything in one
+        # begin() so there is only one transaction boundary.
         async with self._session.begin():
+            empire = await self._repo.find_by_id(empire_id)
+            if empire is None:
+                raise EmpireNotFoundError(str(empire_id))
+            if empire.archived:
+                raise EmpireArchivedError(str(empire_id))
+            if name is None:
+                # No fields changed — nothing to persist.
+                return empire
+            updated = Empire(
+                id=empire.id,
+                name=name,
+                archived=empire.archived,
+                rooms=list(empire.rooms),
+                agents=list(empire.agents),
+            )
             await self._repo.save(updated)
         return updated
 
@@ -144,9 +150,13 @@ class EmpireService:
         Raises:
             EmpireNotFoundError: if the Empire does not exist.
         """
-        empire = await self.find_by_id(empire_id)
-        archived_empire = empire.archive()
+        # BUG-EM-001: find_by_id triggers autobegin. Keep everything in one
+        # begin() so there is only one transaction boundary.
         async with self._session.begin():
+            empire = await self._repo.find_by_id(empire_id)
+            if empire is None:
+                raise EmpireNotFoundError(str(empire_id))
+            archived_empire = empire.archive()
             await self._repo.save(archived_empire)
 
 

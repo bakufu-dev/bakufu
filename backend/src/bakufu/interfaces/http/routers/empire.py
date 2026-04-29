@@ -11,8 +11,9 @@ Router 内には ``try/except`` を書かない (http-api-foundation architectur
 例外は ``app.py`` に登録された専用ハンドラが処理する (確定 B / 確定 C)。
 
 ``empire_id`` パスパラメータは ``str`` で受け取り、
-``EmpireId(UUID(empire_id))`` に変換する。不正な UUID 形式は
+``UUID(empire_id)`` に変換する。不正な UUID 形式は
 FastAPI の path validation で 422 を返す。
+``EmpireId`` は ``UUID`` の型エイリアスのため domain import は不要 (BUG-EM-002 修正)。
 """
 
 from __future__ import annotations
@@ -23,7 +24,6 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Response
 
 from bakufu.application.services.empire_service import EmpireService
-from bakufu.domain.value_objects.identifiers import EmpireId
 from bakufu.interfaces.http.dependencies import get_empire_service
 from bakufu.interfaces.http.schemas.empire import (
     AgentRefResponse,
@@ -113,7 +113,7 @@ async def get_empire(
     - 422: ``empire_id`` が不正な UUID 形式の場合
     """
     # EmpireId is a type alias for UUID — UUID() constructs the correct type.
-    eid: EmpireId = UUID(empire_id)
+    eid: UUID = UUID(empire_id)
     empire = await service.find_by_id(eid)
     return _to_empire_response(empire)
 
@@ -130,7 +130,7 @@ async def update_empire(
     - 409: アーカイブ済み Empire への更新 (``EmpireArchivedError``)
     - 422: name が 1〜80 文字を超える場合 / 不正 UUID
     """
-    eid: EmpireId = UUID(empire_id)
+    eid: UUID = UUID(empire_id)
     empire = await service.update(eid, body.name)
     return _to_empire_response(empire)
 
@@ -147,7 +147,7 @@ async def delete_empire(
     - 204: 成功 (No Content)
     - 404: 対象 Empire が存在しない場合 (``EmpireNotFoundError``)
     """
-    eid: EmpireId = UUID(empire_id)
+    eid: UUID = UUID(empire_id)
     await service.archive(eid)
     return Response(status_code=204)
 
