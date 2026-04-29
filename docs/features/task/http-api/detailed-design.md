@@ -9,7 +9,7 @@
 
 | 記号 | 論点 | 決定内容 |
 |-----|------|---------|
-| 確定A | masking 要否（`last_error` / `body_markdown` の HTTP レスポンス） | `TaskResponse.last_error` / `DeliverableResponse.body_markdown` に `@field_serializer` で `mask()` 適用（defense-in-depth）。DB は MaskedText TypeDecorator で既にマスキング済み（R1-12）。`mask()` は冪等性あり（二重 masking なし） |
+| 確定A | masking 要否（`last_error` / `body_markdown` の HTTP レスポンス） | `TaskResponse.last_error` / `DeliverableResponse.body_markdown` に `@field_serializer` で `mask()` 適用（defense-in-depth）。`@field_serializer` は GET / POST / PATCH **全レスポンスパス**で発火する（mode 制限なし）。DB は MaskedText TypeDecorator で既にマスキング済み（R1-12）。`mask()` は冪等性あり（二重 masking なし）。GET /api/tasks/{task_id} で BLOCKED Task を取得する場合も `last_error` に field_serializer が適用され、DB バイパス経路（raw 値直接 INSERT）でも HTTP レスポンスに secret が露出しない |
 | 確定B | `find_all_by_room` の追加（P-2）| `TaskRepository` Protocol に `find_all_by_room(room_id: RoomId) -> list[Task]` を追加。Room 不在時は空リストを返す（`RoomNotFoundError` は raise しない）|
 | 確定C | `task_exceptions.py` 新規作成（P-1）| `TaskNotFoundError(task_id)` / `TaskStateConflictError(task_id, current_status, action)` を定義。`ApplicationError` を基底クラスとする（room_exceptions.py パターン踏襲）|
 | 確定D | `TaskInvariantViolation` の HTTP ステータス分岐 | `kind in ('terminal_violation', 'state_transition_invalid')` → service 層で catch して `TaskStateConflictError` に変換 → 409。その他 kind → `TaskInvariantViolation` のまま伝播 → error_handlers.py が 422 に変換 |
@@ -88,8 +88,14 @@
 | ID | 条件 | message | detail | HTTP |
 |---|------|---------|--------|------|
 | MSG-TS-HTTP-001 | `TaskNotFoundError` | `"Task not found."` | `{"task_id": "<uuid>"}` | 404 |
-| MSG-TS-HTTP-002 | `TaskStateConflictError` | domain 層の `str(exc)` をそのまま使用（[FAIL] ... / Next: ... の 2 行構造、業務ルール R1-9）| `{"task_id": "<uuid>", "current_status": "<status>", "requested_action": "<action>"}` | 409 |
-| MSG-TS-HTTP-003 | `TaskInvariantViolation`（terminal / 遷移不可 以外）| domain 層の `str(exc)` をそのまま使用 | `{"kind": exc.kind}` | 422 |
+| MSG-TS-HTTP-002 | `TaskStateConflictError` | domain 層の `str(exc)` から **`[FAIL]` プレフィックスと `\nNext:.*` を除去した本文のみ**（`re.sub(r"^\[FAIL\]\s*", "", str(exc)).split("\nNext:")[0].strip()`）— empire / room / workflow / agent と同一前処理パターン | `{"task_id": "<uuid>", "current_status": "<status>", "requested_action": "<action>"}` | 409 |
+| MSG-TS-HTTP-003 | `TaskInvariantViolation`（terminal / 遷移不可 以外）| domain 層の `str(exc)` から **`[FAIL]` プレフィックスと `\nNext:.*` を除去した本文のみ**（同一前処理パターン）| `{"kind": exc.kind}` | 422 |
+
+**前処理ルール（empire / room / workflow / agent と同一パターン）**:
+1. `[FAIL] ` プレフィックスを除去: `re.sub(r"^\[FAIL\]\s*", "", str(exc))`
+2. `\nNext:` 以降を除去: `.split("\nNext:")[0].strip()`
+
+これにより domain 内部の AI エージェント向けフォーマット（業務ルール R1-9）が HTTP クライアントに露出しない。`task_state_conflict_handler` / `task_invariant_violation_handler` はこの前処理を適用したうえで `ErrorResponse.message` を構築する。
 
 ## 例外マッピング詳細
 
@@ -157,8 +163,10 @@ ValidationError (Pydantic)  → 422 validation_error（既存 http-api-foundatio
 
 - DB 層（永続化前）: `MaskedText` TypeDecorator が `tasks.last_error` / `deliverables.body_markdown` への書き込み時に `mask()` を適用（repository sub-feature で確定済み、業務ルール R1-12）
 - HTTP 層（レスポンス時）: `TaskResponse.last_error` / `DeliverableResponse.body_markdown` に `@field_serializer` を定義し `mask(value)` を適用
+- **全レスポンスパスで発火（mode 制限なし）**: `@field_serializer` は GET / POST / PATCH 全エンドポイントのレスポンス構築時に無条件で呼び出される。GET /api/tasks/{task_id} で BLOCKED Task を取得する場合も `last_error` に適用される
 - `mask()` の冪等性: `<REDACTED:DISCORD_WEBHOOK>` / `<REDACTED:ANTHROPIC_KEY>` 等のパターンは二重マスキングされない
 - `last_error=None` の場合: `@field_serializer` は None をそのまま返す（masking しない）
+- DB バイパス保証: DB への raw token 直接 INSERT バイパスが発生した場合でも、HTTP レスポンスでは field_serializer が独立して secret を除去する（R1-12 永続化 masking + HTTP レスポンス masking の二重防御）
 
 ### `TaskInvariantViolation` の webhook auto-mask
 

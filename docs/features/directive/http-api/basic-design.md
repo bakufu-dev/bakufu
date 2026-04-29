@@ -234,12 +234,29 @@ sequenceDiagram
 
 ## セキュリティ設計
 
-| 観点 | 設計決定 |
-|---|---|
-| Directive.text の HTTP レスポンスマスキング | `DirectiveResponse.text` は `field_serializer` で `mask()` を適用（defense-in-depth）。DB 永続化時は MaskedText TypeDecorator によりマスキング済み。GET レスポンスでも masked 値を返す（R1-F 準拠）|
-| DirectiveInvariantViolation の auto-mask | domain 層で webhook URL を `<REDACTED:DISCORD_WEBHOOK>` に伏字化済み。HTTP レスポンスの `detail` にも masked 値が通過する（R1-D 準拠）|
-| UoW のロールバック保証 | `async with session.begin()` は例外時に自動ロールバック。Directive のみ保存されて Task が失われる inconsistent 状態を防ぐ |
-| Room 存在確認 | Directive 発行前に Room の存在・archived 状態を確認。存在しない Room への発行は拒否 |
+### 脅威モデル
+
+| 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
+|---|---|---|---|
+| **T1: CSRF 経由での Directive 発行** | ブラウザ経由の不正 POST | Directive + Task の整合性 | http-api-foundation 確定D: CSRF Origin 検証ミドルウェア（Origin ヘッダ不一致なら 403）|
+| **T2: スタックトレース露出** | 500 エラーレスポンスへのスタックトレース混入 | 内部実装情報 | http-api-foundation 確定A: generic_exception_handler が `internal_error` のみを返す |
+| **T3: 不正 UUID によるパスインジェクション** | `room_id` に不正値を注入 | DB 整合性 | FastAPI `UUID` 型強制（422 on 不正形式）+ SQLAlchemy ORM（raw SQL 不使用）|
+| **T4: Directive.text 経由での秘密情報漏洩（A02）** | CEO が API key / GitHub PAT / webhook URL を `text` に含めた場合、または DB への raw token 直接 INSERT バイパスが発生した場合、HTTP レスポンスに raw token が露出 | API key / GitHub PAT / webhook token | `DirectiveResponse.text` の `@field_serializer` が POST 全レスポンスパスで `application.security.masking.mask()` を呼び出す（mode 制限なし・冪等）。DB バイパス経路でも R1-F が独立防御として機能する（§確定A 凍結）|
+
+### OWASP Top 10 対応
+
+| # | カテゴリ | 対応状況 |
+|---|---|---|
+| A01 | Broken Access Control | loopback バインド（`127.0.0.1:8000`）+ CSRF Origin 検証（http-api-foundation 確定D）|
+| A02 | Cryptographic Failures | **Directive.text**: `field_serializer` が POST 全レスポンスパスで `mask()` を呼び出す（T4 / §確定A 凍結）。DB 永続化前も MaskedText TypeDecorator で二重防御（R1-F）|
+| A03 | Injection | SQLAlchemy ORM 経由（raw SQL 不使用）|
+| A04 | Insecure Design | domain の pre-validate + frozen Directive で不整合状態を物理的に防止。atomic UoW で Directive + Task の整合性を保証 |
+| A05 | Security Misconfiguration | http-api-foundation の lifespan / CORS 設定を引き継ぐ |
+| A06 | Vulnerable Components | 依存 CVE は CI `pip-audit` で監視 |
+| A07 | Auth Failures | MVP 設計上 意図的な認証なし（loopback バインドで代替）|
+| A08 | Data Integrity Failures | `async with session.begin()` + UoW でアトミック永続化（Directive + Task）。部分失敗時は全体ロールバック |
+| A09 | Logging Failures | 内部エラーは application 層でログ、スタックトレースはレスポンスに含めない |
+| A10 | SSRF | 該当なし — Directive 業務概念は外部通信を持たない（LLM 送信は `feature/llm-adapter` 責務）|
 
 ## ER 図（影響範囲）
 

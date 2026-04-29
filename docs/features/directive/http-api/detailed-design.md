@@ -9,7 +9,7 @@
 
 | 記号 | 論点 | 決定内容 |
 |-----|------|---------|
-| 確定A | masking 要否（`text` の HTTP レスポンス） | `DirectiveResponse.text` に `@field_serializer` で `mask()` 適用（defense-in-depth）。DB は MaskedText TypeDecorator で既にマスキング済み。GET レスポンスでも masked 値を返す |
+| 確定A | masking 要否（`text` の HTTP レスポンス） | `DirectiveResponse.text` に `@field_serializer` で `mask()` 適用（defense-in-depth）。`@field_serializer` は POST **全レスポンスパス**で発火（mode 制限なし）。DB は MaskedText TypeDecorator で既にマスキング済み。GET レスポンスでも masked 値を返す |
 | 確定B | アトミック UoW | `DirectiveService.issue()` 内で `async with session.begin()` を 1 ブロックで包む。Directive 保存 → link_task → Directive UPSERT → Task 保存の 4 操作が同一トランザクション |
 | 確定C | `$` プレフィックス正規化 | `DirectiveService.issue()` が `text = raw_text if raw_text.startswith('$') else '$' + raw_text` で正規化（業務ルール R1-A）。Aggregate 側は valid な text しか受け取らない契約 |
 | 確定D | DirectiveInvariantViolation → 422 | domain 層の `DirectiveInvariantViolation` は application 層でそのまま伝播させ、error_handlers.py が 422 に変換 |
@@ -49,7 +49,13 @@
 
 | ID | 条件 | message | detail | HTTP |
 |---|------|---------|--------|------|
-| MSG-DR-HTTP-001 | `DirectiveInvariantViolation` — テキスト超過・NFC 問題等 | domain 層の `str(exc)` をそのまま使用（[FAIL] ... / Next: ... の 2 行構造、業務ルール R1-E）| `{"kind": exc.kind}` | 422 |
+| MSG-DR-HTTP-001 | `DirectiveInvariantViolation` — テキスト超過・NFC 問題等 | domain 層の `str(exc)` から **`[FAIL]` プレフィックスと `\nNext:.*` を除去した本文のみ**（`re.sub(r"^\[FAIL\]\s*", "", str(exc)).split("\nNext:")[0].strip()`）— empire / room / workflow / agent と同一前処理パターン | `{"kind": exc.kind}` | 422 |
+
+**前処理ルール（empire / room / workflow / agent と同一パターン）**:
+1. `[FAIL] ` プレフィックスを除去: `re.sub(r"^\[FAIL\]\s*", "", str(exc))`
+2. `\nNext:` 以降を除去: `.split("\nNext:")[0].strip()`
+
+これにより domain 内部の AI エージェント向けフォーマット（業務ルール R1-E）が HTTP クライアントに露出しない。`directive_invariant_violation_handler` はこの前処理を適用したうえで `ErrorResponse.message` を構築する。
 
 ## 例外マッピング詳細
 
@@ -70,6 +76,21 @@ ValidationError (Pydantic)  → 422 validation_error（既存 http-api-foundatio
 | 関数名 | シグネチャ概要 | 責務 |
 |-------|-------------|------|
 | `get_directive_service` | `(session=Depends(get_session)) -> DirectiveService` | `DirectiveRepository`（SQLite 実装）/ `TaskRepository`（SQLite 実装）/ `RoomRepository`（SQLite 実装）/ `session` を注入して `DirectiveService` を生成する |
+
+## 確定G: `DirectiveService.issue()` の例外優先順位（凍結）
+
+複数条件が同時に満たされる場合（archived Room に空テキストを POST する等）に対して、例外の発生順序を凍結する:
+
+| 優先順 | 確認内容 | 発生例外 | HTTP |
+|-------|---------|---------|------|
+| 1 | Room 存在確認（`room_repo.find_by_id` → None）| `RoomNotFoundError` | 404 |
+| 2 | Room archived 確認（`room.archived == True`）| `RoomArchivedError` | 409 |
+| 3 | `$` プレフィックス正規化（R1-A） | — （例外なし、補完するのみ）| — |
+| 4 | `Directive(...)` 構築・不変条件検査 | `DirectiveInvariantViolation` | 422 |
+| 5 | `Task(...)` 構築・不変条件検査 | `TaskInvariantViolation` | 422 |
+| 6 | `async with session.begin()` UoW | DB 例外 → 自動ロールバック | 500 |
+
+**Room 不在は archived より先に確認する**（存在しない Room に archived 確認は無意味）。Directive 構築は Room 確認後。この順序を実装者が守らないと、テストが揺れる。
 
 ## アトミック UoW 実装契約
 
