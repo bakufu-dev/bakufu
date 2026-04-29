@@ -1,6 +1,6 @@
 # 詳細設計補章: ユーザー向けメッセージ確定文言
 
-> 親: [`../detailed-design.md`](../detailed-design.md)。本書は MSG-PF-001〜008 の確定文言を凍結する真実源。requirements.md §ユーザー向けメッセージ一覧 とのマッピング元。
+> 親: [`../detailed-design.md`](../detailed-design.md)。本書は MSG-PF-001〜008 の確定文言を凍結する真実源。[`../feature-spec.md`](../feature-spec.md) §ユーザー向けメッセージ一覧 とのマッピング元。
 
 ## プレフィックス統一
 

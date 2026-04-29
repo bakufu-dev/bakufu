@@ -42,9 +42,9 @@
 | REQ-EMR-005（storage.md 逆引き表） | §逆引き表に「Empire 関連カラム: masking 対象なし」行が存在 | TC-DOC-EMR-001 | doc 検証 | 正常系 | （確定 E Layer 3） |
 | 確定 D（シングルトン責務分離） | `count()` 単体で 0 / 1 / 2+ を返すのみ、Aggregate 内 / Repository 内でシングルトン強制しない | TC-IT-EMR-018 | 結合 | 正常系 | （責務境界） |
 | 確定 F（テンプレート責務） | チェックリスト 11 項目（A〜E）を本 PR が満たすことを test-design.md で凍結 | （本マトリクス全体） | — | — | 11 項目 |
-| AC-12（依存方向） | `domain` 層から `application` / `infrastructure` への import がゼロ件 | （既存 CI script） | — | — | 12 |
-| AC-13（lint/typecheck） | `pyright --strict` / `ruff check` | （CI ジョブ） | — | — | 13 |
-| AC-14（カバレッジ） | `pytest --cov=bakufu.application.ports.empire_repository --cov=bakufu.infrastructure.persistence.sqlite.repositories.empire_repository` で 90% 以上 | （CI ジョブ） | — | — | 14 |
+| Q-3（依存方向） | `domain` 層から `application` / `infrastructure` への import がゼロ件 | （既存 CI script） | — | — | Q-3 |
+| Q-1（lint/typecheck） | `pyright --strict` / `ruff check` | （CI ジョブ） | — | — | Q-1 |
+| Q-2（カバレッジ） | `pytest --cov=bakufu.application.ports.empire_repository --cov=bakufu.infrastructure.persistence.sqlite.repositories.empire_repository` で 90% 以上 | （CI ジョブ） | — | — | Q-2 |
 
 **マトリクス充足の証拠**:
 
@@ -56,7 +56,7 @@
 - **テンプレート責務（確定 F）**: 後続 6 件 Repository PR が確定 A〜E を直接参照して実装する旨を test-design.md レビュー観点で凍結
 - **Tx 境界の正常系/異常系（確定 B）**: TC-IT-EMR-012 で `async with session.begin()` の commit / rollback 両経路を物理確認、Repository が明示的 commit / rollback しないことを assert
 - **DB 制約**: FK CASCADE（TC-IT-EMR-013）+ UNIQUE 制約（TC-IT-EMR-014）で Alembic 2nd revision の DDL が正しいことを物理確認
-- 受入基準 1〜11 すべてに unit/integration ケース（12〜14 は CI ジョブ）
+- 受入基準 1〜11 すべてに unit/integration ケース（開発者品質 Q-1/Q-2/Q-3 は CI ジョブ）
 - 確定 A（Protocol 配置）/ B（delete-then-insert + Tx 境界）/ C（domain↔row 変換）/ D（シングルトン責務分離）/ E（CI 三層防衛）/ F（テンプレート責務）すべてに証拠ケース
 - 孤児要件ゼロ
 
@@ -93,7 +93,7 @@
 - Repository は内部 API（Python module-level の Protocol / Class）のみ提供
 - 戦略ガイド §E2E対象の判断「内部 API・ライブラリなどエンドユーザー操作がない場合は結合テストで代替可」に従い、E2E は本 feature 範囲外
 - 後続 `feature/admin-cli`（`bakufu admin empire show` 等）/ `feature/http-api`（Empire CRUD）が公開 I/F を実装した時点で E2E を起票
-- 受入基準 1〜11 はすべて unit/integration テストで検証可能（12〜14 は CI ジョブ）
+- 受入基準 1〜11 はすべて unit/integration テストで検証可能（開発者品質 Q-1/Q-2/Q-3 は CI ジョブ）
 
 | テストID | ペルソナ | シナリオ | 操作手順 | 期待結果 |
 |---------|---------|---------|---------|---------|
@@ -198,7 +198,7 @@
 - **DB 制約**: FK CASCADE（TC-IT-EMR-013）+ UNIQUE 制約（TC-IT-EMR-014）+ Alembic chain（TC-IT-EMR-016）で migration の正しさを物理確認
 - **upgrade/downgrade idempotent**: TC-IT-EMR-015 で双方向 migration を物理確認
 - 受入基準 1 〜 11 の各々が**最低 1 件のユニット/結合ケース**で検証されている（E2E 不在のため戦略ガイドの「結合代替可」に従う）
-- 受入基準 12（依存方向）/ 13（pyright/ruff）/ 14（カバレッジ 90%）は CI ジョブで担保
+- 開発者品質 Q-1（pyright/ruff）/ Q-2（カバレッジ 90%）/ Q-3（依存方向）は CI ジョブで担保
 - 確定 A〜F すべてに証拠ケース
 - C0 目標: `application/ports/empire_repository.py` / `infrastructure/persistence/sqlite/repositories/empire_repository.py` で **90% 以上**（infrastructure 層基準、要件分析書 §非機能要求準拠）
 

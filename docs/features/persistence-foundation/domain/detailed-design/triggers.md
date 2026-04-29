@@ -2,13 +2,13 @@
 
 > 親: [`../detailed-design.md`](../detailed-design.md)。本書は永続化前マスキングの強制ゲートウェイ化（確定 B、TypeDecorator `process_bind_param`）と `audit_log` 不変性の物理保証（確定 C、SQLite トリガ）を凍結する。
 
-## 確定 B: SQLAlchemy TypeDecorator の登録方式（[`../requirements-analysis.md`](../requirements-analysis.md) §確定 R1-D で event listener から反転却下）
+## 確定 B: SQLAlchemy TypeDecorator の登録方式（[`../feature-spec.md`](../feature-spec.md) §確定 R1-D で event listener から反転却下）
 
 `infrastructure/persistence/sqlite/base.py` に **`MaskedJSONEncoded`** / **`MaskedText`** の 2 TypeDecorator を定義し、各 table の masking 対象カラムで `mapped_column(MaskedJSONEncoded, ...)` / `mapped_column(MaskedText, ...)` として宣言する。SQLAlchemy が bind parameter 解決時に内部の `process_bind_param` フックを発火し、`MaskingGateway.mask_in()` / `mask()` を呼び出して masking 後の値を返す。
 
 ### 採用根拠（実装段階の技術検証で反転）
 
-旧設計の `event.listens_for(TableClass, 'before_insert')` / `'before_update'` 方式は「raw SQL 経路でも listener が走る」想定だったが、PR #23 BUG-PF-001 で**SQLAlchemy 2.x の Core `insert(table).values({...})` の inline values は ORM mapper を経由しないため `before_insert` listener が発火しない**ことが判明（TC-IT-PF-020 旧 xfail strict=True）。raw SQL 経路で生 secret が永続化される脱出経路が残るため、TypeDecorator `process_bind_param` 方式に反転（リーナス commit `4b882bf`、TC-IT-PF-020 PASSED）。詳細経緯は [`../requirements-analysis.md`](../requirements-analysis.md) §確定 R1-D。
+旧設計の `event.listens_for(TableClass, 'before_insert')` / `'before_update'` 方式は「raw SQL 経路でも listener が走る」想定だったが、PR #23 BUG-PF-001 で**SQLAlchemy 2.x の Core `insert(table).values({...})` の inline values は ORM mapper を経由しないため `before_insert` listener が発火しない**ことが判明（TC-IT-PF-020 旧 xfail strict=True）。raw SQL 経路で生 secret が永続化される脱出経路が残るため、TypeDecorator `process_bind_param` 方式に反転（リーナス commit `4b882bf`、TC-IT-PF-020 PASSED）。詳細経緯は [`../feature-spec.md`](../feature-spec.md) §確定 R1-D。
 
 ### `process_bind_param` の発火経路（Core / ORM 両対応）
 

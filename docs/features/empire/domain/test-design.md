@@ -24,17 +24,17 @@
 | REQ-EM-005（pre-validate） | `Empire.hire_agent` 失敗時の元 Empire 不変 | TC-UT-EM-014 | ユニット | 異常系 | 4（確定 A） |
 | REQ-EM-005（pre-validate） | `Empire.establish_room` 失敗時の元 Empire 不変 | TC-UT-EM-015 | ユニット | 異常系 | 6（確定 A） |
 | REQ-EM-005（pre-validate） | `Empire.archive_room` 失敗時の元 Empire 不変 | TC-UT-EM-016 | ユニット | 異常系 | 8（確定 A） |
-| REQ-EM-005（frozen） | `Empire` / `RoomRef` / `AgentRef` の属性代入拒否 | TC-UT-EM-017 | ユニット | 異常系 | — |
-| REQ-EM-005（extra='forbid'） | `Empire.model_validate` 未知フィールド拒否 | TC-UT-EM-018 | ユニット | 異常系 | — |
+| REQ-EM-005（frozen） | `Empire` / `RoomRef` / `AgentRef` の属性代入拒否 | TC-UT-EM-017 | ユニット | 異常系 | Q-3 |
+| REQ-EM-005（extra='forbid'） | `Empire.model_validate` 未知フィールド拒否 | TC-UT-EM-018 | ユニット | 異常系 | Q-3 |
 | MSG-EM-001 | 例外 message（name 範囲外） | TC-UT-EM-019 | ユニット | 異常系 | 2 |
 | MSG-EM-002 | 例外 message（agent 重複） | TC-UT-EM-020 | ユニット | 異常系 | 4 |
 | MSG-EM-003 | 例外 message（room 重複） | TC-UT-EM-021 | ユニット | 異常系 | 6 |
 | MSG-EM-004 | 例外 message（room 未登録） | TC-UT-EM-022 | ユニット | 異常系 | 8 |
-| MSG-EM-005 | 例外 message（汎用 invariant） | TC-UT-EM-023 | ユニット | 異常系 | — |
-| T1 | 不正値での Aggregate 構築拒否 | TC-UT-EM-002, TC-UT-EM-006, TC-UT-EM-009, TC-UT-EM-018 | ユニット | 異常系 | — |
-| T2 | 重複参照による DoS / メモリ肥大の即時拒否 | TC-UT-EM-006, TC-UT-EM-007, TC-UT-EM-009, TC-UT-EM-010 | ユニット | 異常系 | — |
-| Q-1（lint/typecheck） | `pyright --strict` / `ruff check` | （CI ジョブ） | — | — | ra §10 Q-1 |
-| Q-2（カバレッジ） | `pytest --cov=bakufu.domain.empire` | （CI ジョブ） | — | — | ra §10 Q-2 |
+| MSG-EM-005 | 例外 message（汎用 invariant） | TC-UT-EM-023 | ユニット | 異常系 | Q-3 |
+| T1 | 不正値での Aggregate 構築拒否 | TC-UT-EM-002, TC-UT-EM-006, TC-UT-EM-009, TC-UT-EM-018 | ユニット | 異常系 | Q-3 |
+| T2 | 重複参照による DoS / メモリ肥大の即時拒否 | TC-UT-EM-006, TC-UT-EM-007, TC-UT-EM-009, TC-UT-EM-010 | ユニット | 異常系 | Q-3 |
+| Q-1（lint/typecheck） | `pyright --strict` / `ruff check` | （CI ジョブ） | — | — | Q-1 |
+| Q-2（カバレッジ） | `pytest --cov=bakufu.domain.empire` | （CI ジョブ） | — | — | Q-2 |
 | 結合シナリオ 1 | `Empire` + `RoomRef` + `AgentRef` + `EmpireInvariantViolation` 往復 | TC-IT-EM-001 | 結合 | 正常系 | 1, 3, 5, 7 |
 | 結合シナリオ 2 | hire 失敗 → establish 成功 → archive 成功（独立性） | TC-IT-EM-002 | 結合 | 異常系/正常系 | 4, 5, 7 |
 

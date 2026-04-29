@@ -237,7 +237,7 @@ sequenceDiagram
 | A06 | Vulnerable Components | Pydantic v2 / pyright を使用、依存監査は CI の `pip-audit` で実施 |
 | A07 | Auth Failures | 該当なし（認証は別 feature） |
 | A08 | Data Integrity Failures | **適用**: frozen model で不変性を強制、状態変更は新インスタンス生成 |
-| A09 | Logging Failures | 該当なし（ログ出力は application 層責務） |
+| A09 | Logging Failures | **適用**: application 層（EmpireService）が Empire 作成・hire_agent・establish_room・archive_room の各操作完了時に audit_log に記録する責務を持つ。domain 層は audit_log を直接出力しない（責務分離、application 層の申し送り事項）|
 | A10 | SSRF | 該当なし（外部 URL fetch なし） |
 
 ## ER 図

@@ -1,8 +1,8 @@
 # テスト設計書
 
-<!-- feature: persistence-foundation -->
-<!-- 配置先: docs/features/persistence-foundation/test-design.md -->
-<!-- 対象範囲: REQ-PF-001〜010 + REQ-PF-002-A / MSG-PF-001〜008 / 脅威 T1〜T9 / 受入基準 1〜15 / 詳細設計 確定 A〜L (D-1〜D-4 / F の Fail-Secure 3 種 / J の LIFO cleanup / K の空ハンドラ Fail Loud / L の umask) / Schneier 申し送り 4 項目 (#1 / #4 / #5 / #6) + Schneier 重大 4 + 中等 4 のすべてに対する検出力テスト -->
+<!-- feature: persistence-foundation / sub-feature: domain -->
+<!-- 配置先: docs/features/persistence-foundation/domain/test-design.md -->
+<!-- 対象範囲: REQ-PF-001〜010 + REQ-PF-002-A / MSG-PF-001〜008 / 脅威 T1〜T9 / 受入基準 1〜12 / 開発者品質基準 Q-1 / Q-2 / Q-3 / 詳細設計 確定 A〜L (D-1〜D-4 / F の Fail-Secure 3 種 / J の LIFO cleanup / K の空ハンドラ Fail Loud / L の umask) / Schneier 申し送り 4 項目 (#1 / #4 / #5 / #6) + Schneier 重大 4 + 中等 4 のすべてに対する検出力テスト -->
 
 本 feature は infrastructure 層の永続化基盤（DataDirResolver / SqliteEngine / SessionFactory / MaskingGateway / Outbox 系 / PidRegistryGC / AttachmentRoot / Bootstrap）に閉じる。Aggregate 別 Repository 本体は範囲外（後続 `feature/{aggregate}-repository` PR 群の責務）。HTTP API / CLI / UI の公開エントリポイントは持たないため、E2E は本 feature 範囲外（後続 `feature/admin-cli` / `feature/http-api` で起票）。
 
@@ -18,72 +18,72 @@
 
 | 要件ID | 実装アーティファクト | テストケースID | テストレベル | 種別 | 受入基準 |
 |--------|-------------------|---------------|------------|------|---------|
-| REQ-PF-001 | `data_dir.resolve()` 未設定時 OS 別既定 | TC-UT-PF-001 | ユニット | 正常系 | 1 |
-| REQ-PF-001 | `data_dir.resolve()` 相対パス Fail Fast | TC-UT-PF-002 | ユニット | 異常系 | 2 |
-| REQ-PF-001（Schneier #1） | `BAKUFU_DATA_DIR` 絶対パス強制（NUL バイト / `..` / 相対の網羅） | TC-UT-PF-002, TC-IT-PF-001 | ユニット / 結合 | 異常系 | 2 |
-| REQ-PF-002 | engine 接続時 PRAGMA **8 件**適用（確定 D-1） | TC-IT-PF-003 | 結合 | 正常系 | 3 |
-| REQ-PF-002（PRAGMA 順序、確定 D-1） | `journal_mode=WAL` を最初に SET、`defensive=ON` / `writable_schema=OFF` / `trusted_schema=OFF` を含む 8 件全網羅 | TC-IT-PF-013 | 結合 | 正常系 | 3 |
-| REQ-PF-002（確定 D-1、Schneier 重大 2） | application engine で `defensive=ON` / `writable_schema=OFF` / `trusted_schema=OFF` が SET されている | TC-IT-PF-003-A | 結合 | 正常系 | （Schneier 重大 2） |
-| REQ-PF-002（確定 D-1、Schneier 重大 2） | **`DROP TRIGGER audit_log_no_delete`** が application engine 経由で拒否される（runtime DDL 制限） | TC-IT-PF-003-B | 結合 | 異常系 | （Schneier 重大 2、T7 防御） |
-| REQ-PF-002（確定 D-1、Schneier 重大 2） | **`UPDATE sqlite_master SET sql=...`** が application engine 経由で拒否される（trusted_schema=OFF + writable_schema=OFF） | TC-IT-PF-003-C | 結合 | 異常系 | （Schneier 重大 2、T7 防御） |
-| REQ-PF-002（確定 D-2 / D-3、dual connection） | `create_migration_engine()` は `defensive=OFF` / `writable_schema=ON` で生成、stage 3 終了時点で `dispose()` 済み（runtime に migration engine が生存しない） | TC-IT-PF-003-D | 結合 | 正常系 | （Schneier 重大 2） |
-| REQ-PF-002-A（DB 権限検出、Schneier 重大 3） | 新規 DB ファイル作成時 0o600 で作成される（POSIX）+ INFO ログ「Created new DB file at {path} (mode=0o600)」 | TC-IT-PF-002-A | 結合 | 正常系 | （Forensic 観点） |
-| REQ-PF-002-A（DB 権限検出、Schneier 重大 3） | 既存 DB が 0o644 で起動 → WARN ログ + `os.chmod(0o600)` で修復 + 起動続行（**Forensic 痕跡を消さない**：WARN ログに `prior unauthorized access` の hint が含まれる） | TC-IT-PF-002-B | 結合 | 異常系 | （Forensic 観点） |
-| REQ-PF-002-A（DB 権限検出、Schneier 重大 3） | WAL / SHM ファイル（`bakufu.db-wal` / `bakufu.db-shm`）にも同じ検出ロジックが適用される | TC-IT-PF-002-C | 結合 | 正常系 | （Forensic 観点） |
-| REQ-PF-003 | AsyncSession factory + `async with session.begin()` | TC-IT-PF-014 | 結合 | 正常系 | （UoW 境界の動作確認） |
-| REQ-PF-004 | Alembic 初回 revision で 3 テーブル + 2 トリガ | TC-IT-PF-004 | 結合 | 正常系 | 4 |
-| REQ-PF-004（Schneier #4） | `audit_log` DELETE 拒否トリガ実発火 | TC-IT-PF-005 | 結合 | 異常系 | 5 |
-| REQ-PF-004（Schneier #4） | `audit_log` UPDATE 制限トリガ（result NOT NULL 行への UPDATE 拒否） | TC-IT-PF-015 | 結合 | 異常系 | 5 |
-| REQ-PF-005 | masking 9 種正規表現 + 環境変数 + ホームパス、適用順序込み | TC-UT-PF-006 | ユニット | 正常系 | 6 |
-| REQ-PF-005（適用順序、確定 A） | OpenAI regex が `sk-ant-` を除く（Anthropic 先適用） | TC-UT-PF-016 | ユニット | 境界値 | 6 |
-| REQ-PF-005（環境変数長さ） | 長さ 8 未満の env 値はパターン化しない | TC-UT-PF-017 | ユニット | 境界値 | 6 |
-| REQ-PF-005（**Fail-Secure 契約、確定 F**、Schneier 重大 1） | mask が予期せぬ例外 raise 時、入力 str 全体が `<REDACTED:MASK_ERROR>` で完全置換される（生データは絶対に永続化されない） | TC-UT-PF-006-A | ユニット | 異常系 | 6 |
-| REQ-PF-005（**Fail-Secure 契約、確定 F**、Schneier 重大 1） | mask_in が異常 dict（10MB 超）を受信時、当該 dict / list 全体が `<REDACTED:MASK_OVERFLOW>` で置換される | TC-UT-PF-006-B | ユニット | 異常系 | 6 |
-| REQ-PF-006（**Fail-Secure 契約、確定 F**、Schneier 重大 1 中核） | TypeDecorator `process_bind_param` 自体が予期せぬ例外を raise 時、当該 masking 対象フィールドが `<REDACTED:LISTENER_ERROR>` で完全置換される（生データを書く経路ゼロ、トークン名 `LISTENER_ERROR` は履歴的命名で BUG-PF-001 修正前の listener 方式から継承） | TC-UT-PF-006-C | ユニット | 異常系 | 7 |
-| REQ-PF-005（環境変数辞書ロード Fail Fast、確定 F） | 起動時に `os.environ` から既知 env キーの取得が失敗した場合、`BakufuConfigError(MSG-PF-008)` で Bootstrap exit 1（**部分マスキングで起動しない**） | TC-IT-PF-007-D | 結合 | 異常系 | （Schneier 重大 1） |
-| REQ-PF-005（再帰走査） | dict / list の再帰 masking | TC-UT-PF-019 | ユニット | 正常系 | 6 |
-| REQ-PF-006（Schneier #6） | `domain_event_outbox` への ORM 経由 INSERT で payload_json / last_error がマスキング後値に上書き | TC-IT-PF-007 | 結合 | 正常系 | 7 |
-| REQ-PF-006（Schneier #6 / R1-D 中核） | **raw SQL 経路（`session.execute(insert(table).values(...))`）でも TypeDecorator `process_bind_param` が走り masking 後値で永続化される**（旧 event listener 方式が破綻したことを物理証明する回帰テスト） | TC-IT-PF-020 | 結合 | 正常系 | 7 |
-| REQ-PF-006（Schneier #6） | UPDATE 経路（`update(table).values(last_error=...)`）でも payload_json / last_error が `process_bind_param` で再マスキングされる（dispatcher の dead-letter 化経路） | TC-IT-PF-021 | 結合 | 正常系 | 7 |
-| REQ-PF-006（Schneier #6） | `audit_log.args_json` / `error_text` / `bakufu_pid_registry.cmd` の TypeDecorator 配線動作確認 | TC-IT-PF-022 | 結合 | 正常系 | 7 |
-| REQ-PF-007 | Outbox Dispatcher polling SQL の取得条件 | TC-IT-PF-008 | 結合 | 正常系 | 8 |
-| REQ-PF-007（DISPATCHING リカバリ） | `(DISPATCHING AND updated_at < now - 5min)` 行が再取得される | TC-IT-PF-023 | 結合 | 正常系 | 8 |
-| REQ-PF-007（dead-letter 化） | 5 回失敗で `status=DEAD_LETTER` + `OutboxDeadLettered` event 別行追記 | TC-IT-PF-009 | 結合 | 異常系 | 9 |
-| REQ-PF-007（backoff スケジュール） | attempt_count 1〜5 の next_attempt_at が表通り（10s / 1m / 5m / 30m / 30m） | TC-IT-PF-024 | 結合 | 正常系 | 9 |
-| REQ-PF-007（Handler 未登録） | `HandlerNotRegisteredError` で行が再 PENDING に戻る | TC-IT-PF-025 | 結合 | 異常系 | 9 |
-| REQ-PF-007（**空 handler レジストリ Fail Loud**、確定 K、Schneier 中等 3） | 空レジストリで Bootstrap 起動完了直後に WARN ログ 1 件（`No event handlers registered. Outbox events will accumulate ...`） | TC-IT-PF-008-A | 結合 | 異常系 | （Schneier 中等 3） |
-| REQ-PF-007（**空 handler レジストリ Fail Loud**、確定 K） | PENDING 行 1 件 INSERT + 空レジストリで polling 1 サイクル → WARN ログ 1 件（`Outbox has {n} pending events but handler_registry is empty.`）、行は `status='PENDING'` のまま | TC-IT-PF-008-B | 結合 | 異常系 | （Schneier 中等 3） |
-| REQ-PF-007（**空 handler ログ・スパム防止**、確定 K） | 同シナリオで polling 2 サイクル目 → WARN ログは**追加されない**（1 サイクルにつき 1 回のみ重複抑止） | TC-IT-PF-008-C | 結合 | 異常系 | （Schneier 中等 3） |
-| REQ-PF-007（**Outbox 滞留閾値 WARN**、確定 K） | PENDING 行 101 件 INSERT → 滞留閾値 WARN（`Outbox PENDING count={n} > 100. Inspect with bakufu admin list-pending.`）が 5 分に 1 回出力 | TC-IT-PF-008-D | 結合 | 異常系 | （Schneier 中等 3） |
-| REQ-PF-008（Schneier #5） | pid_registry GC: `psutil.create_time()` で PID 衝突識別（mock psutil でケース網羅） | TC-UT-PF-010 | ユニット | 正常系 | 10 |
-| REQ-PF-008（Schneier #5） | pid_registry GC: `protected` 判定では DELETE のみで kill しない | TC-UT-PF-026 | ユニット | 正常系 | 10 |
-| REQ-PF-008（Schneier #5） | pid_registry GC: `psutil.AccessDenied` で WARN ログ + 行残し（次回 GC 再試行） | TC-UT-PF-027 | ユニット | 異常系 | 10 |
-| REQ-PF-008（Schneier #5） | pid_registry GC: 子孫追跡 `recursive=True` + SIGTERM → 5s grace → SIGKILL の順序 | TC-UT-PF-028 | ユニット | 正常系 | 10 |
-| REQ-PF-009 | アタッチメント FS ルート 0700 で作成（POSIX） | TC-IT-PF-011 | 結合 | 正常系 | 11 |
-| REQ-PF-009 | アタッチメント FS ルートの mkdir 失敗 → MSG-PF-003 | TC-IT-PF-029 | 結合 | 異常系 | （MSG-PF-003） |
-| REQ-PF-009（Windows 互換） | Windows では chmod なしでも作成成功（POSIX 限定機能の条件分岐） | TC-UT-PF-030 | ユニット | 正常系 | （可搬性） |
-| REQ-PF-010（確定 G） | 起動シーケンス 8 段階順序実行 + 各段階の INFO 構造化ログ（開始/完了/失敗） | TC-IT-PF-012 | 結合 | 正常系 | 12 |
-| REQ-PF-010（確定 G） | 各段階失敗時に後続が走らない（Fail Fast） | TC-IT-PF-031 | 結合 | 異常系 | 12 |
-| REQ-PF-010（確定 G の例外） | 段階 4（pid_registry GC）失敗は非 fatal、後続が走る | TC-IT-PF-032 | 結合 | 正常系 | 12 |
-| REQ-PF-010（**Bootstrap cleanup LIFO**、確定 J、Schneier 中等 4） | 段階 7 で例外発生時、段階 6 の dispatcher_task が `cancel()` 済みになる（`task.cancelled() == True`） | TC-IT-PF-012-A | 結合 | 異常系 | （Schneier 中等 4） |
-| REQ-PF-010（**Bootstrap cleanup LIFO**、確定 J） | 段階 8（FastAPI バインド失敗）で例外発生時、段階 6（dispatcher）と段階 7（attachment GC scheduler）の**両 task が cancel される + LIFO 順**（7 → 6 の順で cancel） | TC-IT-PF-012-B | 結合 | 異常系 | （Schneier 中等 4） |
-| REQ-PF-010（**engine.dispose() 保証**、確定 J） | cleanup 中に `engine.dispose()` が必ず呼ばれる（接続 pool / WAL flush の保証）+ 構造化ログが flush される | TC-IT-PF-012-C | 結合 | 異常系 | （Schneier 中等 4） |
-| REQ-PF-010（**umask 0o077 SET**、確定 L、Schneier 中等 1） | Bootstrap 起動後、`bakufu.db-wal` / `bakufu.db-shm` ファイルのモードが 0o600 で作成されている（POSIX、umask 0o077 が WAL/SHM 自動生成時に効く物理保証） | TC-IT-PF-001-A | 結合 | 正常系 | （Schneier 中等 1） |
-| REQ-PF-010（**umask 0o077 SET**、確定 L） | `Bootstrap.run()` の**最初の文**（stage 1 より前）で `os.umask(0o077)` が呼ばれる（mock で `os.umask` の call_args[0][0] == 0o077 を assert） | TC-UT-PF-001-A | ユニット | 正常系 | （Schneier 中等 1） |
-| 確定 I（依存方向） | `domain` 層から `bakufu.infrastructure.*` への import ゼロ件 | TC-CI-PF-001 | CI script | — | 13 |
-| AC-14（lint/typecheck） | `pyright --strict` / `ruff check` | （CI ジョブ） | — | — | 14 |
-| AC-15（カバレッジ） | `pytest --cov=bakufu.infrastructure.persistence.sqlite --cov=bakufu.infrastructure.security` | （CI ジョブ） | — | — | 15 |
-| MSG-PF-001 | `[FAIL] BAKUFU_DATA_DIR must be an absolute path (got: {value})` | TC-UT-PF-033 | ユニット | 異常系 | 2 |
-| MSG-PF-002 | `[FAIL] SQLite engine initialization failed: {reason}` | TC-IT-PF-034 | 結合 | 異常系 | （文言照合） |
-| MSG-PF-003 | `[FAIL] Attachment FS root initialization failed at {path}: {reason}` | TC-IT-PF-029 | 結合 | 異常系 | （文言照合） |
-| MSG-PF-004 | `[FAIL] Alembic migration failed: {reason}` | TC-IT-PF-035 | 結合 | 異常系 | （文言照合） |
-| MSG-PF-005 | SQLite トリガ raise message `audit_log is append-only` | TC-IT-PF-005 | 結合 | 異常系 | 5 |
-| MSG-PF-005 | SQLite トリガ raise message `audit_log result is immutable once set` | TC-IT-PF-015 | 結合 | 異常系 | 5 |
-| MSG-PF-006 | `[WARN] Masking gateway fallback applied: {kind}` — `{kind}` は `mask_error` / `listener_error` / `mask_overflow` / `mask_oversize_dict` のいずれか（確定 F の 3 種に同期） | TC-UT-PF-006-A, TC-UT-PF-006-B, TC-UT-PF-006-C | ユニット | 異常系 | 6 |
-| MSG-PF-007 | `[WARN] pid_registry GC: psutil.AccessDenied for pid={pid}, retry next cycle` | TC-UT-PF-027 | ユニット | 異常系 | （文言照合） |
-| MSG-PF-008（新規、確定 F） | `[FAIL] Masking environment dictionary load failed: {reason}. Cannot start with partial masking layer. Investigate env access permissions.` | TC-IT-PF-007-D | 結合 | 異常系 | （Schneier 重大 1） |
-| 結合シナリオ 1 | Backend 起動 → Aggregate 永続化 → Outbox イベント生成 → Dispatcher 配送 → masking 適用済みで永続化されている | TC-IT-PF-036 | 結合 | 正常系 | 7, 8, 12 |
-| 結合シナリオ 2 | クラッシュリカバリ: 起動時 GC で pid_registry 孤児削除 + Outbox DISPATCHING 行を 5 分経過後に再取得 | TC-IT-PF-037 | 結合 | 正常系 | 8 |
+| REQ-PF-001 | `data_dir.resolve()` 未設定時 OS 別既定 | TC-UT-PF-001 | ユニット | 正常系 | #1 |
+| REQ-PF-001 | `data_dir.resolve()` 相対パス Fail Fast | TC-UT-PF-002 | ユニット | 異常系 | #2 |
+| REQ-PF-001（Schneier #1） | `BAKUFU_DATA_DIR` 絶対パス強制（NUL バイト / `..` / 相対の網羅） | TC-UT-PF-002, TC-IT-PF-001 | ユニット / 結合 | 異常系 | #2 |
+| REQ-PF-002 | engine 接続時 PRAGMA **8 件**適用（確定 D-1） | TC-IT-PF-003 | 結合 | 正常系 | #3 |
+| REQ-PF-002（PRAGMA 順序、確定 D-1） | `journal_mode=WAL` を最初に SET、`defensive=ON` / `writable_schema=OFF` / `trusted_schema=OFF` を含む 8 件全網羅 | TC-IT-PF-013 | 結合 | 正常系 | #3 |
+| REQ-PF-002（確定 D-1、Schneier 重大 2） | application engine で `defensive=ON` / `writable_schema=OFF` / `trusted_schema=OFF` が SET されている | TC-IT-PF-003-A | 結合 | 正常系 | 内部品質基準 |
+| REQ-PF-002（確定 D-1、Schneier 重大 2） | **`DROP TRIGGER audit_log_no_delete`** が application engine 経由で拒否される（runtime DDL 制限） | TC-IT-PF-003-B | 結合 | 異常系 | 内部品質基準 |
+| REQ-PF-002（確定 D-1、Schneier 重大 2） | **`UPDATE sqlite_master SET sql=...`** が application engine 経由で拒否される（trusted_schema=OFF + writable_schema=OFF） | TC-IT-PF-003-C | 結合 | 異常系 | 内部品質基準 |
+| REQ-PF-002（確定 D-2 / D-3、dual connection） | `create_migration_engine()` は `defensive=OFF` / `writable_schema=ON` で生成、stage 3 終了時点で `dispose()` 済み（runtime に migration engine が生存しない） | TC-IT-PF-003-D | 結合 | 正常系 | 内部品質基準 |
+| REQ-PF-002-A（DB 権限検出、Schneier 重大 3） | 新規 DB ファイル作成時 0o600 で作成される（POSIX）+ INFO ログ「Created new DB file at {path} (mode=0o600)」 | TC-IT-PF-002-A | 結合 | 正常系 | 内部品質基準 |
+| REQ-PF-002-A（DB 権限検出、Schneier 重大 3） | 既存 DB が 0o644 で起動 → WARN ログ + `os.chmod(0o600)` で修復 + 起動続行（**Forensic 痕跡を消さない**：WARN ログに `prior unauthorized access` の hint が含まれる） | TC-IT-PF-002-B | 結合 | 異常系 | 内部品質基準 |
+| REQ-PF-002-A（DB 権限検出、Schneier 重大 3） | WAL / SHM ファイル（`bakufu.db-wal` / `bakufu.db-shm`）にも同じ検出ロジックが適用される | TC-IT-PF-002-C | 結合 | 正常系 | 内部品質基準 |
+| REQ-PF-003 | AsyncSession factory + `async with session.begin()` | TC-IT-PF-014 | 結合 | 正常系 | 内部品質基準 |
+| REQ-PF-004 | Alembic 初回 revision で 3 テーブル + 2 トリガ | TC-IT-PF-004 | 結合 | 正常系 | #4 |
+| REQ-PF-004（Schneier #4） | `audit_log` DELETE 拒否トリガ実発火 | TC-IT-PF-005 | 結合 | 異常系 | #5 |
+| REQ-PF-004（Schneier #4） | `audit_log` UPDATE 制限トリガ（result NOT NULL 行への UPDATE 拒否） | TC-IT-PF-015 | 結合 | 異常系 | #5 |
+| REQ-PF-005 | masking 9 種正規表現 + 環境変数 + ホームパス、適用順序込み | TC-UT-PF-006 | ユニット | 正常系 | #6 |
+| REQ-PF-005（適用順序、確定 A） | OpenAI regex が `sk-ant-` を除く（Anthropic 先適用） | TC-UT-PF-016 | ユニット | 境界値 | #6 |
+| REQ-PF-005（環境変数長さ） | 長さ 8 未満の env 値はパターン化しない | TC-UT-PF-017 | ユニット | 境界値 | #6 |
+| REQ-PF-005（**Fail-Secure 契約、確定 F**、Schneier 重大 1） | mask が予期せぬ例外 raise 時、入力 str 全体が `<REDACTED:MASK_ERROR>` で完全置換される（生データは絶対に永続化されない） | TC-UT-PF-006-A | ユニット | 異常系 | #6 |
+| REQ-PF-005（**Fail-Secure 契約、確定 F**、Schneier 重大 1） | mask_in が異常 dict（10MB 超）を受信時、当該 dict / list 全体が `<REDACTED:MASK_OVERFLOW>` で置換される | TC-UT-PF-006-B | ユニット | 異常系 | #6 |
+| REQ-PF-006（**Fail-Secure 契約、確定 F**、Schneier 重大 1 中核） | TypeDecorator `process_bind_param` 自体が予期せぬ例外を raise 時、当該 masking 対象フィールドが `<REDACTED:LISTENER_ERROR>` で完全置換される（生データを書く経路ゼロ、トークン名 `LISTENER_ERROR` は履歴的命名で BUG-PF-001 修正前の listener 方式から継承） | TC-UT-PF-006-C | ユニット | 異常系 | #7 |
+| REQ-PF-005（環境変数辞書ロード Fail Fast、確定 F） | 起動時に `os.environ` から既知 env キーの取得が失敗した場合、`BakufuConfigError(MSG-PF-008)` で Bootstrap exit 1（**部分マスキングで起動しない**） | TC-IT-PF-007-D | 結合 | 異常系 | 内部品質基準 |
+| REQ-PF-005（再帰走査） | dict / list の再帰 masking | TC-UT-PF-019 | ユニット | 正常系 | #6 |
+| REQ-PF-006（Schneier #6） | `domain_event_outbox` への ORM 経由 INSERT で payload_json / last_error がマスキング後値に上書き | TC-IT-PF-007 | 結合 | 正常系 | #7 |
+| REQ-PF-006（Schneier #6 / R1-D 中核） | **raw SQL 経路（`session.execute(insert(table).values(...))`）でも TypeDecorator `process_bind_param` が走り masking 後値で永続化される**（旧 event listener 方式が破綻したことを物理証明する回帰テスト） | TC-IT-PF-020 | 結合 | 正常系 | #7 |
+| REQ-PF-006（Schneier #6） | UPDATE 経路（`update(table).values(last_error=...)`）でも payload_json / last_error が `process_bind_param` で再マスキングされる（dispatcher の dead-letter 化経路） | TC-IT-PF-021 | 結合 | 正常系 | #7 |
+| REQ-PF-006（Schneier #6） | `audit_log.args_json` / `error_text` / `bakufu_pid_registry.cmd` の TypeDecorator 配線動作確認 | TC-IT-PF-022 | 結合 | 正常系 | #7 |
+| REQ-PF-007 | Outbox Dispatcher polling SQL の取得条件 | TC-IT-PF-008 | 結合 | 正常系 | #8 |
+| REQ-PF-007（DISPATCHING リカバリ） | `(DISPATCHING AND updated_at < now - 5min)` 行が再取得される | TC-IT-PF-023 | 結合 | 正常系 | #8 |
+| REQ-PF-007（dead-letter 化） | 5 回失敗で `status=DEAD_LETTER` + `OutboxDeadLettered` event 別行追記 | TC-IT-PF-009 | 結合 | 異常系 | #9 |
+| REQ-PF-007（backoff スケジュール） | attempt_count 1〜5 の next_attempt_at が表通り（10s / 1m / 5m / 30m / 30m） | TC-IT-PF-024 | 結合 | 正常系 | #9 |
+| REQ-PF-007（Handler 未登録） | `HandlerNotRegisteredError` で行が再 PENDING に戻る | TC-IT-PF-025 | 結合 | 異常系 | #9 |
+| REQ-PF-007（**空 handler レジストリ Fail Loud**、確定 K、Schneier 中等 3） | 空レジストリで Bootstrap 起動完了直後に WARN ログ 1 件（`No event handlers registered. Outbox events will accumulate ...`） | TC-IT-PF-008-A | 結合 | 異常系 | 内部品質基準 |
+| REQ-PF-007（**空 handler レジストリ Fail Loud**、確定 K） | PENDING 行 1 件 INSERT + 空レジストリで polling 1 サイクル → WARN ログ 1 件（`Outbox has {n} pending events but handler_registry is empty.`）、行は `status='PENDING'` のまま | TC-IT-PF-008-B | 結合 | 異常系 | 内部品質基準 |
+| REQ-PF-007（**空 handler ログ・スパム防止**、確定 K） | 同シナリオで polling 2 サイクル目 → WARN ログは**追加されない**（1 サイクルにつき 1 回のみ重複抑止） | TC-IT-PF-008-C | 結合 | 異常系 | 内部品質基準 |
+| REQ-PF-007（**Outbox 滞留閾値 WARN**、確定 K） | PENDING 行 101 件 INSERT → 滞留閾値 WARN（`Outbox PENDING count={n} > 100. Inspect with bakufu admin list-pending.`）が 5 分に 1 回出力 | TC-IT-PF-008-D | 結合 | 異常系 | 内部品質基準 |
+| REQ-PF-008（Schneier #5） | pid_registry GC: `psutil.create_time()` で PID 衝突識別（mock psutil でケース網羅） | TC-UT-PF-010 | ユニット | 正常系 | #10 |
+| REQ-PF-008（Schneier #5） | pid_registry GC: `protected` 判定では DELETE のみで kill しない | TC-UT-PF-026 | ユニット | 正常系 | #10 |
+| REQ-PF-008（Schneier #5） | pid_registry GC: `psutil.AccessDenied` で WARN ログ + 行残し（次回 GC 再試行） | TC-UT-PF-027 | ユニット | 異常系 | #10 |
+| REQ-PF-008（Schneier #5） | pid_registry GC: 子孫追跡 `recursive=True` + SIGTERM → 5s grace → SIGKILL の順序 | TC-UT-PF-028 | ユニット | 正常系 | #10 |
+| REQ-PF-009 | アタッチメント FS ルート 0700 で作成（POSIX） | TC-IT-PF-011 | 結合 | 正常系 | #11 |
+| REQ-PF-009 | アタッチメント FS ルートの mkdir 失敗 → MSG-PF-003 | TC-IT-PF-029 | 結合 | 異常系 | 内部品質基準 |
+| REQ-PF-009（Windows 互換） | Windows では chmod なしでも作成成功（POSIX 限定機能の条件分岐） | TC-UT-PF-030 | ユニット | 正常系 | 内部品質基準 |
+| REQ-PF-010（確定 G） | 起動シーケンス 8 段階順序実行 + 各段階の INFO 構造化ログ（開始/完了/失敗） | TC-IT-PF-012 | 結合 | 正常系 | #12 |
+| REQ-PF-010（確定 G） | 各段階失敗時に後続が走らない（Fail Fast） | TC-IT-PF-031 | 結合 | 異常系 | #12 |
+| REQ-PF-010（確定 G の例外） | 段階 4（pid_registry GC）失敗は非 fatal、後続が走る | TC-IT-PF-032 | 結合 | 正常系 | #12 |
+| REQ-PF-010（**Bootstrap cleanup LIFO**、確定 J、Schneier 中等 4） | 段階 7 で例外発生時、段階 6 の dispatcher_task が `cancel()` 済みになる（`task.cancelled() == True`） | TC-IT-PF-012-A | 結合 | 異常系 | 内部品質基準 |
+| REQ-PF-010（**Bootstrap cleanup LIFO**、確定 J） | 段階 8（FastAPI バインド失敗）で例外発生時、段階 6（dispatcher）と段階 7（attachment GC scheduler）の**両 task が cancel される + LIFO 順**（7 → 6 の順で cancel） | TC-IT-PF-012-B | 結合 | 異常系 | 内部品質基準 |
+| REQ-PF-010（**engine.dispose() 保証**、確定 J） | cleanup 中に `engine.dispose()` が必ず呼ばれる（接続 pool / WAL flush の保証）+ 構造化ログが flush される | TC-IT-PF-012-C | 結合 | 異常系 | 内部品質基準 |
+| REQ-PF-010（**umask 0o077 SET**、確定 L、Schneier 中等 1） | Bootstrap 起動後、`bakufu.db-wal` / `bakufu.db-shm` ファイルのモードが 0o600 で作成されている（POSIX、umask 0o077 が WAL/SHM 自動生成時に効く物理保証） | TC-IT-PF-001-A | 結合 | 正常系 | 内部品質基準 |
+| REQ-PF-010（**umask 0o077 SET**、確定 L） | `Bootstrap.run()` の**最初の文**（stage 1 より前）で `os.umask(0o077)` が呼ばれる（mock で `os.umask` の call_args[0][0] == 0o077 を assert） | TC-UT-PF-001-A | ユニット | 正常系 | 内部品質基準 |
+| 確定 I（依存方向） | `domain` 層から `bakufu.infrastructure.*` への import ゼロ件 | TC-CI-PF-001 | CI script | — | 内部品質基準 |
+| Q-1（lint/typecheck） | `pyright --strict` / `ruff check` | （CI ジョブ） | — | — | 内部品質基準 |
+| Q-2（カバレッジ） | `pytest --cov=bakufu.infrastructure.persistence.sqlite --cov=bakufu.infrastructure.security` | （CI ジョブ） | — | — | 内部品質基準 |
+| MSG-PF-001 | `[FAIL] BAKUFU_DATA_DIR must be an absolute path (got: {value})` | TC-UT-PF-033 | ユニット | 異常系 | #2 |
+| MSG-PF-002 | `[FAIL] SQLite engine initialization failed: {reason}` | TC-IT-PF-034 | 結合 | 異常系 | 内部品質基準 |
+| MSG-PF-003 | `[FAIL] Attachment FS root initialization failed at {path}: {reason}` | TC-IT-PF-029 | 結合 | 異常系 | 内部品質基準 |
+| MSG-PF-004 | `[FAIL] Alembic migration failed: {reason}` | TC-IT-PF-035 | 結合 | 異常系 | 内部品質基準 |
+| MSG-PF-005 | SQLite トリガ raise message `audit_log is append-only` | TC-IT-PF-005 | 結合 | 異常系 | #5 |
+| MSG-PF-005 | SQLite トリガ raise message `audit_log result is immutable once set` | TC-IT-PF-015 | 結合 | 異常系 | #5 |
+| MSG-PF-006 | `[WARN] Masking gateway fallback applied: {kind}` — `{kind}` は `mask_error` / `listener_error` / `mask_overflow` / `mask_oversize_dict` のいずれか（確定 F の 3 種に同期） | TC-UT-PF-006-A, TC-UT-PF-006-B, TC-UT-PF-006-C | ユニット | 異常系 | #6 |
+| MSG-PF-007 | `[WARN] pid_registry GC: psutil.AccessDenied for pid={pid}, retry next cycle` | TC-UT-PF-027 | ユニット | 異常系 | 内部品質基準 |
+| MSG-PF-008（新規、確定 F） | `[FAIL] Masking environment dictionary load failed: {reason}. Cannot start with partial masking layer. Investigate env access permissions.` | TC-IT-PF-007-D | 結合 | 異常系 | 内部品質基準 |
+| 結合シナリオ 1 | Backend 起動 → Aggregate 永続化 → Outbox イベント生成 → Dispatcher 配送 → masking 適用済みで永続化されている | TC-IT-PF-036 | 結合 | 正常系 | #7, #8, #12 |
+| 結合シナリオ 2 | クラッシュリカバリ: 起動時 GC で pid_registry 孤児削除 + Outbox DISPATCHING 行を 5 分経過後に再取得 | TC-IT-PF-037 | 結合 | 正常系 | #8 |
 
 **マトリクス充足の証拠**:
 - REQ-PF-001〜010 + REQ-PF-002-A すべてに最低 1 件のテストケース
@@ -108,7 +108,7 @@
 - **masking 適用順序（確定 A）**: Anthropic 先 → OpenAI 後の順序維持を TC-UT-PF-016 で確認、長さ 8 未満は除外を TC-UT-PF-017 で確認
 - **依存方向（確定 I）**: domain → infrastructure の参照ゼロを TC-CI-PF-001 (CI script) で物理確認
 - **MSG-PF-001〜008 すべて**に静的文字列照合（MSG-PF-008 は Schneier 重大 1 対応で新規追加、TC-IT-PF-007-D で照合）
-- 受入基準 1〜13 すべてに unit/integration ケース（14/15 は CI ジョブ）
+- 受入基準 1〜12 すべてに unit/integration ケース（Q-1/Q-2/Q-3 は CI ジョブ担保）
 - **T1〜T9** すべてに有効性確認ケース（T1〜T5 既存 + T6 マスキング fail-open / T7 トリガ DDL 改ざん / T8 DB 権限異常 / T9 空 handler 起動の 4 件は threat-model.md §A4 への昇格に同期）
 - 確定 A（masking 9 種 + env + home）/ B（**TypeDecorator `process_bind_param` 配線**、§確定 R1-D で event listener 案から反転）/ C（SQLite トリガ）/ **D-1〜D-4（PRAGMA 8 件 + dual connection）** / E（pid_gc 順序）/ **F（Fail-Secure 3 種）** / G（起動シーケンス + INFO ログ）/ H（Schneier 申し送りステータス）/ I（依存方向 CI 検査）/ **J（Bootstrap cleanup LIFO）** / **K（空 handler Fail Loud）** / **L（umask 0o077）**すべてに証拠ケース
 - 孤児要件ゼロ
@@ -153,11 +153,11 @@
 
 **該当なし** — 理由:
 
-- 本 feature は infrastructure 層単独で、CLI / HTTP API / UI のいずれの公開エントリポイントも持たない（[`requirements.md`](requirements.md) §画面・CLI 仕様 / §API 仕様 で「該当なし」と凍結）
+- 本 feature は infrastructure 層単独で、CLI / HTTP API / UI のいずれの公開エントリポイントも持たない（[`../feature-spec.md`](../feature-spec.md) §画面・CLI 仕様 / §API 仕様 で「該当なし」と凍結）
 - Bootstrap が起動する FastAPI / WebSocket リスナは段階 8 で「listening」に至るのみで、実 HTTP リクエストを処理する handler は本 PR の範囲外
 - 戦略ガイド §E2E対象の判断「内部API・ライブラリなどエンドユーザー操作がない場合は結合テストで代替可」に従い、E2E は本 feature 範囲外
 - 後続 `feature/admin-cli` / `feature/http-api` が公開 I/F を実装した時点で E2E（`bakufu admin retry-event` 等で実 SQLite に書き込み確認）を起票
-- 受入基準 1〜13 はすべて unit/integration テストで検証可能（14/15 は CI ジョブ）
+- 受入基準 1〜12 はすべて unit/integration テストで検証可能（Q-1/Q-2/Q-3 は CI ジョブ担保）
 
 | テストID | ペルソナ | シナリオ | 操作手順 | 期待結果 |
 |---------|---------|---------|---------|---------|
@@ -313,7 +313,7 @@
 
 ### `extra='forbid'` / frozen など pydantic 規約は本 feature では適用外（infrastructure 層は domain と異なり Pydantic model を持たない、SQLAlchemy ORM が中心）
 
-## CI スクリプト（受入基準 13）
+## CI スクリプト（開発者品質基準 Q-3）
 
 | テストID | 対象 | 種別 | 入力 | 期待結果 |
 |---------|-----|------|------|---------|
@@ -342,8 +342,8 @@
 - **masking 適用順序（確定 A）**: Anthropic → OpenAI 順序を TC-UT-PF-016 で、長さ 8 未満除外を TC-UT-PF-017 で、Fail-Secure フォールバック（確定 F の 3 種）を TC-UT-PF-006-A / B / C で確認（masking が**生データを永続化させない**物理保証）
 - **依存方向（確定 I）**: domain → infrastructure 参照ゼロを TC-CI-PF-001 で確認
 - **MSG-PF-001 〜 008** の各文言が**静的文字列で照合**されている（MSG-PF-008 は Schneier 重大 1 対応で新規追加、TC-IT-PF-007-D で照合）
-- 受入基準 1 〜 13 の各々が**最低 1 件のユニット/結合ケース**で検証されている（E2E 不在のため戦略ガイドの「結合代替可」に従う）
-- 受入基準 14（pyright/ruff）/ 15（カバレッジ 90%）は CI ジョブで担保
+- 受入基準 1 〜 12 の各々が**最低 1 件のユニット/結合ケース**で検証されている（E2E 不在のため戦略ガイドの「結合代替可」に従う）
+- 開発者品質基準 Q-1（pyright/ruff）/ Q-2（カバレッジ 90%）/ Q-3（依存方向 CI 検査）は CI ジョブで担保
 - **T1〜T9** の各脅威に対する対策が**最低 1 件のテストケース**で有効性を確認されている（T6〜T9 は threat-model.md §A4 への昇格に同期）
 - 確定 A〜L すべてに証拠ケース（確定 D-1〜D-4 / F / J / K / L は Schneier 再レビューで新規凍結）
 - C0 目標: `infrastructure/persistence/sqlite/` / `infrastructure/security/` で **90% 以上**（infrastructure 層基準、要件分析書 §非機能要求準拠）
