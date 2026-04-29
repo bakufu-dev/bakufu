@@ -1,13 +1,13 @@
-"""Application-layer responsibility lock (TC-UT-AG-029 / REQ-AG R1-B).
+"""アプリケーション層責務のロック（TC-UT-AG-029 / REQ-AG R1-B）。
 
-Confirmation R1-B in the requirements analysis says **name uniqueness inside
-an Empire is the application service's job**, not the aggregate's. Two
-Agents with identical names but different ids must construct cleanly at the
-domain layer; the duplicate check belongs in ``AgentService.hire``.
+要求分析の Confirmation R1-B では、**Empire 内での名前の一意性は
+アプリケーションサービスの責務**であり、集約の責務ではない、と定めている。
+名前が同じで id が異なる 2 つの Agent はドメイン層で問題なく構築できなければ
+ならず、重複チェックは ``AgentService.hire`` に属する。
 
-These tests lock that contract so a future refactor cannot silently move the
-check into the aggregate (which would give a false sense of "name uniqueness
-is now defended at multiple layers" while breaking the layered design).
+これらのテストはその契約を固定し、将来のリファクタリングでチェックが
+こっそり集約側に移動されることを防ぐ（移動されると「名前一意性が複数層で
+防御された」ように見える一方で、層構造の設計を壊してしまうため）。
 """
 
 from __future__ import annotations
@@ -16,11 +16,11 @@ from tests.factories.agent import make_agent
 
 
 class TestNameUniquenessLeftToApplicationLayer:
-    """TC-UT-AG-029 — Agent aggregate does NOT enforce intra-Empire name uniqueness."""
+    """TC-UT-AG-029 — Agent 集約は Empire 内での名前一意性を強制しない。"""
 
     def test_two_agents_with_same_name_but_different_ids_construct(self) -> None:
-        """REQ-AG R1-B: Aggregate accepts duplicate names — uniqueness lives in AgentService."""
+        """REQ-AG R1-B: 集約は名前重複を受理する — 一意性は AgentService にある。"""
         a1 = make_agent(name="ダリオ")
         a2 = make_agent(name="ダリオ")
-        # Both Agents construct successfully and carry distinct ids.
+        # 両 Agent ともに構築に成功し、異なる id を持つ
         assert a1.name == a2.name and a1.id != a2.id

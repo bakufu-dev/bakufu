@@ -154,7 +154,7 @@ class InternalReviewGate(BaseModel):
                 kind="gate_already_decided",
                 message=(
                     f"[FAIL] InternalReviewGate は既に判断確定済みです"
-                    f"（{self.gate_decision.value}）。\n"  # noqa: RUF001
+                    f"（{self.gate_decision.value}）。\n"
                     f"Next: 新しい Gate が生成されるまでお待ちください。"
                 ),
                 detail={
@@ -194,7 +194,7 @@ class InternalReviewGate(BaseModel):
                 message=(
                     f'[FAIL] GateRole "{role}" は本 Gate の required_gate_roles に'
                     f"含まれていません。\n"
-                    f"Next: 有効な GateRole（{sorted(self.required_gate_roles)}）"  # noqa: RUF001
+                    f"Next: 有効な GateRole（{sorted(self.required_gate_roles)}）"
                     f"で提出してください。"
                 ),
                 detail={
@@ -210,8 +210,8 @@ class InternalReviewGate(BaseModel):
             raise InternalReviewGateInvariantViolation(
                 kind="comment_too_long",
                 message=(
-                    f"[FAIL] コメントが文字数上限（5000文字）を超えています"  # noqa: RUF001
-                    f"（{comment_length}文字）。\n"  # noqa: RUF001
+                    f"[FAIL] コメントが文字数上限（5000文字）を超えています"
+                    f"（{comment_length}文字）。\n"
                     f"Next: 5000文字以内に短縮してください。"
                 ),
                 detail={

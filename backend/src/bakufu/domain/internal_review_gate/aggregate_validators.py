@@ -80,7 +80,7 @@ def _validate_verdict_roles_in_required(gate: InternalReviewGate) -> None:
                 message=(
                     f'[FAIL] Verdict の GateRole "{verdict.role}" は '
                     f"required_gate_roles に含まれていません。\n"
-                    f"Next: 有効な GateRole（{sorted(required)}）の verdict のみ "  # noqa: RUF001
+                    f"Next: 有効な GateRole（{sorted(required)}）の verdict のみ "
                     f"InternalReviewGate に追加してください。"
                 ),
                 detail={
@@ -129,8 +129,8 @@ def _validate_gate_decision_consistency(gate: InternalReviewGate) -> None:
             kind="gate_decision_inconsistent",
             message=(
                 f"[FAIL] gate_decision が不整合です "
-                f"（stored={gate.gate_decision.value}, "  # noqa: RUF001
-                f"computed={expected.value}）。\n"  # noqa: RUF001
+                f"（stored={gate.gate_decision.value}, "
+                f"computed={expected.value}）。\n"
                 f"Next: Repository 行の整合性を確認してください。"
             ),
             detail={

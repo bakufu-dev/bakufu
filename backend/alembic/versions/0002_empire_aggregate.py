@@ -1,15 +1,15 @@
-"""Empire Aggregate tables: empires + empire_room_refs + empire_agent_refs.
+"""Empire Aggregate テーブル群: empires + empire_room_refs + empire_agent_refs。
 
-Adds the three tables that back :class:`SqliteEmpireRepository`:
+:class:`SqliteEmpireRepository` を支える 3 つのテーブルを追加する:
 
-* ``empires`` (id PK + name)
-* ``empire_room_refs`` (FK CASCADE on empire_id, UNIQUE pair)
-* ``empire_agent_refs`` (FK CASCADE on empire_id, UNIQUE pair)
+* ``empires``（id PK + name）
+* ``empire_room_refs``（empire_id に FK CASCADE、組で UNIQUE）
+* ``empire_agent_refs``（empire_id に FK CASCADE、組で UNIQUE）
 
-Per ``docs/features/empire-repository/detailed-design.md`` §確定 F,
-each subsequent ``feature/{aggregate}-repository`` PR appends its own
-revision (``0003_workflow_aggregate``, ``0004_agent_aggregate``, …)
-on top of this one so the Alembic chain stays linear.
+``docs/features/empire-repository/detailed-design.md`` §確定 F に従い、
+後続の ``feature/{aggregate}-repository`` PR はそれぞれの revision
+（``0003_workflow_aggregate``、``0004_agent_aggregate``、…）を本 revision の
+上に積み重ね、Alembic チェーンを線形に保つ。
 
 Revision ID: 0002_empire_aggregate
 Revises: 0001_init
@@ -81,8 +81,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Drop child tables first so the FK CASCADE doesn't trigger work
-    # against an already-deleted parent.
+    # 削除済みの親に対して FK CASCADE が発火しないよう、子テーブルから先に削除する。
     op.drop_table("empire_agent_refs")
     op.drop_table("empire_room_refs")
     op.drop_table("empires")

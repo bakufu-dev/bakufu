@@ -1,35 +1,35 @@
-"""Layer 1 of the masking gateway: known-environment-variable redaction.
+"""マスキング ゲートウェイのレイヤ 1: 既知の環境変数値の伏字化。
 
-Bootstrap collects values from a fixed allow-list of environment
-variables at startup time and compiles them into a regex-replacement
-table. The table is queried for every ``mask()`` call and every entry
-matched is replaced with ``<REDACTED:ENV:{NAME}>``.
+Bootstrap が起動時に固定アローリストに従って環境変数値を収集し、正規
+表現置換テーブルへコンパイルする。本テーブルは ``mask()`` 呼び出し
+ごとに参照され、合致したエントリは ``<REDACTED:ENV:{NAME}>`` で置換
+される。
 
-Why an allow-list (vs. "every env var")?
-----------------------------------------
-Some environment variables hold benign data (``PATH``, ``HOME``,
-``LANG``). Including them all would over-redact CLI output / audit
-text and make troubleshooting impossible. The allow-list is the same
-list ``docs/design/domain-model/storage.md`` froze, with one
-substitution: ``BAKUFU_DB_KEY`` is removed (MVP doesn't ship SQLCipher;
-see Confirmation in ``masking.md``) and ``BAKUFU_DISCORD_BOT_TOKEN`` is
-added in its place because the Discord notifier path keeps it as a
-high-confidentiality asset (threat-model §資産).
+なぜアローリストか（vs.「全環境変数」を対象にしない理由）
+----------------------------------------------------------
+``PATH``、``HOME``、``LANG`` のように無害なデータを保持する環境変数も
+存在する。それらまで含めると CLI 出力や監査テキストが過剰に伏字化され、
+トラブルシューティングが困難になる。アローリストは
+``docs/design/domain-model/storage.md`` で確定した一覧と同一だが、
+1 点だけ置換している: MVP では SQLCipher を採用しないため
+``BAKUFU_DB_KEY`` を除外し（``masking.md`` の Confirmation を参照）、
+代わりに ``BAKUFU_DISCORD_BOT_TOKEN`` を追加する。Discord 通知系統は
+脅威モデル §資産 でも高機密資産として位置づけられるためである。
 
-Length floor of 8 characters
-----------------------------
-A short value (e.g. an empty string or a 4-character marker) would
-match almost anything by accident. We skip values shorter than 8 and
-INFO-log the skip so operators can spot a misconfigured env var.
+文字数下限 8 文字
+----------------
+短い値（空文字や 4 文字程度のマーカ等）は事故的にあらゆる箇所と一致して
+しまう。8 文字未満の値はスキップしつつ INFO ログを残し、運用者が
+誤設定された環境変数に気付けるようにする。
 
-Fail-Fast contract (§確定 F)
----------------------------
-``load_env_patterns`` raises :class:`bakufu.infrastructure.exceptions.BakufuConfigError`
-with ``msg_id='MSG-PF-008'`` if the OS rejects ``os.environ`` access
-itself or any individual value cannot be regex-compiled. Bootstrap
-intercepts and exits non-zero — running with masking layer 1 disabled
-would silently degrade the trust boundary the rest of the system
-relies on.
+Fail-Fast 契約（§確定 F）
+-------------------------
+``load_env_patterns`` は OS が ``os.environ`` アクセス自体を拒否したり、
+値の正規表現コンパイルに失敗した場合に
+:class:`bakufu.infrastructure.exceptions.BakufuConfigError` を
+``msg_id='MSG-PF-008'`` で送出する。Bootstrap がこれを捕捉し非ゼロ
+終了する。マスキング レイヤ 1 を無効化したまま起動すれば、システムの
+他部分が依存する信頼境界を黙って弱化させてしまうためである。
 """
 
 from __future__ import annotations
@@ -42,8 +42,9 @@ from bakufu.infrastructure.exceptions import BakufuConfigError
 
 logger = logging.getLogger(__name__)
 
-# Fixed allow-list per ``docs/features/persistence-foundation/detailed-design/modules.md``
-# §Module masked_env.py. Changes go through a design doc PR first.
+# ``docs/features/persistence-foundation/detailed-design/modules.md``
+# §Module masked_env.py に従う固定アローリスト。変更は設計ドキュメントの
+# PR を経由する。
 KNOWN_ENV_KEYS: tuple[str, ...] = (
     "ANTHROPIC_API_KEY",
     "OPENAI_API_KEY",
@@ -54,31 +55,31 @@ KNOWN_ENV_KEYS: tuple[str, ...] = (
     "BAKUFU_DISCORD_BOT_TOKEN",
 )
 
-# Values shorter than this are skipped to avoid catastrophic over-matching.
+# この値より短い値はスキップする。誤マッチによる過剰伏字化を防止する。
 MIN_ENV_VALUE_LENGTH: int = 8
 
 
 def load_env_patterns() -> list[tuple[str, re.Pattern[str]]]:
-    """Compile the known-env-var redaction table.
+    """既知環境変数の伏字化テーブルをコンパイルする。
 
     Returns:
-        A list of ``(env_name, compiled_pattern)`` pairs. Empty when no
-        known env var is set in the current process — that is a
-        legitimate state in CI / fresh dev environments and produces an
-        INFO log entry rather than a failure.
+        ``(env_name, compiled_pattern)`` タプルのリスト。現プロセスに
+        該当環境変数が一つも設定されていなければ空リストを返す。CI や
+        新しい開発環境では正当な状態であり、失敗ではなく INFO ログを
+        出すに留める。
 
     Raises:
-        BakufuConfigError: ``msg_id='MSG-PF-008'`` when ``os.environ``
-            access itself raises or any value fails ``re.compile``.
-            Bootstrap exits non-zero on this — running with layer 1
-            disabled is not an acceptable degraded mode.
+        BakufuConfigError: ``msg_id='MSG-PF-008'``。``os.environ``
+            アクセス自体が例外を送出した場合や、いずれかの値が
+            ``re.compile`` に失敗した場合。Bootstrap はここで
+            非ゼロ終了する。レイヤ 1 を無効化した縮退運転は許容しない。
     """
     try:
         env_snapshot = dict(os.environ)
     except OSError as exc:
-        # `os.environ` access can fail under exotic OS-level conditions
-        # (chroot misconfig, broken FS). Fail Fast — masking layer 1 is
-        # part of the trust boundary, not optional.
+        # ``os.environ`` アクセスは特殊な OS 状態（chroot 不全、FS 破損
+        # 等）で失敗し得る。マスキング レイヤ 1 は信頼境界の一部であり
+        # オプションではないため、ここで Fail Fast する。
         raise BakufuConfigError(
             msg_id="MSG-PF-008",
             message=(
@@ -102,8 +103,8 @@ def load_env_patterns() -> list[tuple[str, re.Pattern[str]]]:
         try:
             patterns.append((env_name, re.compile(re.escape(raw))))
         except re.error as exc:
-            # Theoretically unreachable since `re.escape` produces a
-            # safe pattern, but Fail Fast preserves the trust boundary.
+            # ``re.escape`` は安全なパターンを生成するため理論上ここには
+            # 到達しないが、信頼境界を維持するため Fail Fast する。
             raise BakufuConfigError(
                 msg_id="MSG-PF-008",
                 message=(

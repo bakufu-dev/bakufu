@@ -1,10 +1,9 @@
-"""Aggregate-internal lifecycle integration (TC-IT-AG-001 / 002).
+"""集約内ライフサイクル統合（TC-IT-AG-001 / 002）。
 
-Same pattern as ``empire`` / ``workflow`` integration suites: domain layer
-has no public entry point, so we validate the round-trip behavior across
-the Aggregate's mutator chain (set_default_provider → add_skill →
-remove_skill → archive) plus the resilience scenario where a mid-chain
-failure leaves the original aggregate intact.
+``empire`` / ``workflow`` の統合スイートと同じパターン: ドメイン層は
+公開エントリポイントを持たないため、集約の mutator チェーン
+（set_default_provider → add_skill → remove_skill → archive）を通したラウンド
+トリップ動作と、チェーン途中の失敗が元の集約を無傷で残す耐性シナリオを検証する。
 """
 
 from __future__ import annotations
@@ -21,13 +20,13 @@ from tests.factories.agent import (
 
 
 class TestAgentLifecycleIntegration:
-    """TC-IT-AG-001 / 002 — full lifecycle + resilience."""
+    """TC-IT-AG-001 / 002 — 全ライフサイクル + 耐性。"""
 
     def test_full_lifecycle_round_trip(self) -> None:
-        """TC-IT-AG-001: hire → add_skill → switch default → remove_skill → archive.
+        """TC-IT-AG-001: hire → add_skill → switch default → remove_skill → archive。
 
-        Pre-state: 2-provider Agent (CLAUDE_CODE default + CODEX non-default),
-        1 skill. Walk the full mutator chain and verify the final shape.
+        前提状態: 2 プロバイダの Agent（CLAUDE_CODE がデフォルト + CODEX が非デフォルト）、
+        スキル 1 件。mutator チェーンを全部通し、最終形を検証する。
         """
         providers = [
             make_provider_config(provider_kind=ProviderKind.CLAUDE_CODE, is_default=True),

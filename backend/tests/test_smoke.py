@@ -1,4 +1,4 @@
-"""Smoke test to keep CI green until M1 domain skeleton lands."""
+"""M1 ドメインスケルトン投入までの間 CI を緑に保つためのスモークテスト。"""
 
 from bakufu import __version__
 

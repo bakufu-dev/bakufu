@@ -1,17 +1,17 @@
-"""Alembic environment for the bakufu Backend.
+"""bakufu Backend の Alembic 環境。
 
-Two modes:
+2 つの実行モードを持つ:
 
-* **Programmatic** — Bootstrap stage 3 calls ``command.upgrade`` from
-  inside an active asyncio loop. The migrations runner pre-establishes
-  a sync :class:`Connection` and stuffs it into ``config.attributes``;
-  this module reuses it instead of opening a new asyncio loop.
-* **CLI standalone** — ``alembic upgrade head`` from a shell. There is
-  no asyncio loop yet, so we open the engine ourselves and ``asyncio.run``
-  the upgrade.
+* **プログラム経由** — Bootstrap stage 3 がアクティブな asyncio ループ内から
+  ``command.upgrade`` を呼び出す。マイグレーションランナーが事前に同期版の
+  :class:`Connection` を確立し ``config.attributes`` に格納する。本モジュールは
+  新しい asyncio ループを開く代わりにそれを再利用する。
+* **CLI 単独** — シェルから ``alembic upgrade head`` を実行する場合。まだ
+  asyncio ループが存在しないため、エンジンを自前で開き ``asyncio.run`` で
+  アップグレードを実行する。
 
-Both paths share the same ``target_metadata`` so autogenerate sees
-every cross-cutting table.
+両経路とも同じ ``target_metadata`` を共有し、autogenerate がすべての横断テーブルを
+認識できるようにしている。
 """
 
 from __future__ import annotations
@@ -23,8 +23,8 @@ from pathlib import Path
 from alembic import context
 from bakufu.infrastructure.persistence.sqlite.base import Base
 
-# Importing the table modules registers the ORM mappings + listeners
-# with the metadata, so autogenerate sees them.
+# テーブルモジュールを import することで ORM マッピング・リスナーが metadata に
+# 登録され、autogenerate から参照できるようにする。
 from bakufu.infrastructure.persistence.sqlite.tables import (  # noqa: F401
     audit_log,
     outbox,
@@ -33,28 +33,26 @@ from bakufu.infrastructure.persistence.sqlite.tables import (  # noqa: F401
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncEngine, async_engine_from_config
 
-# BUG-PF-002 fix: do **not** invoke ``logging.config.fileConfig`` here.
-# Alembic's default ``env.py`` template loads logger configuration
-# from ``alembic.ini``, which (a) silences every previously-configured
-# bakufu logger via ``disable_existing_loggers=True`` and (b) raises
-# the root logger to ``WARN``. Either side effect makes the Bootstrap
-# stages 4〜8 INFO/WARN telemetry disappear from production logs once
-# stage 3 completes. Bakufu configures logging up-front via
-# ``logging.basicConfig`` (production) or pytest's caplog (tests);
-# Alembic's own ``alembic.runtime.migration`` logger inherits from
-# root, so migrations still emit their progress lines.
+# BUG-PF-002 修正: ここで ``logging.config.fileConfig`` を**呼ばない**こと。
+# Alembic 既定の ``env.py`` テンプレートは ``alembic.ini`` からロガー設定を読み込むが、
+# (a) ``disable_existing_loggers=True`` により設定済みの bakufu ロガーを全て無効化し、
+# (b) ルートロガーを ``WARN`` に引き上げてしまう。いずれの副作用も、stage 3 完了後に
+# Bootstrap stages 4〜8 の INFO/WARN テレメトリが本番ログから失われる原因となる。
+# bakufu はロギングを先に ``logging.basicConfig``（本番）または pytest の caplog
+# （テスト）で構成する。Alembic 自身の ``alembic.runtime.migration`` ロガーは root を
+# 継承するため、マイグレーションの進捗行は引き続き出力される。
 config = context.config
 
 target_metadata = Base.metadata
 
 
 def _resolve_url() -> str:
-    """Pick the SQLAlchemy URL.
+    """SQLAlchemy URL を選択する。
 
-    Priority:
-    1. ``BAKUFU_ALEMBIC_URL`` env var (test rigs / CI override).
-    2. ``BAKUFU_DATA_DIR`` env var → ``<dir>/bakufu.db``.
-    3. ``alembic.ini`` ``sqlalchemy.url`` value (CLI fallback).
+    優先順位:
+    1. ``BAKUFU_ALEMBIC_URL`` 環境変数（テスト環境 / CI でのオーバーライド）。
+    2. ``BAKUFU_DATA_DIR`` 環境変数 → ``<dir>/bakufu.db``。
+    3. ``alembic.ini`` の ``sqlalchemy.url`` 値（CLI フォールバック）。
     """
     override = os.environ.get("BAKUFU_ALEMBIC_URL")
     if override:
@@ -72,7 +70,7 @@ def _resolve_url() -> str:
 
 
 def run_migrations_offline() -> None:
-    """Render SQL without opening a connection."""
+    """接続を開かずに SQL をレンダリングする。"""
     context.configure(
         url=_resolve_url(),
         target_metadata=target_metadata,
@@ -90,7 +88,7 @@ def _do_run_migrations(connection: Connection) -> None:
 
 
 async def _run_async_migrations() -> None:
-    """CLI-standalone path: build an engine and run the upgrade."""
+    """CLI 単独経路: エンジンを構築してアップグレードを実行する。"""
     connectable: AsyncEngine = async_engine_from_config(
         {"sqlalchemy.url": _resolve_url()},
         prefix="sqlalchemy.",
@@ -101,14 +99,13 @@ async def _run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
-    # Programmatic path (Bootstrap stage 3): caller has already opened
-    # a sync Connection inside ``connection.run_sync`` and stuffed it
-    # into ``config.attributes['connection']``.
+    # プログラム経由（Bootstrap stage 3）: 呼び出し側が既に ``connection.run_sync``
+    # 内で同期 Connection を開き、``config.attributes['connection']`` に格納している。
     injected = config.attributes.get("connection", None)
     if isinstance(injected, Connection):
         _do_run_migrations(injected)
         return
-    # CLI standalone: spin up our own engine and asyncio loop.
+    # CLI 単独: エンジンと asyncio ループを自前で立ち上げる。
     asyncio.run(_run_async_migrations())
 
 

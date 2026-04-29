@@ -41,6 +41,7 @@ select = [
     "RUF", # ruff-specific
 ]
 ignore = [
+    "RUF001",  # Japanese full-width parentheses in string literals are intentional
     "RUF002",  # Japanese full-width parentheses in docstrings are intentional
     "RUF003",  # Japanese full-width parentheses in comments are intentional
 ]
