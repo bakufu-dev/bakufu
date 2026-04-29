@@ -8,7 +8,7 @@ from uuid import UUID
 
 import pytest
 from bakufu.application.services.directive_service import DirectiveService
-from bakufu.interfaces.http.dependencies import SessionDep, get_directive_service
+from bakufu.interfaces.http.dependencies import HttpDependencies, SessionDep
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.exc import IntegrityError
 
@@ -56,7 +56,7 @@ async def test_issue_rolls_back_directive_when_task_save_fails(tmp_path: Path) -
             session=session,
         )
 
-    app.dependency_overrides[get_directive_service] = _override_directive_service
+    app.dependency_overrides[HttpDependencies.get_directive_service] = _override_directive_service
 
     transport = ASGITransport(app=app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

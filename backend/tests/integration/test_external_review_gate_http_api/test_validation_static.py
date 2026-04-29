@@ -11,6 +11,7 @@ import pytest
 from .helpers import ExternalReviewGateHttpCtx, error_message, seed_gate
 
 pytestmark = pytest.mark.asyncio
+BACKEND_ROOT = Path(__file__).resolve().parents[3]
 
 
 async def test_validation_errors_include_next_guidance(
@@ -128,11 +129,10 @@ async def test_openapi_inventory_contains_only_six_external_review_gate_apis(
 async def test_no_outbound_http_client_is_introduced() -> None:
     """TC-STATIC-ERG-HTTP-001: 外部 URL fetch / HTTP client import は存在しない。"""
     source_files = [
-        Path("backend/src/bakufu/interfaces/http/routers/external_review_gates.py"),
-        Path("backend/src/bakufu/interfaces/http/schemas/external_review_gate.py"),
-        Path("backend/src/bakufu/application/services/external_review_gate_service.py"),
+        BACKEND_ROOT / "src/bakufu/interfaces/http/routers/external_review_gates.py",
+        BACKEND_ROOT / "src/bakufu/interfaces/http/schemas/external_review_gate.py",
+        BACKEND_ROOT / "src/bakufu/application/services/external_review_gate_service.py",
     ]
-    forbidden = {"httpx", "requests", "urllib", "aiohttp"}
     violations: list[str] = []
 
     for source_file in source_files:
@@ -144,7 +144,7 @@ async def test_no_outbound_http_client_is_introduced() -> None:
                 names = {(node.module or "").split(".", maxsplit=1)[0]}
             else:
                 continue
-            for name in names & forbidden:
+            for name in names & {"httpx", "requests", "urllib", "aiohttp"}:
                 violations.append(f"{source_file}:{node.lineno}: {name}")
 
     assert violations == []

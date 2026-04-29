@@ -38,180 +38,158 @@ __all__ = [
     "DirectiveRepository",
     "DirectiveServiceDep",
     "EmpireRepository",
+    "EmpireServiceDep",
     "ExternalReviewGateRepository",
     "ExternalReviewGateServiceDep",
     "ExternalReviewSubjectDep",
+    "HttpDependencies",
     "RoomRepository",
+    "RoomServiceDep",
     "SessionDep",
     "TaskRepository",
     "TaskServiceDep",
     "WorkflowRepository",
-    "get_agent_service",
-    "get_directive_service",
-    "get_empire_service",
-    "get_room_service",
-    "get_session",
-    "get_task_service",
-    "get_workflow_service",
+    "WorkflowServiceDep",
 ]
 
 
-async def get_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
-    """AsyncSession を yield する DI ファクトリ (確定 E)。"""
-    session_factory = request.app.state.session_factory
-    async with session_factory() as session:
-        yield session
+class HttpDependencies:
+    """HTTP DI 境界を公開関数ではなく classmethod に閉じる。"""
+
+    @classmethod
+    async def get_session(cls, request: Request) -> AsyncGenerator[AsyncSession, None]:
+        """AsyncSession を yield する DI ファクトリ (確定 E)。"""
+        session_factory = request.app.state.session_factory
+        async with session_factory() as session:
+            yield session
+
+    @classmethod
+    async def get_empire_service(cls, session: SessionDep) -> EmpireService:
+        """EmpireService を DI 注入する。
+
+        session を repo と service の両方に渡す:
+        - repo: SQLite クエリ実行に使用
+        - service: UoW (``async with session.begin()``) の管理に使用
+        """
+        from bakufu.infrastructure.persistence.sqlite.repositories.empire_repository import (
+            SqliteEmpireRepository,
+        )
+
+        repo = SqliteEmpireRepository(session)
+        return EmpireService(repo, session)
+
+    @classmethod
+    async def get_room_service(cls, session: SessionDep) -> RoomService:
+        """RoomService を DI 注入する (確定 D)。
+
+        4 つの Repository と session を RoomService に渡す。各 repo は同一 session を
+        共有し、service が管理する UoW (``async with session.begin()``) 内で動作する。
+        """
+        from bakufu.infrastructure.persistence.sqlite.repositories.agent_repository import (
+            SqliteAgentRepository,
+        )
+        from bakufu.infrastructure.persistence.sqlite.repositories.empire_repository import (
+            SqliteEmpireRepository,
+        )
+        from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
+            SqliteRoomRepository,
+        )
+        from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
+            SqliteWorkflowRepository,
+        )
+
+        room_repo = SqliteRoomRepository(session)
+        empire_repo = SqliteEmpireRepository(session)
+        workflow_repo = SqliteWorkflowRepository(session)
+        agent_repo = SqliteAgentRepository(session)
+        return RoomService(
+            room_repo=room_repo,
+            empire_repo=empire_repo,
+            workflow_repo=workflow_repo,
+            agent_repo=agent_repo,
+            session=session,
+        )
+
+    @classmethod
+    async def get_workflow_service(cls, session: SessionDep) -> WorkflowService:
+        """WorkflowService を DI 注入する。"""
+        from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
+            SqliteRoomRepository,
+        )
+        from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
+            SqliteWorkflowRepository,
+        )
+
+        workflow_repo = SqliteWorkflowRepository(session)
+        room_repo = SqliteRoomRepository(session)
+        return WorkflowService(workflow_repo=workflow_repo, room_repo=room_repo, session=session)
+
+    @classmethod
+    async def get_agent_service(cls, session: SessionDep) -> AgentService:
+        """AgentService を DI 注入する（§確定 H: EmpireRepository + session を追加）。"""
+        from bakufu.infrastructure.persistence.sqlite.repositories.agent_repository import (
+            SqliteAgentRepository,
+        )
+        from bakufu.infrastructure.persistence.sqlite.repositories.empire_repository import (
+            SqliteEmpireRepository,
+        )
+
+        agent_repo = SqliteAgentRepository(session)
+        empire_repo = SqliteEmpireRepository(session)
+        return AgentService(agent_repo=agent_repo, empire_repo=empire_repo, session=session)
+
+    @classmethod
+    async def get_task_service(cls, session: SessionDep) -> TaskService:
+        """TaskService を DI 注入する。"""
+        from bakufu.infrastructure.persistence.sqlite.repositories.agent_repository import (
+            SqliteAgentRepository,
+        )
+        from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
+            SqliteRoomRepository,
+        )
+        from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
+            SqliteTaskRepository,
+        )
+
+        return TaskService(
+            task_repo=SqliteTaskRepository(session),
+            room_repo=SqliteRoomRepository(session),
+            agent_repo=SqliteAgentRepository(session),
+            session=session,
+        )
+
+    @classmethod
+    async def get_directive_service(cls, session: SessionDep) -> DirectiveService:
+        """DirectiveService を DI 注入する。"""
+        from bakufu.infrastructure.persistence.sqlite.repositories.directive_repository import (
+            SqliteDirectiveRepository,
+        )
+        from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
+            SqliteRoomRepository,
+        )
+        from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
+            SqliteTaskRepository,
+        )
+        from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
+            SqliteWorkflowRepository,
+        )
+
+        return DirectiveService(
+            directive_repo=SqliteDirectiveRepository(session),
+            task_repo=SqliteTaskRepository(session),
+            room_repo=SqliteRoomRepository(session),
+            workflow_repo=SqliteWorkflowRepository(session),
+            session=session,
+        )
 
 
-SessionDep = Annotated[AsyncSession, Depends(get_session)]
-
-
-async def get_empire_service(session: SessionDep) -> EmpireService:
-    """EmpireService を DI 注入する。
-
-    session を repo と service の両方に渡す:
-    - repo: SQLite クエリ実行に使用
-    - service: UoW (``async with session.begin()``) の管理に使用
-    """
-    # 遅延 import: interfaces → infrastructure の直接依存を避けるため
-    # モジュールロード時の循環参照リスクを回避し、
-    # 依存方向 interfaces → application → infrastructure を遵守する
-    from bakufu.infrastructure.persistence.sqlite.repositories.empire_repository import (
-        SqliteEmpireRepository,
-    )
-
-    repo = SqliteEmpireRepository(session)
-    return EmpireService(repo, session)
-
-
-async def get_room_service(session: SessionDep) -> RoomService:
-    """RoomService を DI 注入する (確定 D)。
-
-    4 つの Repository と session を RoomService に渡す。各 repo は同一 session を
-    共有し、service が管理する UoW (``async with session.begin()``) 内で動作する。
-    """
-    # 遅延 import: interfaces → infrastructure の直接依存を避けるため
-    # モジュールロード時の循環参照リスクを回避し、
-    # 依存方向 interfaces → application → infrastructure を遵守する
-    from bakufu.infrastructure.persistence.sqlite.repositories.agent_repository import (
-        SqliteAgentRepository,
-    )
-    from bakufu.infrastructure.persistence.sqlite.repositories.empire_repository import (
-        SqliteEmpireRepository,
-    )
-    from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
-        SqliteRoomRepository,
-    )
-    from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
-        SqliteWorkflowRepository,
-    )
-
-    room_repo = SqliteRoomRepository(session)
-    empire_repo = SqliteEmpireRepository(session)
-    workflow_repo = SqliteWorkflowRepository(session)
-    agent_repo = SqliteAgentRepository(session)
-    return RoomService(
-        room_repo=room_repo,
-        empire_repo=empire_repo,
-        workflow_repo=workflow_repo,
-        agent_repo=agent_repo,
-        session=session,
-    )
-
-
-async def get_workflow_service(session: SessionDep) -> WorkflowService:
-    """WorkflowService を DI 注入する。"""
-    # 遅延 import: interfaces → infrastructure の直接依存を避けるため
-    # モジュールロード時の循環参照リスクを回避し、
-    # 依存方向 interfaces → application → infrastructure を遵守する
-    from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
-        SqliteRoomRepository,
-    )
-    from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
-        SqliteWorkflowRepository,
-    )
-
-    workflow_repo = SqliteWorkflowRepository(session)
-    room_repo = SqliteRoomRepository(session)
-    return WorkflowService(workflow_repo=workflow_repo, room_repo=room_repo, session=session)
-
-
-async def get_agent_service(session: SessionDep) -> AgentService:
-    """AgentService を DI 注入する（§確定 H: EmpireRepository + session を追加）。
-
-    Empire 存在確認のため EmpireRepository を直接受け取る。
-    循環依存を避けるため get_empire_service() への依存は持たない
-    （workflow_service.py §確定 H と同パターン）。
-    """
-    # 遅延 import: interfaces → infrastructure の直接依存を避けるため
-    # モジュールロード時の循環参照リスクを回避し、
-    # 依存方向 interfaces → application → infrastructure を遵守する
-    from bakufu.infrastructure.persistence.sqlite.repositories.agent_repository import (
-        SqliteAgentRepository,
-    )
-    from bakufu.infrastructure.persistence.sqlite.repositories.empire_repository import (
-        SqliteEmpireRepository,
-    )
-
-    agent_repo = SqliteAgentRepository(session)
-    empire_repo = SqliteEmpireRepository(session)
-    return AgentService(agent_repo=agent_repo, empire_repo=empire_repo, session=session)
-
-
-AgentServiceDep = Annotated[AgentService, Depends(get_agent_service)]
-
-
-async def get_task_service(session: SessionDep) -> TaskService:
-    """TaskService を DI 注入する。"""
-    # 遅延 import: interfaces → infrastructure の直接依存を避けるため
-    # モジュールロード時の循環参照リスクを回避し、
-    # 依存方向 interfaces → application → infrastructure を遵守する
-    from bakufu.infrastructure.persistence.sqlite.repositories.agent_repository import (
-        SqliteAgentRepository,
-    )
-    from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
-        SqliteRoomRepository,
-    )
-    from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
-        SqliteTaskRepository,
-    )
-
-    return TaskService(
-        task_repo=SqliteTaskRepository(session),
-        room_repo=SqliteRoomRepository(session),
-        agent_repo=SqliteAgentRepository(session),
-        session=session,
-    )
-
-
-TaskServiceDep = Annotated[TaskService, Depends(get_task_service)]
-
-
-async def get_directive_service(session: SessionDep) -> DirectiveService:
-    """DirectiveService を DI 注入する。"""
-    from bakufu.infrastructure.persistence.sqlite.repositories.directive_repository import (
-        SqliteDirectiveRepository,
-    )
-    from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
-        SqliteRoomRepository,
-    )
-    from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
-        SqliteTaskRepository,
-    )
-    from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
-        SqliteWorkflowRepository,
-    )
-
-    return DirectiveService(
-        directive_repo=SqliteDirectiveRepository(session),
-        task_repo=SqliteTaskRepository(session),
-        room_repo=SqliteRoomRepository(session),
-        workflow_repo=SqliteWorkflowRepository(session),
-        session=session,
-    )
-
-
-DirectiveServiceDep = Annotated[DirectiveService, Depends(get_directive_service)]
+SessionDep = Annotated[AsyncSession, Depends(HttpDependencies.get_session)]
+EmpireServiceDep = Annotated[EmpireService, Depends(HttpDependencies.get_empire_service)]
+RoomServiceDep = Annotated[RoomService, Depends(HttpDependencies.get_room_service)]
+WorkflowServiceDep = Annotated[WorkflowService, Depends(HttpDependencies.get_workflow_service)]
+AgentServiceDep = Annotated[AgentService, Depends(HttpDependencies.get_agent_service)]
+TaskServiceDep = Annotated[TaskService, Depends(HttpDependencies.get_task_service)]
+DirectiveServiceDep = Annotated[DirectiveService, Depends(HttpDependencies.get_directive_service)]
 
 
 class ExternalReviewGateDependencies:

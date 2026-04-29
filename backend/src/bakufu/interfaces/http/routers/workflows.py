@@ -18,13 +18,11 @@ domain / infrastructure への import はゼロ (Q-3)。
 
 from __future__ import annotations
 
-from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Response
 
-from bakufu.application.services.workflow_service import WorkflowService
-from bakufu.interfaces.http.dependencies import get_workflow_service
+from bakufu.interfaces.http.dependencies import WorkflowServiceDep
 from bakufu.interfaces.http.schemas.workflow import (
     StageListResponse,
     StageResponse,
@@ -39,8 +37,6 @@ from bakufu.interfaces.http.schemas.workflow import (
 
 room_workflows_router = APIRouter(prefix="/api/rooms", tags=["workflow"])
 workflows_router = APIRouter(prefix="/api/workflows", tags=["workflow"])
-
-WorkflowServiceDep = Annotated[WorkflowService, Depends(get_workflow_service)]
 
 
 @room_workflows_router.post(
