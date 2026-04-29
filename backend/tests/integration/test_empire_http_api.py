@@ -1,4 +1,4 @@
-"""empire / http-api 結合テスト (TC-IT-EM-HTTP-001〜009).
+"""empire / http-api 結合テスト (TC-IT-EM-HTTP-001〜012).
 
 Per ``docs/features/empire/http-api/test-design.md`` §結合テストケース.
 
@@ -12,6 +12,9 @@ Covers:
   TC-IT-EM-HTTP-007  PATCH アーカイブ済み → 409 conflict (MSG-EM-HTTP-003, R1-8)
   TC-IT-EM-HTTP-008  DELETE /api/empires/{id} → 204 + archived=true (REQ-EM-HTTP-005)
   TC-IT-EM-HTTP-009  DELETE 不在 → 404 not_found (MSG-EM-HTTP-002)
+  TC-IT-EM-HTTP-010  GET 不正UUID → 422 (REQ-EM-HTTP-003, Tabriz BUG-EM-SEC-001)
+  TC-IT-EM-HTTP-011  PATCH 不正UUID → 422 (REQ-EM-HTTP-004, Tabriz BUG-EM-SEC-001)
+  TC-IT-EM-HTTP-012  DELETE 不正UUID → 422 (REQ-EM-HTTP-005, Tabriz BUG-EM-SEC-001)
   T1 CSRF           POST + evil Origin → 403 forbidden
 
 Issue: #56
@@ -322,3 +325,37 @@ class TestDeleteEmpireNotFound:
         """MSG-EM-HTTP-002: "Empire not found." (静的照合)."""
         resp = await empire_app_client.delete(f"/api/empires/{uuid.uuid4()}")
         assert resp.json()["error"]["message"] == "Empire not found."
+
+
+# ---------------------------------------------------------------------------
+# TC-IT-EM-HTTP-010: GET 不正UUID → 422
+# TC-IT-EM-HTTP-011: PATCH 不正UUID → 422
+# TC-IT-EM-HTTP-012: DELETE 不正UUID → 422
+# (Tabriz Security Review: BUG-EM-SEC-001 — empire_id: UUID FastAPI 自動検証)
+# ---------------------------------------------------------------------------
+_INVALID_UUID = "not-a-uuid"
+
+
+class TestInvalidUuidPathParam:
+    """TC-IT-EM-HTTP-010〜012: 不正 UUID パスパラメータは 422 を返す (Tabriz BUG-EM-SEC-001).
+
+    empire_id パスパラメータを FastAPI に UUID 型として宣言することで、
+    不正フォーマット時に FastAPI が RequestValidationError → 422 を返す。
+    旧実装 (empire_id: str + UUID(empire_id)) では ValueError が
+    internal_error_handler に到達し 500 が返っていた。
+    """
+
+    async def test_get_invalid_uuid_returns_422(self, empire_app_client: AsyncClient) -> None:
+        """TC-IT-EM-HTTP-010: GET /api/empires/{not-a-uuid} → 422 (not 500)."""
+        resp = await empire_app_client.get(f"/api/empires/{_INVALID_UUID}")
+        assert resp.status_code == 422
+
+    async def test_patch_invalid_uuid_returns_422(self, empire_app_client: AsyncClient) -> None:
+        """TC-IT-EM-HTTP-011: PATCH /api/empires/{not-a-uuid} → 422 (not 500)."""
+        resp = await empire_app_client.patch(f"/api/empires/{_INVALID_UUID}", json={"name": "test"})
+        assert resp.status_code == 422
+
+    async def test_delete_invalid_uuid_returns_422(self, empire_app_client: AsyncClient) -> None:
+        """TC-IT-EM-HTTP-012: DELETE /api/empires/{not-a-uuid} → 422 (not 500)."""
+        resp = await empire_app_client.delete(f"/api/empires/{_INVALID_UUID}")
+        assert resp.status_code == 422
