@@ -9,7 +9,7 @@
 
 | 記号 | 論点 | 決定内容 |
 |-----|------|---------|
-| 確定A | masking 要否（`last_error` / `body_markdown` の HTTP レスポンス） | `TaskResponse.last_error` / `DeliverableResponse.body_markdown` に `@field_serializer` で `mask()` 適用（defense-in-depth）。`@field_serializer` は GET / POST / PATCH **全レスポンスパス**で発火する（mode 制限なし）。DB は MaskedText TypeDecorator で既にマスキング済み（R1-12）。`mask()` は冪等性あり（二重 masking なし）。GET /api/tasks/{task_id} で BLOCKED Task を取得する場合も `last_error` に field_serializer が適用され、DB バイパス経路（raw 値直接 INSERT）でも HTTP レスポンスに secret が露出しない |
+| 確定A | masking 要否（`last_error` / `body_markdown` の HTTP レスポンス） | `TaskResponse.last_error` / `DeliverableResponse.body_markdown` に `@field_serializer` で `ApplicationMasking.mask()` 適用（defense-in-depth）。`@field_serializer` は GET / POST / PATCH **全レスポンスパス**で発火する（mode 制限なし）。DB は MaskedText TypeDecorator で既にマスキング済み（R1-12）。`ApplicationMasking.mask()` は冪等性あり（二重 masking なし）。GET /api/tasks/{task_id} で BLOCKED Task を取得する場合も `last_error` に field_serializer が適用され、DB バイパス経路（raw 値直接 INSERT）でも HTTP レスポンスに secret が露出しない |
 | 確定B | `find_all_by_room` の追加（P-2）| `TaskRepository` Protocol に `find_all_by_room(room_id: RoomId) -> list[Task]` を追加。Room 不在時は空リストを返す（`RoomNotFoundError` は raise しない）|
 | 確定C | `task_exceptions.py` 新規作成（P-1）| `TaskNotFoundError(task_id)` / `TaskStateConflictError(task_id, current_status, action)` を定義。実装どおり `Exception` を基底クラスとし、HTTP 層で明示的に 404 / 409 へマッピングする |
 | 確定D | `TaskInvariantViolation` の HTTP ステータス分岐 | `kind in ('terminal_violation', 'state_transition_invalid')` → service 層で catch して `TaskStateConflictError` に変換 → 409。その他 kind → `TaskInvariantViolation` のまま伝播 → error_handlers.py が 422 に変換 |
@@ -52,7 +52,7 @@
 | `current_stage_id` | `str` | `StageId.value` を str で変換 |
 | `status` | `str` | `TaskStatus.value`（`PENDING` / `IN_PROGRESS` / `AWAITING_EXTERNAL_REVIEW` / `BLOCKED` / `DONE` / `CANCELLED`）|
 | `assigned_agent_ids` | `list[str]` | `AgentId.value` の list（順序保持）|
-| `last_error` | `str \| None` | `@field_serializer('last_error')` で `mask(value)` 適用。BLOCKED 以外では None |
+| `last_error` | `str \| None` | `@field_serializer('last_error')` で `ApplicationMasking.mask(value)` 適用。BLOCKED 以外では None |
 | `deliverables` | `dict[str, DeliverableResponse]` | `stage_id（str）→ DeliverableResponse` の dict |
 | `created_at` | `str` | ISO 8601 UTC（`datetime.isoformat() + 'Z'`）|
 | `updated_at` | `str` | ISO 8601 UTC |
@@ -62,7 +62,7 @@
 | フィールド | 型 | 備考 |
 |----------|---|------|
 | `stage_id` | `str` | `StageId.value` を str で変換 |
-| `body_markdown` | `str` | `@field_serializer('body_markdown')` で `mask(value)` 適用（確定A）|
+| `body_markdown` | `str` | `@field_serializer('body_markdown')` で `ApplicationMasking.mask(value)` 適用（確定A）|
 | `submitted_by` | `str` | `AgentId.value` を str で変換 |
 | `submitted_at` | `str` | ISO 8601 UTC |
 | `attachments` | `list[AttachmentResponse]` | 空リスト可 |
@@ -163,10 +163,10 @@ ValidationError (Pydantic)  → 422 validation_error（既存 http-api-foundatio
 
 ### `last_error` / `body_markdown` の masking（確定A 詳細）
 
-- DB 層（永続化前）: `MaskedText` TypeDecorator が `tasks.last_error` / `deliverables.body_markdown` への書き込み時に `mask()` を適用（repository sub-feature で確定済み、業務ルール R1-12）
-- HTTP 層（レスポンス時）: `TaskResponse.last_error` / `DeliverableResponse.body_markdown` に `@field_serializer` を定義し `mask(value)` を適用
+- DB 層（永続化前）: `MaskedText` TypeDecorator が `tasks.last_error` / `deliverables.body_markdown` への書き込み時に `MaskingGateway.mask()` を適用（repository sub-feature で確定済み、業務ルール R1-12）
+- HTTP 層（レスポンス時）: `TaskResponse.last_error` / `DeliverableResponse.body_markdown` に `@field_serializer` を定義し `ApplicationMasking.mask(value)` を適用
 - **全レスポンスパスで発火（mode 制限なし）**: `@field_serializer` は GET / POST / PATCH 全エンドポイントのレスポンス構築時に無条件で呼び出される。GET /api/tasks/{task_id} で BLOCKED Task を取得する場合も `last_error` に適用される
-- `mask()` の冪等性: `<REDACTED:DISCORD_WEBHOOK>` / `<REDACTED:ANTHROPIC_KEY>` 等のパターンは二重マスキングされない
+- `ApplicationMasking.mask()` の冪等性: `<REDACTED:DISCORD_WEBHOOK>` / `<REDACTED:ANTHROPIC_KEY>` 等のパターンは二重マスキングされない
 - `last_error=None` の場合: `@field_serializer` は None をそのまま返す（masking しない）
 - DB バイパス保証: DB への raw token 直接 INSERT バイパスが発生した場合でも、HTTP レスポンスでは field_serializer が独立して secret を除去する（R1-12 永続化 masking + HTTP レスポンス masking の二重防御）
 

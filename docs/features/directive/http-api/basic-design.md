@@ -89,7 +89,7 @@ backend/
 | room 例外 | `RoomNotFoundError` / `RoomArchivedError` | room http-api（Issue #57）確定 | Room 不在 / archived 確認のため |
 | workflow 参照 | `WorkflowStageResolver.find_entry_stage_id` | workflow stage resolver | Room に紐付く Workflow の entry stage 解決のため。EXTERNAL_REVIEW Workflow は notify_channels が保存時にマスクされるため、Workflow 全体の再水和に依存しない |
 | workflow 例外 | `WorkflowNotFoundError` | workflow application（Issue #52）確定 | Room.workflow_id が参照する Workflow 不在時の fail fast |
-| masking | `application.security.masking.mask()` | http-api-foundation 確定（Issue #59 §確定I）| `text` / `prompt_body` 等フィールドの HTTP レスポンスマスキング（defense-in-depth）|
+| masking | `ApplicationMasking.mask()` | http-api-foundation 確定（Issue #59 §確定I）| `text` / `prompt_body` 等フィールドの HTTP レスポンスマスキング（defense-in-depth）|
 | 基盤 | http-api-foundation（ErrorResponse / lifespan / CSRF / CORS）| M3-A 確定（Issue #55）| 全 error handler / app.state.session_factory を引き継ぐ |
 
 ## クラス設計（概要）
@@ -255,14 +255,14 @@ sequenceDiagram
 | **T1: CSRF 経由での Directive 発行** | ブラウザ経由の不正 POST | Directive + Task の整合性 | http-api-foundation 確定D: CSRF Origin 検証ミドルウェア（Origin ヘッダ不一致なら 403）|
 | **T2: スタックトレース露出** | 500 エラーレスポンスへのスタックトレース混入 | 内部実装情報 | http-api-foundation 確定A: generic_exception_handler が `internal_error` のみを返す |
 | **T3: 不正 UUID によるパスインジェクション** | `room_id` に不正値を注入 | DB 整合性 | FastAPI `UUID` 型強制（422 on 不正形式）+ SQLAlchemy ORM（raw SQL 不使用）|
-| **T4: Directive.text 経由での秘密情報漏洩（A02）** | CEO が API key / GitHub PAT / webhook URL を `text` に含めた場合、または DB への raw token 直接 INSERT バイパスが発生した場合、HTTP レスポンスに raw token が露出 | API key / GitHub PAT / webhook token | `DirectiveResponse.text` の `@field_serializer` が POST 全レスポンスパスで `application.security.masking.mask()` を呼び出す（mode 制限なし・冪等）。DB バイパス経路でも R1-F が独立防御として機能する（§確定A 凍結）|
+| **T4: Directive.text 経由での秘密情報漏洩（A02）** | CEO が API key / GitHub PAT / webhook URL を `text` に含めた場合、または DB への raw token 直接 INSERT バイパスが発生した場合、HTTP レスポンスに raw token が露出 | API key / GitHub PAT / webhook token | `DirectiveResponse.text` の `@field_serializer` が POST 全レスポンスパスで `ApplicationMasking.mask()` を呼び出す（mode 制限なし・冪等）。DB バイパス経路でも R1-F が独立防御として機能する（§確定A 凍結）|
 
 ### OWASP Top 10 対応
 
 | # | カテゴリ | 対応状況 |
 |---|---|---|
 | A01 | Broken Access Control | loopback バインド（`127.0.0.1:8000`）+ CSRF Origin 検証（http-api-foundation 確定D）|
-| A02 | Cryptographic Failures | **Directive.text**: `field_serializer` が POST 全レスポンスパスで `mask()` を呼び出す（T4 / §確定A 凍結）。DB 永続化前も MaskedText TypeDecorator で二重防御（R1-F）|
+| A02 | Cryptographic Failures | **Directive.text**: `field_serializer` が POST 全レスポンスパスで `ApplicationMasking.mask()` を呼び出す（T4 / §確定A 凍結）。DB 永続化前も MaskedText TypeDecorator で二重防御（R1-F）|
 | A03 | Injection | SQLAlchemy ORM 経由（raw SQL 不使用）|
 | A04 | Insecure Design | domain の pre-validate + frozen Directive で不整合状態を物理的に防止。atomic UoW で Directive + Task の整合性を保証 |
 | A05 | Security Misconfiguration | http-api-foundation の lifespan / CORS 設定を引き継ぐ |

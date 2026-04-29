@@ -132,7 +132,7 @@ backend/
 | application 例外 | `TaskNotFoundError` / `TaskStateConflictError` / `TaskAuthorizationError` | 本 PR で新規定義（P-1）| `application/exceptions/task_exceptions.py` |
 | domain | `Task` / `TaskId` / `TaskStatus` / `TaskAction` / `TaskInvariantViolation` / `Deliverable` / `Attachment` / `state_machine` | M1 確定 | task domain sub-feature（Issue #37）|
 | repository | `TaskRepository` Protocol（`find_all_by_room` 追加後）/ `RoomRepository` / `AgentRepository` | M2 確定 + 本 PR で Protocol 拡張（P-2）| Task assign の Room.members 検証と deliverable submitter 検証は application 層責務 |
-| masking | `application.security.masking.mask()` | http-api-foundation 確定（Issue #59 §確定I）| `last_error` / `body_markdown` のHTTPレスポンスマスキング（defense-in-depth）|
+| masking | `ApplicationMasking.mask()` | http-api-foundation 確定（Issue #59 §確定I）| `last_error` / `body_markdown` のHTTPレスポンスマスキング（defense-in-depth）|
 | 基盤 | http-api-foundation（ErrorResponse / lifespan / CSRF / CORS）| M3-A 確定（Issue #55）| 全 error handler / app.state.session_factory を引き継ぐ |
 
 ## クラス設計（概要）
@@ -235,7 +235,7 @@ classDiagram
 1. Router が `task_id: UUID` をパスパラメータとして受け取る（不正形式 → 422）
 2. `TaskService.find_by_id(task_id)` 呼び出し
 3. `TaskRepository.find_by_id(task_id)` → None → `TaskNotFoundError` → 404
-4. `TaskResponse` を構築（`last_error` / `body_markdown` は `mask()` 適用）
+4. `TaskResponse` を構築（`last_error` / `body_markdown` は `ApplicationMasking.mask()` 適用）
 5. HTTP 200 を返す
 
 ### ユースケース 2: Room の Task 一覧取得（GET /api/rooms/{room_id}/tasks）
@@ -306,14 +306,14 @@ classDiagram
 | **T1: CSRF 経由での Task 状態操作** | ブラウザ経由の不正 POST / PATCH | Task の状態整合性 | http-api-foundation 確定D: CSRF Origin 検証ミドルウェア（Origin ヘッダ不一致なら 403）|
 | **T2: スタックトレース露出** | 500 エラーレスポンスへのスタックトレース混入 | 内部実装情報 | http-api-foundation 確定A: generic_exception_handler が `internal_error` のみを返す |
 | **T3: 不正 UUID によるパスインジェクション** | `task_id` / `stage_id` / `room_id` に不正値を注入 | DB 整合性 | FastAPI `UUID` 型強制（422 on 不正形式）+ SQLAlchemy ORM（raw SQL 不使用）|
-| **T4: last_error / body_markdown 経由での秘密情報漏洩（A02）** | CEO / Agent が API key / GitHub PAT / webhook URL を `last_error` / `body_markdown` に含めた場合、または DB への raw token 直接 INSERT バイパスが発生した場合、HTTP レスポンスに raw token が露出 | API key / GitHub PAT / webhook token | `TaskResponse.last_error` / `DeliverableResponse.body_markdown` の `@field_serializer` が GET / POST / PATCH 全レスポンスパスで `application.security.masking.mask()` を呼び出す（mode 制限なし・冪等）。DB バイパス経路でも R1-12 が独立防御として機能する（§確定A 凍結）|
+| **T4: last_error / body_markdown 経由での秘密情報漏洩（A02）** | CEO / Agent が API key / GitHub PAT / webhook URL を `last_error` / `body_markdown` に含めた場合、または DB への raw token 直接 INSERT バイパスが発生した場合、HTTP レスポンスに raw token が露出 | API key / GitHub PAT / webhook token | `TaskResponse.last_error` / `DeliverableResponse.body_markdown` の `@field_serializer` が GET / POST / PATCH 全レスポンスパスで `ApplicationMasking.mask()` を呼び出す（mode 制限なし・冪等）。DB バイパス経路でも R1-12 が独立防御として機能する（§確定A 凍結）|
 
 ### OWASP Top 10 対応
 
 | # | カテゴリ | 対応状況 |
 |---|---|---|
 | A01 | Broken Access Control | loopback バインド（`127.0.0.1:8000`）+ CSRF Origin 検証（http-api-foundation 確定D）|
-| A02 | Cryptographic Failures | **Task.last_error / Deliverable.body_markdown**: `field_serializer` が GET / POST / PATCH 全レスポンスパスで `mask()` を呼び出す（T4 / §確定A 凍結）。DB 永続化前も MaskedText TypeDecorator で二重防御（R1-12）|
+| A02 | Cryptographic Failures | **Task.last_error / Deliverable.body_markdown**: `field_serializer` が GET / POST / PATCH 全レスポンスパスで `ApplicationMasking.mask()` を呼び出す（T4 / §確定A 凍結）。DB 永続化前も MaskedText TypeDecorator で二重防御（R1-12）|
 | A03 | Injection | SQLAlchemy ORM 経由（raw SQL 不使用）|
 | A04 | Insecure Design | domain の pre-validate + frozen Task で不整合状態を物理的に防止。state machine decision table で不正遷移を拒否 |
 | A05 | Security Misconfiguration | http-api-foundation の lifespan / CORS 設定を引き継ぐ |

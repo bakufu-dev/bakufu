@@ -365,7 +365,7 @@ UI 側 / Repository 側でも入力時マスキング / 永続化前マスキン
 
 ## 設計判断の補足
 
-Norman 500 行ルールに従い、判断根拠は補章 [`detailed-design-rationale.md`](detailed-design-rationale.md) に分割する。本書は構造契約、責務分離、MSG文言の正本に集中する。
+Norman 500 行ルールに従い、判断根拠は補章 [`detailed-design/rationale.md`](detailed-design/rationale.md) に分割する。本書は構造契約、責務分離、MSG文言の正本に集中する。
 
 ## ユーザー向けメッセージの確定文言
 

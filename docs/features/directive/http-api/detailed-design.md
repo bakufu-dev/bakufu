@@ -9,7 +9,7 @@
 
 | 記号 | 論点 | 決定内容 |
 |-----|------|---------|
-| 確定A | masking 要否（`text` の HTTP レスポンス） | `DirectiveResponse.text` に `@field_serializer` で `mask()` 適用（defense-in-depth）。`@field_serializer` は POST **全レスポンスパス**で発火（mode 制限なし）。DB は MaskedText TypeDecorator で既にマスキング済み。GET レスポンスでも masked 値を返す |
+| 確定A | masking 要否（`text` の HTTP レスポンス） | `DirectiveResponse.text` に `@field_serializer` で `ApplicationMasking.mask()` 適用（defense-in-depth）。`@field_serializer` は POST **全レスポンスパス**で発火（mode 制限なし）。DB は MaskedText TypeDecorator で既にマスキング済み。GET レスポンスでも masked 値を返す |
 | 確定B | アトミック UoW | `DirectiveService.issue()` 内で `async with session.begin()` を 1 ブロックで包む。Directive 保存 → link_task → Directive UPSERT → Task 保存の 4 操作が同一トランザクション |
 | 確定C | `$` プレフィックス正規化 | `DirectiveService.issue()` が `text = raw_text if raw_text.startswith('$') else '$' + raw_text` で正規化（業務ルール R1-A）。Aggregate 側は valid な text しか受け取らない契約 |
 | 確定D | DirectiveInvariantViolation → 422 | domain 層の `DirectiveInvariantViolation` は application 層でそのまま伝播させ、error_handlers.py が 422 に変換 |
@@ -29,7 +29,7 @@
 | フィールド | 型 | 備考 |
 |----------|---|------|
 | `id` | `str` | `DirectiveId` を `str(directive_id.value)` で変換 |
-| `text` | `str` | `@field_serializer` で `mask()` 適用（確定A）。DB から取得した masked 値をそのまま返す |
+| `text` | `str` | `@field_serializer` で `ApplicationMasking.mask()` 適用（確定A）。DB から取得した masked 値をそのまま返す |
 | `target_room_id` | `str` | `RoomId.value` を str で変換 |
 | `created_at` | `str` | ISO 8601 UTC（`datetime.isoformat() + 'Z'`）|
 | `task_id` | `str \| None` | `TaskId.value` を str で変換。None は Task 未紐付け初期状態（POST 直後は必ず存在）|
@@ -110,8 +110,8 @@ ValidationError (Pydantic)  → 422 validation_error（既存 http-api-foundatio
 
 ### Directive.text の masking（確定A 詳細）
 
-- DB 層（永続化前）: `MaskedText` TypeDecorator が `directives.text` カラムへの書き込み時に `mask()` を適用（repository sub-feature で確定済み、業務ルール R1-F）
-- HTTP 層（レスポンス時）: `DirectiveResponse.text` に `@field_serializer('text')` を定義し、`mask(value)` を適用する。既に masked の値（`<REDACTED:*>` パターン）は `mask()` の冪等性により二重 masking されない
+- DB 層（永続化前）: `MaskedText` TypeDecorator が `directives.text` カラムへの書き込み時に `MaskingGateway.mask()` を適用（repository sub-feature で確定済み、業務ルール R1-F）
+- HTTP 層（レスポンス時）: `DirectiveResponse.text` に `@field_serializer('text')` を定義し、`ApplicationMasking.mask(value)` を適用する。既に masked の値（`<REDACTED:*>` パターン）は `ApplicationMasking.mask()` の冪等性により二重 masking されない
 - 目的: DB が何らかの原因で raw 値を返した場合でも HTTP レスポンスに secret が漏洩しない（defense-in-depth）
 
 ### UoW ロールバックによる整合性保証

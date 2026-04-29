@@ -1,6 +1,6 @@
 # 詳細設計補章 — task / domain 設計判断
 
-> 親文書: [`detailed-design.md`](detailed-design.md)
+> 親文書: [`../detailed-design.md`](../detailed-design.md)
 > 目的: Norman 500 行ルールに従い、詳細設計の判断根拠を補章として分割する。
 
 ## なぜ state machine を decision table 化するか
