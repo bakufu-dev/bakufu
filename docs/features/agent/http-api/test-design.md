@@ -65,7 +65,7 @@
 | `AgentUpdate` スキーマ（§確定A）| `schemas/agent.py` | TC-UT-AGH-006 | ユニット | 正常系 / 異常系 | — |
 | `PersonaCreate` スキーマ（§確定A）| `schemas/agent.py` | TC-UT-AGH-007 | ユニット | 正常系 | — |
 | `PersonaResponse` field_serializer（R1-9 / A02）| `PersonaResponse.prompt_body` masked シリアライズ | TC-UT-AGH-008 | ユニット | セキュリティ | feature-spec.md §9 #15 |
-| 依存方向（interfaces → domain 直参照禁止）| `interfaces/http/` 配下全 `.py`（静的解析）| TC-UT-AGH-009 | ユニット（静的解析）| 異常系 | — |
+| 依存方向（interfaces → domain / infrastructure 直参照禁止）| `interfaces/http/routers/` + `interfaces/http/schemas/`（`dependencies.py` は DI 配線として除外）を `ast.walk()` 全ノード走査（関数内遅延 import 含む）| TC-UT-AGH-009 | ユニット（静的解析）| 異常系 | — |
 
 **マトリクス充足の証拠**:
 - REQ-AG-HTTP-001〜005 すべてに最低 1 件の正常系テストケース（TC-IT-AGH-001/007/011/014/021）
@@ -140,7 +140,7 @@
 | TC-UT-AGH-006 | `AgentUpdate` スキーマ（§確定A）| 正常系 / 異常系 | (a) 全フィールド None（no-op）(b) `name="更新名"` のみ (c) `providers=[valid_provider]` のみ (d) `name=""`（min_length 違反）| (a) バリデーション通過（no-op として有効）(b) 通過 (c) 通過 (d) min_length 違反 `ValidationError` |
 | TC-UT-AGH-007 | `PersonaCreate` スキーマ（§確定A）| 正常系 | (a) `prompt_body=None` (b) `prompt_body="raw_token_value"` (c) `archetype=None` | (a) `None` のまま通過（domain に委譲、masking はレスポンス層で実施）(b) raw 値のまま通過 (c) `None` のまま通過 |
 | TC-UT-AGH-008 | `PersonaResponse` field_serializer による `prompt_body` masking（R1-9 / T4 / A02）| セキュリティ | raw token 文字列（例: `"ANTHROPIC_API_KEY=sk-ant-xxxx"`）を持つ `Persona` オブジェクト → `PersonaResponse` でシリアライズ | シリアライズ後の `prompt_body` フィールドに raw token が含まれない（`<REDACTED:*>` 形式）|
-| TC-UT-AGH-009 | 依存方向（静的解析）| 異常系 | `ast.parse()` で `interfaces/http/` 配下の全 `.py` を解析し、トップレベル `import` / `from ... import` を抽出 | `bakufu.domain` / `bakufu.infrastructure` への直接 import が存在しないこと（http-api-foundation TC-UT-HAF-010 と同一検証パターン）|
+| TC-UT-AGH-009 | 依存方向（静的解析）| 異常系 | `ast.walk(tree)` で `interfaces/http/routers/` + `interfaces/http/schemas/` 配下の全 `.py` を全ノード走査（関数内遅延 import を含む全 `Import` / `ImportFrom` ノードを対象）。`dependencies.py` は DI 配線として対象外（DI ファクトリは infrastructure を直接参照することが許容設計） | `bakufu.domain` / `bakufu.infrastructure` への直接 import が存在しないこと（room TC-UT-RM-HTTP-010 / workflow TC-UT-WFH-020 の `ast.walk()` 走査方式に準拠。旧 `tree.body` パターンへの退行禁止）|
 
 ## カバレッジ基準
 
