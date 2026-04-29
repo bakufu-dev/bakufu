@@ -59,6 +59,7 @@ flowchart LR
 | 添付ファイル | **中** | 高 | 中 | filesystem `BAKUFU_DATA_DIR/attachments/<sha256>/`、`0600` mode |
 | audit_log | 低 | **最高**（改ざん不可） | 中 | SQLite、追記のみ |
 | domain_event_outbox | 中 | **最高**（at-least-once 保証の基盤） | 高 | SQLite |
+| InternalReviewGate.verdicts[*].comment | **高**（LLM 出力、API key / webhook token 混入リスク）| 高 | 中 | SQLite（repository sub-feature 実装前は plaintext。masking 必須 — 申し送り #1 `docs/features/internal-review-gate/domain/test-design.md`）|
 | ExternalReviewGate.audit_trail | 中 | **最高**（人間判断履歴） | 中 | SQLite、Gate 内に inline |
 
 ## 攻撃者像（Threat Actors）

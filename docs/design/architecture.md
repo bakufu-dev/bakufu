@@ -39,7 +39,8 @@ bakufu の中核 Aggregate:
 | Workflow | 業務フロー（Stage の DAG） | [`domain-model.md §Workflow`](domain-model.md) |
 | Agent | AI エージェント | [`domain-model.md §Agent`](domain-model.md) |
 | Task | 業務タスク + 状態遷移 | [`domain-model.md §Task`](domain-model.md) |
-| ExternalReviewGate | 外部レビュー（人間承認） | [`domain-model.md §ExternalReviewGate`](domain-model.md) |
+| InternalReviewGate | 内部レビュー（AI エージェント並列審査、ExternalReviewGate 前段の品質保証）| [`domain-model.md §InternalReviewGate`](domain-model.md) |
+| ExternalReviewGate | 外部レビュー（人間承認、InternalReviewGate 全合格後に生成）| [`domain-model.md §ExternalReviewGate`](domain-model.md) |
 
 詳細は [`domain-model.md`](domain-model.md) を参照。
 

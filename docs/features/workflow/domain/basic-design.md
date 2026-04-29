@@ -74,20 +74,31 @@
 | 項目 | 内容 |
 |------|------|
 | 入力 | Stage インスタンス |
-| 処理 | `model_validator(mode='after')` で: ①`required_role` が空集合でない ②`EXTERNAL_REVIEW` の場合 `notify_channels` を持つ |
+| 処理 | `model_validator(mode='after')` で: ①`required_role` が空集合でない ②`EXTERNAL_REVIEW` の場合 `notify_channels` を持つ ③`required_gate_roles` の各要素が slug 形式（1〜40 文字小文字英数字ハイフン、数字先頭禁止）を充足する |
 | 出力 | None |
 | エラー時 | `StageInvariantViolation`（`WorkflowInvariantViolation` のサブクラス） |
+
+### REQ-WF-008: Stage の内部レビュー GateRole 設定
+
+| 項目 | 内容 |
+|------|------|
+| 入力 | Stage 構築時の `required_gate_roles: frozenset[str]`（省略時は空 frozenset） |
+| 処理 | 各要素が slug 形式（1〜40 文字、小文字英数字ハイフン、数字先頭禁止）であることを `field_validator` で検査。空 frozenset は合法（内部レビュー不要の Stage を表す） |
+| 出力 | valid な Stage 属性（`required_gate_roles` がバリデーション済み frozenset として保持） |
+| エラー時 | `StageInvariantViolation(kind='invalid_gate_role_format')` |
+
+**設計根拠**: `required_gate_roles` は InternalReviewGate feature (#65) で追加された属性。空集合を許容するのは「Workflow 内の全 Stage に内部レビューが必要とは限らない」という業務要件（feature-spec §9 AC#10 / InternalReviewGate feature-spec §9 AC#10 参照）。feature/internal-review-gate の設計書 [`../../internal-review-gate/feature-spec.md`](../../internal-review-gate/feature-spec.md) を真実源とし、本書は Stage 側の構造制約のみを凍結する。
 
 ## モジュール構成
 
 | 機能 ID | モジュール | ディレクトリ | 責務 |
 |--------|----------|------------|------|
 | REQ-WF-001〜006 | `Workflow` Aggregate Root | `backend/src/bakufu/domain/workflow.py` | Workflow の属性・DAG 不変条件・ふるまい・bulk-import |
-| REQ-WF-001, 002, 004, 007 | `Stage` Entity | 同上 | Stage の属性・自身の不変条件 |
+| REQ-WF-001, 002, 004, 007, 008 | `Stage` Entity | 同上 | Stage の属性・自身の不変条件（required_gate_roles 追加） |
 | REQ-WF-001, 003 | `Transition` Entity | 同上 | Transition の属性 |
 | REQ-WF-005 | DAG 検査ユーティリティ | 同上（Workflow 内 private 関数） | BFS 到達可能性検査・終端 Stage 検出 |
 | REQ-WF-001 | `WorkflowInvariantViolation` / `StageInvariantViolation` | `backend/src/bakufu/domain/exceptions.py`（既存ファイル更新） | ドメイン例外 |
-| 共通 | ID 型 / 列挙型 / VO（`StageKind` / `TransitionCondition` / `Role` / `CompletionPolicy` / `NotifyChannel`） | `backend/src/bakufu/domain/value_objects.py`（既存ファイル更新） | 既存定義に欠けているものを追加 |
+| 共通 | ID 型 / 列挙型 / VO（`StageKind` / `TransitionCondition` / `Role` / `CompletionPolicy` / `NotifyChannel` / `GateRole`） | `backend/src/bakufu/domain/value_objects.py`（既存ファイル更新） | GateRole 型を追加 |
 
 ```
 ディレクトリ構造（本 feature で追加・変更されるファイル）:
@@ -125,6 +136,7 @@ classDiagram
         +name: str
         +kind: StageKind
         +required_role: frozenset~Role~
+        +required_gate_roles: frozenset~GateRole~
         +deliverable_template: str
         +completion_policy: CompletionPolicy
         +notify_channels: list~NotifyChannel~
@@ -149,7 +161,7 @@ classDiagram
 **凝集のポイント**:
 - Stage / Transition は Workflow Aggregate 内部の Entity。外部から個別にアクセスせず、必ず Workflow 経由
 - Workflow / Stage / Transition すべて Pydantic v2 frozen model。状態変更ふるまいは新インスタンスを返す
-- DAG 不変条件は Workflow `model_validator(mode='after')` 内で集約検査。Stage 自身の不変条件（`required_role` 非空 / `EXTERNAL_REVIEW` の `notify_channels`）は Stage 自身の `model_validator` で先に検査される（二重防護）
+- DAG 不変条件は Workflow `model_validator(mode='after')` 内で集約検査。Stage 自身の不変条件（`required_role` 非空 / `EXTERNAL_REVIEW` の `notify_channels` / `required_gate_roles` 各要素の slug 形式）は Stage 自身の `model_validator` で先に検査される（二重防護）
 - `from_dict` は **classmethod ファクトリ**。bulk import 時のみ「途中 valid」を要求しない
 
 ## 処理フロー
