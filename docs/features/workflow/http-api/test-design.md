@@ -80,7 +80,7 @@
 - REQ-WF-HTTP-001〜007 すべてに最低 1 件の正常系テストケース（TC-IT-WFH-001〜009）
 - REQ-WF-HTTP-001〜006 の主要な異常系（Room 不在 / Room archived / プリセット不明 / DAG 違反 / 排他バリデーション / Workflow 不在 / archived 操作 / UUID 注入）が各 TC-IT で網羅（001〜028）
 - MSG-WF-HTTP-001/002/004/005 の全件が `response.json()["error"]["code"]` / `"message"` の静的照合テストで確認（IT + UT 二重検証）（MSG-WF-HTTP-003 は設計変更により削除済み）
-- 親受入基準 #13〜21 のすべてが TC-IT-WFH-001〜009 で対応（受入基準 #22 は設計変更により削除済み — `WorkflowArchivedError(kind="assign")` は到達不能パスとして除去）
+- 親受入基準 #13〜21 のすべてが TC-IT-WFH-001〜009 で対応
 - T1（CSRF）/ T3（不正 UUID）脅威への対策が最低 1 件で有効性確認
 - T4（SSRF: notify_channels allow list）は domain 層責務のため `domain/test-design.md` 参照（TC-UT-WF-006a/b — 孤児ではない）
 - T5（static プリセット定数保護）は TC-IT-WFH-009（GET /api/workflows/presets が常に成功）で間接検証
@@ -170,4 +170,4 @@
 | `application/services/workflow_service.py` | TC-IT-WFH-001〜009/029 の結合テストで全メソッド（create_for_room / find_by_room / find_by_id / update / archive / find_stages / get_presets）を起動。TC-UT-WFH-010 でインスタンス化・3 引数構造を確認 |
 | `application/exceptions/workflow_exceptions.py` | TC-IT-WFH-013/018/019/020/021/023/024/025 の結合テストで全例外クラス（`WorkflowNotFoundError` / `WorkflowArchivedError` / `WorkflowPresetNotFoundError`）が発火 → ハンドラを経由することを確認 |
 | A02 masking（POST/PATCH 経路）| TC-IT-WFH-029 で EXTERNAL_REVIEW Stage を含む POST/PATCH レスポンスの `notify_channels` が `<REDACTED:DISCORD_WEBHOOK>` masked であることを物理検証（`detailed-design.md §確定A`）|
-| 孤児要件なし | REQ-WF-HTTP-001〜007・MSG-WF-HTTP-001/002/004/005・受入基準 #13〜21 の全件がテストマトリクスに紐付けられている（MSG-WF-HTTP-003 / 受入基準 #22 は設計変更により削除済み）|
+| 孤児要件なし | REQ-WF-HTTP-001〜007・MSG-WF-HTTP-001/002/004/005・受入基準 #13〜21 の全件がテストマトリクスに紐付けられている |
