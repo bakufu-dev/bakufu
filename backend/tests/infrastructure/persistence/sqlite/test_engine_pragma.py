@@ -20,7 +20,7 @@ from bakufu.infrastructure.persistence.sqlite.migrations import run_upgrade_head
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-# Each test in this module exercises async code.
+# このモジュールの各テストは async コードを実行。
 pytestmark = pytest.mark.asyncio
 
 
@@ -95,9 +95,8 @@ class TestDefensivePragmasOptional:
         使用可能である必要がある。
         """
         async with fresh_app_engine.connect() as conn:
-            # エンジンは通常クエリに使用可能でなければならない；
-            # PRAGMA 適用が致命的に失敗した場合、接続は
-            # engine.connect() 時点で raise していただろう。
+            # エンジンは通常クエリに使用可能でなければならない；PRAGMA 適用が
+            # 致命的に失敗した場合、接続は engine.connect() 時点で raise していただろう。
             result = await conn.execute(text("SELECT 1"))
             value = result.scalar()
         assert value == 1

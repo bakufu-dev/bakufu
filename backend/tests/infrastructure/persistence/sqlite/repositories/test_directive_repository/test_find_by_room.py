@@ -37,14 +37,14 @@ pytestmark = pytest.mark.asyncio
 # TC-UT-DRR-004: ORDER BY created_at DESC, id DESC + SQL log (§確定 R1-D)
 # ---------------------------------------------------------------------------
 class TestFindByRoomOrderBy:
-    """TC-UT-DRR-004: find_by_room returns newest first with id DESC tiebreaker."""
+    """TC-UT-DRR-004: find_by_room は id DESC タイブレーカーで最新優先を返す。"""
 
     async def test_find_by_room_returns_directives_newest_first(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """Directives are returned newest first (created_at DESC)."""
+        """Directive は最新優先 (created_at DESC) で返される。"""
         oldest = make_directive(
             target_room_id=seeded_room_id,
             created_at=datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC),
@@ -57,7 +57,7 @@ class TestFindByRoomOrderBy:
             target_room_id=seeded_room_id,
             created_at=datetime(2026, 1, 3, 0, 0, 0, tzinfo=UTC),
         )
-        # save in non-chronological order to prove sorting is not insert-order
+        # 非時系列順で save し、ソートが挿入順ではないことを示す
         for d in (middle, oldest, newest):
             async with session_factory() as session, session.begin():
                 await SqliteDirectiveRepository(session).save(d)
@@ -76,10 +76,10 @@ class TestFindByRoomOrderBy:
         app_engine: AsyncEngine,
         seeded_room_id: UUID,
     ) -> None:
-        """SQL log contains ORDER BY created_at DESC, id DESC (§確定 R1-D).
+        """SQL ログに ORDER BY created_at DESC, id DESC が含まれる (§確定 R1-D)。
 
-        This is the regression-detection anchor for BUG-EMR-001 規約:
-        if the implementation drops ``id DESC``, this test fails.
+        BUG-EMR-001 規約の回帰検知の基点: 実装が ``id DESC`` を削除したら
+        このテストは失敗する。
         """
         directive = make_directive(target_room_id=seeded_room_id)
         async with session_factory() as session, session.begin():
@@ -108,7 +108,7 @@ class TestFindByRoomOrderBy:
         directive_selects = [
             s for s in captured if "FROM directives" in s and "SELECT" in s.upper()
         ]
-        assert directive_selects, "find_by_room must SELECT from directives"
+        assert directive_selects, "find_by_room は directives から SELECT しなければならない"
         target_stmt = directive_selects[0].lower()
         assert "order by" in target_stmt and "created_at" in target_stmt, (
             f"[FAIL] find_by_room SQL missing ORDER BY created_at.\n"
@@ -125,7 +125,7 @@ class TestFindByRoomOrderBy:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """find_by_room returns exactly the number of saved Directives."""
+        """find_by_room は保存した Directive の正確な数を返す。"""
         for _ in range(4):
             async with session_factory() as session, session.begin():
                 await SqliteDirectiveRepository(session).save(
@@ -138,17 +138,17 @@ class TestFindByRoomOrderBy:
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-DRR-004b: empty Room returns [] (not None)
+# TC-UT-DRR-004b: 空の Room は [] を返す (None ではなく)
 # ---------------------------------------------------------------------------
 class TestFindByRoomEmpty:
-    """TC-UT-DRR-004b: find_by_room returns [] for a Room with no Directives."""
+    """TC-UT-DRR-004b: find_by_room は Directive がない Room に対して [] を返す。"""
 
     async def test_find_by_room_empty_room_returns_empty_list(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """A Room with zero Directives → [] (empty list, not None)."""
+        """Directive がない Room → [] (空リスト、None ではない)。"""
         async with session_factory() as session:
             results = await SqliteDirectiveRepository(session).find_by_room(seeded_room_id)
         assert results == [], (
@@ -160,7 +160,7 @@ class TestFindByRoomEmpty:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """An unknown room_id (no rows exist) → [] (not None, not an error)."""
+        """未知の room_id (行が存在しない) → [] (None ではなく、エラーでもない)。"""
         unknown_room_id = uuid4()
         async with session_factory() as session:
             results = await SqliteDirectiveRepository(session).find_by_room(unknown_room_id)
@@ -168,19 +168,19 @@ class TestFindByRoomEmpty:
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-DRR-004c: Room scope isolation (IDOR guard)
+# TC-UT-DRR-004c: Room スコープ隔離 (IDOR 防止)
 # ---------------------------------------------------------------------------
 class TestFindByRoomScopeIsolation:
-    """TC-UT-DRR-004c: find_by_room strictly applies Room scope."""
+    """TC-UT-DRR-004c: find_by_room は Room スコープを厳密に適用する。"""
 
     async def test_find_by_room_isolates_directives_by_room(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """Directives from room_a are NOT returned when querying room_b.
+        """room_a からの Directive は room_b のクエリで返されない。
 
-        Cross-Room isolation: without WHERE target_room_id = :room_id
-        scoping, room_a's Directives could leak into room_b's query.
+        Room 間の隔離: WHERE target_room_id = :room_id スコープなしであれば、
+        room_a の Directive が room_b のクエリに漏洩する可能性がある。
         """
         room_a = await seed_room(session_factory)
         room_b = await seed_room(session_factory)
@@ -205,17 +205,17 @@ class TestFindByRoomScopeIsolation:
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-DRR-004d: _from_row full attribute restoration
+# TC-UT-DRR-004d: _from_row 全属性復元
 # ---------------------------------------------------------------------------
 class TestFindByRoomFromRowRestoration:
-    """TC-UT-DRR-004d: find_by_room hydrates Directives via _from_row correctly."""
+    """TC-UT-DRR-004d: find_by_room は _from_row で Directive を正しく補水する。"""
 
     async def test_find_by_room_restores_all_attributes(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """All Directive attributes (id/text/target_room_id/created_at/task_id) restored."""
+        """すべての Directive 属性 (id/text/target_room_id/created_at/task_id) が復元される。"""
         directive = make_directive(
             target_room_id=seeded_room_id,
             text="テスト用ディレクティブ",
@@ -239,18 +239,17 @@ class TestFindByRoomFromRowRestoration:
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-DRR-004e: id DESC tiebreaker — same created_at (BUG-EMR-001 規約)
+# TC-UT-DRR-004e: id DESC タイブレーカー — 同一 created_at (BUG-EMR-001 規約)
 # ---------------------------------------------------------------------------
 class TestFindByRoomTiebreaker:
-    """TC-UT-DRR-004e: id DESC tiebreaker when created_at is identical.
+    """TC-UT-DRR-004e: created_at が同一のときの id DESC タイブレーカー。
 
-    BUG-EMR-001 規約: ORDER BY created_at DESC alone is non-deterministic
-    when multiple Directives share the same timestamp. id DESC (PK, UUID)
-    must be the tiebreaker.
+    BUG-EMR-001 規約: ORDER BY created_at DESC だけでは複数の Directive が
+    同じタイムスタンプを共有する場合に非決定的。id DESC (PK, UUID) が
+    タイブレーカーでなければならない。
 
-    This test is the **regression-detection path**: if the implementation
-    removes ``id DESC`` from the ORDER BY clause, this test will fail
-    because the returned order becomes engine-dependent (arbitrary).
+    このテストは **回帰検知パス**: 実装が ORDER BY 句から ``id DESC`` を削除した場合、
+    返却順がエンジン依存（任意）になるためこのテストは失敗する。
     """
 
     async def test_same_created_at_ordered_by_id_desc(
@@ -258,15 +257,14 @@ class TestFindByRoomTiebreaker:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """3 Directives with identical created_at → returned in id DESC order.
+        """同一 created_at の Directive 3 つ → id DESC 順で返される。
 
-        UUID strings (hex form) compare lexicographically. We save 3
-        Directives with the exact same created_at timestamp and verify
-        the result order matches id DESC — proving the tiebreaker is
-        active. If id DESC is removed, the order becomes unpredictable
-        and this assertion will intermittently fail.
+        UUID 文字列 (hex 形式) は辞書順比較。同じ created_at タイムスタンプで
+        Directive 3 つを保存し、結果順が id DESC と一致することを検証 ——
+        タイブレーカーが活作していることを証明。id DESC が削除されたら、
+        順序が予測不可能になり、このアサーションは断続的に失敗する。
         """
-        # Use a fixed identical timestamp so created_at cannot differentiate.
+        # created_at が区別できないよう固定の同一タイムスタンプを使用。
         shared_ts = datetime(9999, 1, 1, 0, 0, 0, tzinfo=UTC)
 
         d1 = make_directive(target_room_id=seeded_room_id, created_at=shared_ts)
@@ -284,15 +282,16 @@ class TestFindByRoomTiebreaker:
 
         assert len(results) == 3
 
-        # Build expected order: id DESC (UUID hex string descending)
+        # 期待順序を構築: id DESC (UUID hex 文字列降順)
         ids = [d1.id, d2.id, d3.id]
         expected_order = sorted(ids, key=lambda uid: uid.hex, reverse=True)
         actual_order = [r.id for r in results]
 
         assert actual_order == expected_order, (
-            f"[FAIL] find_by_room did not apply id DESC tiebreaker (BUG-EMR-001 規約).\n"
-            f"All 3 Directives have identical created_at={shared_ts.isoformat()}.\n"
-            f"Expected id order (desc): {[uid.hex for uid in expected_order]}\n"
-            f"Actual id order:          {[uid.hex for uid in actual_order]}\n"
-            f"Next: add .order_by(DirectiveRow.created_at.desc(), DirectiveRow.id.desc())"
+            f"[FAIL] find_by_room が id DESC タイブレーカーを適用していない"
+            f"(BUG-EMR-001 規約)。\n"
+            f"3 つの Directive すべてが同一 created_at={shared_ts.isoformat()}。\n"
+            f"期待される id 順 (desc): {[uid.hex for uid in expected_order]}\n"
+            f"実際の id 順:          {[uid.hex for uid in actual_order]}\n"
+            f"次: .order_by(DirectiveRow.created_at.desc(), DirectiveRow.id.desc()) を追加"
         )

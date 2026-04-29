@@ -1,14 +1,15 @@
-"""NotifyChannel secret masking (Confirmation G "target のシークレット扱い").
+"""NotifyChannel シークレット マスキング (Confirmation G "target のシークレット扱い")。
 
-Covers TC-UT-WF-057 / 058 / 059. Token redaction must apply across the three
-serialization paths the design book pins to the domain layer:
+TC-UT-WF-057 / 058 / 059 をカバー。トークン削除は設計書が
+ドメイン層に pin する 3 つのシリアライゼーションパスに
+適用する必須:
 
-* ``model_dump(mode='json')`` via the field_serializer
-* ``Workflow.model_dump_json()`` rolling up the same serializer
-* Exception ``message`` / ``detail`` via ``WorkflowInvariantViolation`` init
+* ``model_dump(mode='json')`` は field_serializer 経由
+* ``Workflow.model_dump_json()`` は同じ serializer にロール・アップ
+* Exception ``message`` / ``detail`` は ``WorkflowInvariantViolation`` init 経由
 
-Persistence-side masking (Outbox / audit_log / Conversation / structured logs)
-is the responsibility of ``feature/persistence`` per design and is out of scope.
+永続化側マスキング (Outbox / audit_log / Conversation / 構造化ログ)
+は設計に従い ``feature/persistence`` 責任でスコープ外。
 """
 
 from __future__ import annotations

@@ -1,14 +1,14 @@
-"""Alembic 4th revision tests (TC-IT-AGR-008 — chain + DDL + idempotency).
+"""Alembic 4 番目リビジョンテスト (TC-IT-AGR-008 — チェーン + DDL + べき等性)。
 
-Per ``docs/features/agent-repository/test-design.md``. Real Alembic
-upgrade / downgrade against a real SQLite file, plus a chain
-integrity check that makes sure
+``docs/features/agent-repository/test-design.md`` に従う。実際の SQLite ファイルに対する
+実際の Alembic upgrade / downgrade、および
 ``0001_init`` → ``0002_empire_aggregate`` → ``0003_workflow_aggregate``
-→ ``0004_agent_aggregate`` stays linear (no head fork).
+→ ``0004_agent_aggregate`` が線形（head fork なし）であることを確認する
+チェーン完全性チェック。
 
-The conftest from ``tests/infrastructure/`` patches Alembic's
-``fileConfig`` so log capture survives migration; same workaround the
-M2 persistence-foundation tests rely on.
+``tests/infrastructure/`` の conftest は Alembic の ``fileConfig`` をパッチして、
+ログキャプチャがマイグレーション中も生き残るようにする；
+M2 persistence-foundation テストが依存している同じ回避策。
 """
 
 from __future__ import annotations

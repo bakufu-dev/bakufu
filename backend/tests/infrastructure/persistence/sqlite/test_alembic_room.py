@@ -1,21 +1,20 @@
-"""Alembic 5th revision tests (TC-IT-RR-012 — chain + DDL + idempotency).
+"""Alembic 5 番目リビジョンテスト (TC-IT-RR-012 — チェーン + DDL + べき等性)。
 
-Per ``docs/features/room-repository/test-design.md``. Real Alembic
-upgrade / downgrade against a real SQLite file, plus a chain
-integrity check that makes sure
+``docs/features/room-repository/test-design.md`` に従う。実際の SQLite ファイルに対する
+実際の Alembic upgrade / downgrade、および
 ``0001_init`` → ``0002_empire_aggregate`` → ``0003_workflow_aggregate``
-→ ``0004_agent_aggregate`` → ``0005_room_aggregate`` stays linear
-(no head fork).
+→ ``0004_agent_aggregate`` → ``0005_room_aggregate`` が
+線形（head fork なし）であることを確認するチェーン完全性チェック。
 
-Also verifies:
-* ``rooms`` + ``room_members`` tables created by the 5th revision.
-* ``ix_rooms_empire_id_name`` composite index present (§確定 R1-F).
-* BUG-EMR-001 FK closure: ``empire_room_refs.room_id`` now has a FK
-  constraint onto ``rooms.id`` (added via ``batch_alter_table``).
+また以下も検証:
+* 5 番目リビジョンで作成される ``rooms`` + ``room_members`` テーブル。
+* ``ix_rooms_empire_id_name`` 複合インデックスが存在 (§確定 R1-F)。
+* BUG-EMR-001 FK クロージャ: ``empire_room_refs.room_id`` は
+  ``rooms.id`` への FK 制約を持つようになった (``batch_alter_table`` 経由で追加)。
 
-The conftest from ``tests/infrastructure/`` patches Alembic's
-``fileConfig`` so log capture survives migration; same workaround the
-M2 persistence-foundation tests rely on.
+``tests/infrastructure/`` の conftest は Alembic の ``fileConfig`` をパッチして、
+ログキャプチャがマイグレーション中も生き残るようにする；
+M2 persistence-foundation テストが依存している同じ回避策。
 """
 
 from __future__ import annotations

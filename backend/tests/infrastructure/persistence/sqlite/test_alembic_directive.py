@@ -1,18 +1,19 @@
-"""Alembic 6th revision tests — directive aggregate (TC-IT-DRR-001〜006).
+"""Alembic 6 番目リビジョンテスト — directive aggregate (TC-IT-DRR-001〜006)。
 
-REQ-DRR-003 / §確定 R1-B / §確定 R1-C.
+REQ-DRR-003 / §確定 R1-B / §確定 R1-C。
 
-Real Alembic upgrade/downgrade against a real SQLite file, plus chain
-integrity check that makes sure the 0001→…→0006 chain stays linear.
+実際の SQLite ファイルに対する実際の Alembic upgrade/downgrade、
+および 0001→…→0006 チェーンが線形（head fork なし）であることを
+確認するチェーン完全性チェック。
 
-Also verifies:
-* ``directives`` table created with correct columns.
-* ``ix_directives_target_room_id_created_at`` composite index present.
-* ``target_room_id`` FK → ``rooms.id`` ON DELETE CASCADE exists.
-* §BUG-DRR-001: ``task_id → tasks.id`` FK does NOT exist at 0006 level.
+また以下も検証:
+* ``directives`` テーブルが正しいカラムで作成される。
+* ``ix_directives_target_room_id_created_at`` 複合インデックスが存在。
+* ``target_room_id`` FK → ``rooms.id`` ON DELETE CASCADE が存在。
+* §BUG-DRR-001: ``task_id → tasks.id`` FK は 0006 レベルで存在しない。
 
-Per ``docs/features/directive-repository/test-design.md`` TC-IT-DRR-001〜006.
-Issue #34 — M2 0006.
+``docs/features/directive-repository/test-design.md`` TC-IT-DRR-001〜006 に準拠。
+Issue #34 — M2 0006。
 """
 
 from __future__ import annotations
