@@ -149,11 +149,15 @@ bakufu システム全体ペルソナは [`docs/analysis/personas.md`](../../ana
 
 **理由**: HTTP レスポンスを受信する全クライアント（外部ツール / ログ / ブラウザキャッシュ等）への raw token 流出を防ぐ。DB への永続化マスキング（R1-8）と独立した防御層として設計する。
 
-- **POST / PATCH レスポンス**: in-memory `Persona.prompt_body`（raw 値）を `PersonaResponse` の `field_serializer` 経由で `infrastructure.security.masking.mask(value)` を呼び出して伏字化して返す
-- **GET レスポンス**: DB 復元済みの masked 値（`<REDACTED:*>`）がそのまま返る。`prompt_body` は pydantic regex 制約なしのフリーテキストのため、masked 値を保持した Agent に対して `AgentRepository.find_by_id` が `pydantic.ValidationError` を起こすことはない（**workflow R1-16 の EXTERNAL_REVIEW Stage 問題とは構造的に異なる**）
-- **結果**: いずれの HTTP 経路でも raw API key / token が HTTP レスポンスに現れない
+- **field_serializer 全パス発火（凍結）**: `PersonaResponse.prompt_body` の `field_serializer` は GET / POST / PATCH 全レスポンスパスで発火する。これが R1-9 の独立防御として機能する根拠である
+- **POST / PATCH レスポンス**: in-memory `Persona.prompt_body`（raw 値）を `field_serializer` 経由で `application.security.masking.mask(value)` を呼び出して伏字化して返す
+- **GET レスポンス**: DB 復元済みの masked 値（`<REDACTED:*>`）に同じ `mask()` を適用する。`masking.mask()` は冪等（`<REDACTED:*>` → `<REDACTED:*>`）のため見た目上は変化しないが、**R1-9 として field_serializer が独立して発火している**。これにより DB に raw token が直接挿入されるバイパス経路が発生しても GET レスポンスには raw token が露出しない
+- **masking 関数の配置（凍結）**: `application/security/masking.py` として application 層に昇格。`PersonaResponse.field_serializer` は `from bakufu.application.security.masking import mask` で呼び出す（interfaces → infrastructure 直接依存なし。TC-UT-AGH-009 の `bakufu.infrastructure` 禁止制約を維持）
+- **結果**: いずれの HTTP 経路でも raw API key / token が HTTP レスポンスに現れない。R1-8（永続化 masking）と R1-9（HTTP レスポンス masking）は独立した二重防御を構成する
 
-実装詳細: [`http-api/detailed-design.md §確定A-masking`](http-api/detailed-design.md) で凍結。
+`prompt_body` は pydantic regex 制約なしのフリーテキストのため、masked 値を保持した Agent に対して `AgentRepository.find_by_id` が `pydantic.ValidationError` を起こすことはない（**workflow R1-16 の EXTERNAL_REVIEW Stage 問題とは構造的に異なる**）。
+
+実装詳細: [`http-api/detailed-design.md §確定A-masking / §確定I`](http-api/detailed-design.md) で凍結。
 
 ## 8. 制約・前提
 
@@ -183,7 +187,7 @@ bakufu システム全体ペルソナは [`docs/analysis/personas.md`](../../ana
 | 10 | 採用した Agent の状態がアプリ再起動跨ぎで保持される（業務ルール R1-7） | UC-AG-006 | TC-E2E-AG-001（[`system-test-design.md`](system-test-design.md)） |
 | 11 | 同 Empire 内で同名 Agent を採用しようとすると拒否される（業務ルール R1-6） | UC-AG-007 | TC-E2E-AG-002 |
 | 12 | `Persona.prompt_body` に API key を含めて永続化すると DB には `<REDACTED:*>` で保存される（業務ルール R1-8）| UC-AG-006 | TC-IT-AGR-006-masking（[`repository/test-design.md`](repository/test-design.md)） |
-| 13 | HTTP API POST /api/empires/{empire_id}/agents で Agent が採用でき 201 が返る | UC-AG-008 | TC-E2E-AG-004（[`system-test-design.md`](system-test-design.md)） |
+| 13 | HTTP API POST /api/empires/{empire_id}/agents で Agent が採用でき 201 が返る。レスポンスの `persona.prompt_body` は masked 値で返る（業務ルール R1-9） | UC-AG-008 | TC-E2E-AG-004（[`system-test-design.md`](system-test-design.md)） |
 | 14 | HTTP API GET /api/empires/{empire_id}/agents で Empire に属する Agent 一覧が返る | UC-AG-009 | TC-E2E-AG-004 |
 | 15 | HTTP API GET /api/agents/{id} レスポンスの `persona.prompt_body` は masked 値（`<REDACTED:*>`）で返る（業務ルール R1-9） | UC-AG-010 | TC-E2E-AG-004 |
 | 16 | HTTP API PATCH /api/agents/{id} でフィールドを部分更新でき、レスポンスの `persona.prompt_body` は masked で返る（R1-9） | UC-AG-011 | TC-E2E-AG-004 |
@@ -200,7 +204,9 @@ E2E（受入基準 10, 11, 13〜18）は [`system-test-design.md`](system-test-d
 
 ## 11. 開放論点 (Open Questions)
 
-凍結時点で未確定の論点はなし — R1 レビューで全件凍結済み。確定 R1-1〜8 として §7 に集約。
+業務ルール R1 レベルの論点はなし — R1-1〜9 全件が §7 に凍結済み。
+
+実装レベルの開放論点は `http-api/detailed-design.md §開放論点` に分離して管理する（Q-OPEN-1: archived フィルタクエリパラメータ / Q-OPEN-3: 個別 provider / skill CRUD API）。これらは業務概念への変更を伴わないため本書の更新対象外。masking 関数の配置（旧 Q-OPEN-2）は本 PR で `application/security/masking.py` 昇格として凍結済み（`detailed-design.md §確定I`）。
 
 ## 12. sub-feature 一覧とマイルストーン整理
 
