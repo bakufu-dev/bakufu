@@ -27,6 +27,7 @@ from bakufu.interfaces.http.error_handlers import (
     validation_error_handler,
     workflow_archived_handler,
     workflow_invariant_violation_handler,
+    workflow_irreversible_handler,
     workflow_not_found_handler,
     workflow_preset_not_found_handler,
 )
@@ -104,6 +105,7 @@ def create_app() -> FastAPI:
     )
     from bakufu.application.exceptions.workflow_exceptions import (
         WorkflowArchivedError,
+        WorkflowIrreversibleError,
         WorkflowNotFoundError,
         WorkflowPresetNotFoundError,
     )
@@ -123,6 +125,7 @@ def create_app() -> FastAPI:
     app.add_exception_handler(RoomArchivedError, room_archived_handler)
     app.add_exception_handler(WorkflowNotFoundError, workflow_not_found_handler)
     app.add_exception_handler(WorkflowArchivedError, workflow_archived_handler)
+    app.add_exception_handler(WorkflowIrreversibleError, workflow_irreversible_handler)
     app.add_exception_handler(WorkflowPresetNotFoundError, workflow_preset_not_found_handler)
     app.add_exception_handler(WorkflowInvariantViolation, workflow_invariant_violation_handler)
     app.add_exception_handler(AgentNotFoundError, agent_not_found_handler)

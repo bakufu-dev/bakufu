@@ -28,8 +28,25 @@ class WorkflowPresetNotFoundError(Exception):
         self.preset_name = preset_name
 
 
+class WorkflowIrreversibleError(Exception):
+    """notify_channels がマスク済みの Workflow への PATCH 拒否 (MSG-WF-HTTP-008)。
+
+    EXTERNAL_REVIEW Stage を含む Workflow は永続化時に notify_channels の
+    webhook URL がマスクされる（§確定 H 不可逆性）。その後 find_by_id が
+    masked URL を pydantic で再バリデーションして ValidationError を送出した場合、
+    application 層がここで変換して 409 に写す。
+    """
+
+    def __init__(self, workflow_id: str) -> None:
+        super().__init__(
+            f"Workflow {workflow_id} contains masked notify_channels and cannot be modified."
+        )
+        self.workflow_id = workflow_id
+
+
 __all__ = [
     "WorkflowArchivedError",
+    "WorkflowIrreversibleError",
     "WorkflowNotFoundError",
     "WorkflowPresetNotFoundError",
 ]

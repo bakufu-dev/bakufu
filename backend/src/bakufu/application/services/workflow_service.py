@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bakufu.application.exceptions.room_exceptions import RoomArchivedError, RoomNotFoundError
 from bakufu.application.exceptions.workflow_exceptions import (
     WorkflowArchivedError,
+    WorkflowIrreversibleError,
     WorkflowNotFoundError,
     WorkflowPresetNotFoundError,
 )
@@ -105,8 +106,15 @@ class WorkflowService:
         autobegin 競合を避けるため、read も含めて単一の ``async with session.begin():``
         ブロック内で完結させる (room_service.py BUG-EM-001 凍結と同様)。
         """
+        from pydantic import ValidationError
+
         async with self._session.begin():
-            workflow = await self._workflow_repo.find_by_id(workflow_id)
+            try:
+                workflow = await self._workflow_repo.find_by_id(workflow_id)
+            except ValidationError as exc:
+                # notify_channels がマスク済みの Workflow は pydantic 再構築で失敗する。
+                # §確定 H 不可逆性コントラクトに従い 409 に写す (MSG-WF-HTTP-008)。
+                raise WorkflowIrreversibleError(str(workflow_id)) from exc
             if workflow is None:
                 raise WorkflowNotFoundError(str(workflow_id))
             if workflow.archived:

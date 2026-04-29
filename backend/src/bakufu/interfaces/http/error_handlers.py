@@ -176,6 +176,20 @@ async def workflow_preset_not_found_handler(request: Request, exc: Exception) ->
     return _error_response(NOT_FOUND, "Workflow preset not found.", 404)
 
 
+async def workflow_irreversible_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``WorkflowIrreversibleError`` → HTTP 409 / conflict (MSG-WF-HTTP-008)。"""
+    from bakufu.application.exceptions.workflow_exceptions import WorkflowIrreversibleError
+
+    if not isinstance(exc, WorkflowIrreversibleError):
+        raise TypeError(f"Expected WorkflowIrreversibleError, got {type(exc).__name__}")
+    return _error_response(
+        CONFLICT,
+        "Workflow contains masked notify_channels and cannot be modified."
+        " Please recreate the workflow with new webhook URLs.",
+        409,
+    )
+
+
 async def workflow_invariant_violation_handler(request: Request, exc: Exception) -> JSONResponse:
     """``WorkflowInvariantViolation`` → HTTP 422 / validation_error (MSG-WF-HTTP-005)。
 
