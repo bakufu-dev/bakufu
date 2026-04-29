@@ -1,16 +1,16 @@
-"""Outbox dispatcher + handler registry skeleton.
+"""Outbox ディスパッチャ + ハンドラ レジストリ スケルトン。
 
-The dispatcher polls ``domain_event_outbox``, marks rows
-``DISPATCHING``, looks up the handler for the row's ``event_kind`` in
-:mod:`...handler_registry`, awaits the handler, and updates the row to
-``DISPATCHED`` (success) / ``PENDING`` with an incremented
-``attempt_count`` (failure) / ``DEAD_LETTER`` (after 5 failures).
+ディスパッチャは ``domain_event_outbox`` をポーリングし、行を ``DISPATCHING`` に
+マークし、行の ``event_kind`` に対応するハンドラを :mod:`...handler_registry` で
+ルックアップし、ハンドラを await して、行を ``DISPATCHED``（成功）/
+``attempt_count`` をインクリメントした ``PENDING``（失敗）/ ``DEAD_LETTER``
+（5 回失敗後）に更新する。
 
-Per Schneier 中等 3 (Confirmation K), this PR registers **zero**
-handlers — every Outbox row stays ``PENDING`` until subsequent
-``feature/{event-kind}-handler`` PRs land. The dispatcher emits a
-WARN at startup and on each polling cycle that finds pending rows
-with an empty registry, so operators notice the partial wiring.
+Schneier 中等 3（Confirmation K）に従い、本 PR は **ゼロ個** のハンドラを登録する。
+すべての Outbox 行は後続の ``feature/{event-kind}-handler`` PR が投入されるまで
+``PENDING`` のままとなる。ディスパッチャは起動時、およびレジストリが空のまま
+pending 行を見つけたポーリング サイクルごとに WARN を発火するため、オペレータは
+配線が部分的であることに気付ける。
 """
 
 from __future__ import annotations

@@ -1,17 +1,17 @@
-"""Factories for the Room aggregate, its entities, and its VOs.
+"""Room アグリゲート、エンティティ、VO のファクトリ群.
 
-Per ``docs/features/room/test-design.md``. Mirrors the empire / workflow /
-agent pattern: every factory returns a *valid* default instance built through
-the production constructor, allows keyword overrides, and registers the
-result in a :class:`WeakValueDictionary` so :func:`is_synthetic` can later
-flag test-built objects without mutating the frozen Pydantic models.
+``docs/features/room/test-design.md`` 準拠。empire / workflow / agent と
+同パターン: 各ファクトリは本番コンストラクタ経由で *妥当* なデフォルト
+インスタンスを返し、キーワード上書きを許可し、結果を
+:class:`WeakValueDictionary` に登録する。これにより :func:`is_synthetic` が
+後から、frozen Pydantic モデルを変更せずにテスト由来オブジェクトを
+フラグ付けできる。
 
-Default Room composes one ``LeaderMembership`` and zero PromptKit prefix
-content so the simplest construction path covers TC-UT-RM-001 with no extra
-setup. Tests that need an empty members list pass ``members=[]`` explicitly,
-which is allowed (Aggregate-level invariants accept 0〜:data:`MAX_MEMBERS`
-entries — leader-required is an application-layer responsibility, see
-TC-UT-RM-029).
+デフォルト Room は ``LeaderMembership`` 1 件と空の PromptKit prefix を
+組み合わせる ── 最短構築経路で追加セットアップなしに TC-UT-RM-001 を
+カバーするため。空 members リストが要るテストは ``members=[]`` を
+明示的に渡せる (Aggregate レベル不変条件は 0〜:data:`MAX_MEMBERS` を
+受理する ── leader 必須はアプリケーション層責務。TC-UT-RM-029 参照)。
 """
 
 from __future__ import annotations
@@ -32,18 +32,18 @@ from pydantic import BaseModel
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-# Module-scope registry. Values are kept weakly so GC pressure stays neutral.
+# モジュールスコープのレジストリ。値は弱参照で GC 圧は中立に保つ。
 _SYNTHETIC_REGISTRY: WeakValueDictionary[int, BaseModel] = WeakValueDictionary()
 
 
 def is_synthetic(instance: BaseModel) -> bool:
-    """Return ``True`` when ``instance`` was created by a factory in this module."""
+    """``instance`` が本モジュールのファクトリで生成されたものなら ``True`` を返す。"""
     cached = _SYNTHETIC_REGISTRY.get(id(instance))
     return cached is instance
 
 
 def _register(instance: BaseModel) -> None:
-    """Record ``instance`` in the synthetic registry."""
+    """``instance`` を合成レジストリに記録する。"""
     _SYNTHETIC_REGISTRY[id(instance)] = instance
 
 
@@ -56,7 +56,7 @@ def make_agent_membership(
     role: Role = Role.DEVELOPER,
     joined_at: datetime | None = None,
 ) -> AgentMembership:
-    """Build a valid :class:`AgentMembership` (default role DEVELOPER)."""
+    """妥当な :class:`AgentMembership` を構築する (デフォルト role は DEVELOPER)。"""
     membership = AgentMembership(
         agent_id=agent_id if agent_id is not None else uuid4(),
         role=role,
@@ -71,7 +71,7 @@ def make_leader_membership(
     agent_id: UUID | None = None,
     joined_at: datetime | None = None,
 ) -> AgentMembership:
-    """Build a LEADER-role :class:`AgentMembership` for populated Room scenarios."""
+    """populated Room シナリオ用の LEADER role :class:`AgentMembership` を構築する。"""
     return make_agent_membership(
         agent_id=agent_id,
         role=Role.LEADER,
@@ -86,14 +86,14 @@ def make_prompt_kit(
     *,
     prefix_markdown: str = "",
 ) -> PromptKit:
-    """Build a valid :class:`PromptKit` (default empty prefix_markdown)."""
+    """妥当な :class:`PromptKit` を構築する (デフォルト prefix_markdown は空)。"""
     kit = PromptKit(prefix_markdown=prefix_markdown)
     _register(kit)
     return kit
 
 
 def make_long_prompt_kit() -> PromptKit:
-    """Build a :class:`PromptKit` at the upper boundary (10000 chars)."""
+    """上限境界 (10000 文字) の :class:`PromptKit` を構築する。"""
     return make_prompt_kit(prefix_markdown="a" * 10_000)
 
 
@@ -110,11 +110,11 @@ def make_room(
     prompt_kit: PromptKit | None = None,
     archived: bool = False,
 ) -> Room:
-    """Build a valid :class:`Room`.
+    """妥当な :class:`Room` を構築する。
 
-    With no overrides yields the simplest valid Room: zero members, empty
-    description, default empty PromptKit, ``archived=False``. Tests that need
-    populated members pass them explicitly via ``members=[...]``.
+    上書きなしの場合、最小妥当な Room を返す: members ゼロ件、description 空、
+    デフォルトの空 PromptKit、``archived=False``。populated members が要る
+    テストは ``members=[...]`` で明示的に渡すこと。
     """
     if prompt_kit is None:
         prompt_kit = make_prompt_kit()
@@ -132,7 +132,7 @@ def make_room(
 
 
 def make_archived_room(**overrides: object) -> Room:
-    """Build a Room with ``archived=True`` for idempotency / terminal-violation setups."""
+    """冪等性 / terminal-violation セットアップ用に ``archived=True`` の Room を構築する。"""
     return make_room(archived=True, **overrides)  # pyright: ignore[reportArgumentType]
 
 
@@ -143,13 +143,13 @@ def make_populated_room(
     developer_agent_id: UUID | None = None,
     workflow_id: UUID | None = None,
 ) -> Room:
-    """Build a Room with one LEADER + one DEVELOPER membership.
+    """LEADER 1 名 + DEVELOPER 1 名の membership を持つ Room を構築する。
 
-    Useful for TC-IT-RM-001 / 002 round-trip scenarios that exercise add /
-    remove / update / archive transitions over a non-empty member list.
+    非空 member リスト上で add / remove / update / archive 遷移を検証する
+    TC-IT-RM-001 / 002 ラウンドトリップシナリオ向け。
 
-    ``workflow_id`` is forwarded to :func:`make_room` so infrastructure
-    integration tests can pass the seeded workflow FK target.
+    ``workflow_id`` は :func:`make_room` に転送される ── インフラ結合テストが
+    seeded な workflow FK ターゲットを渡せるように。
     """
     return make_room(
         room_id=room_id,
@@ -167,14 +167,14 @@ def make_room_with_secret_prompt_kit(
     prefix_markdown: str,
     workflow_id: UUID | None = None,
 ) -> Room:
-    """Build a Room whose PromptKit carries a secret-bearing ``prefix_markdown``.
+    """secret を含む ``prefix_markdown`` を持つ PromptKit を備えた Room を構築する。
 
-    Used by infrastructure tests that verify ``MaskedText`` redacts the
-    embedded secret before the row hits SQLite (§確定 R1-J 不可逆性凍結).
+    ``MaskedText`` が行を SQLite に書く前に埋め込み secret を redact することを
+    検証するインフラテストで使用する (§確定 R1-J 不可逆性凍結)。
 
-    The caller is responsible for passing a ``prefix_markdown`` that
-    contains a token matching one of the masking gateway's regex patterns
-    so the round-trip is non-identity (raw → masked).
+    呼び出し側は、masking ゲートウェイの正規表現パターンに一致するトークンを
+    含む ``prefix_markdown`` を渡す責務を持つ ── ラウンドトリップが
+    non-identity (raw → masked) となるように。
     """
     kit = make_prompt_kit(prefix_markdown=prefix_markdown)
     return make_room(

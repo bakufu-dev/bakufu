@@ -1,16 +1,16 @@
-"""Empire Repository port.
+"""Empire Repository ポート。
 
-Per ``docs/features/empire-repository/detailed-design.md`` §確定 A:
+``docs/features/empire-repository/detailed-design.md`` §確定 A に従う:
 
-* Protocol class with **no** ``@runtime_checkable`` decorator — Python
-  3.12 ``typing.Protocol`` duck typing is enough; the runtime overhead
-  of ``@runtime_checkable`` adds ``isinstance`` paths the application
-  layer never needs.
-* Every method declared ``async def`` (async-first contract) so the
-  application layer can compose Repositories inside an
-  ``async with session.begin():`` Unit-of-Work.
-* Argument and return types come exclusively from
-  :mod:`bakufu.domain` — no SQLAlchemy types leak across the port.
+* Protocol クラスに ``@runtime_checkable`` デコレータを **付けない** —
+  Python 3.12 の ``typing.Protocol`` ダックタイピングで十分。
+  ``@runtime_checkable`` の実行時オーバーヘッドは、application 層が必要としない
+  ``isinstance`` 経路を増やしてしまう。
+* すべてのメソッドを ``async def`` で宣言（async-first 契約）。これにより
+  application 層は ``async with session.begin():`` の Unit-of-Work 内で
+  Repository を組み合わせられる。
+* 引数および戻り値の型は :mod:`bakufu.domain` 由来のもののみ —
+  SQLAlchemy 型がポートを越えて漏れることはない。
 """
 
 from __future__ import annotations
@@ -22,52 +22,50 @@ from bakufu.domain.value_objects import EmpireId
 
 
 class EmpireRepository(Protocol):
-    """Persistence contract for the :class:`Empire` Aggregate Root.
+    """:class:`Empire` Aggregate Root の永続化契約。
 
-    The application layer (``EmpireService``) consumes this Protocol
-    via dependency injection; the SQLite implementation lives in
-    :mod:`bakufu.infrastructure.persistence.sqlite.repositories.empire_repository`.
+    application 層（``EmpireService``）が依存性注入により本 Protocol を消費する。
+    SQLite 実装は
+    :mod:`bakufu.infrastructure.persistence.sqlite.repositories.empire_repository`
+    に存在する。
     """
 
     async def find_by_id(self, empire_id: EmpireId) -> Empire | None:
-        """Hydrate the Empire whose primary key equals ``empire_id``.
+        """主キーが ``empire_id`` の Empire をハイドレートする。
 
-        Returns ``None`` when the row is absent. Implementations
-        propagate SQLAlchemy / driver exceptions unchanged so the
-        Unit-of-Work boundary in the application service can choose
-        between rollback and surfaced error.
+        該当行がない場合は ``None`` を返す。実装は SQLAlchemy / ドライバの例外を
+        そのまま伝播させ、application service の Unit-of-Work 境界がロールバックと
+        エラー表出のいずれを取るかを判断できるようにする。
         """
         ...
 
     async def find_all(self) -> list[Empire]:
-        """Return all Empire rows as a list.
+        """全 Empire 行をリストとして返す。
 
-        Bakufu's Empire is a singleton, so the result is 0 or 1 element.
-        ``EmpireService.find_all()`` uses this to back
-        ``GET /api/empires`` (REQ-EM-HTTP-002).
+        bakufu の Empire はシングルトンであるため、結果は 0 件または 1 件の要素となる。
+        ``EmpireService.find_all()`` がこれを ``GET /api/empires``（REQ-EM-HTTP-002）の
+        裏付けに用いる。
         """
         ...
 
     async def count(self) -> int:
-        """Return ``SELECT COUNT(*) FROM empires``.
+        """``SELECT COUNT(*) FROM empires`` を返す。
 
-        ``EmpireService.create()`` calls this to enforce the Empire
-        singleton invariant. The count itself is the Repository's
-        responsibility; deciding whether ``count == 0`` /
-        ``count == 1`` / ``count >= 2`` triggers a service-level error
-        is the *application* layer's call (§確定 D).
+        ``EmpireService.create()`` は本メソッドを呼び出して Empire シングルトン不変条件を
+        強制する。カウント自体は Repository の責務だが、``count == 0`` /
+        ``count == 1`` / ``count >= 2`` のいずれが service レベルのエラーを起こすかの
+        判断は *application* 層の役割である（§確定 D）。
         """
         ...
 
     async def save(self, empire: Empire) -> None:
-        """Persist ``empire`` via the §確定 B delete-then-insert flow.
+        """§確定 B の delete-then-insert フローで ``empire`` を永続化する。
 
-        The implementation must run the five-step sequence (UPSERT
-        empires → DELETE empire_room_refs → bulk INSERT room_refs →
-        DELETE empire_agent_refs → bulk INSERT agent_refs) within the
-        **caller-managed** transaction. Repositories never call
-        ``session.commit()`` / ``session.rollback()``; the application
-        service owns the Unit-of-Work boundary.
+        実装は **呼び出し元が管理する** トランザクション内で 5 段階のシーケンス
+        （UPSERT empires → DELETE empire_room_refs → bulk INSERT room_refs →
+        DELETE empire_agent_refs → bulk INSERT agent_refs）を実行しなければならない。
+        Repository は ``session.commit()`` / ``session.rollback()`` を決して
+        呼び出さない。Unit-of-Work 境界の保有は application service の責務である。
         """
         ...
 

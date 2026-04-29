@@ -1,5 +1,5 @@
-"""bakufu domain layer.
+"""bakufu ドメイン層。
 
-Aggregate roots, value objects, and domain exceptions live here.
-This package has zero external I/O dependencies (no HTTP, DB, file, time).
+集約ルート、値オブジェクト、ドメイン例外をここに配置する。
+このパッケージは外部 I/O 依存を持たない（HTTP / DB / ファイル / 時刻に一切依存しない）。
 """

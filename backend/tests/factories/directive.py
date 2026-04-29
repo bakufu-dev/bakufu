@@ -1,16 +1,16 @@
-"""Factories for the Directive Aggregate Root.
+"""Directive アグリゲートルートのファクトリ群.
 
-Per ``docs/features/directive/test-design.md``. Mirrors the
-empire / workflow / agent / room pattern: every factory returns a
-*valid* default instance built through the production constructor,
-allows keyword overrides, and registers the result in a
-:class:`WeakValueDictionary` so :func:`is_synthetic` can later flag
-test-built objects without mutating the frozen Pydantic model.
+``docs/features/directive/test-design.md`` 準拠。
+empire / workflow / agent / room と同パターン: 各ファクトリは本番
+コンストラクタ経由で *妥当* なデフォルトインスタンスを返し、キーワード
+上書きを許可し、結果を :class:`WeakValueDictionary` に登録する。これにより
+:func:`is_synthetic` が後から、frozen Pydantic モデルを変更せずに
+テスト由来オブジェクトをフラグ付けできる。
 
-Default Directive carries a short ``text`` body and ``task_id=None``.
-``LinkedDirectiveFactory`` constructs the post-link state directly
-(Repository hydration scenario, §確定 C). ``LongTextDirectiveFactory``
-sits at the upper boundary (10000 chars).
+デフォルト Directive は短い ``text`` 本文と ``task_id=None`` を持つ。
+``LinkedDirectiveFactory`` は post-link 状態を直接構築する
+(Repository ハイドレートシナリオ、§確定 C)。``LongTextDirectiveFactory`` は
+上限境界 (10000 文字) にある。
 """
 
 from __future__ import annotations
@@ -22,18 +22,18 @@ from weakref import WeakValueDictionary
 from bakufu.domain.directive import Directive
 from pydantic import BaseModel
 
-# Module-scope registry. Values are kept weakly so GC pressure stays neutral.
+# モジュールスコープのレジストリ。値は弱参照で GC 圧は中立に保つ。
 _SYNTHETIC_REGISTRY: WeakValueDictionary[int, BaseModel] = WeakValueDictionary()
 
 
 def is_synthetic(instance: BaseModel) -> bool:
-    """Return ``True`` when ``instance`` was created by a factory in this module."""
+    """``instance`` が本モジュールのファクトリで生成されたものなら ``True`` を返す。"""
     cached = _SYNTHETIC_REGISTRY.get(id(instance))
     return cached is instance
 
 
 def _register(instance: BaseModel) -> None:
-    """Record ``instance`` in the synthetic registry."""
+    """``instance`` を合成レジストリに記録する。"""
     _SYNTHETIC_REGISTRY[id(instance)] = instance
 
 
@@ -45,12 +45,12 @@ def make_directive(
     created_at: datetime | None = None,
     task_id: UUID | None = None,
 ) -> Directive:
-    """Build a valid :class:`Directive`.
+    """妥当な :class:`Directive` を構築する。
 
-    Defaults: short ``text`` containing the ``$`` prefix the
-    application layer would have normalized, ``task_id=None`` (not yet
-    linked), ``created_at=datetime.now(UTC)`` so the tz-aware
-    constraint is satisfied without per-test setup.
+    デフォルト: アプリケーション層が正規化していたであろう ``$`` プレフィックス
+    を含む短い ``text``、``task_id=None`` (まだ link されていない)、
+    ``created_at=datetime.now(UTC)`` ── テストごとのセットアップなしに
+    tz-aware 制約を満たすため。
     """
     directive = Directive(
         id=directive_id if directive_id is not None else uuid4(),
@@ -70,12 +70,11 @@ def make_linked_directive(
     target_room_id: UUID | None = None,
     task_id: UUID | None = None,
 ) -> Directive:
-    """Build a Directive that already has a non-``None`` ``task_id``.
+    """既に非 ``None`` の ``task_id`` を持つ Directive を構築する。
 
-    Repository hydration scenario (§確定 C): the constructor accepts
-    a permanent ``task_id`` value for restoring an already-linked
-    Directive from disk. ``link_task`` against the returned instance
-    will Fail Fast.
+    Repository ハイドレートシナリオ (§確定 C): コンストラクタは永続的な
+    ``task_id`` 値を受理し、既に link 済みの Directive をディスクから
+    復元する。返却インスタンスに対して ``link_task`` を呼ぶと Fail Fast する。
     """
     return make_directive(
         directive_id=directive_id,
@@ -86,7 +85,7 @@ def make_linked_directive(
 
 
 def make_long_text_directive() -> Directive:
-    """Build a Directive at the upper boundary (10000 NFC chars)."""
+    """上限境界 (NFC 10000 文字) の Directive を構築する。"""
     return make_directive(text="a" * 10_000)
 
 

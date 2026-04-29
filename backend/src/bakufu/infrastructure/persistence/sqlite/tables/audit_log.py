@@ -1,16 +1,15 @@
-"""``audit_log`` table (append-only Admin CLI audit trail).
+"""``audit_log`` テーブル（追記専用 Admin CLI 監査証跡）。
 
-The DDL-level append-only contract (DELETE rejected, UPDATE limited
-to NULL → value transitions on ``result`` / ``error_text``) is enforced
-by the SQLite triggers from the initial Alembic revision; see
-``alembic/versions/0001_init_audit_pid_outbox.py``. Secret-column
-masking is enforced via :class:`MaskedJSONEncoded` /
-:class:`MaskedText` TypeDecorators in
-:mod:`bakufu.infrastructure.persistence.sqlite.base`. Their
-``process_bind_param`` hooks fire for both ORM ``Session.add()`` and
-Core ``insert(table).values(...)`` paths (BUG-PF-001 fix; see
-``docs/features/persistence-foundation/requirements-analysis.md``
-§確定 R1-D for the design rationale).
+DDL レベルの追記専用コントラクト（DELETE は拒否、UPDATE は ``result`` /
+``error_text`` の NULL → 値遷移に限定）は最初の Alembic リビジョン由来の
+SQLite トリガで強制する。``alembic/versions/0001_init_audit_pid_outbox.py``
+を参照。シークレット カラムのマスキングは
+:mod:`bakufu.infrastructure.persistence.sqlite.base` の :class:`MaskedJSONEncoded` /
+:class:`MaskedText` TypeDecorator で強制する。それらの ``process_bind_param``
+フックは ORM ``Session.add()`` と Core ``insert(table).values(...)`` の両経路で
+発火する（BUG-PF-001 修正、設計根拠は
+``docs/features/persistence-foundation/requirements-analysis.md`` §確定 R1-D
+を参照）。
 """
 
 from __future__ import annotations
@@ -32,12 +31,12 @@ from bakufu.infrastructure.persistence.sqlite.base import (
 
 
 class AuditLogRow(Base):
-    """ORM mapping for the append-only ``audit_log`` table.
+    """追記専用 ``audit_log`` テーブルの ORM マッピング。
 
-    ``args_json`` and ``error_text`` use the ``Masked*`` column types
-    so every bind value passes through the masking gateway regardless
-    of whether the row arrives via ORM ``Session.add`` or Core
-    ``session.execute(insert(...).values(...))`` (BUG-PF-001 fix).
+    ``args_json`` と ``error_text`` は ``Masked*`` カラム型を使うため、行が ORM
+    ``Session.add`` 経由で到達するか Core
+    ``session.execute(insert(...).values(...))`` 経由で到達するかに関わらず、
+    全バインド値がマスキング ゲートウェイを通る（BUG-PF-001 修正）。
     """
 
     __tablename__ = "audit_log"

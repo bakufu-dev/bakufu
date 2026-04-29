@@ -36,7 +36,7 @@ from tests.factories.internal_review_gate import (
     make_gate,
 )
 
-# Shared UTC timestamp helper.
+# 共有 UTC タイムスタンプヘルパ。
 _NOW = datetime.now(UTC)
 
 
@@ -48,10 +48,10 @@ def _ts() -> datetime:
 # TC-UT-IRG-003: APPROVED Verdict 提出 → PENDING 継続 (REQ-IRG-002, AC#3)
 # ---------------------------------------------------------------------------
 class TestSubmitVerdictPending:
-    """TC-UT-IRG-003: partial submission keeps gate PENDING."""
+    """TC-UT-IRG-003: 部分提出は gate を PENDING のまま維持する。"""
 
     def test_single_approved_out_of_three_stays_pending(self) -> None:
-        """1/3 APPROVED → gate_decision=PENDING."""
+        """1/3 APPROVED → gate_decision=PENDING。"""
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux", "security"}))
         new_gate = gate.submit_verdict(
             role="reviewer",
@@ -74,7 +74,7 @@ class TestSubmitVerdictPending:
         assert len(new_gate.verdicts) == 1
 
     def test_source_gate_is_unchanged_after_submission(self) -> None:
-        """Frozen pre-validate pattern: original Gate must not be mutated."""
+        """Frozen pre-validate パターン: 元 Gate は変更されない。"""
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
         snapshot = gate.model_dump()
         gate.submit_verdict(
@@ -91,7 +91,7 @@ class TestSubmitVerdictPending:
 # TC-UT-IRG-004: 全 GateRole APPROVED → ALL_APPROVED 遷移 (AC#4)
 # ---------------------------------------------------------------------------
 class TestSubmitVerdictAllApproved:
-    """TC-UT-IRG-004: all required roles APPROVED → ALL_APPROVED."""
+    """TC-UT-IRG-004: required な全 role が APPROVED → ALL_APPROVED。"""
 
     def test_all_approved_transitions_to_all_approved(self) -> None:
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
@@ -134,10 +134,10 @@ class TestSubmitVerdictAllApproved:
 # TC-UT-IRG-005: 1件 REJECTED → REJECTED 即遷移(残り未提出でも)(AC#5)
 # ---------------------------------------------------------------------------
 class TestSubmitVerdictRejectedImmediate:
-    """TC-UT-IRG-005: single REJECTED transitions immediately, pending roles irrelevant."""
+    """TC-UT-IRG-005: 単一 REJECTED で即時遷移する (他の未提出 role は無関係)。"""
 
     def test_one_rejected_transitions_immediately(self) -> None:
-        """1/3 roles REJECTED → gate_decision=REJECTED (other 2 roles still pending)."""
+        """1/3 roles REJECTED → gate_decision=REJECTED (残り 2 role は未提出のまま)。"""
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux", "security"}))
         new_gate = gate.submit_verdict(
             role="security",
@@ -149,7 +149,7 @@ class TestSubmitVerdictRejectedImmediate:
         assert new_gate.gate_decision == GateDecision.REJECTED
 
     def test_rejected_gate_has_only_one_verdict(self) -> None:
-        """Remaining 2 roles are not submitted; only 1 REJECTED verdict present."""
+        """残り 2 role は未提出。REJECTED の verdict が 1 件のみ存在する。"""
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux", "security"}))
         new_gate = gate.submit_verdict(
             role="security",
@@ -161,7 +161,7 @@ class TestSubmitVerdictRejectedImmediate:
         assert len(new_gate.verdicts) == 1
 
     def test_rejected_verdict_comment_is_recorded(self) -> None:
-        """Feedback comment from REJECTED verdict is stored (AC#5)."""
+        """REJECTED verdict のフィードバックコメントが保存される (AC#5)。"""
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
         new_gate = gate.submit_verdict(
             role="reviewer",
@@ -177,7 +177,7 @@ class TestSubmitVerdictRejectedImmediate:
 # TC-UT-IRG-006: 同一 GateRole 重複提出 → raise (REQ-IRG-002/004, AC#6)
 # ---------------------------------------------------------------------------
 class TestRoleAlreadySubmitted:
-    """TC-UT-IRG-006: re-submission of the same role raises role_already_submitted."""
+    """TC-UT-IRG-006: 同一 role の再提出は role_already_submitted を発火する。"""
 
     def test_duplicate_role_raises(self) -> None:
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
@@ -199,9 +199,9 @@ class TestRoleAlreadySubmitted:
         assert exc_info.value.kind == "role_already_submitted"
 
     def test_duplicate_raises_before_gate_already_decided(self) -> None:
-        """Step order: role_already_submitted fires at step 2 (gate is still PENDING)."""
+        """ステップ順: role_already_submitted は step 2 で発火する (gate は PENDING のまま)。"""
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
-        # Submit reviewer once — gate stays PENDING.
+        # reviewer を 1 度提出 ── gate は PENDING のまま。
         gate = gate.submit_verdict(
             role="reviewer",
             agent_id=uuid4(),
@@ -210,7 +210,7 @@ class TestRoleAlreadySubmitted:
             decided_at=_ts(),
         )
         assert gate.gate_decision == GateDecision.PENDING
-        # Re-submit same role → role_already_submitted (not gate_already_decided).
+        # 同一 role を再提出 → role_already_submitted (gate_already_decided ではない)。
         with pytest.raises(InternalReviewGateInvariantViolation) as exc_info:
             gate.submit_verdict(
                 role="reviewer",
@@ -226,11 +226,11 @@ class TestRoleAlreadySubmitted:
 # TC-UT-IRG-007: 確定後の追加 Verdict → raise (REQ-IRG-002, AC#7)
 # ---------------------------------------------------------------------------
 class TestGateAlreadyDecided:
-    """TC-UT-IRG-007: any submission to ALL_APPROVED/REJECTED Gate raises gate_already_decided."""
+    """TC-UT-IRG-007: ALL_APPROVED/REJECTED Gate への任意提出で gate_already_decided が発火。"""
 
     def test_submit_to_all_approved_gate_raises(self) -> None:
-        # Build a gate whose required roles include "reviewer" so we hit
-        # gate_already_decided rather than invalid_role first.
+        # required role に "reviewer" を含む gate を構築する ──
+        # invalid_role ではなく gate_already_decided が先に発火するように。
         all_approved = make_all_approved_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
         with pytest.raises(InternalReviewGateInvariantViolation) as exc_info:
             all_approved.submit_verdict(
@@ -257,11 +257,11 @@ class TestGateAlreadyDecided:
         assert exc_info.value.kind == "gate_already_decided"
 
     def test_gate_already_decided_fires_before_role_already_submitted(self) -> None:
-        """Step 1 (gate_already_decided) fires before step 2 (role_already_submitted)."""
-        # Create a gate where the ALL_APPROVED was reached via reviewer + ux.
+        """Step 1 (gate_already_decided) は step 2 (role_already_submitted) より先に発火する。"""
+        # reviewer + ux 経由で ALL_APPROVED に達した gate を作る。
         all_approved = make_all_approved_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
-        # Try to re-submit "reviewer" (which is both already decided AND role already submitted).
-        # Step 1 must win.
+        # "reviewer" を再提出する (already decided かつ role already submitted の両方に該当)。
+        # Step 1 が勝たねばならない。
         with pytest.raises(InternalReviewGateInvariantViolation) as exc_info:
             all_approved.submit_verdict(
                 role="reviewer",
@@ -277,7 +277,7 @@ class TestGateAlreadyDecided:
 # TC-UT-IRG-008: comment 境界値 (REQ-IRG-002, AC#11)
 # ---------------------------------------------------------------------------
 class TestCommentBoundary:
-    """TC-UT-IRG-008: comment length 0 / 5000 OK; 5001 raises comment_too_long."""
+    """TC-UT-IRG-008: comment 長 0 / 5000 は OK、5001 は comment_too_long。"""
 
     def test_empty_comment_accepted(self) -> None:
         gate = make_gate(required_gate_roles=frozenset({"reviewer"}))
@@ -315,12 +315,12 @@ class TestCommentBoundary:
         assert exc_info.value.kind == "comment_too_long"
 
     def test_comment_length_checked_after_nfc_normalization(self) -> None:
-        """5000 chars after NFC normalization are accepted regardless of raw form."""
-        # NFD 'が' (2 code points) normalizes to NFC 'が' (1 code point).
-        # Build a string that is exactly 5000 NFC chars.
-        nfc_char = "が"  # 1 NFC code point
-        nfd_form = unicodedata.normalize("NFD", nfc_char)  # 2 code points in NFD
-        comment = nfd_form * 5000  # 10000 raw code points → 5000 NFC chars
+        """NFC 正規化後 5000 文字は、生形に関わらず受理される。"""
+        # NFD 'が' (2 コードポイント) は NFC'が' (1 コードポイント) に正規化される。
+        # 厳密に NFC 5000 文字となる文字列を構築する。
+        nfc_char = "が"  # NFC で 1 コードポイント
+        nfd_form = unicodedata.normalize("NFD", nfc_char)  # NFD で 2 コードポイント
+        comment = nfd_form * 5000  # 生では 10000 コードポイント、NFC で 5000 文字
         gate = make_gate(required_gate_roles=frozenset({"reviewer"}))
         new_gate = gate.submit_verdict(
             role="reviewer",
@@ -336,13 +336,13 @@ class TestCommentBoundary:
 # TC-UT-IRG-009: invalid_role (REQ-IRG-004, AC#2, 3)
 # ---------------------------------------------------------------------------
 class TestInvalidRole:
-    """TC-UT-IRG-009: role not in required_gate_roles raises invalid_role."""
+    """TC-UT-IRG-009: required_gate_roles に含まれない role は invalid_role を発火する。"""
 
     def test_role_not_in_required_raises(self) -> None:
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
         with pytest.raises(InternalReviewGateInvariantViolation) as exc_info:
             gate.submit_verdict(
-                role="security",  # not in required_gate_roles
+                role="security",  # required_gate_roles に含まれない
                 agent_id=uuid4(),
                 decision=VerdictDecision.APPROVED,
                 comment="",
@@ -367,11 +367,11 @@ class TestInvalidRole:
 # TC-UT-IRG-011: VerdictDecision 2 値のみ (§確定 F, Q-3)
 # ---------------------------------------------------------------------------
 class TestVerdictDecisionTwoValuesOnly:
-    """TC-UT-IRG-011: only APPROVED and REJECTED are valid VerdictDecision values."""
+    """TC-UT-IRG-011: VerdictDecision の有効値は APPROVED と REJECTED のみ。"""
 
     @pytest.mark.parametrize("bad_value", ["ambiguous", "maybe", "conditional", "pending"])
     def test_invalid_verdict_decision_raises_validation_error(self, bad_value: str) -> None:
-        """§確定 F: values other than APPROVED/REJECTED are type errors."""
+        """§確定 F: APPROVED / REJECTED 以外の値は型エラーとなる。"""
         from bakufu.domain.value_objects import Verdict
 
         with pytest.raises(ValidationError):
@@ -388,10 +388,10 @@ class TestVerdictDecisionTwoValuesOnly:
 # TC-UT-IRG-012: comment NFC + strip しない (§確定 G, Q-3)
 # ---------------------------------------------------------------------------
 class TestCommentNFCNoStrip:
-    """TC-UT-IRG-012: comment is NFC-normalized but leading/trailing whitespace preserved."""
+    """TC-UT-IRG-012: comment は NFC 正規化するが前後の空白は保持する。"""
 
     def test_trailing_newline_preserved(self) -> None:
-        """Trailing newlines in comment are preserved (no strip)."""
+        """comment 末尾の改行は保持される (strip しない)。"""
         gate = make_gate(required_gate_roles=frozenset({"reviewer"}))
         raw = "\n承認コメント\n"
         new_gate = gate.submit_verdict(
@@ -405,8 +405,8 @@ class TestCommentNFCNoStrip:
         assert new_gate.verdicts[0].comment.endswith("\n")
 
     def test_nfd_form_normalized_to_nfc(self) -> None:
-        """NFD-decomposed characters are composed to NFC form."""
-        # 'か' + combining dakuten (U+3099) = NFD 'が'; NFC = 'が' (U+304C)
+        """NFD 分解された文字は NFC 形に合成される。"""
+        # 'か' + 結合濁点 (U+3099) = NFD 'が'。NFC = 'が' (U+304C)
         nfd_comment = "がレビュー"
         gate = make_gate(required_gate_roles=frozenset({"reviewer"}))
         new_gate = gate.submit_verdict(
@@ -425,10 +425,10 @@ class TestCommentNFCNoStrip:
 # TC-UT-IRG-013〜016: MSG 2 行構造 + Next: hint (§確定 H, Q-3)
 # ---------------------------------------------------------------------------
 class TestMsgTwoLineStructure:
-    """TC-UT-IRG-013〜016: InternalReviewGateInvariantViolation messages have 2-line structure."""
+    """TC-UT-IRG-013〜016: InternalReviewGateInvariantViolation メッセージは 2 行構造を持つ。"""
 
     def test_msg_irg_001_starts_with_fail_and_has_next(self) -> None:
-        """TC-UT-IRG-013: MSG-IRG-001 (role_already_submitted) — [FAIL]…\\nNext:…"""
+        """TC-UT-IRG-013: MSG-IRG-001 (role_already_submitted) ── [FAIL]…\\nNext:…"""
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
         gate = gate.submit_verdict(
             role="reviewer",
@@ -450,7 +450,7 @@ class TestMsgTwoLineStructure:
         assert "Next:" in msg
 
     def test_msg_irg_002_starts_with_fail_and_has_next(self) -> None:
-        """TC-UT-IRG-014: MSG-IRG-002 (gate_already_decided) — [FAIL]…\\nNext:…"""
+        """TC-UT-IRG-014: MSG-IRG-002 (gate_already_decided) ── [FAIL]…\\nNext:…"""
         all_approved = make_all_approved_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
         with pytest.raises(InternalReviewGateInvariantViolation) as exc_info:
             all_approved.submit_verdict(
@@ -466,7 +466,7 @@ class TestMsgTwoLineStructure:
         assert "新しい Gate" in msg
 
     def test_msg_irg_003_starts_with_fail_and_has_next(self) -> None:
-        """TC-UT-IRG-015: MSG-IRG-003 (comment_too_long) — [FAIL]…\\nNext:…"""
+        """TC-UT-IRG-015: MSG-IRG-003 (comment_too_long) ── [FAIL]…\\nNext:…"""
         gate = make_gate(required_gate_roles=frozenset({"reviewer"}))
         with pytest.raises(InternalReviewGateInvariantViolation) as exc_info:
             gate.submit_verdict(
@@ -482,7 +482,7 @@ class TestMsgTwoLineStructure:
         assert "5000文字以内" in msg
 
     def test_msg_irg_004_starts_with_fail_and_has_next(self) -> None:
-        """TC-UT-IRG-016: MSG-IRG-004 (invalid_role) — [FAIL]…\\nNext:…"""
+        """TC-UT-IRG-016: MSG-IRG-004 (invalid_role) ── [FAIL]…\\nNext:…"""
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
         with pytest.raises(InternalReviewGateInvariantViolation) as exc_info:
             gate.submit_verdict(
@@ -502,11 +502,11 @@ class TestMsgTwoLineStructure:
 # TC-UT-IRG-017: application 層責務 / 参照整合性 (§確定 I, Q-3)
 # ---------------------------------------------------------------------------
 class TestApplicationLayerResponsibility:
-    """TC-UT-IRG-017: Aggregate does not validate referential integrity of IDs."""
+    """TC-UT-IRG-017: Aggregate は ID の参照整合性を検証しない。"""
 
     def test_nonexistent_task_id_accepted(self) -> None:
-        """Gate construction with a random (non-existent) task_id succeeds."""
-        # The Aggregate holds only the UUID; it does NOT query a repository.
+        """ランダム (非存在) な task_id でも Gate を構築できる。"""
+        # Aggregate は UUID のみを保持し、Repository に問い合わせない。
         gate = make_gate(task_id=uuid4())
         assert gate.task_id is not None
 
@@ -515,11 +515,11 @@ class TestApplicationLayerResponsibility:
         assert gate.stage_id is not None
 
     def test_nonexistent_agent_id_in_verdict_accepted(self) -> None:
-        """Verdict with a random (non-existent) agent_id submits successfully."""
+        """ランダム (非存在) な agent_id を持つ Verdict も提出に成功する。"""
         gate = make_gate(required_gate_roles=frozenset({"reviewer"}))
         new_gate = gate.submit_verdict(
             role="reviewer",
-            agent_id=uuid4(),  # random, does not exist in any repository
+            agent_id=uuid4(),  # ランダム値。どの Repository にも存在しない
             decision=VerdictDecision.APPROVED,
             comment="",
             decided_at=_ts(),

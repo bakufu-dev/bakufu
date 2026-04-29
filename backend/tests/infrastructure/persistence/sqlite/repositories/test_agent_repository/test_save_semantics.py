@@ -1,10 +1,9 @@
-"""Agent Repository: save() semantics — delete-then-insert + ORDER BY + Tx boundary.
+"""Agent Repository: save() のセマンティクス ── delete-then-insert + ORDER BY + Tx 境界。
 
-TC-UT-AGR-002 / 003 / 010 / 011 — the §確定 B / §BUG-EMR-001 inheritance
-contracts that back the ``save()`` flow + ORDER BY observation +
-Tx boundary + round-trip equality.
+TC-UT-AGR-002 / 003 / 010 / 011 ── §確定 B / §BUG-EMR-001 を踏襲して ``save()`` フローを
+裏付ける契約 + ORDER BY 観測 + Tx 境界 + ラウンドトリップ等価性。
 
-Per ``docs/features/agent-repository/test-design.md``.
+``docs/features/agent-repository/test-design.md`` 準拠。
 """
 
 from __future__ import annotations
@@ -41,11 +40,11 @@ pytestmark = pytest.mark.asyncio
 # TC-UT-AGR-002: 5-step delete-then-insert SQL order (§確定 B)
 # ---------------------------------------------------------------------------
 class TestSaveSqlOrder:
-    """TC-UT-AGR-002: ``save`` issues the §確定 B 5-step DML sequence.
+    """TC-UT-AGR-002: ``save`` が §確定 B の 5 ステップ DML シーケンスを発行する。
 
-    Same harness as empire-repository TC-IT-EMR-011 / workflow-
-    repository TC-IT-WFR-010 — observe SQL via
-    ``before_cursor_execute`` listener and assert prefixes:
+    empire-repository TC-IT-EMR-011 / workflow-repository TC-IT-WFR-010 と
+    同じハーネスで ``before_cursor_execute`` リスナにより SQL を観測し、
+    プレフィックスを assert する:
 
     1. ``INSERT INTO agents`` (UPSERT)
     2. ``DELETE FROM agent_providers``
@@ -60,7 +59,7 @@ class TestSaveSqlOrder:
         app_engine: AsyncEngine,
         seeded_empire_id: UUID,
     ) -> None:
-        """5-step DML order matches §確定 B."""
+        """5 ステップの DML 順序が §確定 B に一致する。"""
         captured: list[str] = []
 
         def _on_execute(
@@ -76,9 +75,8 @@ class TestSaveSqlOrder:
         sync_engine = app_engine.sync_engine
         event.listen(sync_engine, "before_cursor_execute", _on_execute)
         try:
-            # Build an Agent with non-empty providers + skills so all
-            # 5 DML statements actually fire (empty side-tables would
-            # skip the INSERT).
+            # 5 つの DML がすべて発火するよう、providers と skills を持つ Agent を構築する
+            # （side-table が空だと INSERT がスキップされる）。
             agent = make_agent(
                 empire_id=seeded_empire_id,
                 providers=[make_provider_config()],
@@ -116,13 +114,12 @@ class TestSaveSqlOrder:
 # TC-UT-AGR-003: ORDER BY contract (§BUG-EMR-001 inherited from day 1)
 # ---------------------------------------------------------------------------
 class TestFindByIdOrderByContract:
-    """TC-UT-AGR-003: ``ORDER BY provider_kind`` / ``ORDER BY skill_id`` are emitted.
+    """TC-UT-AGR-003: ``ORDER BY provider_kind`` / ``ORDER BY skill_id`` が発行される。
 
-    The empire-repository BUG-EMR-001 closure froze the ORDER BY
-    contract; the agent Repository adopts it from PR #1. Without
-    these clauses, SQLite returns rows in internal-scan order which
-    would break ``Agent == Agent`` round-trip equality (the
-    Aggregate compares list-by-list).
+    empire-repository BUG-EMR-001 のクロージャが ORDER BY 契約を凍結し、
+    agent Repository は PR #1 から踏襲する。これらの句がないと SQLite は
+    内部スキャン順で行を返し、``Agent == Agent`` ラウンドトリップ等価性
+    （Aggregate がリスト同士で比較する）が壊れる。
     """
 
     async def test_find_by_id_emits_order_by_provider_kind(
@@ -131,7 +128,7 @@ class TestFindByIdOrderByContract:
         app_engine: AsyncEngine,
         seeded_empire_id: UUID,
     ) -> None:
-        """``find_by_id`` emits ``ORDER BY agent_providers.provider_kind``."""
+        """``find_by_id`` が ``ORDER BY agent_providers.provider_kind`` を発行する。"""
         agent = make_agent(
             empire_id=seeded_empire_id,
             providers=[
@@ -179,7 +176,7 @@ class TestFindByIdOrderByContract:
         app_engine: AsyncEngine,
         seeded_empire_id: UUID,
     ) -> None:
-        """``find_by_id`` emits ``ORDER BY agent_skills.skill_id``."""
+        """``find_by_id`` が ``ORDER BY agent_skills.skill_id`` を発行する。"""
         agent = make_agent(
             empire_id=seeded_empire_id,
             providers=[make_provider_config()],
@@ -222,15 +219,15 @@ class TestFindByIdOrderByContract:
 # TC-UT-AGR-002 (delete-then-insert replacement semantics)
 # ---------------------------------------------------------------------------
 class TestSaveReplacesSideTableRows:
-    """``save`` replaces side-table rows wholesale (§確定 B)."""
+    """``save`` が side-table 行を丸ごと置換する (§確定 B)。"""
 
     async def test_save_replaces_skill_rows(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_empire_id: UUID,
     ) -> None:
-        """Skills 2 → 1 reflects as 1 row in agent_skills (no residue)."""
-        # Two skills initially.
+        """skills 2 → 1 が agent_skills で 1 行として反映される（残骸なし）。"""
+        # 初期状態は 2 skill。
         original = make_agent(
             empire_id=seeded_empire_id,
             skills=[make_skill_ref(name="skill_a"), make_skill_ref(name="skill_b")],
@@ -238,7 +235,7 @@ class TestSaveReplacesSideTableRows:
         async with session_factory() as session, session.begin():
             await SqliteAgentRepository(session).save(original)
 
-        # Re-save with one skill — same agent_id.
+        # 同じ agent_id で skill 1 件にして再 save。
         replacement = make_agent(
             agent_id=original.id,
             empire_id=original.empire_id,
@@ -266,12 +263,12 @@ class TestSaveReplacesSideTableRows:
 # TC-UT-AGR-011: round-trip equality (_to_row / _from_row via DB)
 # ---------------------------------------------------------------------------
 class TestRoundTripEquality:
-    """TC-UT-AGR-011: save → find_by_id round-trip preserves Agent identity.
+    """TC-UT-AGR-011: save → find_by_id ラウンドトリップで Agent の同一性が保たれる。
 
-    Note: this test uses default ``prompt_body`` (no secrets) so
-    masking is a no-op and full ``==`` holds. Secret-bearing
-    round-trip is non-equal due to §確定 H §不可逆性 — that path lives
-    in :mod:`...test_masking_persona`.
+    本テストはデフォルトの ``prompt_body``（secret なし）を使うため、マスキングは
+    no-op となり full ``==`` が成立する。secret を含むラウンドトリップは
+    §確定 H §不可逆性 により非等価になる ── その経路は
+    :mod:`...test_masking_persona` で扱う。
     """
 
     async def test_agent_with_providers_and_skills_round_trips(
@@ -279,7 +276,7 @@ class TestRoundTripEquality:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_empire_id: UUID,
     ) -> None:
-        """Agent with 1 provider + 1 skill round-trips structurally."""
+        """provider 1 + skill 1 を持つ Agent が構造的にラウンドトリップする。"""
         agent = make_agent(
             empire_id=seeded_empire_id,
             providers=[make_provider_config()],
@@ -296,8 +293,8 @@ class TestRoundTripEquality:
         assert restored.empire_id == agent.empire_id
         assert restored.name == agent.name
         assert restored.role == agent.role
-        # ORDER BY-aware comparisons (single-element here, but the
-        # contract is "list order matches the SQL ORDER BY key").
+        # ORDER BY を考慮した比較（ここでは要素 1 つだが、契約は
+        # 「リスト順序が SQL の ORDER BY キーに一致する」）。
         assert restored.providers == sorted(agent.providers, key=lambda p: p.provider_kind.value)
         assert restored.skills == sorted(agent.skills, key=lambda s: s.skill_id)
 
@@ -306,14 +303,14 @@ class TestRoundTripEquality:
 # TC-UT-AGR-010: Tx boundary responsibility separation (§確定 B)
 # ---------------------------------------------------------------------------
 class TestTxBoundaryRespectedByRepository:
-    """TC-UT-AGR-010: Repository never calls commit / rollback (§確定 B)."""
+    """TC-UT-AGR-010: Repository は commit / rollback を呼ばない (§確定 B)。"""
 
     async def test_commit_path_persists_via_outer_block(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_empire_id: UUID,
     ) -> None:
-        """Outer ``async with session.begin()`` commits the save."""
+        """外側の ``async with session.begin()`` が save を commit する。"""
         agent = make_agent(empire_id=seeded_empire_id)
         async with session_factory() as session, session.begin():
             await SqliteAgentRepository(session).save(agent)
@@ -327,15 +324,14 @@ class TestTxBoundaryRespectedByRepository:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_empire_id: UUID,
     ) -> None:
-        """An exception inside ``begin()`` rolls back ALL 5 DML steps.
+        """``begin()`` 内の例外が 5 ステップの DML すべてをロールバックする。
 
-        The Agent row + providers + skills all participate in the
-        same caller-managed transaction. A single uncaught exception
-        inside the ``begin()`` block must purge **all** of them.
+        Agent 行 + providers + skills は同一の呼び出し側管理トランザクションに参加する。
+        ``begin()`` ブロック内の単一の未捕捉例外が **すべて** を破棄せねばならない。
         """
 
         class _BoomError(Exception):
-            """Synthetic exception used to drive the rollback path."""
+            """ロールバック経路を駆動する合成例外。"""
 
         agent = make_agent(
             empire_id=seeded_empire_id,
@@ -352,9 +348,8 @@ class TestTxBoundaryRespectedByRepository:
             fetched = await SqliteAgentRepository(session).find_by_id(agent.id)
         assert fetched is None
 
-        # Side tables also empty — the §確定 B contract is that the
-        # 5-step sequence is **one** logical operation under the
-        # caller's UoW.
+        # side-table も空 ── §確定 B の契約により、5 ステップは
+        # 呼び出し側 UoW 下で **1 つ** の論理操作として扱われる。
         async with session_factory() as session:
             provider_rows = (
                 await session.execute(
@@ -374,11 +369,11 @@ class TestTxBoundaryRespectedByRepository:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_empire_id: UUID,
     ) -> None:
-        """``save`` outside ``begin()`` does not auto-commit (§確定 B)."""
+        """``begin()`` の外側での ``save`` は自動 commit しない (§確定 B)。"""
         agent = make_agent(empire_id=seeded_empire_id)
         async with session_factory() as session:
             await SqliteAgentRepository(session).save(agent)
-            # AsyncSession's __aexit__ rolls back any in-flight tx.
+            # AsyncSession の __aexit__ が処理中の tx をロールバックする。
 
         async with session_factory() as session:
             fetched = await SqliteAgentRepository(session).find_by_id(agent.id)

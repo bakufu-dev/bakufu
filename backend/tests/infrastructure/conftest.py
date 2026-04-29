@@ -1,9 +1,9 @@
-"""Shared fixtures for infrastructure-layer integration tests.
+"""infrastructure 層の統合テスト向け共有フィクスチャ。
 
-The fixtures here intentionally use **real** SQLite + **real** Alembic
-+ **real** filesystem under ``tmp_path``. The only thing we mock is
-``psutil`` (in ``test_pid_gc.py``) because the OS doesn't let CI spawn
-real subprocess trees safely.
+ここで定義するフィクスチャは、意図的に **本物の** SQLite + **本物の**
+Alembic + **本物の** ファイルシステム（``tmp_path`` 配下）を用いる。
+モックするのは ``psutil`` のみ（``test_pid_gc.py`` で使用）。これは OS が
+CI 上で実プロセスツリーを安全に生成することを許さないためである。
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 @pytest.fixture(autouse=True)
 def _reset_data_dir() -> Iterator[None]:  # pyright: ignore[reportUnusedFunction]
-    """Clear the data_dir singleton before / after every test."""
+    """各テストの前後で data_dir シングルトンをクリアする。"""
     data_dir.reset()
     yield
     data_dir.reset()
@@ -35,7 +35,7 @@ def _reset_data_dir() -> Iterator[None]:  # pyright: ignore[reportUnusedFunction
 
 @pytest.fixture(autouse=True)
 def _clear_handler_registry() -> Iterator[None]:  # pyright: ignore[reportUnusedFunction]
-    """Tests must start with an empty handler registry (Confirmation K)."""
+    """テストはハンドラレジストリが空の状態で開始しなければならない（Confirmation K）。"""
     handler_registry.clear()
     yield
     handler_registry.clear()
@@ -45,7 +45,7 @@ def _clear_handler_registry() -> Iterator[None]:  # pyright: ignore[reportUnused
 def _initialize_masking(  # pyright: ignore[reportUnusedFunction]
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Initialize masking once per test with no provider env vars set."""
+    """provider 系の環境変数を全て外した状態で、テストごとに masking を 1 回だけ初期化する。"""
     for env_key in (
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
@@ -61,16 +61,16 @@ def _initialize_masking(  # pyright: ignore[reportUnusedFunction]
 
 @pytest_asyncio.fixture
 async def app_engine(tmp_path: Path) -> AsyncIterator[AsyncEngine]:
-    """Real application engine pointed at tmp_path/bakufu.db.
+    """tmp_path/bakufu.db を指す本物のアプリケーションエンジン。
 
-    Runs Alembic ``upgrade head`` so the schema + triggers are in place
-    before the test body executes. Disposes the engine on teardown so
-    tmp_path can be removed cleanly.
+    テスト本体が走る前に Alembic ``upgrade head`` を実行してスキーマと
+    トリガを整えておく。後始末ではエンジンを dispose し、tmp_path を
+    クリーンに削除できるようにする。
 
-    BUG-PF-002 fix: ``alembic/env.py`` now passes
-    ``disable_existing_loggers=False`` so the previous test-side
-    workarounds (``_re_enable_bakufu_loggers`` / ``_patch_alembic_file_config``)
-    are no longer needed.
+    BUG-PF-002 修正: ``alembic/env.py`` が
+    ``disable_existing_loggers=False`` を渡すようになったため、これまで
+    のテスト側回避策（``_re_enable_bakufu_loggers`` /
+    ``_patch_alembic_file_config``）はもう不要。
     """
     db_path = tmp_path / "bakufu.db"
     url = f"sqlite+aiosqlite:///{db_path}"
@@ -86,5 +86,5 @@ async def app_engine(tmp_path: Path) -> AsyncIterator[AsyncEngine]:
 async def session_factory(
     app_engine: AsyncEngine,
 ) -> async_sessionmaker[AsyncSession]:
-    """SessionFactory bound to the migrated test engine."""
+    """マイグレーション済みテストエンジンに紐付いた SessionFactory。"""
     return session_mod.make_session_factory(app_engine)

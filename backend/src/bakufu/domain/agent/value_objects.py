@@ -1,19 +1,19 @@
-"""Agent-specific Value Objects (Persona / ProviderConfig / SkillRef).
+"""Agent 固有の Value Object（Persona / ProviderConfig / SkillRef）。
 
-These VOs live in the ``agent/`` package rather than the global
-:mod:`bakufu.domain.value_objects` so the file-level boundary mirrors the
-responsibility boundary — same pattern Norman approved for the workflow
-package. ``SkillId`` and ``ProviderKind`` remain in the global module
-because they cross feature boundaries (Skill loader, LLM Adapter).
+これらの VO はファイル レベル境界が責務境界を反映するよう、グローバルな
+:mod:`bakufu.domain.value_objects` ではなく ``agent/`` パッケージに置く —
+Norman が workflow パッケージで承認したのと同じパターン。``SkillId`` と
+``ProviderKind`` はフィーチャー境界（Skill loader、LLM Adapter）を跨ぐため
+グローバル モジュールに残す。
 
-The Persona / archetype / display_name validations all share the
-:func:`bakufu.domain.value_objects.nfc_strip` pipeline (Confirmation B
-shared policy carried forward from empire / workflow). ``prompt_body``
-applies NFC only — Markdown leading/trailing newlines must be preserved
-because downstream renderers depend on them (Confirmation E).
+Persona / archetype / display_name のバリデーションは全て
+:func:`bakufu.domain.value_objects.nfc_strip` パイプラインを共有する
+（Confirmation B の共有ポリシーを empire / workflow から継承）。``prompt_body``
+は NFC のみを適用する — Markdown の先頭／末尾改行は下流レンダラが依存するため
+保持しなければならない（Confirmation E）。
 
-``SkillRef.path`` runs the full H1〜H10 traversal-defense pipeline from
-:mod:`bakufu.domain.agent.path_validators`.
+``SkillRef.path`` は :mod:`bakufu.domain.agent.path_validators` の H1〜H10
+完全トラバーサル防御パイプラインを実行する。
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from bakufu.domain.exceptions import AgentInvariantViolation
 from bakufu.domain.value_objects import ProviderKind, SkillId, nfc_strip
 
 # ---------------------------------------------------------------------------
-# Persona (Agent feature §確定 E length policy)
+# Persona（Agent feature §確定 E の長さポリシー）
 # ---------------------------------------------------------------------------
 DISPLAY_NAME_MIN: int = 1
 DISPLAY_NAME_MAX: int = 40
@@ -37,11 +37,11 @@ PROMPT_BODY_MAX: int = 10_000
 
 
 class Persona(BaseModel):
-    """Character / authoring profile attached to an :class:`Agent`.
+    """:class:`Agent` に紐づくキャラクタ／著作プロフィール。
 
-    ``display_name`` and ``archetype`` go through NFC + strip (Confirmation E).
-    ``prompt_body`` only goes through NFC — strip would eat the Markdown
-    leading/trailing whitespace that downstream prompt rendering relies on.
+    ``display_name`` と ``archetype`` は NFC + strip を通過する（Confirmation E）。
+    ``prompt_body`` は NFC のみ — strip は下流のプロンプト レンダリングが依存する
+    Markdown の先頭／末尾空白を食ってしまう。
     """
 
     model_config = ConfigDict(
@@ -62,7 +62,7 @@ class Persona(BaseModel):
     @field_validator("prompt_body", mode="before")
     @classmethod
     def _normalize_prompt_body(cls, value: object) -> object:
-        # NFC only — preserves Markdown leading/trailing whitespace.
+        # NFC のみ — Markdown の先頭／末尾空白を保持する。
         if isinstance(value, str):
             return unicodedata.normalize("NFC", value)
         return value
@@ -111,12 +111,12 @@ PROVIDER_MODEL_MAX: int = 80
 
 
 class ProviderConfig(BaseModel):
-    """LLM provider configuration entry inside an :class:`Agent`.
+    """:class:`Agent` 内部の LLM プロバイダ構成エントリ。
 
-    ``provider_kind`` enum ensures only known providers slip through; the
-    "is this provider's Adapter implemented in MVP" check belongs to the
-    application layer (``AgentService.hire``), not the VO — see Agent
-    detailed-design §確定 I for responsibility split.
+    ``provider_kind`` enum により既知のプロバイダのみが通過する。「この provider の
+    Adapter が MVP で実装済みか」のチェックは VO ではなくアプリケーション層
+    （``AgentService.hire``）の責務である — 責務分離は Agent detailed-design §確定 I
+    を参照。
     """
 
     model_config = ConfigDict(
@@ -132,26 +132,25 @@ class ProviderConfig(BaseModel):
     @field_validator("model", mode="before")
     @classmethod
     def _strip_model(cls, value: object) -> object:
-        # Strip-only (no NFC) per Confirmation E — model names are ASCII
-        # identifiers in practice and applying NFC has no behavioral effect.
+        # Confirmation E に従い strip のみ（NFC 無し） — モデル名は実運用上 ASCII
+        # 識別子であり、NFC を適用しても動作上の効果はない。
         if isinstance(value, str):
             return value.strip()
         return value
 
 
 # ---------------------------------------------------------------------------
-# SkillRef (H1〜H10 path traversal defense delegated to path_validators)
+# SkillRef（H1〜H10 のパス トラバーサル防御は path_validators に委譲）
 # ---------------------------------------------------------------------------
 SKILL_NAME_MIN: int = 1
 SKILL_NAME_MAX: int = 80
 
 
 class SkillRef(BaseModel):
-    """Reference to a Skill markdown file inside ``BAKUFU_DATA_DIR/skills/``.
+    """``BAKUFU_DATA_DIR/skills/`` 内の Skill Markdown ファイルへの参照。
 
-    The path validation contract is comprehensive (10 separate checks); see
-    :func:`bakufu.domain.agent.path_validators._validate_skill_path` for the
-    full ordered policy.
+    パス検証コントラクトは包括的（10 個の独立したチェック）。完全な順序付きポリシー
+    は :func:`bakufu.domain.agent.path_validators._validate_skill_path` を参照。
     """
 
     model_config = ConfigDict(
@@ -172,8 +171,8 @@ class SkillRef(BaseModel):
     @field_validator("path", mode="after")
     @classmethod
     def _validate_path(cls, value: str) -> str:
-        # H1〜H10 in one shot. Returns the NFC-normalized form so the stored
-        # value is canonical (no later code paths see an un-normalized string).
+        # H1〜H10 を一度に実行。NFC 正規化された形を返し、保存値が正準形となる
+        # （以降のコード経路は未正規化文字列を見ない）。
         return _validate_skill_path(value)
 
 

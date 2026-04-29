@@ -1,19 +1,20 @@
-"""Shared domain value objects and ID types.
+"""共有ドメイン Value Object および ID 型。
 
-This package hosts identifiers, enums, and reference VOs that other Aggregates
-in the bakufu domain depend on. Per ``docs/design/domain-model/value-objects.md``,
-ID types are conceptually distinct UUIDv4 values; they are exposed as PEP 695
-``type`` aliases over ``UUID`` to keep the surface minimal and Pydantic
-serialization unambiguous.
+このパッケージは bakufu ドメイン内の他 Aggregate が依存する識別子、enum、
+参照 VO を集約する。``docs/design/domain-model/value-objects.md`` によれば、
+ID 型は概念的に区別される UUIDv4 値である。表面を最小に保ち Pydantic の
+シリアライズを曖昧にしないため、これらは ``UUID`` 上の PEP 695 ``type``
+エイリアスとして公開する。
 
-Sub-modules:
-- :mod:`.identifiers` — ID type aliases (EmpireId, AgentId, etc.)
-- :mod:`.enums` — StrEnum definitions (Role, GateDecision, etc.)
-- :mod:`.gate_role` — GateRole validated slug type alias
-- :mod:`.verdict` — Verdict VO and _VERDICT_COMMENT_MAX_CHARS
-- :mod:`.helpers` — nfc_strip / mask_discord_webhook / NormalizedShortName etc.
-- :mod:`.references` — RoomRef / AgentRef / CompletionPolicy / NotifyChannel / AuditEntry
-- :mod:`.attachments` — Attachment / Deliverable VOs
+サブモジュール:
+- :mod:`.identifiers` — ID 型エイリアス（EmpireId、AgentId 等）
+- :mod:`.enums` — StrEnum 定義（Role、GateDecision 等）
+- :mod:`.gate_role` — GateRole 検証済み slug 型エイリアス
+- :mod:`.verdict` — Verdict VO および _VERDICT_COMMENT_MAX_CHARS
+- :mod:`.helpers` — nfc_strip / mask_discord_webhook / NormalizedShortName 等
+- :mod:`.references` — RoomRef / AgentRef / CompletionPolicy / NotifyChannel /
+  AuditEntry
+- :mod:`.attachments` — Attachment / Deliverable VO
 """
 
 from __future__ import annotations

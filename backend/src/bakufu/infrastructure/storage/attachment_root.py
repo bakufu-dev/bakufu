@@ -1,15 +1,16 @@
-"""Attachments FS root + 24h orphan-GC scheduler skeleton.
+"""添付ファイル FS ルート + 24 時間オーファン GC スケジューラの骨組み。
 
-Bootstrap stage 5 calls :func:`ensure_root` to materialize the
-``<DATA_DIR>/attachments/`` directory with mode ``0o700`` (POSIX).
-Stage 7 calls :func:`start_orphan_gc_scheduler` to launch the
-periodic GC asyncio task.
+Bootstrap Stage 5 が :func:`ensure_root` を呼び、``<DATA_DIR>/attachments/``
+ディレクトリをモード ``0o700``（POSIX）で実体化する。Stage 7 が
+:func:`start_orphan_gc_scheduler` を呼び、定期 GC の asyncio タスクを
+起動する。
 
-The actual GC (matching FS files against ``Conversation`` /
-``Deliverable`` references and deleting orphans) lives in the
-``feature/attachment-store`` PR. Here we lay down the skeleton so
-Bootstrap's stage list is complete on day 1 and the cleanup contract
-in Confirmation J has a real ``Task`` to cancel.
+実際の GC 処理（FS 上のファイルを ``Conversation`` /
+``Deliverable`` の参照と突き合わせ、孤児を削除する処理）は
+``feature/attachment-store`` PR で実装される。本 PR では骨組みのみを
+配置し、Bootstrap の Stage 一覧を初日から完備しつつ、Confirmation J の
+クリーンアップ契約が cancel 対象として実体ある ``Task`` を持てるように
+する。
 """
 
 from __future__ import annotations
@@ -26,19 +27,20 @@ logger = logging.getLogger(__name__)
 ATTACHMENTS_SUBDIR: str = "attachments"
 ATTACHMENTS_MODE: int = 0o700
 
-# 24 hours per docs/features/persistence-foundation/requirements.md REQ-PF-009.
+# docs/features/persistence-foundation/requirements.md REQ-PF-009 に
+# 従い 24 時間。
 ORPHAN_GC_INTERVAL_SECONDS: int = 24 * 60 * 60
 
 
 def ensure_root(data_dir: Path) -> Path:
-    """Create the attachments directory and enforce ``0700`` (POSIX).
+    """添付ファイル用ディレクトリを作成し、``0700``（POSIX）を強制する。
 
     Args:
-        data_dir: The resolved BAKUFU_DATA_DIR.
+        data_dir: 解決済みの BAKUFU_DATA_DIR。
 
     Raises:
-        BakufuConfigError: ``msg_id='MSG-PF-003'`` if mkdir or chmod
-            fails. Bootstrap exits non-zero.
+        BakufuConfigError: ``msg_id='MSG-PF-003'``。mkdir または
+            chmod が失敗した場合。Bootstrap は非ゼロ終了する。
     """
     root = data_dir / ATTACHMENTS_SUBDIR
     try:
@@ -65,25 +67,27 @@ def ensure_root(data_dir: Path) -> Path:
 
 
 def start_orphan_gc_scheduler() -> asyncio.Task[None]:
-    """Schedule the 24-hour orphan-GC sweep.
+    """24 時間ごとのオーファン GC スイープをスケジュールする。
 
     Returns:
-        The asyncio task wrapping the loop. Bootstrap stores it for
-        LIFO cleanup.
+        ループをラップする asyncio タスク。Bootstrap は LIFO クリーン
+        アップのために本タスクを保持する。
 
-    The actual sweep logic (matching FS files against the
-    ``Conversation`` / ``Deliverable`` Aggregate references) lives in
-    ``feature/attachment-store`` and replaces :func:`_run_loop` there.
+    実際のスイープロジック（FS 上のファイルを ``Conversation`` /
+    ``Deliverable`` Aggregate の参照と突き合わせる処理）は
+    ``feature/attachment-store`` で実装され、本ファイルの
+    :func:`_run_loop` を置き換える。
     """
     return asyncio.create_task(_run_loop())
 
 
 async def _run_loop() -> None:
-    """Periodic sweep loop. No-op skeleton in this PR."""
+    """定期スイープループ。本 PR では何もしない骨組み実装。"""
     while True:
-        # The body is intentionally empty until ``feature/attachment-store``
-        # provides the sweep implementation. Sleeping the full interval
-        # keeps the asyncio task alive for Bootstrap's cancel path.
+        # ``feature/attachment-store`` がスイープ実装を提供するまで本体は
+        # 意図的に空のまま。インターバル全体スリープすることで asyncio
+        # タスクを生かしておき、Bootstrap の cancel 経路が機能するように
+        # する。
         try:
             await asyncio.sleep(ORPHAN_GC_INTERVAL_SECONDS)
         except asyncio.CancelledError:

@@ -1,29 +1,30 @@
-"""Infrastructure-layer exceptions.
+"""インフラストラクチャ層の例外。
 
-These exceptions are raised by Bootstrap stages and the masking gateway.
-They map 1:1 with MSG-PF-001〜008 in
-``docs/features/persistence-foundation/detailed-design/messages.md``.
+Bootstrap の各 Stage およびマスキング ゲートウェイから送出される。
+``docs/features/persistence-foundation/detailed-design/messages.md`` の
+MSG-PF-001〜008 と 1:1 で対応する。
 
-* :class:`BakufuConfigError` — DATA_DIR / engine / migration / FS init
-  failures (MSG-PF-001 / 002 / 003 / 008). Bootstrap catches and exits
-  with a non-zero code.
-* :class:`BakufuMigrationError` — Alembic ``upgrade`` failures (MSG-PF-004).
-  Subclass of :class:`BakufuConfigError` so the Bootstrap top-level
-  ``except`` still catches it; subclassing keeps log filtering possible.
-* :class:`HandlerNotRegisteredError` — raised by the Outbox handler
-  registry when an event_kind has no registered handler. The Outbox
-  dispatcher catches and warns, returning the row to ``status='PENDING'``.
+* :class:`BakufuConfigError` — DATA_DIR / engine / migration / FS 初期化の
+  失敗（MSG-PF-001 / 002 / 003 / 008）。Bootstrap が捕捉し、非ゼロ終了する。
+* :class:`BakufuMigrationError` — Alembic ``upgrade`` 失敗（MSG-PF-004）。
+  :class:`BakufuConfigError` のサブクラスとし、Bootstrap トップレベルの
+  ``except`` で従来どおり捕捉できるようにしつつ、ログのフィルタリングを
+  可能にしている。
+* :class:`HandlerNotRegisteredError` — Outbox ハンドラレジストリに該当
+  event_kind のハンドラが登録されていない場合に送出される。Outbox
+  ディスパッチャは本例外を捕捉して WARN を出し、対象行を ``status='PENDING'``
+  に戻す。
 """
 
 from __future__ import annotations
 
 
 class BakufuConfigError(Exception):
-    """Raised when infrastructure configuration cannot be established.
+    """インフラストラクチャ設定が確立できない場合に送出される。
 
-    Carries an MSG-PF-NNN identifier in :attr:`msg_id` so downstream log
-    formatters / test assertions can branch on the specific failure
-    without parsing free-form text.
+    :attr:`msg_id` に MSG-PF-NNN 識別子を保持するため、下流のログ
+    フォーマッタやテストアサーションは自由形式の文字列を解析せずに、
+    特定の失敗ケースで分岐できる。
     """
 
     def __init__(self, *, msg_id: str, message: str) -> None:
@@ -33,20 +34,20 @@ class BakufuConfigError(Exception):
 
 
 class BakufuMigrationError(BakufuConfigError):
-    """Alembic ``upgrade`` failure (MSG-PF-004).
+    """Alembic ``upgrade`` 失敗（MSG-PF-004）。
 
-    Inherits from :class:`BakufuConfigError` so a top-level ``except``
-    in the Bootstrap loop still catches the failure while preserving the
-    ability to filter migration-specific issues in test setups.
+    :class:`BakufuConfigError` を継承するため、Bootstrap ループの
+    トップレベル ``except`` でそのまま捕捉できる。一方でテスト時に
+    マイグレーション固有の問題のみフィルタする能力も維持できる。
     """
 
 
 class HandlerNotRegisteredError(KeyError):
-    """Raised by :class:`HandlerRegistry.resolve` when no handler exists.
+    """:class:`HandlerRegistry.resolve` でハンドラが見つからない際に送出。
 
-    Inherits from :class:`KeyError` so callers that already handle
-    "missing key" generically degrade gracefully. The Outbox dispatcher
-    catches this and re-marks the row ``PENDING`` for the next cycle.
+    :class:`KeyError` を継承するため、汎用的に「キー不在」を扱う呼び出し
+    側コードはそのまま素直に縮退する。Outbox ディスパッチャは本例外を
+    捕捉し、対象行を ``PENDING`` として次サイクルにマークし直す。
     """
 
 

@@ -1,7 +1,7 @@
-"""Workflow mutators (REQ-WF-002 / 003 / 004) + pre-validate rollback.
+"""Workflow mutators (REQ-WF-002 / 003 / 004) + pre-validate ロールバック。
 
-Covers add_stage / add_transition / remove_stage and Confirmation A's contract
-that failed mutators leave the original Workflow unchanged.
+add_stage / add_transition / remove_stage と Confirmation A の契約を
+カバー: 失敗した mutators は元 Workflow を変更なしで残す。
 """
 
 from __future__ import annotations
@@ -17,17 +17,17 @@ from tests.factories.workflow import make_stage, make_transition, make_workflow
 
 
 class TestAddStage:
-    """REQ-WF-002 / TC-UT-WF-014 / 044.
+    """REQ-WF-002 / TC-UT-WF-014 / 044。
 
-    Note on TC-UT-WF-013: ``add_stage`` in isolation cannot succeed because a
-    newly-added Stage with no incoming Transition is orphaned and the
-    aggregate-level ``_validate_dag_reachability`` rejects it. The "appends"
-    success path is exercised through ``from_dict`` (TC-IT-WF-001) — granular
-    mutators are designed for **constrained** changes.
+    TC-UT-WF-013 の注記: ``add_stage`` は単独では成功できない
+    (新規追加 Stage は incoming Transition なしでは orphan で
+    aggregate レベル ``_validate_dag_reachability`` は拒否)。
+    "appends" 成功パスは ``from_dict`` (TC-IT-WF-001) で実行 —
+    粒度 mutators は **constrained** 変更用に設計。
     """
 
     def test_duplicate_stage_id_raises_stage_duplicate(self) -> None:
-        """TC-UT-WF-014: add_stage with existing id raises stage_duplicate."""
+        """TC-UT-WF-014: 既存 id の add_stage は stage_duplicate を発火。"""
         wf = make_workflow()
         existing = wf.stages[0]
         duplicate = make_stage(stage_id=existing.id)
@@ -36,7 +36,7 @@ class TestAddStage:
         assert excinfo.value.kind == "stage_duplicate"
 
     def test_msg_wf_008_for_duplicate_includes_stage_id(self) -> None:
-        """TC-UT-WF-044: MSG-WF-008 wording carries the duplicate stage_id."""
+        """TC-UT-WF-044: MSG-WF-008 wording は重複 stage_id を含む。"""
         wf = make_workflow()
         existing = wf.stages[0]
         duplicate = make_stage(stage_id=existing.id)
@@ -46,10 +46,10 @@ class TestAddStage:
 
 
 class TestAddStageCapacity:
-    """REQ-WF-002 capacity / TC-UT-WF-015."""
+    """REQ-WF-002 capacity / TC-UT-WF-015。"""
 
     def test_overflow_raises_capacity_exceeded(self) -> None:
-        """TC-UT-WF-015: bulk-importing >MAX_STAGES via from_dict raises capacity_exceeded."""
+        """TC-UT-WF-015: from_dict 経由 >MAX_STAGES 一括インポートは capacity_exceeded を発火。"""
         stages: list[dict[str, object]] = []
         first_id: str | None = None
         for _ in range(MAX_STAGES + 1):
@@ -67,7 +67,7 @@ class TestAddStageCapacity:
             )
             if first_id is None:
                 first_id = sid
-        # Build forward APPROVED chain so we have at least valid topology.
+        # 少なくとも有効なトポロジを持つよう前方 APPROVED チェーンを構築。
         transitions: list[dict[str, object]] = []
         previous: str | None = None
         for stage in stages:
@@ -96,13 +96,13 @@ class TestAddStageCapacity:
 
 
 class TestAddTransition:
-    """REQ-WF-003 / TC-UT-WF-016 / 017."""
+    """REQ-WF-003 / TC-UT-WF-016 / 017。"""
 
     def test_appends_transition_to_list(self) -> None:
-        """TC-UT-WF-016: add_transition returns a new Workflow with the edge appended.
+        """TC-UT-WF-016: add_transition はエッジが追加された新 Workflow を返す。
 
-        Pre-state: 3-stage chain s0→s1→s2 with two forward APPROVED edges.
-        Adding a REJECTED back-edge s1→s0 leaves s2 as the sole sink.
+        事前状態: 2 つの前方 APPROVED エッジを持つ 3 ステージ チェーン s0→s1→s2。
+        REJECTED バックエッジ s1→s0 を追加するとシングル sink として s2 を残す。
         """
         s0 = make_stage()
         s1 = make_stage()
@@ -121,7 +121,7 @@ class TestAddTransition:
         assert len(updated.transitions) == 3
 
     def test_does_not_mutate_original(self) -> None:
-        """TC-UT-WF-016: caller's Workflow stays at 2 transitions after add path."""
+        """TC-UT-WF-016: 呼び出し元の Workflow は add パス後も 2 遷移で留まる。"""
         s0 = make_stage()
         s1 = make_stage()
         s2 = make_stage()
@@ -135,7 +135,7 @@ class TestAddTransition:
         assert len(wf.transitions) == 2
 
     def test_dangling_ref_raises_transition_ref_invalid(self) -> None:
-        """TC-UT-WF-017: add_transition with unknown from/to raises transition_ref_invalid."""
+        """TC-UT-WF-017: 未知 from/to の add_transition は transition_ref_invalid を発火。"""
         wf = make_workflow()
         bad_edge = make_transition(from_stage_id=wf.stages[0].id, to_stage_id=uuid4())
         with pytest.raises(WorkflowInvariantViolation) as excinfo:
@@ -144,10 +144,10 @@ class TestAddTransition:
 
 
 class TestAddTransitionCapacity:
-    """REQ-WF-003 capacity / TC-UT-WF-018."""
+    """REQ-WF-003 capacity / TC-UT-WF-018。"""
 
     def test_overflow_raises_capacity_exceeded(self) -> None:
-        """TC-UT-WF-018: building >MAX_TRANSITIONS via from_dict raises capacity_exceeded."""
+        """TC-UT-WF-018: from_dict 経由 >MAX_TRANSITIONS 構築は capacity_exceeded を発火。"""
         stage_ids = [str(uuid4()) for _ in range(2)]
         stages_payload: list[dict[str, object]] = [
             {
@@ -189,29 +189,29 @@ class TestAddTransitionCapacity:
         }
         with pytest.raises(WorkflowInvariantViolation) as excinfo:
             Workflow.from_dict(payload)
-        # Capacity is checked before determinism, so capacity_exceeded fires first.
+        # Capacity は determinism の前にチェック、capacity_exceeded が先に発火。
         assert excinfo.value.kind == "capacity_exceeded"
 
 
 class TestRemoveStage:
-    """REQ-WF-004 / TC-UT-WF-009 / 019 / 020 / 021 / 046."""
+    """REQ-WF-004 / TC-UT-WF-009 / 019 / 020 / 021 / 046。"""
 
     def test_remove_entry_stage_raises_cannot_remove_entry(self) -> None:
-        """TC-UT-WF-009: remove_stage(entry_stage_id) raises cannot_remove_entry."""
+        """TC-UT-WF-009: remove_stage(entry_stage_id) は cannot_remove_entry を発火。"""
         wf = make_workflow()
         with pytest.raises(WorkflowInvariantViolation) as excinfo:
             wf.remove_stage(wf.entry_stage_id)
         assert excinfo.value.kind == "cannot_remove_entry"
 
     def test_msg_wf_010_includes_stage_id(self) -> None:
-        """TC-UT-WF-046: MSG-WF-010 wording carries the entry stage_id."""
+        """TC-UT-WF-046: MSG-WF-010 wording は entry stage_id を含む。"""
         wf = make_workflow()
         with pytest.raises(WorkflowInvariantViolation) as excinfo:
             wf.remove_stage(wf.entry_stage_id)
         assert excinfo.value.message == f"[FAIL] Cannot remove entry stage: {wf.entry_stage_id}"
 
     def test_unknown_stage_id_raises_stage_not_found(self) -> None:
-        """TC-UT-WF-019: remove_stage(unknown) raises stage_not_found with MSG-WF-012."""
+        """TC-UT-WF-019: remove_stage(unknown) は MSG-WF-012 で stage_not_found を発火。"""
         wf = make_workflow()
         unknown = uuid4()
         with pytest.raises(WorkflowInvariantViolation) as excinfo:
@@ -220,23 +220,23 @@ class TestRemoveStage:
         assert excinfo.value.message == f"[FAIL] Stage not found in workflow: stage_id={unknown}"
 
     def test_cascades_incident_transitions(self) -> None:
-        """TC-UT-WF-020: removing a Stage also drops Transitions referencing it."""
+        """TC-UT-WF-020: Stage を削除すると参照 Transitions も削除。"""
         s0 = make_stage()
         s1 = make_stage()
         s2 = make_stage()
         e0 = make_transition(from_stage_id=s0.id, to_stage_id=s1.id)
         e1 = make_transition(from_stage_id=s1.id, to_stage_id=s2.id)
         wf = make_workflow(stages=[s0, s1, s2], transitions=[e0, e1], entry_stage_id=s0.id)
-        # Removing the trailing stage s2 leaves s0→s1 valid (s1 becomes sink).
+        # 末尾ステージ s2 を削除すると s0→s1 は有効なまま (s1 が sink に)。
         updated = wf.remove_stage(s2.id)
         assert len(updated.stages) == 2 and len(updated.transitions) == 1
 
 
 class TestPreValidateRollback:
-    """Confirmation A — failed mutators leave original Workflow unchanged."""
+    """Confirmation A — 失敗した mutators は元 Workflow を変更なしで残す。"""
 
     def test_failed_add_stage_keeps_original(self) -> None:
-        """TC-UT-WF-008: failed add_stage does not mutate caller's Workflow."""
+        """TC-UT-WF-008: 失敗した add_stage は呼び出し元 Workflow を変更しない。"""
         wf = make_workflow()
         existing = wf.stages[0]
         with pytest.raises(WorkflowInvariantViolation):
@@ -244,7 +244,7 @@ class TestPreValidateRollback:
         assert len(wf.stages) == 1
 
     def test_failed_add_transition_keeps_original(self) -> None:
-        """TC-UT-WF-030: failed add_transition does not mutate caller's Workflow."""
+        """TC-UT-WF-030: 失敗した add_transition は呼び出し元 Workflow を変更しない。"""
         wf = make_workflow()
         bad = make_transition(from_stage_id=wf.stages[0].id, to_stage_id=uuid4())
         with pytest.raises(WorkflowInvariantViolation):
@@ -252,7 +252,7 @@ class TestPreValidateRollback:
         assert wf.transitions == []
 
     def test_failed_remove_stage_keeps_original(self) -> None:
-        """TC-UT-WF-031: failed remove_stage does not mutate caller's Workflow."""
+        """TC-UT-WF-031: 失敗した remove_stage は呼び出し元 Workflow を変更しない。"""
         wf = make_workflow()
         with pytest.raises(WorkflowInvariantViolation):
             wf.remove_stage(uuid4())

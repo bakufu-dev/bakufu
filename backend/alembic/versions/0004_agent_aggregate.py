@@ -1,26 +1,24 @@
-"""Agent Aggregate tables: agents + agent_providers + agent_skills.
+"""Agent Aggregate テーブル群: agents + agent_providers + agent_skills。
 
-Adds the three tables that back :class:`SqliteAgentRepository`:
+:class:`SqliteAgentRepository` を支える 3 つのテーブルを追加する:
 
-* ``agents`` (id PK + empire_id FK CASCADE + Persona scalars). The
-  ``prompt_body`` column is declared with the
-  :class:`MaskedText` TypeDecorator at the ORM level (Alembic stores
-  it as ``TEXT`` here; the masking gate lives on the Python side).
-* ``agent_providers`` (FK CASCADE on agent_id, UNIQUE(agent_id,
-  provider_kind)) **plus a partial unique index** on ``agent_id``
-  scoped by ``WHERE is_default = 1``. The partial index is the §確定 G
-  Defense-in-Depth floor for "exactly one default provider per Agent"
-  — even if a future PR introduces a corrupted SQL path, the DB still
-  refuses two ``is_default=1`` rows on the same Agent.
-* ``agent_skills`` (FK CASCADE on agent_id, UNIQUE(agent_id,
-  skill_id)). The ``path`` column is bounded to 500 characters per
-  the agent feature §確定 H pipeline; H1〜H10 traversal defense lives
-  on the VO side.
+* ``agents``（id PK + empire_id FK CASCADE + Persona スカラー群）。
+  ``prompt_body`` カラムは ORM 層で :class:`MaskedText` TypeDecorator として
+  宣言される（Alembic 側では ``TEXT`` として保存し、マスキングゲートは Python 側に置く）。
+* ``agent_providers``（agent_id に FK CASCADE、UNIQUE(agent_id, provider_kind)）
+  **に加えて**、``WHERE is_default = 1`` でスコープした ``agent_id`` の部分 UNIQUE
+  インデックスを持つ。この部分インデックスは「Agent ごとにデフォルトプロバイダは
+  ちょうど 1 つ」の §確定 G Defense-in-Depth 最終防衛線である — 将来の PR で
+  破損した SQL 経路が混入しても、DB は同一 Agent に対して ``is_default=1`` の行が
+  2 件入ることを拒否する。
+* ``agent_skills``（agent_id に FK CASCADE、UNIQUE(agent_id, skill_id)）。
+  ``path`` カラムは agent feature §確定 H パイプラインに従い 500 文字に制限する。
+  H1〜H10 のトラバーサル防御は VO 側で実装する。
 
-Per ``docs/features/empire-repository/detailed-design.md`` §確定 F
-each subsequent ``feature/{aggregate}-repository`` PR appends its own
-revision; this revision pins ``down_revision = "0003_workflow_aggregate"``
-strictly so the chain check enforces a single head.
+``docs/features/empire-repository/detailed-design.md`` §確定 F に従い、後続の
+``feature/{aggregate}-repository`` PR はそれぞれの revision を積み重ねる。本 revision は
+``down_revision = "0003_workflow_aggregate"`` を厳密に固定し、チェーン検査が単一 head
+を強制するようにする。
 
 Revision ID: 0004_agent_aggregate
 Revises: 0003_workflow_aggregate
@@ -59,9 +57,9 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("''"),
         ),
-        # MaskedText TypeDecorator serializes as TEXT in SQLite. The
-        # Python-side decorator does the masking gate (see
-        # infrastructure/persistence/sqlite/base.py).
+        # MaskedText TypeDecorator は SQLite では TEXT として直列化される。
+        # マスキングゲートは Python 側のデコレータで行う
+        # （infrastructure/persistence/sqlite/base.py 参照）。
         sa.Column(
             "prompt_body",
             sa.Text(),
@@ -104,10 +102,10 @@ def upgrade() -> None:
             name="uq_agent_providers_pair",
         ),
     )
-    # detailed-design §確定 G: partial unique index for the
-    # "at most one default provider per agent" Defense-in-Depth floor.
-    # SQLite ships partial indexes natively; the same syntax ports to
-    # PostgreSQL when the M5+ migration lands.
+    # detailed-design §確定 G: 「Agent ごとにデフォルトプロバイダは高々 1 つ」を
+    # 担保する Defense-in-Depth 最終防衛線としての部分 UNIQUE インデックス。
+    # SQLite は部分インデックスをネイティブにサポートしており、同じ構文は
+    # M5 以降の PostgreSQL マイグレーションにそのまま移植できる。
     op.create_index(
         "uq_agent_providers_default",
         "agent_providers",
@@ -137,8 +135,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Drop child tables first so the FK CASCADE doesn't trigger work
-    # against an already-deleted parent.
+    # 削除済みの親に対して FK CASCADE が発火しないよう、子テーブルから先に削除する。
     op.drop_table("agent_skills")
     op.drop_index("uq_agent_providers_default", table_name="agent_providers")
     op.drop_table("agent_providers")

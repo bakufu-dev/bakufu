@@ -1,23 +1,20 @@
-"""Agent Repository: DB constraints + arch-test reference.
+"""Agent Repository: DB 制約 + arch-test 相互参照。
 
-TC-IT-AGR-007 / TC-UT-AGR-009 — the **partial unique index 二重防衛**
-(§確定 G) and the CI Layer 2 arch-test cross-reference.
+TC-IT-AGR-007 / TC-UT-AGR-009 ── **partial unique index による二重防衛**
+(§確定 G) と CI Layer 2 arch-test の相互参照を扱う。
 
-§確定 G: ``is_default = 1`` rows under the same ``agent_id`` are
-forbidden by **two layers**:
+§確定 G: 同一 ``agent_id`` 配下の ``is_default = 1`` 行は **2 層** で禁止される:
 
-1. **Aggregate-level** (``_validate_default_provider_count`` in the
-   Agent VO chain) catches the violation at construction time.
-2. **DB-level** partial unique index ``uq_agent_providers_default``
-   (``WHERE is_default = 1``) physically rejects the INSERT — the
-   final defense line for code paths that bypass the Aggregate
-   (raw SQL, future Repository implementations that forget the
-   check, dump/restore migrations, etc.).
+1. **Aggregate レベル** (Agent VO チェーン内の ``_validate_default_provider_count``)
+   が構築時に違反を捕捉する。
+2. **DB レベル** の partial unique index ``uq_agent_providers_default``
+   (``WHERE is_default = 1``) が INSERT を物理的に拒否 ── Aggregate を迂回する
+   コード経路（raw SQL、チェックを忘れた将来の Repository 実装、
+   dump/restore マイグレーション等）に対する最終防衛線。
 
-This test exercises **layer 2 in isolation** by writing raw SQL that
-sidesteps the Aggregate. A regression that drops the partial index
-DDL would let the second INSERT succeed silently — that fails this
-test loudly.
+本テストは raw SQL で Aggregate を迂回することで **層 2 を単独で** 検証する。
+partial index DDL を落とす回帰は 2 回目の INSERT を静かに成功させてしまう ──
+本テストはそれを派手に失敗させる。
 """
 
 from __future__ import annotations
@@ -38,15 +35,13 @@ pytestmark = pytest.mark.asyncio
 # TC-IT-AGR-007: partial unique index 二重防衛 (§確定 G)
 # ---------------------------------------------------------------------------
 class TestPartialUniqueIndexDoubleDefense:
-    """TC-IT-AGR-007: ``is_default=1`` x 2 under same agent_id raises IntegrityError.
+    """TC-IT-AGR-007: 同一 agent_id 配下での ``is_default=1`` x 2 は IntegrityError を起こす。
 
-    The Aggregate's ``_validate_default_provider_count`` is the first
-    layer; this test bypasses it by writing raw SQL directly so the
-    partial unique index is the only thing standing between us and a
-    silent corruption. The first INSERT must succeed; the second must
-    raise ``IntegrityError`` (or any ``DBAPIError``-shaped wrapper —
-    SQLAlchemy maps SQLite's UNIQUE constraint violation to
-    ``IntegrityError``).
+    Aggregate の ``_validate_default_provider_count`` が第 1 層。本テストは
+    raw SQL を直書きして Aggregate を迂回するため、partial unique index のみが
+    静かな破壊との間に立つ唯一の防衛線となる。1 回目の INSERT は成功し、
+    2 回目は ``IntegrityError``（SQLAlchemy が SQLite の UNIQUE 制約違反を
+    ``IntegrityError`` にマップするため、``DBAPIError`` 形のラッパでも可）を起こさねばならない。
     """
 
     async def test_duplicate_default_provider_raises_integrity_error(
@@ -54,12 +49,12 @@ class TestPartialUniqueIndexDoubleDefense:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_empire_id: UUID,
     ) -> None:
-        """TC-IT-AGR-007: 2 rows with ``is_default=1`` for same agent_id is rejected by DB."""
+        """TC-IT-AGR-007: 同一 agent_id に対する ``is_default=1`` の 2 行は DB が拒否する。"""
         from sqlalchemy.exc import IntegrityError
 
-        # Seed an Agent row so the FK in agent_providers can resolve.
-        # We bypass the Repository entirely — raw SQL throughout —
-        # to keep the test focused on the DB layer.
+        # agent_providers の FK が解決できるよう Agent 行を seed する。
+        # テストを DB 層に集中させるため、Repository をすべて迂回し、
+        # 全工程を raw SQL で行う。
         agent_id = uuid4()
         empire_id = seeded_empire_id
         async with session_factory() as session, session.begin():
@@ -83,7 +78,7 @@ class TestPartialUniqueIndexDoubleDefense:
                 },
             )
 
-        # First default provider — should succeed.
+        # 最初のデフォルト provider ── 成功するはず。
         async with session_factory() as session, session.begin():
             await session.execute(
                 text(
@@ -99,10 +94,9 @@ class TestPartialUniqueIndexDoubleDefense:
                 },
             )
 
-        # Second default provider on the same agent_id — distinct
-        # provider_kind so the (agent_id, provider_kind) UNIQUE does
-        # NOT trip; only the partial unique index on is_default=1
-        # should fire.
+        # 同じ agent_id に対する 2 つ目のデフォルト provider ── (agent_id,
+        # provider_kind) UNIQUE を踏まないよう provider_kind は別にし、
+        # is_default=1 の partial unique index のみが発火するようにする。
         with pytest.raises(IntegrityError):
             async with session_factory() as session, session.begin():
                 await session.execute(
@@ -113,9 +107,8 @@ class TestPartialUniqueIndexDoubleDefense:
                     ),
                     {
                         "agent_id": agent_id.hex,
-                        # Different provider_kind — so this is not the
-                        # (agent_id, provider_kind) UNIQUE; the
-                        # partial index alone is the relevant defense.
+                        # 別の provider_kind ── したがって (agent_id, provider_kind)
+                        # UNIQUE には引っかからず、partial index のみが該当する防衛線となる。
                         "provider_kind": "claude_api",
                         "model": "haiku-3.5",
                         "is_default": True,
@@ -127,12 +120,11 @@ class TestPartialUniqueIndexDoubleDefense:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_empire_id: UUID,
     ) -> None:
-        """``is_default=0`` rows on the same agent_id are NOT subject to the partial index.
+        """同一 agent_id 配下の ``is_default=0`` 行は partial index の対象外。
 
-        Confirms the partial nature: ``WHERE is_default = 1`` means
-        rows with ``is_default = 0`` can coexist freely on the same
-        agent_id (subject only to the (agent_id, provider_kind)
-        UNIQUE).
+        partial の性質を確認する: ``WHERE is_default = 1`` のため、``is_default = 0``
+        の行は同一 agent_id 配下で自由に共存できる（(agent_id, provider_kind)
+        UNIQUE の制約のみが残る）。
         """
         agent_id = uuid4()
         empire_id = seeded_empire_id
@@ -157,7 +149,7 @@ class TestPartialUniqueIndexDoubleDefense:
                 },
             )
 
-        # Two providers, both is_default=False, distinct kinds — both succeed.
+        # 2 つの provider ── 両方 is_default=False、別 kind ── 両方とも成功する。
         async with session_factory() as session, session.begin():
             for kind in ("claude_code", "claude_api"):
                 await session.execute(
@@ -174,7 +166,7 @@ class TestPartialUniqueIndexDoubleDefense:
                     },
                 )
 
-        # Both rows present; partial index did not fire.
+        # 両方の行が存在し、partial index は発火していない。
         async with session_factory() as session:
             result = await session.execute(
                 text("SELECT COUNT(*) FROM agent_providers WHERE agent_id = :agent_id"),
@@ -188,14 +180,14 @@ class TestPartialUniqueIndexDoubleDefense:
 # TC-IT-AGR-007 補強: same agent_id duplicate (agent_id, provider_kind) → reject
 # ---------------------------------------------------------------------------
 class TestUniqueAgentProviderPair:
-    """The (agent_id, provider_kind) UNIQUE rejects same kind twice."""
+    """(agent_id, provider_kind) UNIQUE が同 kind 2 回挿入を拒否する。"""
 
     async def test_duplicate_agent_provider_pair_raises(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_empire_id: UUID,
     ) -> None:
-        """Same (agent_id, provider_kind) inserted twice → IntegrityError."""
+        """同じ (agent_id, provider_kind) を 2 回挿入 → IntegrityError。"""
         from sqlalchemy.exc import IntegrityError
 
         agent_id = uuid4()
@@ -244,7 +236,7 @@ class TestUniqueAgentProviderPair:
                     ),
                     {
                         "agent_id": agent_id.hex,
-                        "provider_kind": "claude_code",  # same kind
+                        "provider_kind": "claude_code",  # 同じ kind
                         "model": "haiku-3.5",
                         "is_default": False,
                     },
@@ -255,16 +247,16 @@ class TestUniqueAgentProviderPair:
 # TC-UT-AGR-009: Layer 2 arch-test reference — Agent rows registered
 # ---------------------------------------------------------------------------
 class TestArchTestRegistrationStructure:
-    """TC-UT-AGR-009: ``test_masking_columns.py`` parametrize lists include Agent.
+    """TC-UT-AGR-009: ``test_masking_columns.py`` の parametrize リストが Agent を含む。
 
-    Cross-checks that the CI Layer 2 arch test was extended to cover
-    the 3 Agent tables. A future PR that drops these registrations
-    (e.g. by accident during a refactor) would let an over-masking
-    or under-masking change land silently — this test catches it.
+    CI Layer 2 arch test が 3 つの Agent テーブルをカバーするよう拡張されたかを
+    相互チェックする。これらの登録を落とす将来の PR（例: リファクタ中の事故）は
+    過剰マスキング / 不足マスキングの変更を静かに着地させてしまう ──
+    本テストがそれを捕捉する。
     """
 
     async def test_agents_prompt_body_in_masking_contract(self) -> None:
-        """``agents.prompt_body`` is registered as MaskedText in the contract list."""
+        """``agents.prompt_body`` が contract リストに MaskedText として登録されている。"""
         from bakufu.infrastructure.persistence.sqlite.base import MaskedText
 
         from tests.architecture.test_masking_columns import (
@@ -278,7 +270,7 @@ class TestArchTestRegistrationStructure:
         )
 
     async def test_agent_providers_and_skills_in_no_mask_list(self) -> None:
-        """``agent_providers`` / ``agent_skills`` are no-mask tables."""
+        """``agent_providers`` / ``agent_skills`` は no-mask テーブル。"""
         from tests.architecture.test_masking_columns import (
             _NO_MASK_TABLES,  # pyright: ignore[reportPrivateUsage]
         )
@@ -287,7 +279,7 @@ class TestArchTestRegistrationStructure:
         assert "agent_skills" in _NO_MASK_TABLES
 
     async def test_agents_partial_mask_template_registered(self) -> None:
-        """``agents`` is registered in the partial-mask template list."""
+        """``agents`` が partial-mask テンプレートリストに登録されている。"""
         from tests.architecture.test_masking_columns import (
             _PARTIAL_MASK_TABLES,  # pyright: ignore[reportPrivateUsage]
         )

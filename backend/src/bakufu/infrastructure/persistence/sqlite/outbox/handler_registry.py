@@ -1,22 +1,19 @@
-"""Outbox event-kind → handler registry.
+"""Outbox event-kind → ハンドラ レジストリ。
 
-Each ``domain_event_outbox`` row carries an ``event_kind`` enum
-identifying the side effect the dispatcher should perform
-(DirectiveIssued → Task creation, TaskAssigned → WebSocket broadcast,
-ExternalReviewRequested → Discord notify, etc.). This module owns the
-mapping.
+各 ``domain_event_outbox`` 行は、ディスパッチャが実行すべき副作用を識別する
+``event_kind`` enum を持つ（DirectiveIssued → Task 作成、TaskAssigned →
+WebSocket ブロードキャスト、ExternalReviewRequested → Discord 通知 等）。
+本モジュールはそのマッピングを所有する。
 
-Contracts
----------
-* :func:`register` rejects re-registration. Use :func:`clear` in tests
-  to reset state — production code should never silently overwrite a
-  handler.
-* :func:`resolve` raises
-  :class:`bakufu.infrastructure.exceptions.HandlerNotRegisteredError`
-  when no handler is present. The dispatcher catches and re-marks the
-  row ``PENDING`` for the next cycle.
-* :func:`size` exposes the registered count for the Bootstrap
-  startup-WARN logic (Confirmation K).
+コントラクト
+------------
+* :func:`register` は再登録を拒否する。テストでは :func:`clear` を使って状態を
+  リセットする — 本番コードがハンドラをサイレントに上書きしてはならない。
+* :func:`resolve` はハンドラが存在しないとき
+  :class:`bakufu.infrastructure.exceptions.HandlerNotRegisteredError` を送出する。
+  ディスパッチャがこれを捕捉し、行を次サイクル用に ``PENDING`` に再マークする。
+* :func:`size` は登録数を Bootstrap 起動 WARN ロジック（Confirmation K）に
+  公開する。
 """
 
 from __future__ import annotations
@@ -25,19 +22,18 @@ from collections.abc import Awaitable, Callable
 
 from bakufu.infrastructure.exceptions import HandlerNotRegisteredError
 
-# Handlers receive a payload dict and return ``None`` (any persistence
-# side effect lands in the same Unit-of-Work as the dispatcher).
+# ハンドラはペイロード dict を受け取り ``None`` を返す（永続化の副作用は
+# ディスパッチャと同じ Unit-of-Work に収める）。
 type EventHandler = Callable[[dict[str, object]], Awaitable[None]]
 
 _handlers: dict[str, EventHandler] = {}
 
 
 def register(event_kind: str, handler: EventHandler) -> None:
-    """Bind ``event_kind`` to ``handler``. Raises if already bound.
+    """``event_kind`` を ``handler`` に紐付ける。既に紐付いていれば送出する。
 
-    Re-registration is rejected so two PRs cannot silently fight over
-    the same event_kind. Tests should call :func:`clear` between
-    cases.
+    再登録を拒否することで、2 つの PR が同一の event_kind をサイレントに奪い合うのを
+    防ぐ。テストではケース間で :func:`clear` を呼ぶこと。
     """
     if event_kind in _handlers:
         raise KeyError(
@@ -48,12 +44,11 @@ def register(event_kind: str, handler: EventHandler) -> None:
 
 
 def resolve(event_kind: str) -> EventHandler:
-    """Return the handler bound to ``event_kind`` or raise.
+    """``event_kind`` に紐付いたハンドラを返す。なければ送出する。
 
     Raises:
-        HandlerNotRegisteredError: when no handler is registered. The
-            dispatcher catches this and warns + re-marks the row
-            ``PENDING`` for the next cycle.
+        HandlerNotRegisteredError: ハンドラが登録されていないとき。ディスパッチャ
+            がこれを捕捉して警告し、行を次サイクル用に ``PENDING`` に再マークする。
     """
     handler = _handlers.get(event_kind)
     if handler is None:
@@ -62,12 +57,12 @@ def resolve(event_kind: str) -> EventHandler:
 
 
 def clear() -> None:
-    """Drop all registered handlers. Test-only helper."""
+    """登録済みハンドラを全て破棄する。テスト専用ヘルパ。"""
     _handlers.clear()
 
 
 def size() -> int:
-    """Return the registered handler count."""
+    """登録済みハンドラ数を返す。"""
     return len(_handlers)
 
 

@@ -1,1 +1,1 @@
-"""Agent aggregate tests, split per feature surface (Norman §file-split rule)."""
+"""Agent 集約のテスト。機能面ごとに分割している（Norman §file-split rule）。"""

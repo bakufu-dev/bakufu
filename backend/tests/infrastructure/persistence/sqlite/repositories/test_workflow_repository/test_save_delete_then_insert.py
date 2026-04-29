@@ -1,19 +1,17 @@
-"""Workflow Repository: save() — delete-then-insert + SQL order + isolation.
+"""Workflow Repository: save() ── delete-then-insert + SQL 順序 + 隔離。
 
-TC-IT-WFR-009 / 010 — the §確定 B contract that backs the ``save()``
-flow's wholesale row replacement and the 5-step DML sequence, plus
-the isolation-between-Workflows smoke (``DELETE`` is scoped to a
-single ``workflow_id``).
+TC-IT-WFR-009 / 010 ── ``save()`` フローの行丸ごと置換と 5 ステップ DML シーケンスを
+裏付ける §確定 B 契約と、Workflow 間の隔離スモーク（``DELETE`` は単一の
+``workflow_id`` にスコープされる）を扱う。
 
-Split out of ``test_save_semantics.py`` per Norman 500-line rule
-(file would land at 502 lines after BUG-WFR-001 fix). The two
-companion files cover the round-trip + Tx-boundary contracts:
+Norman 500 行ルールにより ``test_save_semantics.py`` から分割
+（BUG-WFR-001 修正後にファイルが 502 行に達するため）。残り 2 つの併設ファイルは
+ラウンドトリップ + Tx 境界の契約をカバーする:
 
-* :mod:`...test_workflow_repository.test_save_round_trip` —
-  ``roles_csv`` determinism + structural equality + Tx commit /
-  rollback.
+* :mod:`...test_workflow_repository.test_save_round_trip` ──
+  ``roles_csv`` の決定性 + 構造的等価性 + Tx commit / rollback。
 
-Per ``docs/features/workflow-repository/test-design.md``.
+``docs/features/workflow-repository/test-design.md`` 準拠。
 """
 
 from __future__ import annotations
@@ -47,18 +45,17 @@ pytestmark = pytest.mark.asyncio
 # §確定 B: delete-then-insert replacement semantics (TC-IT-WFR-009)
 # ---------------------------------------------------------------------------
 class TestSaveDeleteThenInsert:
-    """TC-IT-WFR-009: ``save`` replaces side-table rows wholesale (§確定 B)."""
+    """TC-IT-WFR-009: ``save`` が side-table 行を丸ごと置換する (§確定 B)。"""
 
     async def test_save_replaces_stage_rows(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-WFR-009: 3 stages → 1 stage is reflected as 1 row in workflow_stages.
+        """TC-IT-WFR-009: 3 ステージ → 1 ステージが workflow_stages で 1 行として反映される。
 
-        We construct a fresh single-stage Workflow with the **same
-        workflow_id** and re-save. The §確定 B contract says the side
-        tables must end up reflecting only the new state; old stages
-        must not survive as residue.
+        **同じ workflow_id** を持つ新しい単一ステージ Workflow を構築して再 save する。
+        §確定 B 契約により、side-table は新しい状態のみを反映し、
+        古いステージが残骸として残ってはならない。
         """
         stage_a = make_stage(name="A")
         stage_b = make_stage(name="B")
@@ -73,7 +70,7 @@ class TestSaveDeleteThenInsert:
         async with session_factory() as session, session.begin():
             await SqliteWorkflowRepository(session).save(original)
 
-        # Build a new Workflow with the same id but only 1 stage.
+        # 同じ id で 1 ステージのみの新しい Workflow を構築。
         replacement_stage = make_stage(name="残ったステージ")
         replacement = make_workflow(
             workflow_id=original.id,
@@ -85,7 +82,7 @@ class TestSaveDeleteThenInsert:
         async with session_factory() as session, session.begin():
             await SqliteWorkflowRepository(session).save(replacement)
 
-        # Side tables must show the new state, not the merged old + new.
+        # side-table は新状態のみを示し、古い+新しいの混在ではないこと。
         async with session_factory() as session:
             stage_rows = list(
                 (
@@ -102,17 +99,16 @@ class TestSaveDeleteThenInsert:
 # §確定 B: 5-step SQL order (TC-IT-WFR-010)
 # ---------------------------------------------------------------------------
 class TestSaveSqlOrder:
-    """TC-IT-WFR-010: ``save`` issues SQL in the §確定 B 5-step order.
+    """TC-IT-WFR-010: ``save`` が §確定 B の 5 ステップ順序で SQL を発行する。
 
-    We attach a ``before_cursor_execute`` listener on the **sync**
-    engine so we observe the actual SQL strings the dialect emits. The
-    listener appends each statement to a captured list; we then assert
-    the prefix sequence matches the design's 5 steps. The dispatcher /
-    ORM may issue extra SAVEPOINT / BEGIN statements which we filter
-    out — the contract is on the *DML* prefix.
+    **sync** engine に ``before_cursor_execute`` リスナを取り付け、ダイアレクトが
+    実際に発行する SQL 文字列を観測する。リスナは各 statement をキャプチャ
+    リストに追加し、その後プレフィックスシーケンスが設計の 5 ステップと
+    一致することを assert する。dispatcher / ORM は余分な SAVEPOINT / BEGIN
+    を発行しうるため、それらを除外する ── 契約は *DML* プレフィックスにある。
 
-    Same harness as empire-repository TC-IT-EMR-011; the next 5
-    Repository PRs should re-use this template.
+    empire-repository TC-IT-EMR-011 と同じハーネス。後続 5 つの Repository PR は
+    本テンプレートを再利用すべき。
     """
 
     async def test_save_emits_upsert_then_delete_insert_pairs(
@@ -120,9 +116,9 @@ class TestSaveSqlOrder:
         session_factory: async_sessionmaker[AsyncSession],
         app_engine: AsyncEngine,
     ) -> None:
-        """TC-IT-WFR-010: 5-step DML order matches §確定 B.
+        """TC-IT-WFR-010: 5 ステップの DML 順序が §確定 B に一致する。
 
-        workflows UPSERT → workflow_stages DEL+INS → workflow_transitions DEL+INS.
+        workflows UPSERT → workflow_stages DEL+INS → workflow_transitions DEL+INS。
         """
         captured: list[str] = []
 
@@ -139,9 +135,8 @@ class TestSaveSqlOrder:
         sync_engine = app_engine.sync_engine
         event.listen(sync_engine, "before_cursor_execute", _on_execute)
         try:
-            # V-model payload exercises 13 stages + 15 transitions —
-            # the busiest possible ``save()`` shape and the right one
-            # for SQL-order observation.
+            # V-model ペイロードは 13 ステージ + 15 トランジションで動作する ──
+            # 最も忙しい ``save()`` 形状であり、SQL 順序観測に適している。
             from bakufu.domain.workflow import Workflow
 
             workflow = Workflow.from_dict(build_v_model_payload())
@@ -150,8 +145,8 @@ class TestSaveSqlOrder:
         finally:
             event.remove(sync_engine, "before_cursor_execute", _on_execute)
 
-        # Filter to the 5 DML statements we care about (BEGIN /
-        # SAVEPOINT / RELEASE / COMMIT noise removed).
+        # 注目する 5 つの DML statement のみにフィルタ（BEGIN / SAVEPOINT /
+        # RELEASE / COMMIT のノイズを除外）。
         dml = [
             s
             for s in captured
@@ -164,9 +159,9 @@ class TestSaveSqlOrder:
                 )
             )
         ]
-        # Step 1 (UPSERT workflows) → Step 2 (DELETE workflow_stages) →
-        # Step 3 (INSERT workflow_stages) → Step 4 (DELETE
-        # workflow_transitions) → Step 5 (INSERT workflow_transitions).
+        # Step 1（UPSERT workflows）→ Step 2（DELETE workflow_stages）→
+        # Step 3（INSERT workflow_stages）→ Step 4（DELETE workflow_transitions）→
+        # Step 5 (INSERT workflow_transitions)。
         assert len(dml) >= 5, (
             f"[FAIL] save emitted only {len(dml)} DML statements; expected ≥5.\n"
             f"Next: verify save() executes the §確定 B 5-step sequence. "
@@ -180,32 +175,31 @@ class TestSaveSqlOrder:
 
 
 # ---------------------------------------------------------------------------
-# Smoke test: an unknown workflow_id never collides with an existing row
+# スモークテスト: 未知の workflow_id は既存の行と衝突しない
 # ---------------------------------------------------------------------------
 class TestSaveDistinctWorkflowsAreIndependent:
-    """Side-effect isolation between Workflows."""
+    """Workflow 間の副作用隔離。"""
 
     async def test_save_one_does_not_disturb_another(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """Saving Workflow B must not delete Workflow A's stages.
+        """Workflow B を save しても Workflow A のステージは削除されない。
 
-        The ``DELETE WHERE workflow_id = ?`` step in §確定 B is
-        scoped to the workflow_id under save; a poorly-written
-        Repository that issued an un-scoped DELETE would corrupt every
-        other Workflow in the DB. We assert the scoping with a
-        before / after snapshot.
+        §確定 B の ``DELETE WHERE workflow_id = ?`` ステップは save 中の
+        workflow_id にスコープされる。スコープなし DELETE を発行する粗末な
+        Repository は DB 内の他のすべての Workflow を破壊しうる。
+        前後スナップショットでスコーピングを assert する。
         """
         workflow_a = make_workflow()
         workflow_b = make_workflow()
-        # Distinct ids — sanity.
+        # id が別個であることのサニティチェック。
         assert workflow_a.id != workflow_b.id
 
         async with session_factory() as session, session.begin():
             await SqliteWorkflowRepository(session).save(workflow_a)
 
-        # Save B → A must remain untouched.
+        # B を save → A は無傷でなければならない。
         async with session_factory() as session, session.begin():
             await SqliteWorkflowRepository(session).save(workflow_b)
 
@@ -232,7 +226,7 @@ class TestSaveDistinctWorkflowsAreIndependent:
         assert len(a_rows) == 1
         assert len(b_rows) == 1
 
-        # Sanity: the two Workflows did not share stage rows.
+        # サニティ: 2 つの Workflow がステージ行を共有していない。
         a_stage_ids = {row.stage_id for row in a_rows}
         b_stage_ids = {row.stage_id for row in b_rows}
         assert a_stage_ids.isdisjoint(b_stage_ids)
@@ -241,7 +235,7 @@ class TestSaveDistinctWorkflowsAreIndependent:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """find_by_id of an unknown id still returns None even when DB is non-empty."""
+        """DB が空でなくても、未知 id の find_by_id は None を返す。"""
         async with session_factory() as session, session.begin():
             await SqliteWorkflowRepository(session).save(make_workflow())
 

@@ -1,11 +1,11 @@
-"""Task Repository: count_by_status / count_by_room (TC-UT-TR-006/007).
+"""Task Repository: count_by_status / count_by_room (TC-UT-TR-006/007)。
 
-REQ-TR-003 / §確定 R1-D — 2 COUNT query methods:
+REQ-TR-003 / §確定 R1-D — 2 つの COUNT クエリメソッド:
   * ``count_by_status(status)`` — COUNT(*) WHERE status = ?
   * ``count_by_room(room_id)``  — COUNT(*) WHERE room_id = ?
 
-Per ``docs/features/task-repository/test-design.md``.
-Issue #35 — M2 0007.
+``docs/features/task-repository/test-design.md`` 準拠。
+Issue #35 — M2 0007。
 """
 
 from __future__ import annotations
@@ -39,14 +39,14 @@ pytestmark = pytest.mark.asyncio
 # TC-UT-TR-006: count_by_status (§確定 R1-D)
 # ---------------------------------------------------------------------------
 class TestCountByStatus:
-    """TC-UT-TR-006: count_by_status counts Tasks by status; Room-isolation."""
+    """TC-UT-TR-006: count_by_status はステータス別に Task をカウント; ルーム隔離。"""
 
     async def test_count_by_status_pending(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
-        """count_by_status(PENDING) returns only PENDING count."""
+        """count_by_status(PENDING) は PENDING カウントのみを返す。"""
         room_id, directive_id = seeded_task_context
         for _ in range(2):
             async with session_factory() as session, session.begin():
@@ -69,7 +69,7 @@ class TestCountByStatus:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
-        """count_by_status(BLOCKED) counts only BLOCKED tasks."""
+        """count_by_status(BLOCKED) は BLOCKED Task のみをカウント。"""
         room_id, directive_id = seeded_task_context
         async with session_factory() as session, session.begin():
             await SqliteTaskRepository(session).save(
@@ -91,7 +91,7 @@ class TestCountByStatus:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
-        """count_by_status returns 0 when no Tasks with that status exist."""
+        """そのステータスの Task が存在しない場合、count_by_status は 0 を返す。"""
         room_id, directive_id = seeded_task_context
         async with session_factory() as session, session.begin():
             await SqliteTaskRepository(session).save(
@@ -108,7 +108,7 @@ class TestCountByStatus:
         app_engine: AsyncEngine,
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
-        """count_by_status SQL log shows COUNT(*) WHERE status filter."""
+        """count_by_status SQL ログは COUNT(*) WHERE status フィルタを示す。"""
         room_id, directive_id = seeded_task_context
         async with session_factory() as session, session.begin():
             await SqliteTaskRepository(session).save(
@@ -137,7 +137,8 @@ class TestCountByStatus:
 
         count_stmts = [s for s in captured if "count" in s.lower() and "tasks" in s.lower()]
         assert count_stmts, (
-            f"[FAIL] count_by_status() did not emit COUNT(*) FROM tasks.\nCaptured: {captured}"
+            "[FAIL] count_by_status() が COUNT(*) FROM tasks を発行しなかった。"
+            f"\nキャプチャ: {captured}"
         )
 
 
@@ -145,14 +146,14 @@ class TestCountByStatus:
 # TC-UT-TR-007: count_by_room (§確定 R1-D)
 # ---------------------------------------------------------------------------
 class TestCountByRoom:
-    """TC-UT-TR-007: count_by_room counts Tasks per Room; cross-room isolation."""
+    """TC-UT-TR-007: count_by_room はルームごとに Task をカウント; ルーム間隔離。"""
 
     async def test_count_by_room_returns_correct_count(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
-        """count_by_room returns only tasks in the specified room."""
+        """count_by_room は指定されたルーム内のタスクのみを返す。"""
         room_id, directive_id = seeded_task_context
         for _ in range(3):
             async with session_factory() as session, session.begin():
@@ -169,9 +170,9 @@ class TestCountByRoom:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
-        """count_by_room returns 0 for a room with no tasks."""
+        """タスクがないルームに対して count_by_room は 0 を返す。"""
         room_id, _directive_id = seeded_task_context
-        # Seed tasks in a different room
+        # 別のルームでタスクをシード
         room2_id, directive2_id = await seed_task_context(session_factory)
         async with session_factory() as session, session.begin():
             await SqliteTaskRepository(session).save(
@@ -180,18 +181,18 @@ class TestCountByRoom:
 
         async with session_factory() as session:
             count = await SqliteTaskRepository(session).count_by_room(room_id)  # type: ignore[arg-type]
-        assert count == 0, f"[FAIL] count_by_room leaked tasks from another room. count={count}"
+        assert count == 0, f"[FAIL] count_by_room が別のルームからタスクをリーク。 count={count}"
 
     async def test_count_by_room_cross_room_isolation(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
-        """TC-UT-TR-007: count_by_room does not bleed across rooms."""
+        """TC-UT-TR-007: count_by_room はルーム間でリークしない。"""
         room_a_id, directive_a_id = seeded_task_context
         room_b_id, directive_b_id = await seed_task_context(session_factory)
 
-        # 2 tasks in room A, 3 tasks in room B
+        # ルーム A に 2 つのタスク、ルーム B に 3 つのタスク
         async with session_factory() as session, session.begin():
             await SqliteTaskRepository(session).save(
                 make_task(room_id=room_a_id, directive_id=directive_a_id)

@@ -1,12 +1,11 @@
-"""Workflow Repository: Protocol surface + basic CRUD coverage.
+"""Workflow Repository: Protocol サーフェス + 基本 CRUD カバレッジ。
 
-TC-IT-WFR-001 / 002 / 003 / 004 / 005 / 006 / 007 / 019 — the
-entry-point behaviors empire-repository (PR #25) froze and that this
-PR inherits 100%, plus the Workflow-specific ``ORDER BY stage_id`` /
-``ORDER BY transition_id`` SQL log observation (BUG-EMR-001 from-day-1
-contract per detailed-design.md L51).
+TC-IT-WFR-001 / 002 / 003 / 004 / 005 / 006 / 007 / 019 ── empire-repository (PR #25)
+が固定したエントリポイント挙動を本 PR が 100% 踏襲することと、Workflow 固有の
+``ORDER BY stage_id`` / ``ORDER BY transition_id`` SQL ログ観測（detailed-design.md L51 の
+BUG-EMR-001 from-day-1 契約）を扱う。
 
-Per ``docs/features/workflow-repository/test-design.md`` matrix.
+``docs/features/workflow-repository/test-design.md`` のマトリクス準拠。
 """
 
 from __future__ import annotations
@@ -39,16 +38,15 @@ pytestmark = pytest.mark.asyncio
 
 
 # ---------------------------------------------------------------------------
-# REQ-WFR-001: Protocol definition + 充足 (§確定 A)
+# REQ-WFR-001: Protocol 定義 + 充足 (§確定 A)
 # ---------------------------------------------------------------------------
 class TestWorkflowRepositoryProtocol:
-    """TC-IT-WFR-001 / 002: Protocol surface + duck-typing 充足."""
+    """TC-IT-WFR-001 / 002: Protocol サーフェス + ダックタイピング充足。"""
 
     async def test_protocol_declares_three_async_methods(self) -> None:
-        """TC-IT-WFR-001: ``WorkflowRepository`` has find_by_id / count / save."""
-        # Protocol classes don't expose the methods at instance level
-        # but at class level. Marked ``async`` purely so the
-        # module-level ``pytestmark = asyncio`` does not warn.
+        """TC-IT-WFR-001: ``WorkflowRepository`` が find_by_id / count / save を持つ。"""
+        # Protocol class はインスタンスレベルではなくクラスレベルでメソッドを公開する。
+        # モジュールレベルの ``pytestmark = asyncio`` が警告しないよう ``async`` を付ける。
         assert hasattr(WorkflowRepository, "find_by_id")
         assert hasattr(WorkflowRepository, "count")
         assert hasattr(WorkflowRepository, "save")
@@ -57,12 +55,11 @@ class TestWorkflowRepositoryProtocol:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-WFR-002: ``SqliteWorkflowRepository`` is assignable to ``WorkflowRepository``.
+        """TC-IT-WFR-002: ``SqliteWorkflowRepository`` を ``WorkflowRepository`` に代入できる。
 
-        The variable annotation acts as a static-type assertion; pyright
-        strict will reject the assignment if any Protocol method is
-        missing or has a wrong signature. Duck-typing at runtime
-        confirms the three methods exist on the instance too.
+        変数アノテーションが静的型アサーションとして機能する ── pyright strict は、
+        Protocol メソッドが欠落または誤シグネチャの場合に代入を拒否する。
+        ランタイムのダックタイピングでもインスタンスに 3 メソッドの存在を確認する。
         """
         async with session_factory() as session:
             repo: WorkflowRepository = SqliteWorkflowRepository(session)
@@ -72,21 +69,20 @@ class TestWorkflowRepositoryProtocol:
 
 
 # ---------------------------------------------------------------------------
-# REQ-WFR-002: find_by_id / count / save 基本 CRUD
+# REQ-WFR-002: find_by_id / count / save の基本 CRUD
 # ---------------------------------------------------------------------------
 class TestFindById:
-    """TC-IT-WFR-003 / 004: find_by_id retrieves saved Workflows; None for unknown."""
+    """TC-IT-WFR-003 / 004: find_by_id は保存済み Workflow を取得する。未知の id は None。"""
 
     async def test_find_by_id_returns_saved_workflow(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-WFR-003: ``find_by_id(workflow.id)`` returns a structurally-equal Workflow.
+        """TC-IT-WFR-003: ``find_by_id(workflow.id)`` が構造的に等価な Workflow を返す。
 
-        Uses ``make_workflow()`` default (single ``WORK`` stage, no
-        ``EXTERNAL_REVIEW`` → no notify_channels) so §確定 H §不可逆性
-        does not bite. Round-trip equality of the irreversible-masking
-        path lives in :mod:`...test_masking`.
+        ``make_workflow()`` のデフォルト（単一 ``WORK`` ステージ、``EXTERNAL_REVIEW``
+        なし → notify_channels なし）を用いるため §確定 H §不可逆性 に引っかからない。
+        不可逆マスキング経路のラウンドトリップ等価性は :mod:`...test_masking` に持つ。
         """
         workflow = make_workflow()
         async with session_factory() as session, session.begin():
@@ -102,7 +98,7 @@ class TestFindById:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-WFR-004: ``find_by_id(uuid4())`` returns ``None`` without raising."""
+        """TC-IT-WFR-004: ``find_by_id(uuid4())`` は例外を投げず ``None`` を返す。"""
         unknown_id = uuid4()
         async with session_factory() as session:
             fetched = await SqliteWorkflowRepository(session).find_by_id(unknown_id)
@@ -110,32 +106,29 @@ class TestFindById:
 
 
 # ---------------------------------------------------------------------------
-# REQ-WFR-002 (ORDER BY contract per BUG-EMR-001 inherited from day 1)
+# REQ-WFR-002 (BUG-EMR-001 から day 1 で受け継ぐ ORDER BY 契約)
 # ---------------------------------------------------------------------------
 class TestFindByIdOrderByContract:
-    """TC-IT-WFR-005 / 006: ``ORDER BY stage_id`` / ``ORDER BY transition_id`` are emitted.
+    """TC-IT-WFR-005 / 006: ``ORDER BY stage_id`` / ``ORDER BY transition_id`` が発行される。
 
-    The empire-repository BUG-EMR-001 closure froze the ORDER BY
-    contract; the workflow Repository adopts it from PR #1. Without
-    these clauses, SQLite returns rows in internal-scan order which
-    would break ``Workflow == Workflow`` round-trip equality (the
-    Aggregate compares list-by-list).
+    empire-repository BUG-EMR-001 のクロージャが ORDER BY 契約を凍結し、
+    workflow Repository は PR #1 から踏襲する。これらの句がないと SQLite は
+    内部スキャン順で行を返し、``Workflow == Workflow`` ラウンドトリップ等価性
+    （Aggregate がリスト同士で比較する）が壊れる。
 
-    We attach a ``before_cursor_execute`` listener on the **sync**
-    engine and observe the actual SQL strings the dialect emits so a
-    silent removal of ``ORDER BY`` is caught even if the round-trip
-    test happens to pass via row-order coincidence.
+    **sync** engine に ``before_cursor_execute`` リスナを取り付け、ダイアレクトが
+    実際に発行する SQL 文字列を観測する。これにより、行順序が偶然合致して
+    ラウンドトリップが pass しても、``ORDER BY`` の静かな除去を検出できる。
     """
 
     async def _build_multi_stage_workflow(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> tuple[Workflow, WorkflowId]:
-        """Build + save a 3-stage / 2-transition Workflow without EXTERNAL_REVIEW.
+        """EXTERNAL_REVIEW なしで 3 ステージ / 2 トランジションの Workflow を構築 + save する。
 
-        Returns the constructed workflow plus its id so the caller can
-        round-trip it. ``WORK`` stages do not require notify_channels,
-        so no §確定 H §不可逆性 trap.
+        構築した workflow とその id を返し、呼び出し側でラウンドトリップさせる。
+        ``WORK`` ステージは notify_channels を要求しないため、§確定 H §不可逆性 の罠なし。
         """
         stage_a = make_stage(name="ステージA")
         stage_b = make_stage(name="ステージB")
@@ -162,7 +155,7 @@ class TestFindByIdOrderByContract:
         session_factory: async_sessionmaker[AsyncSession],
         app_engine: AsyncEngine,
     ) -> None:
-        """TC-IT-WFR-005: ``find_by_id`` emits ``ORDER BY workflow_stages.stage_id``."""
+        """TC-IT-WFR-005: ``find_by_id`` が ``ORDER BY workflow_stages.stage_id`` を発行する。"""
         _, workflow_id = await self._build_multi_stage_workflow(session_factory)
 
         captured: list[str] = []
@@ -185,9 +178,8 @@ class TestFindByIdOrderByContract:
         finally:
             event.remove(sync_engine, "before_cursor_execute", _on_execute)
 
-        # The Workflow's stage SELECT must carry an ``ORDER BY`` on the
-        # stage_id column. We accept any whitespace / fully-qualified
-        # variation that SQLAlchemy chooses to emit.
+        # Workflow の stage SELECT は stage_id カラムに ``ORDER BY`` を持たねばならない。
+        # SQLAlchemy が選んで発行する任意の空白 / 完全修飾の表記を許容する。
         stage_selects = [
             stmt for stmt in captured if "FROM workflow_stages" in stmt and "SELECT" in stmt.upper()
         ]
@@ -203,7 +195,8 @@ class TestFindByIdOrderByContract:
         session_factory: async_sessionmaker[AsyncSession],
         app_engine: AsyncEngine,
     ) -> None:
-        """TC-IT-WFR-006: ``find_by_id`` emits ``ORDER BY workflow_transitions.transition_id``."""
+        """TC-IT-WFR-006: ``find_by_id`` が
+        ``ORDER BY workflow_transitions.transition_id`` を発行する。"""
         _, workflow_id = await self._build_multi_stage_workflow(session_factory)
 
         captured: list[str] = []
@@ -242,25 +235,25 @@ class TestFindByIdOrderByContract:
 
 
 # ---------------------------------------------------------------------------
-# REQ-WFR-002 (count() must issue SQL-level COUNT(*))
+# REQ-WFR-002 (count() は SQL レベルの COUNT(*) を発行しなければならない)
 # ---------------------------------------------------------------------------
 class TestCountIssuesScalarCount:
-    """TC-IT-WFR-007: ``count()`` issues ``SELECT COUNT(*)``, not a full row scan."""
+    """TC-IT-WFR-007: ``count()`` は ``SELECT COUNT(*)`` を発行し、行を全件スキャンしない。"""
 
     async def test_count_emits_select_count_not_full_load(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         app_engine: AsyncEngine,
     ) -> None:
-        """TC-IT-WFR-007: SQL log shows ``SELECT count(*)`` for ``count()``.
+        """TC-IT-WFR-007: SQL ログが ``count()`` に対し ``SELECT count(*)`` を示す。
 
-        Empire-repository §確定 D 補強: ``count()`` must not stream
-        every row back to Python and call ``len()``. With Workflow
-        preset libraries we expect hundreds of rows, so the SQL-level
-        COUNT(*) pattern matters even more than for Empire.
+        Empire-repository §確定 D 補強: ``count()`` は全行を Python へ
+        ストリームして ``len()`` を呼んではならない。Workflow の preset
+        ライブラリでは数百行を想定するため、SQL レベルの COUNT(*) パターンが
+        Empire 以上に重要。
         """
-        # Save two workflows so a hypothetical full-row scan would
-        # materialize at least 2 rows — we'd see them in the log.
+        # 仮の全行スキャンで少なくとも 2 行がマテリアライズされるよう、
+        # 2 つの workflow を save する ── ログに見えるはず。
         async with session_factory() as session, session.begin():
             await SqliteWorkflowRepository(session).save(make_workflow())
         async with session_factory() as session, session.begin():
@@ -287,9 +280,10 @@ class TestCountIssuesScalarCount:
             event.remove(sync_engine, "before_cursor_execute", _on_execute)
 
         assert count == 2
-        # Workflow SELECTs touched during count() must all be
-        # ``count(*)`` shapes — never a full ``SELECT id FROM workflows``
-        # row stream that the Repository would then ``len()``.
+        # count() 中に発行される Workflow SELECT はすべて
+        # ``count(*)`` 形でなければならず、Repository が後で
+        # ``len()`` する全行 ``SELECT id FROM workflows``
+        # ストリームになってはならない。
         workflow_selects = [s for s in captured if "FROM workflows" in s]
         assert workflow_selects, "count() must issue at least one SELECT against workflows"
         for stmt in workflow_selects:
@@ -301,21 +295,20 @@ class TestCountIssuesScalarCount:
 
 
 # ---------------------------------------------------------------------------
-# §確定 D: Repository never enforces singleton invariants
+# §確定 D: Repository は singleton 不変条件を強制しない
 # ---------------------------------------------------------------------------
 class TestRepositoryDoesNotEnforceSingleton:
-    """TC-IT-WFR-019: Repository accepts multiple Workflow saves."""
+    """TC-IT-WFR-019: Repository は複数の Workflow save を受け入れる。"""
 
     async def test_two_workflows_saved_without_error(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-WFR-019: 2 distinct Workflows save successfully; ``count()`` reports 2.
+        """TC-IT-WFR-019: 別個の 2 つの Workflow が save 成功し、``count()`` が 2 を返す。
 
-        Singleton enforcement (e.g. "only one preset Workflow per
-        empire") is the application service's job; the Repository
-        itself reports facts via ``count()`` and never raises just
-        because the cardinality grew above 1.
+        Singleton 強制（例: 「empire ごとに preset Workflow は 1 つだけ」）は
+        application service の責務。Repository は ``count()`` で事実を返すのみで、
+        cardinality が 1 を超えただけで例外を投げてはならない。
         """
         async with session_factory() as session, session.begin():
             await SqliteWorkflowRepository(session).save(make_workflow())
@@ -328,24 +321,24 @@ class TestRepositoryDoesNotEnforceSingleton:
 
 
 # ---------------------------------------------------------------------------
-# REQ-WFR-002: save inserts into all 3 tables (TC-IT-WFR-008)
+# REQ-WFR-002: save が 3 テーブルに INSERT する (TC-IT-WFR-008)
 # ---------------------------------------------------------------------------
 class TestSaveInsertsAllThreeTables:
-    """TC-IT-WFR-008: ``save`` writes the 3 Workflow tables.
+    """TC-IT-WFR-008: ``save`` が 3 つの Workflow テーブルへ書き込む。
 
-    ``workflows`` + ``workflow_stages`` + ``workflow_transitions`` all
-    receive rows in a single ``save`` call.
+    ``workflows`` + ``workflow_stages`` + ``workflow_transitions`` のすべてが
+    1 回の ``save`` 呼び出しで行を受け取る。
     """
 
     async def test_save_populates_three_tables(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-WFR-008: 3 stages + 2 transitions land in their respective side tables.
+        """TC-IT-WFR-008: 3 ステージ + 2 トランジションが各テーブルに着地する。
 
-        We deliberately avoid V-model payload here because that has
-        EXTERNAL_REVIEW stages and would conflate this test with the
-        notify_channels masking concern (covered in test_masking).
+        ここでは V-model ペイロードを意図的に避ける ── EXTERNAL_REVIEW ステージを
+        持つため、本テストが notify_channels マスキングの関心事
+        （test_masking で扱う）と混同される恐れがあるから。
         """
         stage_a = make_stage(name="A")
         stage_b = make_stage(name="B")

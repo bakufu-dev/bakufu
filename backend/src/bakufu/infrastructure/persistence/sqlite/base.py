@@ -1,23 +1,24 @@
-"""Declarative base + cross-cutting :class:`TypeDecorator` adapters.
+"""Declarative ベース + 横断的な :class:`TypeDecorator` アダプタ。
 
-Every table in the bakufu SQLite schema inherits from :class:`Base`
-(re-exported below). The custom column types here are **mandatory**
-for any table that holds the corresponding semantic value:
+bakufu の SQLite スキーマに含まれるすべてのテーブルは :class:`Base`
+（以下で再エクスポート）を継承する。ここで定義するカスタムカラム型は、
+対応する意味値を保持する任意のテーブルにとって **必須** である:
 
-* :class:`UUIDStr` — store ``uuid.UUID`` as a 32-character hex string
-  in SQLite (no native UUID type; ``BLOB(16)`` was rejected because it
-  hurts ``sqlite3`` CLI debuggability).
-* :class:`UTCDateTime` — Fail-Fast on naive ``datetime`` and store
-  the UTC ISO-8601 string. The "always tz-aware" contract eliminates
-  every "is this UTC or local?" bug in downstream code.
-* :class:`JSONEncoded` — ``dict`` / ``list`` → ``json.dumps`` with
-  ``sort_keys=True`` so logical equality is byte-equal in the row.
-* :class:`MaskedJSONEncoded` / :class:`MaskedText` — variants of the
-  above that route every bound value through the masking gateway
-  *before* JSON-encoding / persisting (BUG-PF-001 fix). The
-  ``process_bind_param`` hook fires for both ORM ``Session.add()``
-  flushes and Core ``insert(table).values(...)`` paths, so masking
-  is enforced regardless of how the row reaches the engine.
+* :class:`UUIDStr` — ``uuid.UUID`` を SQLite 上で 32 文字の 16 進文字列
+  として保存する（SQLite はネイティブな UUID 型を持たない。``BLOB(16)``
+  は ``sqlite3`` CLI でのデバッグ性を損なうため却下した）。
+* :class:`UTCDateTime` — naive な ``datetime`` を Fail-Fast で拒否し、
+  UTC ISO-8601 文字列として保存する。「常に tz-aware」契約により、
+  下流コードの「これは UTC？ローカル？」というバグを根絶する。
+* :class:`JSONEncoded` — ``dict`` / ``list`` → ``json.dumps`` を
+  ``sort_keys=True`` で実行するため、論理的に等しいペイロードは
+  行内でバイト等価になる。
+* :class:`MaskedJSONEncoded` / :class:`MaskedText` — 上記の派生で、
+  JSON エンコード／永続化の *前* にすべての bound 値をマスキング
+  ゲートウェイ経由にする（BUG-PF-001 の修正）。``process_bind_param``
+  フックは ORM の ``Session.add()`` フラッシュと Core の
+  ``insert(table).values(...)`` の両経路で発火するため、行が
+  どのように engine に到達してもマスキングは強制される。
 """
 
 from __future__ import annotations
@@ -38,16 +39,15 @@ from bakufu.infrastructure.security.masking import (
 
 
 class Base(DeclarativeBase):
-    """Common declarative base for all bakufu SQLite tables."""
+    """bakufu の SQLite テーブル全てに共通の Declarative ベース。"""
 
 
 class UUIDStr(TypeDecorator[UUID]):
-    """Store a :class:`uuid.UUID` as ``CHAR(32)`` hex in SQLite.
+    """:class:`uuid.UUID` を SQLite 上で ``CHAR(32)`` の 16 進文字列として保存する。
 
-    The 32-character hex form (no dashes) keeps the storage compact
-    while remaining trivially inspectable from the ``sqlite3`` CLI.
-    Round-trips ``uuid.UUID`` so ORM-side code never sees a string
-    representation.
+    32 文字の 16 進形式（ハイフンなし）はストレージをコンパクトに保ちつつ、
+    ``sqlite3`` CLI から自明に確認可能なまま維持する。``uuid.UUID`` で
+    ラウンドトリップするので、ORM 側コードは文字列表現を見ない。
     """
 
     impl = CHAR(32)
@@ -58,13 +58,13 @@ class UUIDStr(TypeDecorator[UUID]):
         value: UUID | str | None,
         dialect: Dialect,
     ) -> str | None:
-        del dialect  # unused; SQLite is the only target
+        del dialect  # 未使用。ターゲットは SQLite のみ
         if value is None:
             return None
         if isinstance(value, UUID):
             return value.hex
-        # Accept str inputs too so ad-hoc INSERTs from raw SQL still
-        # round-trip cleanly. ``UUID(str)`` validates the format.
+        # 生 SQL からのアドホックな INSERT もクリーンにラウンドトリップ
+        # できるよう、str 入力も受け付ける。``UUID(str)`` がフォーマットを検証する。
         return UUID(value).hex
 
     def process_result_value(  # pyright: ignore[reportIncompatibleMethodOverride]
@@ -79,11 +79,11 @@ class UUIDStr(TypeDecorator[UUID]):
 
 
 class UTCDateTime(TypeDecorator[datetime]):
-    """Always-UTC, always-tz-aware ``datetime`` column.
+    """常に UTC・常に tz-aware な ``datetime`` カラム。
 
-    Inserts a naive ``datetime`` raise ``ValueError`` immediately so
-    timezone bugs cannot land silently. The on-disk representation is
-    ISO-8601 with the ``+00:00`` offset, sortable as a string.
+    naive な ``datetime`` を渡すと即座に ``ValueError`` を送出するので、
+    タイムゾーン関連のバグが静かに紛れ込むことはない。ディスク上の表現は
+    ``+00:00`` オフセット付きの ISO-8601 で、文字列としてソート可能。
     """
 
     impl = Text()
@@ -115,12 +115,12 @@ class UTCDateTime(TypeDecorator[datetime]):
 
 
 class JSONEncoded(TypeDecorator[Any]):
-    """``dict`` / ``list`` ↔ JSON text column.
+    """``dict`` / ``list`` ↔ JSON テキストカラム。
 
-    Uses ``sort_keys=True`` so two semantically-equal payloads serialize
-    to byte-equal text — important for hash-comparison and migration
-    diffs. ``ensure_ascii=False`` keeps Japanese strings readable in
-    direct SQLite inspection.
+    ``sort_keys=True`` を使うので、意味的に等しい 2 つのペイロードは
+    バイト等価なテキストにシリアライズされる — ハッシュ比較や
+    マイグレーション diff にとって重要。``ensure_ascii=False`` により、
+    SQLite を直接覗いたときに日本語文字列が読みやすくなる。
     """
 
     impl = Text()
@@ -148,17 +148,17 @@ class JSONEncoded(TypeDecorator[Any]):
 
 
 class MaskedJSONEncoded(TypeDecorator[Any]):
-    """``dict`` / ``list`` ↔ JSON text column with secret masking.
+    """秘密情報のマスキング付き ``dict`` / ``list`` ↔ JSON テキストカラム。
 
-    Routes the bound value through :func:`mask_in` before
-    ``json.dumps``. ``process_bind_param`` is invoked for **both**
-    ORM-flushed inserts and Core ``insert(table).values(...)`` calls
-    (BUG-PF-001 fix), making this a true gateway: there is no syntax
-    a caller can choose that bypasses the redaction step.
+    ``json.dumps`` の前に bound 値を :func:`mask_in` に通す。
+    ``process_bind_param`` は ORM フラッシュによる insert と
+    Core の ``insert(table).values(...)`` の **両方** で発火する
+    （BUG-PF-001 の修正）。これにより本クラスは真のゲートウェイとなり、
+    呼び出し側がリダクションをバイパスする構文を選ぶ余地はない。
 
-    Confirmation F (Fail-Secure): if :func:`mask_in` itself raises,
-    we replace the entire payload with the listener-error sentinel
-    rather than letting raw bytes hit the disk.
+    確定 F（Fail-Secure）: :func:`mask_in` 自身が例外を送出した場合、
+    生のバイト列をディスクに到達させずペイロード全体を listener-error の
+    sentinel に置き換える。
     """
 
     impl = Text()
@@ -190,12 +190,11 @@ class MaskedJSONEncoded(TypeDecorator[Any]):
 
 
 class MaskedText(TypeDecorator[str]):
-    """``str`` text column with secret masking via :func:`mask`.
+    """:func:`mask` による秘密情報のマスキング付き ``str`` テキストカラム。
 
-    Same gateway guarantee as :class:`MaskedJSONEncoded`: every bound
-    value (ORM or Core) is masked before persistence, and a failing
-    masker yields :data:`REDACT_LISTENER_ERROR` instead of the raw
-    string.
+    :class:`MaskedJSONEncoded` と同じゲートウェイ保証: すべての bound 値
+    （ORM／Core）は永続化前にマスクされ、masker が失敗した場合は
+    生文字列ではなく :data:`REDACT_LISTENER_ERROR` を返す。
     """
 
     impl = Text()

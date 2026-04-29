@@ -1,16 +1,17 @@
-"""http-api-foundation / http-api 結合テスト (TC-IT-HAF-001, 002, 003, 004, 006, 007, 008).
+"""http-api-foundation / http-api 結合テスト (TC-IT-HAF-001, 002, 003, 004, 006, 007, 008)。
 
-Per ``docs/features/http-api-foundation/http-api/test-design.md`` §結合テストケース.
+``docs/features/http-api-foundation/http-api/test-design.md`` §結合テストケース 準拠。
 
-Covers:
+カバー範囲:
   TC-IT-HAF-001  GET /health → 200 {"status": "ok"} (REQ-HAF-002, feature-spec.md §9 #1)
   TC-IT-HAF-002  GET /nonexistent → 404 not_found (REQ-HAF-003, MSG-HAF-001, §9 #2)
-  TC-IT-HAF-003  POST no body → 422 validation_error (REQ-HAF-003, MSG-HAF-002, §9 #3)
-  TC-IT-HAF-004  GET raises RuntimeError → 500 no stack trace (REQ-HAF-003, MSG-HAF-003, §9 #4, T3)
-  TC-IT-HAF-006  get_session() yields AsyncSession (REQ-HAF-004, §9 #6)
-  TC-IT-HAF-007  lifespan: startup sets session_factory; shutdown disposes engine
+  TC-IT-HAF-003  body 無しの POST → 422 validation_error (REQ-HAF-003, MSG-HAF-002, §9 #3)
+  TC-IT-HAF-004  GET で RuntimeError → 500 スタックトレース無し
+                 (REQ-HAF-003, MSG-HAF-003, §9 #4, T3)
+  TC-IT-HAF-006  get_session() が AsyncSession を yield する (REQ-HAF-004, §9 #6)
+  TC-IT-HAF-007  lifespan: startup で session_factory を設定し、shutdown で engine を dispose
                  (REQ-HAF-001/007, §9 #7)
-  TC-IT-HAF-008  POST + evil Origin → 403 CSRF failed (MSG-HAF-004, T2, §9 #8)
+  TC-IT-HAF-008  POST + 不正 Origin → 403 CSRF failed (MSG-HAF-004, T2, §9 #8)
 
 Issue: #55
 """
@@ -31,7 +32,7 @@ pytestmark = pytest.mark.asyncio
 # TC-IT-HAF-001: GET /health → 200 {"status": "ok"}
 # ---------------------------------------------------------------------------
 class TestHealthEndpoint:
-    """TC-IT-HAF-001: GET /health responds HTTP 200 with {"status": "ok"}."""
+    """TC-IT-HAF-001: GET /health が HTTP 200 と {"status": "ok"} を返す。"""
 
     async def test_health_returns_200(self, app_client: AsyncClient) -> None:
         response = await app_client.get("/health")
@@ -46,7 +47,7 @@ class TestHealthEndpoint:
 # TC-IT-HAF-002: GET /nonexistent → 404 not_found (MSG-HAF-001)
 # ---------------------------------------------------------------------------
 class TestNotFoundHandler:
-    """TC-IT-HAF-002: undefined route → 404 ErrorResponse with code=not_found."""
+    """TC-IT-HAF-002: 未定義ルート → code=not_found の 404 ErrorResponse。"""
 
     async def test_not_found_returns_404(self, app_client: AsyncClient) -> None:
         response = await app_client.get("/nonexistent")
@@ -61,7 +62,7 @@ class TestNotFoundHandler:
         assert response.json()["error"]["message"] == "Resource not found."
 
     async def test_not_found_response_has_error_key(self, app_client: AsyncClient) -> None:
-        """Response body must follow {"error": {...}} envelope (REQ-HAF-003)."""
+        """レスポンスボディは {"error": {...}} エンベロープ形式に従わねばならない (REQ-HAF-003)。"""
         response = await app_client.get("/nonexistent")
         body = response.json()
         assert "error" in body
@@ -73,7 +74,7 @@ class TestNotFoundHandler:
 # TC-IT-HAF-003: POST no body → 422 validation_error (MSG-HAF-002)
 # ---------------------------------------------------------------------------
 class TestValidationErrorHandler:
-    """TC-IT-HAF-003: POST with missing required body → 422 with code=validation_error."""
+    """TC-IT-HAF-003: 必須 body 欠落の POST → code=validation_error の 422。"""
 
     async def test_missing_body_returns_422(self, app_client: AsyncClient) -> None:
         response = await app_client.post("/test/validation-required")
@@ -94,7 +95,7 @@ class TestValidationErrorHandler:
 # TC-IT-HAF-004: RuntimeError → 500, no stack trace (MSG-HAF-003, T3)
 # ---------------------------------------------------------------------------
 class TestInternalErrorHandler:
-    """TC-IT-HAF-004: unhandled RuntimeError → 500 without stack trace (T3)."""
+    """TC-IT-HAF-004: 未処理 RuntimeError → スタックトレース無しの 500 (T3)。"""
 
     async def test_exception_returns_500(self, app_client: AsyncClient) -> None:
         response = await app_client.get("/test/raise-exception")
@@ -109,20 +110,20 @@ class TestInternalErrorHandler:
         assert response.json()["error"]["message"] == "An internal server error occurred."
 
     async def test_no_traceback_in_body(self, app_client: AsyncClient) -> None:
-        """T3: スタックトレース非露出 — body must not contain traceback."""
+        """T3: スタックトレース非露出 ── body に traceback が含まれてはならない。"""
         response = await app_client.get("/test/raise-exception")
         body = response.text
         assert "Traceback" not in body
 
     async def test_no_runtime_error_in_body(self, app_client: AsyncClient) -> None:
-        """T3: internal exception class name must not leak into response body."""
+        """T3: 内部例外のクラス名がレスポンスボディに漏れてはならない。"""
         response = await app_client.get("/test/raise-exception")
         assert "RuntimeError" not in response.text
 
     async def test_no_test_error_message_in_body(self, app_client: AsyncClient) -> None:
-        """T3: internal error message must not leak into response body."""
+        """T3: 内部エラーメッセージがレスポンスボディに漏れてはならない。"""
         response = await app_client.get("/test/raise-exception")
-        # "test internal error" is the RuntimeError message; must not appear
+        # "test internal error" は RuntimeError のメッセージ。出現してはならない。
         assert "test internal error" not in response.text
 
 
@@ -130,10 +131,10 @@ class TestInternalErrorHandler:
 # TC-IT-HAF-006: get_session() yields AsyncSession (REQ-HAF-004)
 # ---------------------------------------------------------------------------
 class TestGetSessionDI:
-    """TC-IT-HAF-006: get_session() DI dependency yields a real AsyncSession."""
+    """TC-IT-HAF-006: get_session() DI 依存が実際の AsyncSession を yield する。"""
 
     async def test_session_type_is_async_session(self, app_client: AsyncClient) -> None:
-        """Session DI yields AsyncSession (not None / wrong type)."""
+        """Session DI が AsyncSession を yield する（None や誤った型ではない）。"""
         response = await app_client.get("/test/session-type")
         assert response.status_code == 200
         assert response.json()["session_type"] == "AsyncSession"
@@ -143,12 +144,12 @@ class TestGetSessionDI:
 # TC-IT-HAF-007: lifespan startup sets session_factory; shutdown disposes engine
 # ---------------------------------------------------------------------------
 class TestLifespan:
-    """TC-IT-HAF-007: full lifespan cycle — startup + health + shutdown."""
+    """TC-IT-HAF-007: lifespan の完全サイクル ── startup + health + shutdown。"""
 
     async def test_lifespan_startup_sets_session_factory(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """After lifespan startup event, app.state.session_factory is not None."""
+        """lifespan の startup イベント後、app.state.session_factory が None でない。"""
         monkeypatch.setenv("BAKUFU_DATA_DIR", str(tmp_path))
         from bakufu.infrastructure.config import data_dir
 
@@ -185,7 +186,7 @@ class TestLifespan:
     async def test_lifespan_startup_emits_startup_complete(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Lifespan startup sends lifespan.startup.complete ASGI event."""
+        """Lifespan startup が lifespan.startup.complete ASGI イベントを送る。"""
         monkeypatch.setenv("BAKUFU_DATA_DIR", str(tmp_path))
         from bakufu.infrastructure.config import data_dir
 
@@ -222,7 +223,7 @@ class TestLifespan:
     async def test_lifespan_health_responds_after_startup(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """After lifespan startup, GET /health returns HTTP 200 {"status": "ok"}."""
+        """lifespan startup 後、GET /health が HTTP 200 と {"status": "ok"} を返す。"""
         monkeypatch.setenv("BAKUFU_DATA_DIR", str(tmp_path))
         from bakufu.infrastructure.config import data_dir
 
@@ -262,10 +263,10 @@ class TestLifespan:
     async def test_lifespan_engine_dispose_called_on_shutdown(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """After lifespan shutdown, engine.dispose() has been called exactly once.
+        """lifespan shutdown 後、engine.dispose() がちょうど 1 回呼ばれている。
 
-        Patches AsyncEngine.dispose at the class level (instance attribute is
-        read-only in SQLAlchemy) to track calls.
+        SQLAlchemy ではインスタンス属性が read-only なため、AsyncEngine.dispose を
+        クラスレベルでパッチして呼び出しを追跡する。
         """
         monkeypatch.setenv("BAKUFU_DATA_DIR", str(tmp_path))
         from bakufu.infrastructure.config import data_dir
@@ -304,12 +305,12 @@ class TestLifespan:
 
             await queue.put({"type": "lifespan.startup"})
             await asyncio.sleep(0.2)
-            assert len(dispose_calls) == 0  # not yet disposed
+            assert len(dispose_calls) == 0  # まだ dispose されていない
 
             await queue.put({"type": "lifespan.shutdown"})
             await task
 
-        assert len(dispose_calls) == 1  # disposed exactly once on shutdown
+        assert len(dispose_calls) == 1  # shutdown でちょうど 1 回 dispose される
         data_dir.reset()
 
 
@@ -317,10 +318,11 @@ class TestLifespan:
 # TC-IT-HAF-008: POST + evil Origin → 403 CSRF check failed (MSG-HAF-004, T2)
 # ---------------------------------------------------------------------------
 class TestCsrfOriginMiddleware:
-    """TC-IT-HAF-008: CSRF Origin check — evil Origin → 403; no Origin → pass (MVP rule)."""
+    """TC-IT-HAF-008: CSRF Origin チェック ── 不正 Origin → 403、
+    Origin なし → 許可 (MVP ルール)。"""
 
     async def test_evil_origin_returns_403(self, app_client: AsyncClient) -> None:
-        """POST with Origin: http://evil.example.com → 403."""
+        """Origin: http://evil.example.com の POST → 403。"""
         response = await app_client.post(
             "/test/validation-required",
             headers={"Origin": "http://evil.example.com"},
@@ -345,7 +347,7 @@ class TestCsrfOriginMiddleware:
         assert response.json()["error"]["message"] == "CSRF check failed: Origin not allowed."
 
     async def test_no_origin_header_passes(self, app_client: AsyncClient) -> None:
-        """MVP rule: POST without Origin header passes (AI agent / SDK support)."""
+        """MVP ルール: Origin ヘッダなしの POST は通過する（AI agent / SDK サポート）。"""
         response = await app_client.post(
             "/test/validation-required",
             json={"name": "test"},
@@ -353,7 +355,7 @@ class TestCsrfOriginMiddleware:
         assert response.status_code == 200
 
     async def test_allowed_origin_passes(self, app_client: AsyncClient) -> None:
-        """POST with allowed Origin (default: http://localhost:5173) passes."""
+        """許可された Origin（デフォルト: http://localhost:5173）の POST は通過する。"""
         response = await app_client.post(
             "/test/validation-required",
             headers={"Origin": "http://localhost:5173"},
@@ -362,7 +364,7 @@ class TestCsrfOriginMiddleware:
         assert response.status_code == 200
 
     async def test_safe_method_get_ignores_origin(self, app_client: AsyncClient) -> None:
-        """GET is a safe method: even evil Origin is not CSRF-checked."""
+        """GET は安全メソッド: 不正 Origin でも CSRF チェック対象外。"""
         response = await app_client.get(
             "/health",
             headers={"Origin": "http://evil.example.com"},
@@ -374,34 +376,36 @@ class TestCsrfOriginMiddleware:
 # TC-IT-HAF-009: http_exception_handler status_code 分岐 (ヘルスバーグ指摘 #1)
 # ---------------------------------------------------------------------------
 class TestHttpExceptionHandlerBranching:
-    """TC-IT-HAF-009: http_exception_handler routes status codes to distinct error codes.
+    """TC-IT-HAF-009: http_exception_handler が status code を別個の error code に振り分ける。
 
-    Ensures that non-404 HTTP exceptions do not get squashed to "not_found",
-    and that 404 still returns the exact MSG-HAF-001 message.
+    404 以外の HTTP 例外が "not_found" に潰されないこと、および 404 が引き続き
+    MSG-HAF-001 と完全一致するメッセージを返すことを保証する。
     """
 
     async def test_404_returns_not_found_code(self, app_client: AsyncClient) -> None:
-        """GET /nonexistent → code "not_found" (re-verified after branching refactor)."""
+        """GET /nonexistent → code "not_found"（分岐リファクタ後に再検証）。"""
         response = await app_client.get("/nonexistent")
         assert response.json()["error"]["code"] == "not_found"
 
     async def test_404_returns_msg_haf_001_message(self, app_client: AsyncClient) -> None:
-        """GET /nonexistent → message equals MSG-HAF-001 "Resource not found.", not "Not Found"."""
+        """GET /nonexistent → message が MSG-HAF-001
+        "Resource not found." と一致（"Not Found" ではなく）。"""
         response = await app_client.get("/nonexistent")
         assert response.json()["error"]["message"] == "Resource not found."
 
     async def test_405_returns_method_not_allowed_code(self, app_client: AsyncClient) -> None:
-        """POST /health (GET-only route, no Origin) → 405 with code "method_not_allowed"."""
+        """POST /health（GET 専用ルート、Origin なし）→ code "method_not_allowed" の 405。"""
         response = await app_client.post("/health")
         assert response.status_code == 405
 
     async def test_405_error_code_is_method_not_allowed(self, app_client: AsyncClient) -> None:
-        """POST /health → error code "method_not_allowed" (not "not_found")."""
+        """POST /health → error code "method_not_allowed"（"not_found" ではない）。"""
         response = await app_client.post("/health")
         assert response.json()["error"]["code"] == "method_not_allowed"
 
     async def test_405_has_error_envelope(self, app_client: AsyncClient) -> None:
-        """POST /health → response uses {"error": {"code": ..., "message": ...}} envelope."""
+        """POST /health → レスポンスが
+        {"error": {"code": ..., "message": ...}} エンベロープを用いる。"""
         response = await app_client.post("/health")
         body = response.json()
         assert "error" in body

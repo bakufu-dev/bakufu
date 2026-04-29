@@ -1,13 +1,13 @@
-"""Task Repository: find_blocked (TC-UT-TR-008〜008e).
+"""Task Repository: find_blocked (TC-UT-TR-008〜008e)。
 
 REQ-TR-003 / §確定 R1-D:
   * ``find_blocked()`` — SELECT BLOCKED ORDER BY updated_at DESC, id DESC
 
-count_by_status (TC-UT-TR-006) and count_by_room (TC-UT-TR-007)
-live in ``test_count_methods.py``.
+count_by_status (TC-UT-TR-006) と count_by_room (TC-UT-TR-007) は
+``test_count_methods.py`` にある。
 
-Per ``docs/features/task-repository/test-design.md``.
-Issue #35 — M2 0007.
+``docs/features/task-repository/test-design.md`` 準拠。
+Issue #35 — M2 0007。
 """
 
 from __future__ import annotations
@@ -40,14 +40,14 @@ pytestmark = pytest.mark.asyncio
 # TC-UT-TR-008: find_blocked returns only BLOCKED Tasks (§確定 R1-D)
 # ---------------------------------------------------------------------------
 class TestFindBlocked:
-    """TC-UT-TR-008: find_blocked returns only BLOCKED Tasks; empty → []; tiebreaker."""
+    """TC-UT-TR-008: find_blocked は BLOCKED Task のみを返す; 空 → []; タイブレーカ。"""
 
     async def test_find_blocked_returns_only_blocked(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
-        """TC-UT-TR-008: find_blocked returns BLOCKED tasks; skips PENDING/DONE."""
+        """TC-UT-TR-008: find_blocked は BLOCKED Task を返す; PENDING/DONE をスキップ。"""
         room_id, directive_id = seeded_task_context
         pending = make_task(room_id=room_id, directive_id=directive_id)
         blocked = make_blocked_task(
@@ -67,7 +67,7 @@ class TestFindBlocked:
             results = await SqliteTaskRepository(session).find_blocked()
 
         assert len(results) == 1, (
-            f"[FAIL] find_blocked returned {len(results)} tasks; expected 1 (only BLOCKED)."
+            f"[FAIL] find_blocked が {len(results)} タスクを返した; 期待値は 1 (BLOCKED のみ)。"
         )
         assert results[0].id == blocked.id
         assert results[0].status == TaskStatus.BLOCKED
@@ -77,7 +77,7 @@ class TestFindBlocked:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
-        """TC-UT-TR-008b: find_blocked returns [] when no BLOCKED Tasks exist."""
+        """TC-UT-TR-008b: BLOCKED Task がない場合、find_blocked は [] を返す。"""
         room_id, directive_id = seeded_task_context
         async with session_factory() as session, session.begin():
             await SqliteTaskRepository(session).save(
@@ -87,13 +87,13 @@ class TestFindBlocked:
         async with session_factory() as session:
             results = await SqliteTaskRepository(session).find_blocked()
 
-        assert results == [], f"[FAIL] find_blocked returned {results!r} but expected []."
+        assert results == [], f"[FAIL] find_blocked が {results!r} を返したが、[] が期待値。"
 
     async def test_find_blocked_returns_empty_from_empty_db(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-UT-TR-008b: find_blocked on empty DB returns []."""
+        """TC-UT-TR-008b: 空 DB での find_blocked は [] を返す。"""
         async with session_factory() as session:
             results = await SqliteTaskRepository(session).find_blocked()
         assert results == []
@@ -104,7 +104,7 @@ class TestFindBlocked:
         app_engine: AsyncEngine,
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
-        """TC-UT-TR-008c: find_blocked SQL log shows WHERE status = 'BLOCKED' ORDER BY."""
+        """TC-UT-TR-008c: find_blocked SQL ログは WHERE status = 'BLOCKED' ORDER BY を示す。"""
         room_id, directive_id = seeded_task_context
         async with session_factory() as session, session.begin():
             await SqliteTaskRepository(session).save(
@@ -131,16 +131,16 @@ class TestFindBlocked:
         finally:
             event.remove(sync_engine, "before_cursor_execute", _on_execute)
 
-        # The find_blocked statement must include tasks table with ORDER BY
+        # find_blocked statement は ORDER BY を伴う tasks テーブルを含む必要
         status_stmts = [s for s in captured if "tasks" in s.lower() and "status" in s.lower()]
         assert status_stmts, (
-            f"[FAIL] find_blocked() did not emit SQL with tasks + status filter.\n"
-            f"Captured: {captured}"
+            f"[FAIL] find_blocked() が tasks + status フィルタを伴う SQL を発行しなかった。\n"
+            f"キャプチャ: {captured}"
         )
-        # ORDER BY must be present (DESC ordering for recency-first)
+        # ORDER BY が存在する必要（最新優先の DESC 順）
         order_stmts = [s for s in status_stmts if "order by" in s.lower() or "ORDER BY" in s]
         assert order_stmts, (
-            f"[FAIL] find_blocked() SQL lacks ORDER BY clause.\nstatus_stmts: {status_stmts}"
+            f"[FAIL] find_blocked() SQL が ORDER BY 句を欠く。\nstatus_stmts: {status_stmts}"
         )
 
     async def test_find_blocked_restores_full_attributes(
@@ -148,9 +148,9 @@ class TestFindBlocked:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
-        """TC-UT-TR-008d: find_blocked hydrates complete BLOCKED task attributes.
+        """TC-UT-TR-008d: find_blocked は BLOCKED Task の完全な属性をハイドレート。
 
-        Includes assigned_agent_ids, deliverables, and all scalar fields.
+        assigned_agent_ids、deliverables、およびすべてのスカラーフィールドを含む。
         """
         room_id, directive_id = seeded_task_context
         agent_id = uuid4()
@@ -179,7 +179,7 @@ class TestFindBlocked:
         assert len(restored.assigned_agent_ids) == 1
         assert restored.assigned_agent_ids[0] == agent_id
         assert stage_id in restored.deliverables  # type: ignore[operator]
-        assert restored.last_error is not None  # last_error was masked at save time
+        assert restored.last_error is not None  # last_error は保存時にマスク
         assert restored.created_at.tzinfo is not None
         assert restored.updated_at.tzinfo is not None
 
@@ -188,22 +188,21 @@ class TestFindBlocked:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
-        """TC-UT-TR-008e: BUG-EMR-001規約 — same updated_at → ORDER BY id DESC tiebreaker.
+        """TC-UT-TR-008e: BUG-EMR-001 規約 — 同じ updated_at → ORDER BY id DESC タイブレーカ。
 
-        Two BLOCKED Tasks with identical updated_at timestamps must be
-        ordered id DESC. The task with the hex-greater UUID must appear
-        first in find_blocked() results.
+        同じ updated_at タイムスタンプを持つ 2 つの BLOCKED Task は
+        id DESC で順序付けされる必要。16進大の UUID を持つタスクは
+        find_blocked() 結果の最初に現れる必要。
 
-        This test physically asserts the tiebreaker from §確定 R1-K
-        ``ORDER BY updated_at DESC, id DESC`` by controlling both IDs and
-        timestamps at construction time.
+        このテストは§確定 R1-K ``ORDER BY updated_at DESC, id DESC`` から
+        タイブレーカを物理的にアサートし、構成時に ID とタイムスタンプを制御。
         """
         room_id, directive_id = seeded_task_context
 
-        # Pin a shared updated_at so the tiebreaker kicks in.
+        # 共有 updated_at をピンして、タイブレーカが発動するようにする。
         fixed_ts = datetime(9999, 1, 1, 0, 0, 0, tzinfo=UTC)
 
-        # UUID hex: "ffffffff..." > "00000000..." lexicographically.
+        # UUID hex: "ffffffff..." > "00000000..." 辞書順。
         id_high = UUID("ffffffff-ffff-4000-8000-000000000001")
         id_low = UUID("00000000-0000-4000-8000-000000000001")
 
@@ -229,13 +228,13 @@ class TestFindBlocked:
         async with session_factory() as session:
             results = await SqliteTaskRepository(session).find_blocked()
 
-        assert len(results) == 2, f"[FAIL] Expected 2 BLOCKED tasks, got {len(results)}"
-        # id DESC: id_high must come before id_low
+        assert len(results) == 2, f"[FAIL] 2 つの BLOCKED Task が期待値、 {len(results)} を取得"
+        # id DESC: id_high は id_low の前に来る必要
         assert results[0].id == id_high, (
-            f"[FAIL] Tiebreaker ORDER BY id DESC violated.\n"
-            f"Expected first: {id_high!r}\n"
-            f"Got first:      {results[0].id!r}\n"
-            f"BUG-EMR-001規約: find_blocked ORDER BY updated_at DESC, id DESC must "
-            f"produce deterministic ordering when updated_at is equal."
+            f"[FAIL] タイブレーカ ORDER BY id DESC が違反。\n"
+            f"期待値最初: {id_high!r}\n"
+            f"実際最初:      {results[0].id!r}\n"
+            f"BUG-EMR-001規約: find_blocked ORDER BY updated_at DESC, id DESC は "
+            f"updated_at が等しい場合に決定的な順序を生成する必要。"
         )
         assert results[1].id == id_low

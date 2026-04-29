@@ -1,9 +1,9 @@
-"""NotifyChannel SSRF allow list G1〜G10 (Confirmation G).
+"""NotifyChannel SSRF allow list G1〜G10 (Confirmation G)。
 
-Covers TC-UT-WF-034〜036, 048〜054. Each ``Test*`` parametrize hits one of the
-ten G-rules, ensuring any future change to ``NotifyChannel._validate_target``
-produces a focused diff in this file rather than scattering the SSRF contract
-across a monolithic test module.
+TC-UT-WF-034〜036, 048〜054 をカバー。各 ``Test*`` parametrize は
+10 の G ルール 1 つをヒット、``NotifyChannel._validate_target`` への
+将来の変更が monolithic test モジュール全体に SSRF 契約を
+散乱させるのではなく、このファイルで焦点 diff を生成することを保証。
 """
 
 from __future__ import annotations
@@ -14,17 +14,17 @@ from pydantic import ValidationError
 
 
 class TestNotifyChannelSSRF:
-    """TC-UT-WF-034〜036, 048〜054 — full G1〜G10 rejection coverage."""
+    """TC-UT-WF-034〜036, 048〜054 — 完全 G1〜G10 拒否カバレッジ。"""
 
     @pytest.mark.parametrize(
         "bad_target",
         [
-            # G3: HTTPS強制
+            # G3: HTTPS 強制
             "http://discord.com/api/webhooks/123/abc-DEF_xyz",
         ],
     )
     def test_034_https_only(self, bad_target: str) -> None:
-        """TC-UT-WF-034 / G3: scheme must be 'https'."""
+        """TC-UT-WF-034 / G3: scheme は 'https' 必須。"""
         with pytest.raises(ValidationError):
             NotifyChannel(kind="discord", target=bad_target)
 
@@ -37,7 +37,7 @@ class TestNotifyChannelSSRF:
         ],
     )
     def test_035_hostname_exact_match(self, bad_target: str) -> None:
-        """TC-UT-WF-035 / G4: hostname must equal 'discord.com' exactly."""
+        """TC-UT-WF-035 / G4: hostname は 'discord.com' に正確に一致必須。"""
         with pytest.raises(ValidationError):
             NotifyChannel(kind="discord", target=bad_target)
 
@@ -49,26 +49,26 @@ class TestNotifyChannelSSRF:
         ],
     )
     def test_036_path_must_be_present(self, bad_target: str) -> None:
-        """TC-UT-WF-036 / G7: path must match /api/webhooks/<id>/<token>."""
+        """TC-UT-WF-036 / G7: path は /api/webhooks/<id>/<token> に一致必須。"""
         with pytest.raises(ValidationError):
             NotifyChannel(kind="discord", target=bad_target)
 
     def test_048_token_at_g7_cap_succeeds_overflow_rejected(self) -> None:
-        """TC-UT-WF-048 / G1+G7: 100-char token (G7 cap) works, 101+ rejected.
+        """TC-UT-WF-048 / G1+G7: 100 文字トークン (G7 キャップ) は機能、101+ は拒否。
 
-        Realistic upper bound on a *valid* Discord webhook URL is reached via
-        G7 (token ≤ 100 chars). We verify that the maximum-permitted shape
-        constructs successfully, that any G7 overflow trips, and that an
-        oversized URL hits G1 independently.
+        **有効な** Discord webhook URL に対するリアルな上限は G7 経由
+        (トークン ≤ 100 文字) で到達。最大許可形は正常に構築、
+        あらゆる G7 オーバーフロー トリップ、過大サイズ URL が
+        G1 をヒットすることを独立で検証。
         """
         base = "https://discord.com/api/webhooks/123456789/"
-        valid = base + "a" * 100  # token at G7 cap
+        valid = base + "a" * 100  # G7 キャップでトークン
         channel = NotifyChannel(kind="discord", target=valid)
         assert channel.target == valid
-        # 101-char token violates G7.
+        # 101 文字トークンは G7 違反。
         with pytest.raises(ValidationError):
             NotifyChannel(kind="discord", target=base + "a" * 101)
-        # 500+ char URL violates G1 too.
+        # 500+ 文字 URL も G1 を違反。
         oversized = "https://discord.com/api/webhooks/1/" + "a" * 500
         assert len(oversized) > 500
         with pytest.raises(ValidationError):
@@ -83,7 +83,7 @@ class TestNotifyChannelSSRF:
         ],
     )
     def test_049_port_must_be_none_or_443(self, bad_target: str) -> None:
-        """TC-UT-WF-049 / G5: port restricted to {None, 443}."""
+        """TC-UT-WF-049 / G5: port は {None, 443} に制限。"""
         with pytest.raises(ValidationError):
             NotifyChannel(kind="discord", target=bad_target)
 
@@ -95,27 +95,27 @@ class TestNotifyChannelSSRF:
         ],
     )
     def test_050_userinfo_rejected(self, bad_target: str) -> None:
-        """TC-UT-WF-050 / G6: userinfo (user/password) rejected."""
+        """TC-UT-WF-050 / G6: userinfo (ユーザー/パスワード) は拒否。"""
         with pytest.raises(ValidationError):
             NotifyChannel(kind="discord", target=bad_target)
 
     @pytest.mark.parametrize(
         "bad_target",
         [
-            "https://discord.com/api/webhooks/abc/def",  # id non-numeric
-            "https://discord.com/api/webhooks/123/!@#",  # token bad chars
-            "https://discord.com/api/webhooks/" + ("0" * 31) + "/abc",  # id 31 digits
-            "https://discord.com/api/webhooks/123/" + ("a" * 101),  # token 101 chars
-            "https://discord.com/api/webhooks/123/abc/extra",  # extra path segment
+            "https://discord.com/api/webhooks/abc/def",  # id 非数値
+            "https://discord.com/api/webhooks/123/!@#",  # トークン不良文字
+            "https://discord.com/api/webhooks/" + ("0" * 31) + "/abc",  # id 31 桁
+            "https://discord.com/api/webhooks/123/" + ("a" * 101),  # トークン 101 文字
+            "https://discord.com/api/webhooks/123/abc/extra",  # 余分パスセグメント
         ],
     )
     def test_051_path_regex_fullmatch(self, bad_target: str) -> None:
-        """TC-UT-WF-051 / G7: path regex must fullmatch /api/webhooks/<id>/<token>."""
+        """TC-UT-WF-051 / G7: path regex は /api/webhooks/<id>/<token> に fullmatch 必須。"""
         with pytest.raises(ValidationError):
             NotifyChannel(kind="discord", target=bad_target)
 
     def test_052_query_rejected(self) -> None:
-        """TC-UT-WF-052 / G8: query string rejected."""
+        """TC-UT-WF-052 / G8: クエリ文字列は拒否。"""
         with pytest.raises(ValidationError):
             NotifyChannel(
                 kind="discord",
@@ -123,7 +123,7 @@ class TestNotifyChannelSSRF:
             )
 
     def test_053_fragment_rejected(self) -> None:
-        """TC-UT-WF-053 / G9: fragment rejected."""
+        """TC-UT-WF-053 / G9: フラグメントは拒否。"""
         with pytest.raises(ValidationError):
             NotifyChannel(
                 kind="discord",
@@ -133,11 +133,11 @@ class TestNotifyChannelSSRF:
     @pytest.mark.parametrize(
         "bad_target",
         [
-            "https://discord.com/API/WEBHOOKS/123/abc",  # uppercase API/WEBHOOKS
-            "https://discord.com/Api/Webhooks/123/abc",  # mixed case
+            "https://discord.com/API/WEBHOOKS/123/abc",  # 大文字 API/WEBHOOKS
+            "https://discord.com/Api/Webhooks/123/abc",  # 混合ケース
         ],
     )
     def test_054_path_case_sensitive(self, bad_target: str) -> None:
-        """TC-UT-WF-054 / G10: path case-sensitive (only lowercase /api/webhooks/)."""
+        """TC-UT-WF-054 / G10: path は大文字小文字を区別 (小文字 /api/webhooks/ のみ)。"""
         with pytest.raises(ValidationError):
             NotifyChannel(kind="discord", target=bad_target)

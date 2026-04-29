@@ -1,15 +1,15 @@
-"""Repository ports (one Protocol per Aggregate).
+"""Repository ports（Aggregate ごとに 1 Protocol）。
 
-Each Aggregate owns its own :class:`typing.Protocol` file under this
-package so:
+各 Aggregate は本パッケージ配下に専用の :class:`typing.Protocol` ファイルを保有する。
+これにより:
 
-1. The contract surface of one Aggregate is searchable in isolation.
-2. Adding a new Repository for a new Aggregate is a single file diff.
-3. The ports stay free of any infrastructure imports — the domain
-   types they reference are the same VOs the Aggregate Roots use.
+1. ある Aggregate の契約面を単独で検索できる。
+2. 新しい Aggregate に対する Repository の追加が単一ファイルの差分で済む。
+3. ports は infrastructure の import から完全に分離される —
+   参照するドメイン型は Aggregate Root が用いる VO と同一。
 
-See ``docs/features/empire-repository/detailed-design.md`` §確定 A
-(イーロン承認済み, "Repository ポート配置 — Aggregate 別ファイル分離")
-for the placement rule. Subsequent ``feature/{aggregate}-repository``
-PRs add their own files following the same pattern.
+配置ルールは ``docs/features/empire-repository/detailed-design.md`` §確定 A
+（イーロン承認済み「Repository ポート配置 — Aggregate 別ファイル分離」）を参照。
+後続の ``feature/{aggregate}-repository`` PR は同じパターンに従って自身のファイルを
+追加する。
 """

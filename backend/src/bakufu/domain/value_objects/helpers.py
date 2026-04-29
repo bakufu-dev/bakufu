@@ -1,13 +1,13 @@
-"""Cross-cutting helper functions and annotated string types for the bakufu domain.
+"""bakufu ドメインの横断的ヘルパー関数および注釈付き文字列型。
 
-Two helpers are shared by every Aggregate (Empire / Workflow / Agent / ...):
+すべての Aggregate（Empire / Workflow / Agent / ...）で共有される 2 つのヘルパ:
 
-* :func:`nfc_strip` — name normalization pipeline (NFC → strip → length),
-  fulfilling Empire detailed-design §Confirmation B and Workflow §Confirmation B.
-* :func:`mask_discord_webhook` — replaces the secret ``token`` segment of a
-  Discord webhook URL with ``<REDACTED:DISCORD_WEBHOOK>`` while preserving the
-  ``id`` segment for audit traceability. Required by Workflow detailed-design
-  §Confirmation G "target のシークレット扱い".
+* :func:`nfc_strip` — 名前正規化パイプライン（NFC → strip → 長さ）。
+  Empire detailed-design §Confirmation B と Workflow §Confirmation B を満たす。
+* :func:`mask_discord_webhook` — Discord webhook URL のシークレット ``token``
+  セグメントを ``<REDACTED:DISCORD_WEBHOOK>`` に置き換え、監査追跡用に ``id``
+  セグメントを保持する。Workflow detailed-design §Confirmation G「target のシーク
+  レット扱い」が要求する。
 """
 
 from __future__ import annotations
@@ -19,33 +19,32 @@ from typing import Annotated, cast
 from pydantic import BeforeValidator, Field
 
 # ---------------------------------------------------------------------------
-# Name normalization (Confirmation B)
+# 名前正規化（Confirmation B）
 # ---------------------------------------------------------------------------
 
 
 def nfc_strip(value: object) -> object:
-    """Apply NFC normalization and ``strip`` per detailed-design §Confirmation B.
+    """detailed-design §Confirmation B に従い NFC 正規化と ``strip`` を適用する。
 
-    Public so sibling Aggregates (Empire / Workflow / Agent / ...) can share
-    the **single** implementation of the normalization pipeline. Operates only
-    on ``str`` inputs; non-string values are passed through unchanged so
-    Pydantic's downstream type validation reports them with its standard error
-    shape rather than silently coercing.
+    パブリック関数として、兄弟 Aggregate（Empire / Workflow / Agent / ...）が正規化
+    パイプラインの **単一** 実装を共有できるようにする。``str`` 入力に対してのみ
+    動作し、非文字列値はそのまま通過させる。これにより、サイレントに型強制せず、
+    Pydantic の下流型検証が標準のエラー形で報告できる。
     """
     if isinstance(value, str):
         return unicodedata.normalize("NFC", value).strip()
     return value
 
 
-# Public alias used by sibling VOs/Aggregates that adopt the same pipeline.
+# 同じパイプラインを採用する兄弟 VO / Aggregate が使用するパブリック エイリアス。
 type NormalizedShortName = Annotated[
     str,
     BeforeValidator(nfc_strip),
     Field(min_length=1, max_length=80),
 ]
-"""``str`` annotated with NFC+strip BeforeValidator and 1〜80-char Field bounds.
+"""NFC+strip の BeforeValidator と 1〜80 文字 Field 境界が付与された ``str``。
 
-Used by :class:`RoomRef` and any future VO with the 80-char short-name contract.
+:class:`RoomRef` および 80 文字 short-name コントラクトを採用する将来の VO で使用。
 """
 
 type NormalizedAgentName = Annotated[
@@ -53,16 +52,16 @@ type NormalizedAgentName = Annotated[
     BeforeValidator(nfc_strip),
     Field(min_length=1, max_length=40),
 ]
-"""1〜40-char variant for :class:`AgentRef` (Agent.name regulation)."""
+""":class:`AgentRef`（Agent.name 規定）用の 1〜40 文字バリエーション。"""
 
 
 # ---------------------------------------------------------------------------
-# Discord webhook secret masking (Workflow §Confirmation G)
+# Discord webhook シークレット マスキング（Workflow §Confirmation G）
 # ---------------------------------------------------------------------------
-# Capture id (numeric) separately so it stays visible in audit/log output
-# while only the token segment is redacted. Anchored loosely (no ^/$) so the
-# pattern matches when the URL is embedded inside larger strings (exception
-# detail dicts, JSON payloads, log lines).
+# id（数値）を別キャプチャすることで、監査／ログ出力で id を可視のままにし、token
+# セグメントだけを伏字化する。^ / $ を付けない緩いアンカーで、URL がより大きい
+# 文字列（例外 detail dict、JSON ペイロード、ログ行）に埋め込まれていてもパターン
+# にマッチする。
 _DISCORD_WEBHOOK_PATTERN = re.compile(
     r"https://discord\.com/api/webhooks/([0-9]+)/([A-Za-z0-9_\-]+)"
 )
@@ -70,11 +69,11 @@ _DISCORD_WEBHOOK_REDACTED_TOKEN = "<REDACTED:DISCORD_WEBHOOK>"
 
 
 def mask_discord_webhook(text: str) -> str:
-    """Replace the secret ``token`` segment of every Discord webhook URL.
+    """Discord webhook URL のシークレット ``token`` セグメントを全て置き換える。
 
-    Retains the snowflake ``id`` for traceability (audit_log can identify
-    *which* webhook was involved) while redacting the credential segment.
-    Idempotent: applying it twice yields the same result.
+    snowflake の ``id`` は追跡性のため保持する（audit_log が *どの* webhook が関与
+    したかを特定できる）一方、認証セグメントを伏字化する。冪等: 2 回適用しても
+    同じ結果になる。
     """
     return _DISCORD_WEBHOOK_PATTERN.sub(
         rf"https://discord.com/api/webhooks/\1/{_DISCORD_WEBHOOK_REDACTED_TOKEN}",
@@ -83,12 +82,12 @@ def mask_discord_webhook(text: str) -> str:
 
 
 def mask_discord_webhook_in(value: object) -> object:
-    """Recursively apply :func:`mask_discord_webhook` to strings within a value.
+    """値内の文字列に :func:`mask_discord_webhook` を再帰的に適用する。
 
-    Walks ``str`` / ``list`` / ``tuple`` / ``dict`` structures so nested
-    diagnostic payloads (used in exception ``detail``) cannot leak a token
-    via a list element or dict value. ``cast`` calls give pyright strict the
-    element typing it cannot infer from a bare ``isinstance`` narrowing.
+    ``str`` / ``list`` / ``tuple`` / ``dict`` 構造を巡回するため、ネストされた診断
+    ペイロード（例外の ``detail`` で使用）がリスト要素や dict 値を介してトークンを
+    漏洩することを防ぐ。``cast`` 呼び出しは、bare ``isinstance`` ナローイングだけ
+    では pyright strict が推論できない要素型情報を与える。
     """
     if isinstance(value, str):
         return mask_discord_webhook(value)

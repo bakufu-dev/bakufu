@@ -1,14 +1,14 @@
-"""InternalReviewGate aggregate-internal integration tests (TC-IT-IRG-001, 002).
+"""InternalReviewGate aggregate-internal integration テスト (TC-IT-IRG-001, 002)。
 
-Per ``docs/features/internal-review-gate/domain/test-design.md`` §結合テストケース.
+``docs/features/internal-review-gate/domain/test-design.md`` §結合テストケース に従う。
 
-"Integration" in this module means **Aggregate-internal module collaboration**
-(InternalReviewGate ↔ state_machine ↔ aggregate_validators ↔ Verdict VO) without
-any external I/O — same zero-IO pattern as the sibling agent / directive / room /
-workflow integration tests.
+このモジュール内「Integration」は **Aggregate 内モジュール協調**を意味する
+(InternalReviewGate ↔ state_machine ↔ aggregate_validators ↔ Verdict VO)
+外部 I/O なし — sibling agent / directive / room / workflow
+integration テストと同じゼロ I/O パターン。
 
-Covers:
-  TC-IT-IRG-001  Gate lifecycle 完走(PENDING → ALL_APPROVED)(AC#2, 3, 4)
+対象:
+  TC-IT-IRG-001  Gate ライフサイクル 完走(PENDING → ALL_APPROVED)(AC#2, 3, 4)
   TC-IT-IRG-002  REJECTED 経路(1件 REJECTED → 即遷移、残り未提出でも)(AC#5)
 
 Issue: #65
@@ -34,13 +34,14 @@ def _ts() -> datetime:
 # TC-IT-IRG-001: Gate lifecycle 完走(PENDING → ALL_APPROVED)
 # ---------------------------------------------------------------------------
 class TestGateLifecycleAllApproved:
-    """TC-IT-IRG-001: full multi-step lifecycle PENDING → partial → ALL_APPROVED → guard."""
+    """TC-IT-IRG-001: 完全な複数ステップライフサイクル
+    PENDING → partial → ALL_APPROVED → guard。"""
 
     def test_lifecycle_reaches_all_approved(self) -> None:
-        """Step 1 (reviewer APPROVED) keeps PENDING; step 2 (ux APPROVED) → ALL_APPROVED."""
+        """Step 1 (reviewer APPROVED) が PENDING を保持； step 2 (ux APPROVED) → ALL_APPROVED。"""
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
 
-        # Step 1: reviewer APPROVED → still PENDING.
+        # Step 1: reviewer APPROVED → まだ PENDING。
         reviewer_agent = uuid4()
         gate_after_reviewer = gate.submit_verdict(
             role="reviewer",
@@ -52,7 +53,7 @@ class TestGateLifecycleAllApproved:
         assert gate_after_reviewer.gate_decision == GateDecision.PENDING
         assert len(gate_after_reviewer.verdicts) == 1
 
-        # Step 2: ux APPROVED → ALL_APPROVED.
+        # Step 2: ux APPROVED → ALL_APPROVED。
         ux_agent = uuid4()
         gate_final = gate_after_reviewer.submit_verdict(
             role="ux",
@@ -65,7 +66,7 @@ class TestGateLifecycleAllApproved:
         assert len(gate_final.verdicts) == 2
 
     def test_all_approved_gate_rejects_further_submission(self) -> None:
-        """Step 3: submission to ALL_APPROVED Gate raises gate_already_decided."""
+        """Step 3: ALL_APPROVED Gate への提出が gate_already_decided を raise。"""
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
         gate = gate.submit_verdict(
             role="reviewer",
@@ -94,7 +95,7 @@ class TestGateLifecycleAllApproved:
         assert exc_info.value.kind == "gate_already_decided"
 
     def test_source_gate_unchanged_throughout_lifecycle(self) -> None:
-        """Pre-validate rebuild: every intermediate Gate is immutable."""
+        """Pre-validate rebuild: すべての中間 Gate は immutable。"""
         gate_initial = make_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
         snapshot_initial = gate_initial.model_dump()
 
@@ -115,14 +116,14 @@ class TestGateLifecycleAllApproved:
             decided_at=_ts(),
         )
 
-        # Original and mid-state gates must not have changed.
+        # 元の gate と mid-state gate は変更されてはならない。
         assert gate_initial.model_dump() == snapshot_initial
         assert gate_mid.model_dump() == snapshot_mid
-        # Only the final gate is ALL_APPROVED.
+        # 最終 gate だけが ALL_APPROVED。
         assert gate_final.gate_decision == GateDecision.ALL_APPROVED
 
     def test_all_approved_gate_attribute_consistency(self) -> None:
-        """ALL_APPROVED Gate's attributes are internally consistent post-lifecycle."""
+        """ALL_APPROVED Gate の属性は post-lifecycle で内部整合。"""
         roles = frozenset({"reviewer", "ux"})
         gate = make_gate(required_gate_roles=roles)
         gate = gate.submit_verdict(
@@ -139,10 +140,10 @@ class TestGateLifecycleAllApproved:
             comment="UX OK",
             decided_at=_ts(),
         )
-        # All required roles have verdicts.
+        # 必須 role 全てに verdict が付与済み。
         submitted_roles = frozenset(v.role for v in gate.verdicts)
         assert submitted_roles == roles
-        # Every verdict is APPROVED.
+        # 全 verdict が APPROVED である。
         assert all(v.decision == VerdictDecision.APPROVED for v in gate.verdicts)
 
 
@@ -164,7 +165,7 @@ class TestGateLifecycleRejected:
             decided_at=_ts(),
         )
         assert gate_rejected.gate_decision == GateDecision.REJECTED
-        # Only 1 verdict: remaining 2 roles are still not submitted.
+        # verdict は 1 件のみ: 残り 2 つの role は未投稿。
         assert len(gate_rejected.verdicts) == 1
         assert gate_rejected.verdicts[0].decision == VerdictDecision.REJECTED
 
@@ -180,7 +181,7 @@ class TestGateLifecycleRejected:
         )
         assert gate.gate_decision == GateDecision.REJECTED
 
-        # ux tries to APPROVE after Gate is already REJECTED.
+        # Gate が REJECTED 後に ux が APPROVE を試みるケース。
         with pytest.raises(InternalReviewGateInvariantViolation) as exc_info:
             gate.submit_verdict(
                 role="ux",

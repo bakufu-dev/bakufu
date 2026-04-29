@@ -1,23 +1,23 @@
-"""Empire Aggregate Root.
+"""Empire 集約ルート。
 
-Implements ``REQ-EM-001``〜``REQ-EM-005`` per ``docs/features/empire``.
+``docs/features/empire`` に従って ``REQ-EM-001``〜``REQ-EM-005`` を実装する。
 
-Design contract (do not break without re-running design review):
+設計契約（設計レビューを再実施しない限り変更不可）:
 
-* **Pre-validate rebuild (Confirmation A)** — every state-changing behavior
-  serializes the current state via ``model_dump()``, swaps the target list,
-  and re-runs ``Empire.model_validate(...)`` so the ``model_validator(mode='after')``
-  fires on the *candidate* aggregate. Failure raises
-  :class:`EmpireInvariantViolation` *before* any new instance is observable,
-  keeping the original aggregate strictly unchanged. ``model_copy(update=...)``
-  is intentionally avoided because Pydantic v2 defaults it to ``validate=False``.
-* **NFC normalization pipeline (Confirmation B)** — ``raw → NFC → strip → len``;
-  the resulting cleaned form is what gets persisted and what ``MSG-EM-001``'s
-  ``{length}`` reports.
-* **Capacity (Confirmation C)** — ``len(rooms) ≤ 100`` and ``len(agents) ≤ 100``.
-* **Linear search (Confirmation D)** — ``archive_room`` walks ``rooms`` linearly
-  rather than maintaining a side-index dict. ``N ≤ 100`` keeps this trivially
-  cheap and avoids parallel-state bugs.
+* **事前検証付き再構築（確定 A）** — 状態を変更するすべての振る舞いは
+  ``model_dump()`` で現在の状態をシリアライズし、対象リストを差し替え、
+  ``Empire.model_validate(...)`` を再実行することで *候補* 集約に対して
+  ``model_validator(mode='after')`` を発火させる。失敗時は新インスタンスが
+  観測可能になる *前* に :class:`EmpireInvariantViolation` を送出し、
+  元の集約は厳密に変更されないままにする。``model_copy(update=...)`` は
+  Pydantic v2 がデフォルトで ``validate=False`` とするため意図的に避ける。
+* **NFC 正規化パイプライン（確定 B）** — ``raw → NFC → strip → len``。
+  クリーニング後の形式が永続化され、``MSG-EM-001`` の ``{length}`` も
+  この形式の長さを報告する。
+* **容量制約（確定 C）** — ``len(rooms) ≤ 100`` かつ ``len(agents) ≤ 100``。
+* **線形探索（確定 D）** — ``archive_room`` は補助インデックス dict を
+  保持せず ``rooms`` を線形に走査する。``N ≤ 100`` のためコストは無視でき、
+  状態の二重管理によるバグを避ける。
 """
 
 from __future__ import annotations
@@ -35,24 +35,24 @@ from bakufu.domain.value_objects import (
     nfc_strip,
 )
 
-# Capacity ceiling per detailed-design §Confirmation C. Module-level constant
-# so test/factory code can import the same source of truth.
+# 詳細設計 §確定 C の容量上限。テスト・ファクトリコードが同じ
+# 真実の源を import できるようモジュールレベル定数とする。
 MAX_ROOMS: int = 100
 MAX_AGENTS: int = 100
 
-# Empire.name length bounds per detailed-design §Confirmation B.
+# 詳細設計 §確定 B の Empire.name 長さ範囲。
 MIN_NAME_LENGTH: int = 1
 MAX_NAME_LENGTH: int = 80
 
 
 class Empire(BaseModel):
-    """Root aggregate that owns the references to Rooms and Agents.
+    """Room と Agent への参照を保持するルート集約。
 
-    State-changing methods (:meth:`hire_agent`, :meth:`establish_room`,
-    :meth:`archive_room`) return a *new* :class:`Empire` instance — this
-    aggregate is frozen.  The caller swaps its own reference; Pydantic v2's
-    ``frozen=True`` makes in-place mutation impossible at the language level,
-    so concurrent callers cannot observe a partially-updated aggregate.
+    状態を変更するメソッド（:meth:`hire_agent` / :meth:`establish_room` /
+    :meth:`archive_room`）は *新しい* :class:`Empire` インスタンスを返す。
+    この集約は frozen であり、呼び出し側は自身の参照を差し替える。
+    Pydantic v2 の ``frozen=True`` により言語レベルでインプレース変更が
+    不可能となるため、並行呼び出し側が部分更新中の集約を観測できない。
     """
 
     model_config = ConfigDict(
@@ -64,34 +64,35 @@ class Empire(BaseModel):
     id: EmpireId
     name: str
     archived: bool = False
-    # Pydantic v2 deep-copies these defaults per instance, so the empty-list
-    # literal is safe and pyright-friendly (no `default_factory=list` Unknown).
+    # Pydantic v2 はインスタンスごとにこれらのデフォルトをディープコピーするため、
+    # 空リストリテラルは安全かつ pyright フレンドリー
+    # （`default_factory=list` の Unknown が出ない）。
     rooms: list[RoomRef] = []
     agents: list[AgentRef] = []
 
     # ------------------------------------------------------------------
-    # Pre-validation hooks
+    # 事前検証フック
     # ------------------------------------------------------------------
     @field_validator("name", mode="before")
     @classmethod
     def _normalize_name(cls, value: object) -> object:
-        """Apply the Confirmation B pipeline up to (but not including) ``len``.
+        """確定 B のパイプラインを ``len`` 直前まで適用する。
 
-        Delegates to :func:`nfc_strip` so Empire / Room / Agent / Workflow share
-        the **single** NFC+strip implementation (DRY). Length / range judgment
-        is intentionally kept in :meth:`_check_invariants` so the resulting
-        :class:`EmpireInvariantViolation` carries the structured
-        ``kind='name_range'`` rather than a generic Pydantic ``ValidationError``.
+        Empire / Room / Agent / Workflow が **単一の** NFC+strip 実装を共有する
+        ため :func:`nfc_strip` に委譲する（DRY）。長さ・範囲判定は意図的に
+        :meth:`_check_invariants` に残し、結果として汎用的な Pydantic
+        ``ValidationError`` ではなく構造化された ``kind='name_range'`` を持つ
+        :class:`EmpireInvariantViolation` を返せるようにしている。
         """
         return nfc_strip(value)
 
     @model_validator(mode="after")
     def _check_invariants(self) -> Self:
-        """Run all aggregate-level invariants on the candidate instance.
+        """候補インスタンスに対して集約レベルの不変条件を全て実行する。
 
-        Custom (non-``ValueError``) exceptions raised here propagate to the
-        caller without being wrapped in ``ValidationError`` — Pydantic v2's
-        documented behavior for ``mode='after'`` validators.
+        ここで送出される独自例外（``ValueError`` 以外）は ``ValidationError``
+        にラップされず呼び出し側へ伝搬する — これは Pydantic v2 の
+        ``mode='after'`` バリデータの仕様として明記されている挙動。
         """
         self._check_name_range()
         self._check_capacity()
@@ -99,7 +100,7 @@ class Empire(BaseModel):
         return self
 
     # ------------------------------------------------------------------
-    # Invariant checks (split for SRP / readability)
+    # 不変条件チェック（SRP / 可読性のため分割）
     # ------------------------------------------------------------------
     def _check_name_range(self) -> None:
         length = len(self.name)
@@ -158,38 +159,39 @@ class Empire(BaseModel):
             seen_rooms.add(room.room_id)
 
     # ------------------------------------------------------------------
-    # Behaviors (Tell, Don't Ask)
+    # 振る舞い（Tell, Don't Ask）
     # ------------------------------------------------------------------
     def hire_agent(self, agent_ref: AgentRef) -> Empire:
-        """Return a new :class:`Empire` with ``agent_ref`` appended to ``agents``.
+        """``agents`` に ``agent_ref`` を追加した新しい :class:`Empire` を返す。
 
         Raises:
-            EmpireInvariantViolation: if ``agent_ref.agent_id`` duplicates an
-                existing agent (``kind='agent_duplicate'``) or the resulting
-                count exceeds :data:`MAX_AGENTS` (``kind='capacity_exceeded'``).
-                The original aggregate is left unchanged.
+            EmpireInvariantViolation: ``agent_ref.agent_id`` が既存の
+                Agent と重複する場合（``kind='agent_duplicate'``）、または
+                追加後の件数が :data:`MAX_AGENTS` を超える場合
+                （``kind='capacity_exceeded'``）。元の集約は変更されない。
         """
         return self._rebuild_with(agents=[*self.agents, agent_ref])
 
     def establish_room(self, room_ref: RoomRef) -> Empire:
-        """Return a new :class:`Empire` with ``room_ref`` appended to ``rooms``.
+        """``rooms`` に ``room_ref`` を追加した新しい :class:`Empire` を返す。
 
         Raises:
-            EmpireInvariantViolation: on duplicate ``room_id`` or capacity
-                breach. Original aggregate unchanged.
+            EmpireInvariantViolation: ``room_id`` 重複または容量超過時。
+                元の集約は変更されない。
         """
         return self._rebuild_with(rooms=[*self.rooms, room_ref])
 
     def archive_room(self, room_id: RoomId) -> Empire:
-        """Return a new :class:`Empire` with the matching room marked archived.
+        """該当 Room を archived 化した新しい :class:`Empire` を返す。
 
-        The room is *not* physically removed — bakufu's audit trail must be
-        able to resolve historical ``room_id`` references (detailed-design
-        §"なぜ archive_room は物理削除しないか"). Re-archiving an already
-        archived room is idempotent: the resulting room state is the same.
+        Room は *物理削除* されない — bakufu の監査証跡は過去の ``room_id``
+        参照を解決できる必要があるため（詳細設計 §"なぜ archive_room は
+        物理削除しないか"）。アーカイブ済み Room の再アーカイブは冪等であり、
+        結果の Room 状態は同一になる。
 
         Raises:
-            EmpireInvariantViolation: if no room matches (``kind='room_not_found'``).
+            EmpireInvariantViolation: 該当 Room が存在しない場合
+                （``kind='room_not_found'``）。
         """
         for index, room in enumerate(self.rooms):
             if room.room_id == room_id:
@@ -203,17 +205,16 @@ class Empire(BaseModel):
         )
 
     def archive(self) -> Empire:
-        """Return a new :class:`Empire` with ``archived=True``.
+        """``archived=True`` を持つ新しい :class:`Empire` を返す。
 
-        Implements the logical delete (UC-EM-010 / 確定 H). Returns a new
-        frozen instance; callers pass the result to
-        ``EmpireRepository.save(archived_empire)`` to persist the state
-        change inside the Unit-of-Work.
+        論理削除（UC-EM-010 / 確定 H）を実装する。新しい frozen インスタンスを
+        返すので、呼び出し側はその結果を ``EmpireRepository.save(archived_empire)``
+        に渡し、Unit-of-Work 内部で状態変更を永続化する。
         """
         return Empire.model_validate(self.model_dump() | {"archived": True})
 
     # ------------------------------------------------------------------
-    # Internal: pre-validate rebuild (Confirmation A)
+    # 内部: 事前検証付き再構築（確定 A）
     # ------------------------------------------------------------------
     def _rebuild_with(
         self,
@@ -221,12 +222,12 @@ class Empire(BaseModel):
         rooms: list[RoomRef] | None = None,
         agents: list[AgentRef] | None = None,
     ) -> Empire:
-        """Re-construct via ``model_validate`` so ``model_validator`` re-fires.
+        """``model_validate`` で再構築し、``model_validator`` を再発火させる。
 
-        The candidate dict is built from ``model_dump()`` (which yields fully
-        primitive structures) so swapped-in lists end up homogeneous: Pydantic
-        re-coerces dicts back into ``RoomRef`` / ``AgentRef`` instances during
-        validation, matching the form taken when an Empire is first constructed.
+        候補 dict は ``model_dump()`` から組み立てる（完全にプリミティブな構造を
+        生成する）ため、差し替えたリストは同質になる: 検証中に Pydantic が
+        dict を ``RoomRef`` / ``AgentRef`` インスタンスへ再強制し、
+        Empire 初期構築時と同じ形になる。
         """
         state = self.model_dump()
         if rooms is not None:

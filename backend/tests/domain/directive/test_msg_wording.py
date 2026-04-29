@@ -1,22 +1,20 @@
-"""MSG-DR-001 / 002 wording + Next: hint physical guarantee
-(TC-UT-DR-022 / 023).
+"""MSG-DR-001 / 002 ワーディング + Next: ヒント物理保証
+（TC-UT-DR-022 / 023）.
 
-Each MSG follows the 2-line structure (Confirmation F, room §確定 I
-踏襲):
+各 MSG は 2 行構造に従う（Confirmation F、room §確定 I 踏襲）:
 
     [FAIL] <failure fact>
     Next: <recommended next action>
 
-The first line is asserted **exactly** so future i18n / refactoring
-cannot silently drift the operator-visible failure fact. The second
-line is asserted via substring on the leading ``Next:`` token *and* a
-topic phrase so the design-time hint contract survives cosmetic edits
-while the "hint exists" property is locked in by CI.
+1 行目は **厳密に** アサート。i18n / リファクタリング後の運用者側
+可視化失敗事実の無言漂流を防止。2 行目は先頭 Next: トークンと
+トピック フレーズでアサート。設計時ヒント契約は化粧直しに耐え、
+「ヒント存在」プロパティは CI で施錠。
 
-MSG-DR-003 (type violation) travels the :class:`pydantic.ValidationError`
-path; it is covered in ``test_construction.py``. MSG-DR-004 / 005
-belong to the application layer (``DirectiveService.issue()``) — out of
-scope for this aggregate test suite.
+MSG-DR-003（型違反）は pydantic.ValidationError 経路を辿る。
+test_construction.py でカバー。MSG-DR-004 / 005 はアプリケーション層
+（DirectiveService.issue()）に属す。本アグリゲートテストスイート
+の対象外。
 """
 
 from __future__ import annotations
@@ -33,10 +31,11 @@ from tests.factories.directive import (
 
 
 class TestMsgDr001TextRange:
-    """TC-UT-DR-022: MSG-DR-001 + Next: hint."""
+    """TC-UT-DR-022: MSG-DR-001 + Next: ヒント."""
 
     def test_failure_line_matches_exact_wording(self) -> None:
-        """TC-UT-DR-022: '[FAIL] Directive text must be 1-10000 ...' exact prefix."""
+        """TC-UT-DR-022: '[FAIL] Directive text must be 1-10000 ...'
+        厳密なプレフィックス."""
         with pytest.raises(DirectiveInvariantViolation) as excinfo:
             make_directive(text="a" * 10_001)
         assert excinfo.value.message.startswith(
@@ -44,21 +43,23 @@ class TestMsgDr001TextRange:
         )
 
     def test_next_hint_present_with_topic_phrase(self) -> None:
-        """TC-UT-DR-022: 'Next:' hint exists with multi-directive / trim topic phrase."""
+        """TC-UT-DR-022: 'Next:' ヒントが複数 directive / trim
+        トピック フレーズで存在."""
         with pytest.raises(DirectiveInvariantViolation) as excinfo:
             make_directive(text="a" * 10_001)
         message = excinfo.value.message
         assert "Next:" in message
-        # Hint must mention either trimming or splitting into multiple
-        # directives (Confirmation F's documented ``Next`` phrase).
+        # ヒントはトリミングまたは複数 directive への分割を示す必須
+        # （Confirmation F の設計済み Next フレーズ）
         assert ("Trim" in message) or ("multiple directives" in message)
 
 
 class TestMsgDr002TaskAlreadyLinked:
-    """TC-UT-DR-023: MSG-DR-002 + Next: hint (issue a new Directive)."""
+    """TC-UT-DR-023: MSG-DR-002 + Next: ヒント（新 Directive 発行）."""
 
     def test_failure_line_includes_pair_identifiers(self) -> None:
-        """TC-UT-DR-023: '[FAIL] Directive already has a linked Task: ...' format."""
+        """TC-UT-DR-023: '[FAIL] Directive already has a linked Task: ...'
+        フォーマット."""
         existing_task_id = uuid4()
         directive = make_linked_directive(task_id=existing_task_id)
         new_task_id = uuid4()
@@ -70,12 +71,14 @@ class TestMsgDr002TaskAlreadyLinked:
         assert f"existing_task_id={existing_task_id}" in message
 
     def test_next_hint_advises_new_directive_and_states_one_to_one(self) -> None:
-        """TC-UT-DR-023: 'Next:' hint mentions issuing a new Directive + 1:1 design statement."""
+        """TC-UT-DR-023: 'Next:' ヒントが新 Directive 発行 + 1:1 設計文
+        を言及."""
         directive = make_linked_directive(task_id=uuid4())
         with pytest.raises(DirectiveInvariantViolation) as excinfo:
             directive.link_task(uuid4())
         message = excinfo.value.message
         assert "Next:" in message
         assert "Issue a new Directive" in message
-        # Confirmation F's design statement: "one Directive maps to one Task by design".
+        # Confirmation F の設計文: 「1 つの Directive は 1 つの Task に
+        # マップされる」
         assert "one Directive maps to one Task" in message

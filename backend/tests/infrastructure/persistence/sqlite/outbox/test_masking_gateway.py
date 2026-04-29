@@ -1,14 +1,16 @@
-"""Masking gateway integration tests (TC-IT-PF-007 / 020 / 021 / 022).
+"""マスキングゲートウェイ統合テスト（TC-IT-PF-007 / 020 / 021 / 022）。
 
-The **core** of Schneier 申し送り #6 + Confirmation R1-D (post-flip) — the
-masking gateway must fire even when callers bypass the ORM mapper and use a
-raw ``insert(table).values(...)`` statement. The original design specified
-``event.listens_for(target, 'before_insert/before_update')`` mapper
-events, but BUG-PF-001 surfaced that those listeners do **not** fire on
-the Core ``insert(table).values(...)`` path. R1-D was reverted to
-``MaskedJSONEncoded`` / ``MaskedText`` :class:`~sqlalchemy.types.TypeDecorator`
-columns whose ``process_bind_param`` hook fires on **both** ORM and Core
-paths — the very property R1-D originally tried to buy with listeners.
+Schneier 申し送り #6 + 確定 R1-D（フリップ後）の**核**となる契約 —
+呼び出し側が ORM マッパーを迂回して
+``insert(table).values(...)`` の生 Core ステートメントを使う場合でも
+マスキングゲートウェイは発火しなければならない。元の設計は
+``event.listens_for(target, 'before_insert/before_update')`` マッパー
+イベントを使っていたが、BUG-PF-001 によりそれらのリスナーは Core の
+``insert(table).values(...)`` 経路では**発火しない**ことが判明した。
+R1-D は ``MaskedJSONEncoded`` / ``MaskedText``
+:class:`~sqlalchemy.types.TypeDecorator` 列に差し戻された。これらの
+``process_bind_param`` フックは ORM フラッシュと Core 経路の**両方**で
+発火し、まさに R1-D がリスナーで得ようとした性質を満たす。
 """
 
 from __future__ import annotations
@@ -35,7 +37,7 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.asyncio
 
-# Real-shape secrets. Each must end up redacted before SELECT.
+# 実形の secret。SELECT の前にすべて redact されねばならない。
 ANTHROPIC_KEY = "sk-ant-api03-" + "A" * 60
 GITHUB_PAT = "ghp_" + "X" * 40
 AWS_KEY = "AKIA1234567890ABCDEF"  # gitleaks:allow — synthetic test fixture, not a real key
@@ -61,13 +63,13 @@ def _outbox_columns(row: OutboxRow) -> dict[str, object]:
 
 
 class TestOutboxMaskingViaOrm:
-    """TC-IT-PF-007: ORM-path INSERT redacts payload_json + last_error."""
+    """TC-IT-PF-007: ORM パス INSERT は payload_json + last_error を redact する。"""
 
     async def test_payload_json_redacted_after_insert(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-PF-007: Anthropic + GitHub PAT in payload_json get redacted."""
+        """TC-IT-PF-007: payload_json 内の Anthropic + GitHub PAT は redact される。"""
         row = make_outbox_row(
             payload_json={"key": ANTHROPIC_KEY, "github_pat": GITHUB_PAT},
             last_error=AWS_KEY,
@@ -87,22 +89,21 @@ class TestOutboxMaskingViaOrm:
 
 
 class TestOutboxMaskingViaRawSql:
-    """TC-IT-PF-020: raw ``insert(table).values(...)`` still triggers the masking gateway.
+    """TC-IT-PF-020: 生 ``insert(table).values(...)`` でもマスキングゲートウェイが発火する。
 
-    Post-R1-D-flip contract — the masking gateway is wired via the
-    column TypeDecorators :class:`~bakufu.infrastructure.persistence.sqlite.base.MaskedJSONEncoded`
-    and :class:`~bakufu.infrastructure.persistence.sqlite.base.MaskedText`.
-    Their ``process_bind_param`` runs on every bind-parameter
-    resolution, so both ORM flushes and Core
-    ``insert(table).values(...)`` invocations are masked. A future
-    Repository PR cannot bypass redaction by reaching for raw SQL.
+    R1-D-flip 後の契約 — マスキングゲートウェイは列 TypeDecorator
+    :class:`~bakufu.infrastructure.persistence.sqlite.base.MaskedJSONEncoded`
+    および :class:`~bakufu.infrastructure.persistence.sqlite.base.MaskedText` 経由で配線される。
+    それらの ``process_bind_param`` はバインドパラメータ解決時に毎回実行されるため、
+    ORM フラッシュと Core ``insert(table).values(...)`` の両方が masking される。
+    将来の Repository PR は生 SQL に到達することで redaction を回避できない。
     """
 
     async def test_raw_sql_path_redacts_payload(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-PF-020: raw insert path equally redacts payload_json + last_error."""
+        """TC-IT-PF-020: 生 insert パスも同様に payload_json + last_error を redact。"""
         row = make_outbox_row(
             payload_json={"key": ANTHROPIC_KEY},
             last_error=GITHUB_PAT,
@@ -122,18 +123,18 @@ class TestOutboxMaskingViaRawSql:
 
 
 class TestOutboxMaskingOnUpdate:
-    """TC-IT-PF-021: ``before_update`` redacts updates as well as inserts."""
+    """TC-IT-PF-021: ``before_update`` は insert と同様に update を redact する。"""
 
     async def test_update_path_redacts_last_error(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-PF-021: re-marking a row as DEAD_LETTER with raw secrets in last_error."""
+        """TC-IT-PF-021: 行を DEAD_LETTER として再マーク、last_error に生 secret を含む。"""
         row = make_outbox_row(payload_json={"safe": "value"}, last_error=None)
         async with session_factory() as session, session.begin():
             session.add(row)
 
-        # Now load + update with new secret-bearing data.
+        # 次に読み込み + 新しい secret を含むデータで更新。
         async with session_factory() as session, session.begin():
             stmt = select(OutboxRow).where(OutboxRow.event_id == row.event_id)
             target = (await session.execute(stmt)).scalar_one()
@@ -149,13 +150,13 @@ class TestOutboxMaskingOnUpdate:
 
 
 class TestAuditLogAndPidRegistryMaskingHook:
-    """TC-IT-PF-022: hook is wired across the other 2 secret-bearing tables."""
+    """TC-IT-PF-022: フックは他の 2 つの secret を含むテーブルに配線される。"""
 
     async def test_audit_log_redacts_args_and_error(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-PF-022 (audit_log): args_json + error_text masked."""
+        """TC-IT-PF-022 (audit_log): args_json + error_text が masking される。"""
         row = make_audit_log_row(
             args_json={"token": SLACK_TOKEN},
             error_text=BEARER_PHRASE,
@@ -184,5 +185,5 @@ class TestAuditLogAndPidRegistryMaskingHook:
             stmt = select(PidRegistryRow).where(PidRegistryRow.pid == row.pid)
             fetched = (await session.execute(stmt)).scalar_one()
         assert "<REDACTED:ANTHROPIC_KEY>" in fetched.cmd
-        # The plaintext ``ANTHROPIC_KEY`` must not survive.
+        # 平文の ``ANTHROPIC_KEY`` が残ってはならない。
         assert ANTHROPIC_KEY not in fetched.cmd

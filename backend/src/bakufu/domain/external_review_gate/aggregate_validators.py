@@ -1,30 +1,25 @@
-"""Aggregate-level invariant helpers for :class:`ExternalReviewGate`.
+""":class:`ExternalReviewGate` のための Aggregate レベル不変条件ヘルパ。
 
-Each helper is a **module-level pure function** so tests can ``import``
-and invoke directly — the same testability pattern Norman / Steve
-approved for the agent / room / directive / task aggregate validators.
+各ヘルパは **モジュール レベルの純粋関数** であるため、テストから ``import``
+して直接呼べる — Norman / Steve が agent / room / directive / task の Aggregate
+バリデータで承認したのと同じテスタビリティ パターン。
 
-Helpers (5 total, matching detailed-design.md §確定 J):
+ヘルパ（5 つ、detailed-design.md §確定 J に対応）:
 
-1. :func:`_validate_decided_at_consistency` — ``decision == PENDING``
-   ⇔ ``decided_at is None``; the four other states must carry a
-   tz-aware decided_at.
-2. :func:`_validate_snapshot_immutable` — placeholder; the structural
-   guard is the absence of ``deliverable_snapshot`` in
-   ``_rebuild_with_state``'s argument set (§確定 D). The function
-   stays for symmetry with the validator dispatch and to provide a
-   well-defined failure path if a rebuild ever supplies a different
-   snapshot.
-3. :func:`_validate_feedback_text_range` — NFC code-point length
-   0〜10000.
-4. :func:`_validate_audit_trail_append_only` — checked at rebuild
-   time by comparing the new list against the previous one (§確定 C
-   inputs/expectations table).
+1. :func:`_validate_decided_at_consistency` — ``decision == PENDING`` ⇔
+   ``decided_at is None``。他 4 状態は tz-aware decided_at を持たなければならない。
+2. :func:`_validate_snapshot_immutable` — プレースホルダ。構造的ガードは
+   ``_rebuild_with_state`` の引数集合に ``deliverable_snapshot`` を含めないこと
+   （§確定 D）。本関数はバリデータ ディスパッチとの対称性のため、また rebuild が
+   万一異なるスナップショットを供給した場合に明確な失敗経路を提供するために
+   残されている。
+3. :func:`_validate_feedback_text_range` — NFC コードポイント長 0〜10000。
+4. :func:`_validate_audit_trail_append_only` — rebuild 時に新リストを旧リストと
+   比較してチェックする（§確定 C inputs/expectations 表）。
 
-The decision-immutability invariant (PENDING → 1 transition only) is
-enforced inside the state-machine ``lookup`` path; this module owns
-only the structural invariants that fire on every
-``model_validate``.
+決定の不変性不変条件（PENDING → 1 遷移のみ）は state machine ``lookup`` 経路で
+強制される。本モジュールはすべての ``model_validate`` で発火する構造的不変条件
+のみを所有する。
 """
 
 from __future__ import annotations
@@ -38,7 +33,7 @@ from bakufu.domain.value_objects import ReviewDecision
 if TYPE_CHECKING:
     from bakufu.domain.value_objects import AuditEntry, Deliverable
 
-# Confirmation F: feedback_text length bounds (NFC, no strip).
+# Confirmation F: feedback_text 長境界（NFC、strip 無し）。
 MIN_FEEDBACK_LENGTH: int = 0
 MAX_FEEDBACK_LENGTH: int = 10_000
 
@@ -47,14 +42,12 @@ def _validate_decided_at_consistency(
     decision: ReviewDecision,
     decided_at: datetime | None,
 ) -> None:
-    """``decision == PENDING`` ⇔ ``decided_at is None`` (MSG-GT-002).
+    """``decision == PENDING`` ⇔ ``decided_at is None``（MSG-GT-002）。
 
-    Detects Repository row corruption such as
-    ``decision=APPROVED, decided_at=None`` (terminal Gate without a
-    decided_at timestamp) or the reverse, ``decision=PENDING`` with a
-    populated ``decided_at`` — both shapes are structurally illegal
-    and catching them at hydration means the application layer
-    cannot be handed an inconsistent Gate.
+    ``decision=APPROVED, decided_at=None``（decided_at 未設定の終端 Gate）または
+    逆に ``decision=PENDING`` で ``decided_at`` が埋まっているといったリポジトリ
+    行破損を検出する — どちらの形も構造的に違法。水和時に捕捉することで、
+    アプリケーション層に一貫性のない Gate が渡されることを防ぐ。
     """
     is_pending = decision == ReviewDecision.PENDING
     has_timestamp = decided_at is not None
@@ -78,7 +71,7 @@ def _validate_decided_at_consistency(
 
 
 def _validate_feedback_text_range(feedback_text: str) -> None:
-    """``0 <= len(NFC(feedback_text)) <= 10000`` (MSG-GT-004)."""
+    """``0 <= len(NFC(feedback_text)) <= 10000``（MSG-GT-004）。"""
     length = len(feedback_text)
     if not (MIN_FEEDBACK_LENGTH <= length <= MAX_FEEDBACK_LENGTH):
         raise ExternalReviewGateInvariantViolation(
@@ -98,19 +91,18 @@ def _validate_audit_trail_append_only(
     previous: list[AuditEntry] | None,
     current: list[AuditEntry],
 ) -> None:
-    """Existing entries must stay byte-equal and at the head of the list (MSG-GT-005).
+    """既存エントリはバイト等価のまま、リスト先頭に留まらなければならない（MSG-GT-005）。
 
-    Construction (``previous is None``) accepts any list — the
-    aggregate's first instance simply locks in whatever Repository
-    hydration / the issuing application service hands over. Every
-    subsequent ``_rebuild_with_state`` call must satisfy:
+    構築時（``previous is None``）は任意のリストを受理する — Aggregate の最初の
+    インスタンスは、リポジトリ水和や発行側アプリケーション サービスが渡す内容を
+    そのまま固定する。以降の ``_rebuild_with_state`` 呼び出しは下記を満たさな
+    ければならない:
 
-    1. ``len(current) >= len(previous)`` (no deletions).
-    2. ``current[: len(previous)] == previous`` (no edits, no
-       reorderings, no prepends, no middle inserts).
+    1. ``len(current) >= len(previous)``（削除なし）。
+    2. ``current[: len(previous)] == previous``（編集、並べ替え、prepend、
+       中間挿入のいずれも無し）。
 
-    The §確定 C inputs/expectations table is the canonical reference
-    for the failure cases this guards against.
+    §確定 C inputs/expectations 表が、本ガードが対象とする失敗ケースの正準参照。
     """
     if previous is None:
         return
@@ -151,16 +143,15 @@ def _validate_snapshot_immutable(
     previous: Deliverable | None,
     current: Deliverable,
 ) -> None:
-    """The construction-time ``deliverable_snapshot`` may not be replaced (MSG-GT-003).
+    """構築時の ``deliverable_snapshot`` は置き換えられない（MSG-GT-003）。
 
-    Construction (``previous is None``) accepts any Deliverable — the
-    aggregate's first instance pins whatever the application service
-    or Repository hydration supplies. Subsequent ``_rebuild_with_state``
-    calls **must not** pass a different snapshot; the implementation
-    contract (§確定 D) is to leave ``deliverable_snapshot`` out of
-    the rebuild's argument set entirely so the value carries through
-    unchanged. This validator is the failure-path safety net if that
-    contract ever leaks.
+    構築時（``previous is None``）は任意の Deliverable を受理する — Aggregate
+    の最初のインスタンスは、アプリケーション サービスやリポジトリ水和が供給する
+    値をそのまま固定する。以降の ``_rebuild_with_state`` 呼び出しは異なる
+    スナップショットを渡しては **ならない**。実装コントラクト（§確定 D）は
+    ``deliverable_snapshot`` を rebuild の引数集合から完全に外し、値が変更
+    されないまま継承されるようにすること。本バリデータは、そのコントラクトが
+    万一漏れた場合の失敗経路セーフティ ネット。
     """
     if previous is None:
         return

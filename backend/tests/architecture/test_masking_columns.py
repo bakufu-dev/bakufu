@@ -12,9 +12,9 @@
 SQLAlchemy が `Base.metadata.tables` に積んだ実カラムオブジェクトの
 ``type`` を参照することで、ソース表記に依らず実行時の型を物理保証する。
 
-Two contract surfaces:
+二つの契約面:
 
-* **Positive contract** — each row in §逆引き表「masking 対象あり」は
+* **Positive contract** — §逆引き表「masking 対象あり」の各行は
   指定された ``Masked*`` 型で宣言されていること。
 * **No-mask contract** — Empire 関連テーブルなど「対象なし」と
   凍結された Aggregate のテーブル群は ``MaskedJSONEncoded`` /
@@ -31,10 +31,9 @@ from bakufu.infrastructure.persistence.sqlite.base import (
     MaskedText,
 )
 
-# Importing the table modules registers every ORM mapping with
-# ``Base.metadata`` so the assertions below see the same set of
-# tables that production / Alembic see. The imported names are
-# intentionally unused — only the import side effect matters.
+# テーブルモジュールを import することで全 ORM マッピングが ``Base.metadata`` に
+# 登録される ── 後続のアサーションは本番 / Alembic と同一のテーブル集合を見る。
+# import 名自体は意図的に未使用 ── import 副作用のみが目的。
 from bakufu.infrastructure.persistence.sqlite.tables import (
     agent_providers,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     agent_skills,  # noqa: F401  # pyright: ignore[reportUnusedImport]
@@ -61,8 +60,8 @@ from bakufu.infrastructure.persistence.sqlite.tables import (
 )
 
 # Positive contract: §逆引き表「masking 対象あり」.
-# Future Repository PRs append rows for ``Persona.prompt_body`` /
-# ``PromptKit.prefix_markdown`` / ``Conversation.body_markdown`` etc.
+# 今後の Repository PR で ``Persona.prompt_body`` /
+# ``PromptKit.prefix_markdown`` / ``Conversation.body_markdown`` 等の行を追加する。
 _MASKING_CONTRACT: list[tuple[str, str, type]] = [
     ("audit_log", "args_json", MaskedJSONEncoded),
     ("audit_log", "error_text", MaskedText),
@@ -72,7 +71,7 @@ _MASKING_CONTRACT: list[tuple[str, str, type]] = [
     # Workflow Repository (PR #31, detailed-design.md §確定 H).
     ("workflow_stages", "notify_channels_json", MaskedJSONEncoded),
     # Agent Repository (PR #32, detailed-design.md §確定 H + Schneier
-    # 申し送り #3 实適用).
+    # 申し送り #3 実適用).
     ("agents", "prompt_body", MaskedText),
     # Room Repository (PR #33, detailed-design.md §確定 R1-E +
     # room §確定 G 実適用).
@@ -80,105 +79,105 @@ _MASKING_CONTRACT: list[tuple[str, str, type]] = [
     # Directive Repository (PR #34, detailed-design.md §確定 R1-E).
     ("directives", "text", MaskedText),
     # Task Repository (PR #35, detailed-design.md §確定 R1-E):
-    # tasks.last_error — BLOCKED 隔離理由(LLM error に secret 混入の可能性).
+    # tasks.last_error ── BLOCKED 隔離理由(LLM error に secret 混入の可能性).
     ("tasks", "last_error", MaskedText),
     # conversation_messages.body_markdown は §BUG-TR-002 凍結済みのため除外。
-    # deliverables.body_markdown — Agent 出力に secret 混入の可能性.
+    # deliverables.body_markdown ── Agent 出力に secret 混入の可能性.
     ("deliverables", "body_markdown", MaskedText),
     # ExternalReviewGate Repository (PR #36, detailed-design.md §確定 R1-E,
     # §設計決定 ERGR-002):
-    # external_review_gates.snapshot_body_markdown — Agent 出力に secret 混入.
+    # external_review_gates.snapshot_body_markdown ── Agent 出力に secret 混入.
     ("external_review_gates", "snapshot_body_markdown", MaskedText),
-    # external_review_gates.feedback_text — CEO review comment; approve /
-    # reject / cancel input paths can carry webhook URLs / API keys.
+    # external_review_gates.feedback_text ── CEO レビューコメント。approve /
+    # reject / cancel の入力経路は webhook URL / API キーを運び得る。
     ("external_review_gates", "feedback_text", MaskedText),
-    # external_review_audit_entries.comment — CEO-authored free-form text;
-    # same secret-bearing input path as feedback_text.
+    # external_review_audit_entries.comment ── CEO 記述の自由テキスト。
+    # feedback_text と同じく secret を含み得る入力経路。
     ("external_review_audit_entries", "comment", MaskedText),
 ]
 
 # No-mask contract: §逆引き表「Empire 関連カラム: masking 対象なし」 +
-# Workflow root + Workflow transitions.
-# Each subsequent Aggregate Repository PR extends this list with the
-# tables it adds when those tables are designated "no masking".
+# Workflow ルート + Workflow transitions。
+# 後続の Aggregate Repository PR が、masking 対象なしと指定したテーブルを
+# 本リストに順次追加する。
 _NO_MASK_TABLES: list[str] = [
     "empires",
     "empire_room_refs",
     "empire_agent_refs",
     # Workflow Repository (PR #31, detailed-design.md §確定 E):
-    # workflows / workflow_transitions register zero masking targets;
-    # only workflow_stages.notify_channels_json is secret-bearing.
+    # workflows / workflow_transitions は masking 対象を持たない。
+    # secret を運ぶのは workflow_stages.notify_channels_json のみ。
     "workflows",
     "workflow_transitions",
     # Agent Repository (PR #32, detailed-design.md §確定 E):
-    # agent_providers / agent_skills carry no Schneier #6 secret
-    # categories; only agents.prompt_body is masked.
+    # agent_providers / agent_skills は Schneier #6 secret カテゴリを
+    # 持たない。masking 対象は agents.prompt_body のみ。
     "agent_providers",
     "agent_skills",
     # Room Repository (PR #33, detailed-design.md §確定 R1-E):
-    # room_members carries no secret semantics; agent_id is not masked.
+    # room_members は secret セマンティクスを持たない。agent_id は masking しない。
     "room_members",
     # Task Repository (PR #35, detailed-design.md §確定 R1-E):
-    # task_assigned_agents / deliverable_attachments carry no secret semantics.
-    # tasks / deliverables are registered in _PARTIAL_MASK_TABLES (each has
-    # exactly one masked column). conversations / conversation_messages are
-    # §BUG-TR-002 凍結済みのため除外。
+    # task_assigned_agents / deliverable_attachments は secret セマンティクスを持たない。
+    # tasks / deliverables は _PARTIAL_MASK_TABLES に登録される (各 1 列のみ masking)。
+    # conversations / conversation_messages は §BUG-TR-002 凍結済みのため除外。
     "task_assigned_agents",
     "deliverable_attachments",
     # ExternalReviewGate Repository (PR #36, detailed-design.md §確定 R1-E):
-    # external_review_gate_attachments carries no secret semantics — file
-    # metadata (sha256 / filename / mime_type / size_bytes) carries no
-    # Schneier #6 secret categories.
+    # external_review_gate_attachments は secret セマンティクスを持たない ──
+    # ファイルメタデータ (sha256 / filename / mime_type / size_bytes) は
+    # Schneier #6 secret カテゴリに該当しない。
     "external_review_gate_attachments",
 ]
 
-# Partial-mask contract: tables that have **exactly one** masked
-# column. Used to catch over-masking — a future PR that switches
-# another column on the same table to a Masked* TypeDecorator must
-# update §逆引き表 first; otherwise this assertion fires.
+# Partial-mask contract: **ちょうど 1 列**だけ masking されているテーブル。
+# 過剰 masking を検出する用途 ── 同テーブル上の別カラムを
+# Masked* TypeDecorator に切り替える PR は、まず §逆引き表 を更新せよ。
+# さもないと本アサーションが発火する。
 #
-# Format: ``(table_name, allowed_column_name)``.
+# 形式: ``(table_name, allowed_column_name)``.
 _PARTIAL_MASK_TABLES: list[tuple[str, str]] = [
     ("workflow_stages", "notify_channels_json"),
     # Agent Repository (PR #32, detailed-design.md §確定 E):
-    # agents.prompt_body is the only masked column; persona-adjacent
-    # scalar fields stay un-masked.
+    # masking されるのは agents.prompt_body のみ。
+    # ペルソナ周辺のスカラフィールドは masking しない。
     ("agents", "prompt_body"),
     # Room Repository (PR #33, detailed-design.md §確定 R1-E):
-    # rooms.prompt_kit_prefix_markdown is the only masked column (room
-    # §確定 G 実適用); other columns (name / description / archived) stay
-    # un-masked.
+    # masking されるのは rooms.prompt_kit_prefix_markdown のみ
+    # (room §確定 G 実適用)。他カラム (name / description / archived) は
+    # masking しない。
     ("rooms", "prompt_kit_prefix_markdown"),
     # Directive Repository (PR #34, detailed-design.md §確定 R1-E):
-    # directives.text is the only masked column; target_room_id /
-    # created_at / task_id carry no secret semantics.
+    # masking されるのは directives.text のみ。target_room_id /
+    # created_at / task_id は secret セマンティクスを持たない。
     ("directives", "text"),
     # Task Repository (PR #35, detailed-design.md §確定 R1-E):
-    # tasks.last_error is the only masked column; room_id / directive_id /
-    # current_stage_id / status / created_at / updated_at carry no secret
-    # semantics.
+    # masking されるのは tasks.last_error のみ。room_id / directive_id /
+    # current_stage_id / status / created_at / updated_at は
+    # secret セマンティクスを持たない。
     ("tasks", "last_error"),
     # conversation_messages.body_markdown は §BUG-TR-002 凍結済みのため除外。
-    # deliverables.body_markdown is the only masked column;
-    # id / task_id / stage_id / committed_by / committed_at carry no secret
-    # semantics.
+    # masking されるのは deliverables.body_markdown のみ。
+    # id / task_id / stage_id / committed_by / committed_at は
+    # secret セマンティクスを持たない。
     ("deliverables", "body_markdown"),
     # ExternalReviewGate Repository (PR #36, detailed-design.md §確定 R1-E):
-    # external_review_audit_entries.comment is the only masked column;
-    # id / gate_id / actor_id / action / occurred_at carry no secret semantics.
+    # masking されるのは external_review_audit_entries.comment のみ。
+    # id / gate_id / actor_id / action / occurred_at は
+    # secret セマンティクスを持たない。
     ("external_review_audit_entries", "comment"),
 ]
 
-# Dual-mask contract: tables that have **exactly two** masked columns.
-# Used to catch both under-masking (a required masked column was removed)
-# and over-masking (a non-secret column was accidentally masked).
+# Dual-mask contract: **ちょうど 2 列**だけ masking されているテーブル。
+# 過小 masking (必要な masking 列の削除) と過剰 masking
+# (secret でないカラムを誤って masking) の双方を検出する。
 #
 # ExternalReviewGate Repository (PR #36, detailed-design.md §確定 R1-E +
-# §設計決定 ERGR-002): external_review_gates requires exactly two masked
-# columns (snapshot_body_markdown for Agent-authored content and
-# feedback_text for CEO-authored review comments).
+# §設計決定 ERGR-002): external_review_gates は厳密に 2 つの masking 列を
+# 必要とする (Agent 由来の snapshot_body_markdown と CEO 由来の
+# feedback_text)。
 #
-# Format: ``(table_name, frozenset_of_allowed_column_names)``.
+# 形式: ``(table_name, frozenset_of_allowed_column_names)``.
 _DUAL_MASK_TABLES: list[tuple[str, frozenset[str]]] = [
     (
         "external_review_gates",
@@ -188,7 +187,7 @@ _DUAL_MASK_TABLES: list[tuple[str, frozenset[str]]] = [
 
 
 class TestMaskingColumnContract:
-    """Each row in §逆引き表 maps a column to the Masked* type it must use."""
+    """§逆引き表の各行は、該当カラムが使用すべき Masked* 型を規定する。"""
 
     @pytest.mark.parametrize(
         ("table_name", "column_name", "expected_type"),
@@ -201,11 +200,12 @@ class TestMaskingColumnContract:
         column_name: str,
         expected_type: type,
     ) -> None:
-        """Assert ``Base.metadata.tables[table].c[column].type`` is the contracted ``Masked*`` type.
+        """``Base.metadata.tables[table].c[column].type`` が契約された
+        ``Masked*`` 型であることを表明する。
 
-        Failing here means a refactor swapped the column type back to
-        the un-masked variant (``JSONEncoded`` / ``Text``), which would
-        leak raw secrets to disk on the next INSERT.
+        失敗時は、リファクタリングでカラム型が masking なしバリアント
+        (``JSONEncoded`` / ``Text``) に戻された状態 ── 次の INSERT で
+        生 secret がディスクへ漏れる危険がある。
         """
         table = Base.metadata.tables.get(table_name)
         assert table is not None, (
@@ -224,13 +224,13 @@ class TestMaskingColumnContract:
 
 
 class TestNoMaskContract:
-    """Tables explicitly registered as 'masking 対象なし' must stay un-masked.
+    """'masking 対象なし' と明示登録されたテーブルは masking なしを維持しなければならない。
 
-    Empire Repository PR (#25) introduced the "explicit no-mask"
-    pattern: a table that the design freezes as carrying no secrets
-    asserts the absence of every ``Masked*`` column type at runtime.
-    A future PR that swaps a column to a secret-bearing semantic
-    must update §逆引き表 first; otherwise this assertion fires.
+    Empire Repository PR (#25) で「explicit no-mask」パターンを導入。
+    secret を持たないと設計上凍結したテーブルは、実行時に
+    あらゆる ``Masked*`` カラム型を含まないことをアサートする。
+    ある PR でカラムを secret セマンティクスに切り替える場合は、
+    まず §逆引き表 を更新せよ ── さもないと本アサーションが発火する。
     """
 
     @pytest.mark.parametrize(
@@ -239,7 +239,7 @@ class TestNoMaskContract:
         ids=_NO_MASK_TABLES,
     )
     def test_table_has_no_masked_columns(self, table_name: str) -> None:
-        """Assert the table's columns include zero ``Masked*`` types."""
+        """テーブルのカラム集合に ``Masked*`` 型が一つも含まれないことを表明する。"""
         table = Base.metadata.tables.get(table_name)
         assert table is not None, (
             f"table {table_name!r} missing from Base.metadata; "
@@ -260,15 +260,14 @@ class TestNoMaskContract:
 
 
 class TestPartialMaskContract:
-    """Tables registered as 'partial mask' must mask exactly one named column.
+    """'partial mask' 登録のテーブルは指定の 1 カラムのみを masking しなければならない。
 
-    Workflow Repository (PR #31) introduces the 'partial mask'
-    pattern: ``workflow_stages.notify_channels_json`` is the *only*
-    masked column on the table; every other column must stay un-masked
-    so we don't bleed over-masking into ``deliverable_template`` /
-    ``completion_policy_json`` / etc. A future PR that masks an
-    additional column must update §逆引き表 first; otherwise this
-    assertion fires.
+    Workflow Repository (PR #31) で 'partial mask' パターンを導入。
+    ``workflow_stages.notify_channels_json`` のみが masking 対象で、
+    他カラムは masking しない ── ``deliverable_template`` /
+    ``completion_policy_json`` 等への過剰 masking を防ぐため。
+    別カラムを追加で masking する PR は、まず §逆引き表 を更新せよ。
+    さもないと本アサーションが発火する。
     """
 
     @pytest.mark.parametrize(
@@ -281,7 +280,7 @@ class TestPartialMaskContract:
         table_name: str,
         allowed_column: str,
     ) -> None:
-        """Assert exactly one masked column, and that it's the allowed one."""
+        """masking 列がちょうど 1 つで、それが許可列であることを表明する。"""
         table = Base.metadata.tables.get(table_name)
         assert table is not None, (
             f"table {table_name!r} missing from Base.metadata; "
@@ -302,16 +301,16 @@ class TestPartialMaskContract:
 
 
 class TestDualMaskContract:
-    """Tables registered as 'dual mask' must mask exactly two named columns.
+    """'dual mask' 登録のテーブルは指定の 2 カラムのみを masking しなければならない。
 
-    ExternalReviewGate Repository (PR #36) introduces the 'dual mask'
-    pattern: ``external_review_gates`` has two secret-bearing columns
-    (``snapshot_body_markdown`` for Agent output and ``feedback_text`` for
-    CEO review comments). Both are required; neither may be removed or
-    supplemented with a third masked column without updating §逆引き表.
+    ExternalReviewGate Repository (PR #36) で 'dual mask' パターンを導入。
+    ``external_review_gates`` は 2 つの secret 列を持つ
+    (Agent 出力の ``snapshot_body_markdown`` と CEO レビューコメントの
+    ``feedback_text``)。両方とも必須で、§逆引き表 を更新せずに
+    どちらかを削除したり 3 つ目を追加することはできない。
 
-    A future PR that masks an additional column or removes one must update
-    §逆引き表 first; otherwise this assertion fires.
+    別カラムを追加で masking する / 既存を削除する PR は、まず §逆引き表
+    を更新せよ ── さもないと本アサーションが発火する。
     """
 
     @pytest.mark.parametrize(
@@ -324,7 +323,7 @@ class TestDualMaskContract:
         table_name: str,
         allowed_columns: frozenset[str],
     ) -> None:
-        """Assert exactly the allowed masked columns, no more, no less."""
+        """許可された masking 列がちょうど含まれ、それ以外を持たないことを表明する。"""
         table = Base.metadata.tables.get(table_name)
         assert table is not None, (
             f"table {table_name!r} missing from Base.metadata; "

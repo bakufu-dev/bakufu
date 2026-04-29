@@ -1,22 +1,20 @@
-"""``agent_skills`` table — Agent ↔ SkillRef child rows.
+"""``agent_skills`` テーブル — Agent ↔ SkillRef 子行。
 
-Stores :class:`bakufu.domain.agent.value_objects.SkillRef` values as
-a side table of the Agent aggregate. ``ON DELETE CASCADE`` purges
-skill rows when the parent Agent is deleted; UNIQUE(agent_id,
-skill_id) mirrors the ``_validate_skill_id_unique`` aggregate
-invariant at the row level.
+:class:`bakufu.domain.agent.value_objects.SkillRef` の値を Agent Aggregate の
+関連テーブルとして保存する。``ON DELETE CASCADE`` は親 Agent 削除時に skill 行を
+消去する。UNIQUE(agent_id, skill_id) は ``_validate_skill_id_unique`` Aggregate
+不変条件を行レベルでミラーする。
 
-``path`` is stored as a plain ``String(500)`` — the H1〜H10
-traversal-defense pipeline runs at VO construction time
-(:func:`bakufu.domain.agent.path_validators._validate_skill_path`) so
-hydration through :meth:`SqliteAgentRepository.find_by_id` re-runs
-the validators automatically when ``SkillRef.model_validate`` is
-called inside ``_from_row``. The Repository never re-checks the
-contract directly.
+``path`` は通常の ``String(500)`` として保存する — H1〜H10 トラバーサル防御
+パイプラインは VO 構築時に走る
+（:func:`bakufu.domain.agent.path_validators._validate_skill_path`）ため、
+:meth:`SqliteAgentRepository.find_by_id` 経由の水和では ``_from_row`` 内部の
+``SkillRef.model_validate`` 呼び出しがバリデータを自動的に再実行する。
+リポジトリは直接コントラクトを再チェックすることはない。
 
-No ``Masked*`` TypeDecorator on any column. Skill names / paths /
-ids are operational metadata with no secret semantics; the CI
-three-layer defense's *no-mask* contract registers this table.
+どのカラムにも ``Masked*`` TypeDecorator は付けない。Skill 名 / パス / id は
+シークレット意味を持たない運用メタデータ。CI 3 層防御の *no-mask* コントラクト
+が本テーブルを登録する。
 """
 
 from __future__ import annotations
@@ -30,7 +28,7 @@ from bakufu.infrastructure.persistence.sqlite.base import Base, UUIDStr
 
 
 class AgentSkillRow(Base):
-    """ORM mapping for the ``agent_skills`` table."""
+    """``agent_skills`` テーブルの ORM マッピング。"""
 
     __tablename__ = "agent_skills"
 

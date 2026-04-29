@@ -18,28 +18,27 @@ from tests.factories.directive import make_directive
 
 
 class TestTargetRoomIdReferentialIntegrityNotEnforcedByAggregate:
-    """TC-UT-DR-018: Aggregate accepts any UUID as ``target_room_id``."""
+    """TC-UT-DR-018: Aggregate は任意の UUID を ``target_room_id`` として受け入れる。"""
 
     def test_arbitrary_room_id_constructs(self) -> None:
-        """TC-UT-DR-018: Room existence is verified by DirectiveService, not Directive."""
-        # The UUID is arbitrary — no Room with this id exists. Aggregate
-        # accepts because referential integrity is application-layer scope.
+        """TC-UT-DR-018: Room 存在性は DirectiveService で検証、Directive ではない。"""
+        # UUID は任意。該当 Room は存在しない。Aggregate は受け入れるが、
+        # 参照完全性はアプリケーション層責務。
         directive = make_directive(target_room_id=uuid4())
         assert directive.target_room_id is not None
 
 
 class TestDollarPrefixNotNormalizedByAggregate:
-    """TC-UT-DR-019: Aggregate stores ``text`` verbatim — no ``$`` prefix injection."""
+    """TC-UT-DR-019: Aggregate は ``text`` を逐語的に保存。``$`` プレフィックス注入はない。"""
 
     def test_text_without_dollar_prefix_constructs_unchanged(self) -> None:
-        """TC-UT-DR-019: ``$`` prefix normalization is DirectiveService responsibility.
+        """TC-UT-DR-019: ``$`` プレフィックス正規化は DirectiveService 責務。
 
-        ``DirectiveService.issue(raw_text)`` is the layer that ensures
-        ``text`` starts with ``$``. The Aggregate trusts the input
-        verbatim — same pattern Agent §確定 I uses for ``provider_kind``
-        MVP gating.
+        ``DirectiveService.issue(raw_text)`` が ``text`` 先頭に ``$`` を
+        確保するレイヤー。Aggregate は入力を逐語的に信頼する——
+        Agent §確定 I の ``provider_kind`` MVP gating と同パターン。
         """
-        # No ``$`` prefix in the input — Aggregate keeps the text as-is.
+        # 入力に ``$`` プレフィックスなし、Aggregate はテキストをそのまま保持。
         directive = make_directive(text="ブログ分析機能を作って")
         assert not directive.text.startswith("$")
         assert directive.text == "ブログ分析機能を作って"

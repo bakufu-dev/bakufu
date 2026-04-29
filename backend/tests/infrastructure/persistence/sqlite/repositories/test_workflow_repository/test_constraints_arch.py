@@ -1,12 +1,12 @@
-"""Workflow Repository: DB constraints + arch-test partial-mask template.
+"""Workflow Repository: DB制約 + アーキテクチャテスト部分マスキングテンプレート.
 
-TC-IT-WFR-017 / 018 / 023 — FK CASCADE, UNIQUE pair enforcement, and
-the **partial-mask** CI three-layer-defense template the Workflow PR
-introduces (empire-repo froze the *no-mask* template; this PR freezes
-the *partial-mask* template — exactly one masked column on a table,
-every other column un-masked).
+TC-IT-WFR-017 / 018 / 023 — FK CASCADE、UNIQUE ペアの強制実行、および
+この Workflow PR が導入する**部分マスキング** CI 3層防御テンプレート
+（empire-repo は*マスキングなし*テンプレートをフリーズ；この PR は
+*部分マスキング*テンプレートをフリーズ — 正確に1列がマスキングされ、
+他の全列はマスキングされない）。
 
-Per ``docs/features/workflow-repository/test-design.md``.
+詳細は ``docs/features/workflow-repository/test-design.md`` を参照。
 """
 
 from __future__ import annotations
@@ -39,13 +39,14 @@ pytestmark = pytest.mark.asyncio
 # TC-IT-WFR-017: FK CASCADE
 # ---------------------------------------------------------------------------
 class TestForeignKeyCascade:
-    """TC-IT-WFR-017: ``DELETE FROM workflows`` cascades to side tables."""
+    """TC-IT-WFR-017: ``DELETE FROM workflows`` は副テーブルにカスケードする。"""
 
     async def test_delete_workflow_cascades_to_side_tables(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-WFR-017: FK ON DELETE CASCADE empties workflow_stages / workflow_transitions."""
+        """TC-IT-WFR-017: FK ON DELETE CASCADE が
+        workflow_stages / workflow_transitions を空にする。"""
         stage_a = make_stage(name="A")
         stage_b = make_stage(name="B")
         transition_ab = make_transition(from_stage_id=stage_a.id, to_stage_id=stage_b.id)
@@ -82,22 +83,21 @@ class TestForeignKeyCascade:
 
 
 # ---------------------------------------------------------------------------
-# TC-IT-WFR-018: UNIQUE constraints on (workflow_id, stage_id) and
-#                                       (workflow_id, transition_id)
+# TC-IT-WFR-018: UNIQUE制約 (workflow_id, stage_id) および
+#                                       （workflow_id, transition_id）の複合キー
 # ---------------------------------------------------------------------------
 class TestUniqueConstraintViolation:
-    """TC-IT-WFR-018: duplicate (workflow_id, stage_id) / (..., transition_id) raises."""
+    """TC-IT-WFR-018: 重複 (workflow_id, stage_id) / (..., transition_id) は例外を発生させる。"""
 
     async def test_duplicate_stage_pair_raises(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-WFR-018a: same (workflow_id, stage_id) inserted twice → DB rejects.
+        """TC-IT-WFR-018a: 同じ (workflow_id, stage_id) を2回 INSERT → DB が拒否。
 
-        The Repository's delete-then-insert flow always wipes the side
-        tables before INSERT, so the constraint is never tripped
-        through the Repository API. To exercise the **DB-level**
-        UNIQUE contract we issue raw SQL that bypasses the Repository.
+        Repository の削除後挿入フロー は常に挿入前に副テーブルをクリアするため、
+        Repository API 経由では制約に引っかかることはない。**DB レベルの**
+        UNIQUE 契約を検証するために、Repository をバイパスする生 SQL を発行する。
         """
         from sqlalchemy.exc import IntegrityError
 
@@ -155,11 +155,10 @@ class TestUniqueConstraintViolation:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-WFR-018b: same (workflow_id, transition_id) inserted twice → DB rejects."""
+        """TC-IT-WFR-018b: 同じ (workflow_id, transition_id) を2回 INSERT → DB が拒否。"""
         from sqlalchemy.exc import IntegrityError
 
-        # A 2-stage Workflow gives us legitimate from_stage_id / to_stage_id
-        # values for the raw INSERT that follows.
+        # 2段階 Workflow は以下の生 INSERT に対する正当な from_stage_id / to_stage_id 値を提供する。
         stage_a = make_stage(name="A")
         stage_b = make_stage(name="B")
         transition_ab = make_transition(from_stage_id=stage_a.id, to_stage_id=stage_b.id)
@@ -213,50 +212,50 @@ class TestUniqueConstraintViolation:
 
 
 # ---------------------------------------------------------------------------
-# TC-IT-WFR-023: Layer 2 arch-test partial-mask template structure
+# TC-IT-WFR-023: レイヤー2アーキテクチャテスト部分マスキングテンプレート構造
 # ---------------------------------------------------------------------------
 class TestPartialMaskTemplateStructure:
-    """TC-IT-WFR-023: arch-test exposes the partial-mask parametrize structure.
+    """TC-IT-WFR-023: アーキテクチャテストは部分マスキングのパラメータ化構造を公開する。
 
-    The Workflow PR introduces the **partial-mask** pattern alongside
-    empire-repository's no-mask pattern: ``workflow_stages`` carries
-    exactly one masked column (``notify_channels_json``) and zero on
-    every other column. The arch-test parametrizes
-    ``_PARTIAL_MASK_TABLES`` to assert this — a future PR that swaps
-    another column to a Masked* type without updating §逆引き表 first
-    must trip the arch-test.
+    Workflow PR は empire-repository のマスキングなしパターンと並んで
+    **部分マスキング**パターンを導入：``workflow_stages`` は正確に
+    1つのマスキング列（``notify_channels_json``）を持ち、他のすべての列は
+    0個。アーキテクチャテストは ``_PARTIAL_MASK_TABLES`` をパラメータ化
+    してこれをアサート — 今後のPRが§逆引き表を最初に更新せずに
+    他の列を Masked* 型に交換する場合、アーキテクチャテストに引っかかる。
 
-    Future Repository PRs add their own "partial-mask" rows for their
-    Aggregate's tables; the structural shape lets them extend without
-    rewriting the harness.
+    今後の Repository PR は、それぞれのAggregate のテーブルに対して
+    「部分マスキング」行を追加；構造的な形状により、ハーネスを
+    書き直さずに拡張できる。
     """
 
     async def test_arch_test_module_imports_partial_mask_table_list(self) -> None:
-        """TC-IT-WFR-023: ``_PARTIAL_MASK_TABLES`` lists ``workflow_stages``."""
+        """TC-IT-WFR-023: ``_PARTIAL_MASK_TABLES`` が ``workflow_stages`` をリストアップ。"""
         from tests.architecture.test_masking_columns import (
             _NO_MASK_TABLES,  # pyright: ignore[reportPrivateUsage]
             _PARTIAL_MASK_TABLES,  # pyright: ignore[reportPrivateUsage]
         )
 
-        # workflow_stages is the partial-mask table.
+        # workflow_stages は部分マスキングテーブル。
         partial_mask_table_names = {tbl for tbl, _ in _PARTIAL_MASK_TABLES}
         assert "workflow_stages" in partial_mask_table_names, (
-            "[FAIL] workflow_stages must be registered in _PARTIAL_MASK_TABLES.\n"
-            "Next: add ('workflow_stages', 'notify_channels_json') per "
-            "detailed-design.md §確定 H."
+            "[FAIL] workflow_stages は _PARTIAL_MASK_TABLES に"
+            "登録される必要があります。\n"
+            "次: detailed-design.md §確定 H. に従い\n"
+            "('workflow_stages', 'notify_channels_json') を追加。"
         )
-        # The allowed column on workflow_stages is exactly notify_channels_json.
+        # workflow_stages の許可される列は正確に notify_channels_json。
         allowed_columns = [col for tbl, col in _PARTIAL_MASK_TABLES if tbl == "workflow_stages"]
         assert allowed_columns == ["notify_channels_json"], (
-            f"[FAIL] workflow_stages partial-mask declared {allowed_columns!r}, "
-            f"expected ['notify_channels_json'].\n"
-            f"Next: §逆引き表 freezes notify_channels_json as the sole masked column."
+            f"[FAIL] workflow_stages 部分マスキングが {allowed_columns!r} と宣言、"
+            f"期待値は ['notify_channels_json']。\n"
+            f"次: §逆引き表 が notify_channels_json をマスキング対象の唯一の列としてフリーズ。"
         )
 
-        # workflows / workflow_transitions live in the no-mask list.
+        # workflows / workflow_transitions はマスキングなしリストに存在。
         assert "workflows" in _NO_MASK_TABLES, (
-            "[FAIL] workflows must be registered in _NO_MASK_TABLES."
+            "[FAIL] workflows は _NO_MASK_TABLES に登録される必要があります。"
         )
         assert "workflow_transitions" in _NO_MASK_TABLES, (
-            "[FAIL] workflow_transitions must be registered in _NO_MASK_TABLES."
+            "[FAIL] workflow_transitions は _NO_MASK_TABLES に登録される必要があります。"
         )

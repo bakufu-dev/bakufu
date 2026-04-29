@@ -1,8 +1,8 @@
-"""frozen=True / extra='forbid' invariants (TC-UT-AG-026 / 027 / 011).
+"""frozen=True / extra='forbid' の不変条件（TC-UT-AG-026 / 027 / 011）。
 
-Verifies that the Pydantic v2 frozen contract physically prevents post-
-construction mutation across all aggregate / VO surfaces, and that unknown
-fields in payloads are rejected before any aggregate validation runs.
+Pydantic v2 の frozen 契約が、全集約 / VO 面で構築後の変更を物理的に阻止する
+こと、およびペイロードの未知フィールドが集約バリデーション実行前に拒否される
+ことを検証する。
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from tests.factories.agent import (
 
 
 class TestFrozenContract:
-    """TC-UT-AG-026 — Agent / Persona / ProviderConfig / SkillRef frozen."""
+    """TC-UT-AG-026 — Agent / Persona / ProviderConfig / SkillRef の frozen 性。"""
 
     def test_agent_rejects_attribute_assignment(self) -> None:
         agent = make_agent()
@@ -47,7 +47,7 @@ class TestFrozenContract:
 
 
 class TestStructuralEquality:
-    """TC-UT-AG-011 — VOs use structural equality and hashing."""
+    """TC-UT-AG-011 — VO は構造的等価性とハッシュを用いる。"""
 
     def test_two_personas_with_identical_fields_compare_equal(self) -> None:
         a = make_persona(display_name="reviewer", archetype="r", prompt_body="p")
@@ -61,10 +61,10 @@ class TestStructuralEquality:
 
 
 class TestExtraForbid:
-    """TC-UT-AG-027 — extra='forbid' rejects unknown fields."""
+    """TC-UT-AG-027 — extra='forbid' は未知フィールドを拒否する。"""
 
     def test_agent_model_validate_rejects_unknown_field(self) -> None:
-        """Agent.model_validate refuses payloads with unknown keys."""
+        """Agent.model_validate は未知キーを含むペイロードを拒否する。"""
         payload: dict[str, object] = {
             "id": str(uuid4()),
             "name": "ok",

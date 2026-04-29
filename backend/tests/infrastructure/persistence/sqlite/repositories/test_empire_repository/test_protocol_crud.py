@@ -1,9 +1,9 @@
-"""Empire Repository: Protocol surface + basic CRUD coverage.
+"""Empire Repository: プロトコルサーフェス + 基本 CRUD カバレッジ。
 
-TC-IT-EMR-001 / 002 / 003 / 004 / 005 / 010 / 018 — the entry-point
-behaviors every Aggregate Repository must satisfy. Split out from
-the original ``test_empire_repository.py`` per Norman's 500-line rule
-(see :mod:`...test_empire_repository.__init__`).
+TC-IT-EMR-001 / 002 / 003 / 004 / 005 / 010 / 018 — すべての Aggregate Repository
+が満たさねばならないエントリポイント動作。Norman の500行ルールに従い
+元の ``test_empire_repository.py`` から分割
+(参照: :mod:`...test_empire_repository.__init__`)。
 """
 
 from __future__ import annotations
@@ -44,10 +44,10 @@ class TestEmpireRepositoryProtocol:
 
     async def test_protocol_declares_three_async_methods(self) -> None:
         """TC-IT-EMR-001: ``EmpireRepository`` has find_by_id / count / save."""
-        # Protocol classes don't expose the methods at instance level
-        # but at class level. Assert each method is callable on the
-        # Protocol type itself. Marked ``async`` purely so the
-        # module-level ``pytestmark = asyncio`` does not warn.
+        # Protocol クラスはメソッドをインスタンスレベルではなく
+        # クラスレベルで公開する。各メソッドが Protocol 型自体で
+        # callable であることをアサートする。``async`` を付けているのは
+        # モジュールレベルの ``pytestmark = asyncio`` が warn しないようにするため。
         assert hasattr(EmpireRepository, "find_by_id")
         assert hasattr(EmpireRepository, "count")
         assert hasattr(EmpireRepository, "save")
@@ -133,8 +133,8 @@ class TestCount:
         async with session_factory() as session, session.begin():
             await SqliteEmpireRepository(session).save(make_empire())
         async with session_factory() as session, session.begin():
-            # Different id — the FK constraints accept it; the
-            # Repository must not throw a singleton-enforcement error.
+            # 異なる id — FK 制約は受け入れる;
+            # Repository はシングルトン強制エラーを送出してはならない。
             await SqliteEmpireRepository(session).save(make_empire())
 
         async with session_factory() as session:
@@ -151,8 +151,8 @@ class TestSaveInsertsAllThreeTables:
     ) -> None:
         """TC-IT-EMR-005: 2 rooms + 3 agents land in their respective side tables."""
         empire = make_populated_empire(n_rooms=2, n_agents=3)
-        # Alembic 0005 added empire_room_refs.room_id → rooms.id FK (BUG-EMR-001
-        # closure). Seed rooms rows before save() so the FK resolves.
+        # Alembic 0005 で empire_room_refs.room_id → rooms.id FK が追加された（BUG-EMR-001
+        # クローズ）。FK を解決するため save() 前に rooms 行を seed する。
         await seed_rooms(session_factory, empire.id, [r.room_id for r in empire.rooms])
         async with session_factory() as session, session.begin():
             await SqliteEmpireRepository(session).save(empire)

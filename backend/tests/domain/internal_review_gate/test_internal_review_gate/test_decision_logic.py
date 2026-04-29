@@ -37,13 +37,13 @@ class TestComputeDecisionPending:
         assert result == GateDecision.PENDING
 
     def test_partial_approved_is_pending(self) -> None:
-        """1/2 required roles approved → PENDING (need all roles)."""
+        """1/2 必須ロール承認 → PENDING（全ロール必須）."""
         v_reviewer = make_verdict(role="reviewer", decision=VerdictDecision.APPROVED)
         result = compute_decision((v_reviewer,), frozenset({"reviewer", "ux"}))
         assert result == GateDecision.PENDING
 
     def test_superset_required_roles_missing_stays_pending(self) -> None:
-        """3 required roles, 2 approved → PENDING (1 still missing)."""
+        """3 必須ロール、2 承認 → PENDING（1 件未提出）."""
         v1 = make_verdict(role="reviewer", decision=VerdictDecision.APPROVED)
         v2 = make_verdict(role="ux", decision=VerdictDecision.APPROVED)
         result = compute_decision((v1, v2), frozenset({"reviewer", "ux", "security"}))
@@ -54,26 +54,26 @@ class TestComputeDecisionPending:
 # TC-UT-IRG-004 (re): ALL_APPROVED condition
 # ---------------------------------------------------------------------------
 class TestComputeDecisionAllApproved:
-    """compute_decision → ALL_APPROVED when all required roles have APPROVED."""
+    """全必須ロール承認時に compute_decision → ALL_APPROVED."""
 
     def test_all_required_approved_transitions(self) -> None:
-        """All required roles APPROVED → ALL_APPROVED."""
+        """全必須ロール承認 → ALL_APPROVED."""
         v1 = make_verdict(role="reviewer", decision=VerdictDecision.APPROVED)
         v2 = make_verdict(role="ux", decision=VerdictDecision.APPROVED)
         result = compute_decision((v1, v2), frozenset({"reviewer", "ux"}))
         assert result == GateDecision.ALL_APPROVED
 
     def test_single_required_role_approved_transitions(self) -> None:
-        """Even with only 1 required role, APPROVED transitions to ALL_APPROVED."""
+        """必須ロール 1 件でも承認で ALL_APPROVED に遷移."""
         v = make_verdict(role="reviewer", decision=VerdictDecision.APPROVED)
         result = compute_decision((v,), frozenset({"reviewer"}))
         assert result == GateDecision.ALL_APPROVED
 
     def test_extra_verdicts_beyond_required_still_all_approved(self) -> None:
-        """Additional APPROVED verdicts beyond required set don't block ALL_APPROVED."""
+        """必須外の追加承認判定は ALL_APPROVED をブロックしない."""
         v1 = make_verdict(role="reviewer", decision=VerdictDecision.APPROVED)
         v2 = make_verdict(role="ux", decision=VerdictDecision.APPROVED)
-        # required = {"reviewer"} only; ux is extra but still APPROVED → ALL_APPROVED.
+        # required = {"reviewer"} のみ。ux は追加だが承認 → ALL_APPROVED
         result = compute_decision((v1, v2), frozenset({"reviewer"}))
         assert result == GateDecision.ALL_APPROVED
 
@@ -82,30 +82,30 @@ class TestComputeDecisionAllApproved:
 # TC-UT-IRG-005 (re): REJECTED condition — most-pessimistic-wins
 # ---------------------------------------------------------------------------
 class TestComputeDecisionRejected:
-    """compute_decision → REJECTED immediately when any verdict is REJECTED."""
+    """いずれかの判定が却下時に compute_decision → 即座に REJECTED."""
 
     def test_single_rejected_wins_immediately(self) -> None:
-        """1 REJECTED with 2 roles pending → REJECTED (most-pessimistic-wins)."""
+        """1 却下、2 ロール保留中 → REJECTED（最悲観的ルール優先）."""
         v = make_verdict(role="security", decision=VerdictDecision.REJECTED)
         result = compute_decision((v,), frozenset({"reviewer", "ux", "security"}))
         assert result == GateDecision.REJECTED
 
     def test_rejected_overrides_approved(self) -> None:
-        """REJECTED wins even when other roles have APPROVED."""
+        """他のロールが承認でも却下が優先."""
         v_approved = make_verdict(role="reviewer", decision=VerdictDecision.APPROVED)
         v_rejected = make_verdict(role="ux", decision=VerdictDecision.REJECTED)
         result = compute_decision((v_approved, v_rejected), frozenset({"reviewer", "ux"}))
         assert result == GateDecision.REJECTED
 
     def test_rejected_checked_before_all_approved(self) -> None:
-        """Rule 1 (REJECTED check) fires before Rule 2 (ALL_APPROVED check).
+        """ルール 1（却下チェック）がルール 2（全承認チェック）より先に発火.
 
-        If all required roles submitted, but one of them is REJECTED,
-        the result must be REJECTED, not ALL_APPROVED.
+        全必須ロール提出でも 1 件が却下なら、結果は ALL_APPROVED でなく
+        REJECTED でなければならない。
         """
         v_approved = make_verdict(role="reviewer", decision=VerdictDecision.APPROVED)
         v_rejected = make_verdict(role="ux", decision=VerdictDecision.REJECTED)
-        # Both required roles submitted → Rule 2 would fire if Rule 1 didn't exist.
+        # 両必須ロール提出。ルール 1 がなければルール 2 が発火
         result = compute_decision((v_approved, v_rejected), frozenset({"reviewer", "ux"}))
         assert result == GateDecision.REJECTED
 
@@ -114,10 +114,10 @@ class TestComputeDecisionRejected:
 # §確定 C: compute_decision is Final-locked public alias
 # ---------------------------------------------------------------------------
 class TestComputeDecisionFinalLock:
-    """§確定 C: compute_decision is the public alias of _compute_decision."""
+    """§確定 C: compute_decision は _compute_decision の公開エイリアス."""
 
     def test_compute_decision_is_the_private_implementation(self) -> None:
-        """The public alias must point at _compute_decision (same object)."""
+        """公開エイリアスは _compute_decision を指す（同一オブジェクト）."""
         assert compute_decision is _compute_decision
 
     def test_compute_decision_is_callable(self) -> None:

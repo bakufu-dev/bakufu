@@ -1,28 +1,26 @@
-"""Agent Aggregate Root (REQ-AG-001〜006).
+"""Agent Aggregate Root（REQ-AG-001〜006）。
 
-Implements per ``docs/features/agent``. The aggregate dispatches over five
-helpers in :mod:`bakufu.domain.agent.aggregate_validators` and delegates
-SkillRef.path traversal defense (H1〜H10) to
-:mod:`bakufu.domain.agent.path_validators`.
+``docs/features/agent`` に従って実装する。Aggregate は
+:mod:`bakufu.domain.agent.aggregate_validators` の 5 つのヘルパへディスパッチし、
+SkillRef.path のトラバーサル防御（H1〜H10）は
+:mod:`bakufu.domain.agent.path_validators` に委譲する。
 
-Design contracts:
+設計コントラクト:
 
-* **Pre-validate rebuild (Confirmation A)** — ``set_default_provider`` /
-  ``add_skill`` / ``remove_skill`` / ``archive`` all go through
-  :meth:`Agent._rebuild_with` (``model_dump → swap → model_validate``).
-* **NFC pipeline (Confirmation E)** — ``Agent.name`` reuses the empire /
-  workflow ``nfc_strip`` helper. Length judgement happens in the model
-  validator so the resulting :class:`AgentInvariantViolation` carries
-  ``kind='name_range'`` with MSG-AG-001 wording.
-* **archive idempotency (Confirmation D)** — ``archive()`` always returns a
-  *new* instance. Idempotency means "result state matches", not "object
-  identity". Pydantic v2 frozen + ``model_validate`` rebuild guarantees this
-  by construction; the docstring/tests document the contract so users do not
-  rely on ``is`` comparisons.
-* **provider_kind MVP gate (Confirmation I)** — *not* implemented in the
-  aggregate. ``AgentService.hire()`` (a Phase-2 application service) is the
-  responsibility owner; the aggregate trusts that the enum value is well
-  formed and lets the service decide whether the Adapter exists.
+* **Pre-validate rebuild（Confirmation A）** — ``set_default_provider`` /
+  ``add_skill`` / ``remove_skill`` / ``archive`` はすべて :meth:`Agent._rebuild_with`
+  （``model_dump → swap → model_validate``）を経由する。
+* **NFC パイプライン（Confirmation E）** — ``Agent.name`` は empire / workflow の
+  ``nfc_strip`` ヘルパを再利用する。長さ判定はモデル バリデータで行うため、結果の
+  :class:`AgentInvariantViolation` は MSG-AG-001 文言の ``kind='name_range'`` を持つ。
+* **archive 冪等性（Confirmation D）** — ``archive()`` は常に *新* インスタンスを
+  返す。冪等性とは「結果状態が一致する」ことであり「オブジェクト同一性」ではない。
+  Pydantic v2 frozen + ``model_validate`` 再構築がこれを構造的に保証する。docstring
+  とテストでコントラクトを文書化し、利用者が ``is`` 比較に依存しないようにする。
+* **provider_kind MVP ゲート（Confirmation I）** — Aggregate には *実装しない*。
+  ``AgentService.hire()``（Phase-2 アプリケーション サービス）が責任を持つ。
+  Aggregate は enum 値が適切に整形されていることを信頼し、Adapter の存在判定は
+  サービスに委ねる。
 """
 
 from __future__ import annotations
@@ -58,13 +56,13 @@ from bakufu.domain.value_objects import (
     nfc_strip,
 )
 
-# Confirmation E: name length bounds (1〜40 after NFC + strip).
+# Confirmation E: 名前長境界（NFC + strip 後で 1〜40）。
 MIN_NAME_LENGTH: int = 1
 MAX_NAME_LENGTH: int = 40
 
 
 class Agent(BaseModel):
-    """Hireable LLM agent owned by an :class:`Empire`."""
+    """:class:`Empire` が所有する雇用可能な LLM エージェント。"""
 
     model_config = ConfigDict(
         frozen=True,
@@ -73,13 +71,11 @@ class Agent(BaseModel):
     )
 
     id: AgentId
-    # ``empire_id`` is the back-reference required by
-    # ``feature/agent-repository`` (Issue #32). The Repository
-    # persists Agents under an Empire so the table-level FK
-    # ``agents.empire_id REFERENCES empires.id ON DELETE CASCADE``
-    # has somewhere to source its value, and ``find_by_name`` can
-    # scope its lookup with ``WHERE empire_id = :empire_id`` —
-    # detailed-design §確定 F.
+    # ``empire_id`` は ``feature/agent-repository``（Issue #32）が要求する逆参照。
+    # リポジトリは Empire の下に Agent を永続化するため、テーブル レベルの FK
+    # ``agents.empire_id REFERENCES empires.id ON DELETE CASCADE`` が値を取得できる
+    # 場所が必要であり、``find_by_name`` も ``WHERE empire_id = :empire_id`` で
+    # ルックアップをスコープできる — detailed-design §確定 F。
     empire_id: EmpireId
     name: str
     persona: Persona
@@ -88,7 +84,7 @@ class Agent(BaseModel):
     skills: list[SkillRef] = []
     archived: bool = False
 
-    # ---- pre-validation -------------------------------------------------
+    # ---- 事前検証 -------------------------------------------------------
     @field_validator("name", mode="before")
     @classmethod
     def _normalize_name(cls, value: object) -> object:
@@ -96,11 +92,11 @@ class Agent(BaseModel):
 
     @model_validator(mode="after")
     def _check_invariants(self) -> Self:
-        """Dispatch over the aggregate-level helpers in deterministic order.
+        """Aggregate レベルのヘルパを決定的順序でディスパッチする。
 
-        Order: name range → provider capacity / uniqueness / default count
-        → skill capacity / uniqueness. Earlier failures hide later ones so
-        error messages stay focused on the root cause.
+        順序: name range → provider capacity / 一意性 / default 個数 →
+        skill capacity / 一意性。先行する失敗が後続を隠すため、エラー メッセージは
+        根本原因に集中する。
         """
         self._check_name_range()
         _validate_provider_capacity(self.providers)
@@ -123,17 +119,16 @@ class Agent(BaseModel):
                 detail={"length": length},
             )
 
-    # ---- behaviors (Tell, Don't Ask) ------------------------------------
+    # ---- 振る舞い（Tell, Don't Ask） -----------------------------------
     def set_default_provider(self, provider_kind: ProviderKind) -> Agent:
-        """Switch the default provider to the entry whose ``provider_kind`` matches.
+        """``provider_kind`` が一致するエントリにデフォルト プロバイダを切り替える。
 
-        Linear scan over ``providers`` (small N ≤ 10). Raises if the kind is
-        not registered — the caller cannot mark a never-configured provider
-        as default.
+        ``providers`` を線形スキャンする（N ≤ 10 で小さい）。kind が未登録の場合
+        例外を送出する — 呼び元は構成されていない provider をデフォルトにできない。
 
         Raises:
-            AgentInvariantViolation: ``kind='provider_not_found'`` when no
-                ``ProviderConfig`` matches ``provider_kind``.
+            AgentInvariantViolation: ``provider_kind`` に一致する
+                ``ProviderConfig`` がないとき ``kind='provider_not_found'``。
         """
         if not any(provider.provider_kind == provider_kind for provider in self.providers):
             raise AgentInvariantViolation(
@@ -152,14 +147,14 @@ class Agent(BaseModel):
         return self._rebuild_with(providers=new_providers)
 
     def add_skill(self, skill_ref: SkillRef) -> Agent:
-        """Append ``skill_ref`` to ``skills``; aggregate validation catches duplicates."""
+        """``skill_ref`` を ``skills`` に追加する。重複は Aggregate 検証で捕捉される。"""
         return self._rebuild_with(skills=[*self.skills, skill_ref])
 
     def remove_skill(self, skill_id: SkillId) -> Agent:
-        """Drop the SkillRef whose ``skill_id`` matches.
+        """``skill_id`` が一致する SkillRef を削除する。
 
         Raises:
-            AgentInvariantViolation: ``kind='skill_not_found'`` (MSG-AG-008).
+            AgentInvariantViolation: ``kind='skill_not_found'``（MSG-AG-008）。
         """
         if not any(skill.skill_id == skill_id for skill in self.skills):
             raise AgentInvariantViolation(
@@ -172,23 +167,22 @@ class Agent(BaseModel):
         )
 
     def archive(self) -> Agent:
-        """Return a new :class:`Agent` with ``archived=True`` (Confirmation D).
+        """``archived=True`` を持つ新しい :class:`Agent` を返す（Confirmation D）。
 
-        Idempotent: calling on an already-archived Agent yields a fresh
-        Agent that is **structurally equal** to the input but has a
-        different ``id()``. Callers must not rely on object identity —
-        always reassign the returned value (``agent = agent.archive()``).
+        冪等: 既にアーカイブ済みの Agent に対して呼んでも、入力と **構造的に等しく**、
+        ``id()`` のみ異なる新規 Agent を生成する。呼び元はオブジェクト同一性に依存
+        してはならず、常に返値を代入し直すこと（``agent = agent.archive()``）。
         """
         return self._rebuild_with_state({"archived": True})
 
-    # ---- internal: pre-validate rebuild (Confirmation A) ----------------
+    # ---- 内部実装: 事前検証 rebuild（Confirmation A） -------------------
     def _rebuild_with(
         self,
         *,
         providers: list[ProviderConfig] | None = None,
         skills: list[SkillRef] | None = None,
     ) -> Agent:
-        """Re-construct via ``model_validate`` so ``_check_invariants`` re-fires."""
+        """``model_validate`` で再構築し ``_check_invariants`` を再発火させる。"""
         state = self.model_dump()
         if providers is not None:
             state["providers"] = [provider.model_dump() for provider in providers]
@@ -197,7 +191,7 @@ class Agent(BaseModel):
         return Agent.model_validate(state)
 
     def _rebuild_with_state(self, updates: dict[str, Any]) -> Agent:
-        """Pre-validate rebuild for scalar attribute updates (e.g. ``archived``)."""
+        """スカラ属性更新（例 ``archived``）のための pre-validate rebuild。"""
         state = self.model_dump()
         state.update(updates)
         return Agent.model_validate(state)

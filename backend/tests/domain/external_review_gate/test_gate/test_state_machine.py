@@ -1,18 +1,17 @@
-"""ExternalReviewGate state machine tests (TC-UT-GT-003〜006, 013〜015).
+"""ExternalReviewGate ステートマシンテスト (TC-UT-GT-003〜006, 013〜015).
 
-Per ``docs/features/external-review-gate/test-design.md``. The
-§確定 A 4x4 = **16-cell dispatch matrix** is asserted in three
-orthogonal ways here:
+``docs/features/external-review-gate/test-design.md`` 準拠。
+§確定 A の 4x4 = **16 セル分岐マトリクス** を 3 つの直交視点で検証する:
 
-1. **7 ✓ cells**: each allowed transition has its own positive case
-   (PENDING approve / reject / cancel + 4 self-loops via record_view).
-2. **9 ✗ cells**: APPROVED/REJECTED/CANCELLED x approve/reject/cancel
-   parametrize coverage → ``decision_already_decided`` (MSG-GT-001).
-3. **§確定 G 冪等性なし**: same owner + same time = 2 audit entries
-   (audit requirement: 誰がいつ何度見たか).
+1. **7 ✓ セル**: 許可遷移ごとに正常系ケースを 1 件
+   (PENDING approve / reject / cancel + record_view 経由の 4 self-loop)。
+2. **9 ✗ セル**: APPROVED/REJECTED/CANCELLED x approve/reject/cancel の
+   parametrize で全網羅 → ``decision_already_decided`` (MSG-GT-001)。
+3. **§確定 G 冪等性なし**: 同一 owner + 同一時刻 = 監査エントリ 2 件
+   (監査要件: 誰がいつ何度見たか)。
 
-§確定 B (state machine table lock) is asserted via the 7-entry size
-check + ``MappingProxyType`` setitem rejection.
+§確定 B (ステートマシンテーブルロック) は 7 件サイズチェック +
+``MappingProxyType`` setitem 拒絶で検証。
 """
 
 from __future__ import annotations
@@ -39,24 +38,24 @@ from tests.factories.external_review_gate import (
     make_rejected_gate,
 )
 
-# All 4 action names — must match ExternalReviewGate method names 1:1 (§確定 A).
+# 全 4 アクション名 ── ExternalReviewGate のメソッド名と 1:1 対応 (§確定 A)。
 _ALL_ACTIONS: list[GateAction] = ["approve", "reject", "cancel", "record_view"]
 
-# All 4 decision values for the 16-cell matrix.
+# 16 セルマトリクスのための全 4 decision 値。
 _ALL_DECISIONS: list[ReviewDecision] = list(ReviewDecision)
 
-# The 3 PENDING-only actions (terminal-firing).
+# PENDING 限定の 3 アクション (terminal で発火)。
 _PENDING_ONLY_ACTIONS: list[GateAction] = ["approve", "reject", "cancel"]
 
 
 def _next_ts(gate: ExternalReviewGate) -> datetime:
-    """Return a strictly-later UTC timestamp for ``decided_at`` / ``viewed_at``."""
+    """``decided_at`` / ``viewed_at`` 用に厳密に未来の UTC タイムスタンプを返す。"""
     base = gate.decided_at if gate.decided_at is not None else gate.created_at
     return base + timedelta(seconds=1)
 
 
 def _invoke_action(gate: ExternalReviewGate, action: GateAction) -> ExternalReviewGate:
-    """Dispatch ``action`` on ``gate`` with throwaway-but-valid arguments."""
+    """``gate`` 上に ``action`` をディスパッチする (使い捨ての妥当な引数を渡す)。"""
     ts = _next_ts(gate)
     if action == "approve":
         return gate.approve(uuid4(), "synthetic approve comment", decided_at=ts)
@@ -64,12 +63,12 @@ def _invoke_action(gate: ExternalReviewGate, action: GateAction) -> ExternalRevi
         return gate.reject(uuid4(), "synthetic reject comment", decided_at=ts)
     if action == "cancel":
         return gate.cancel(uuid4(), "synthetic cancel reason", decided_at=ts)
-    # record_view
+    # record_view（閲覧記録）
     return gate.record_view(uuid4(), viewed_at=ts)
 
 
 def _make_gate_in_decision(decision: ReviewDecision) -> ExternalReviewGate:
-    """Build a Gate in the given decision using the appropriate factory."""
+    """指定の decision 状態にある Gate を、対応するファクトリで構築する。"""
     if decision == ReviewDecision.PENDING:
         return make_gate()
     if decision == ReviewDecision.APPROVED:
@@ -80,13 +79,13 @@ def _make_gate_in_decision(decision: ReviewDecision) -> ExternalReviewGate:
 
 
 # ---------------------------------------------------------------------------
-# §確定 B: state machine TABLE shape + immutability (TC-UT-GT-014)
+# §確定 B: ステートマシン TABLE 形状 + 不変性 (TC-UT-GT-014)
 # ---------------------------------------------------------------------------
 class TestStateMachineTableLocked:
-    """TC-UT-GT-014: ``TRANSITIONS`` has 7 entries and rejects mutation."""
+    """TC-UT-GT-014: TRANSITIONS は 7 件で変更不可."""
 
     def test_table_size_is_seven(self) -> None:
-        """The §確定 A dispatch table freezes 7 allowed transitions."""
+        """§確定 A の分岐テーブルは許可遷移 7 件を凍結する."""
         assert len(TRANSITIONS) == 7, (
             f"[FAIL] state machine table size drifted: got {len(TRANSITIONS)}, expected 7.\n"
             f"Next: docs/features/external-review-gate/detailed-design.md §確定 A "
@@ -95,35 +94,36 @@ class TestStateMachineTableLocked:
         )
 
     def test_table_setitem_rejected_at_runtime(self) -> None:
-        """``TRANSITIONS[k] = v`` raises ``TypeError`` (MappingProxyType lock)."""
+        """TRANSITIONS[k] = v は TypeError を発する
+        (MappingProxyType ロック)."""
         with pytest.raises(TypeError):
             TRANSITIONS[(ReviewDecision.APPROVED, "approve")] = ReviewDecision.PENDING  # pyright: ignore[reportIndexIssue]
 
 
 # ---------------------------------------------------------------------------
-# 7 allowed transitions — one positive case per ✓ cell
+# 許可遷移 7 件 ── ✓ セルごとの正常系ケース
 # ---------------------------------------------------------------------------
 class TestSevenAllowedTransitions:
-    """TC-UT-GT-003 / 004 / 006 / 013 — the 7 ✓ cells of the dispatch table."""
+    """TC-UT-GT-003 / 004 / 006 / 013 ── 分岐テーブルの ✓ セル 7 件。"""
 
-    # PENDING → APPROVED via approve
+    # PENDING → APPROVED（approve 経由）
     def test_approve_pending_to_approved(self) -> None:
-        """TC-UT-GT-003: ``approve`` on PENDING moves to APPROVED."""
+        """TC-UT-GT-003: PENDING に対する approve は APPROVED へ遷移."""
         gate = make_gate()
         ts = _next_ts(gate)
         out = gate.approve(uuid4(), "looks good", decided_at=ts)
         assert out.decision == ReviewDecision.APPROVED
         assert out.decided_at == ts
         assert out.feedback_text == "looks good"
-        # Audit trail: 1 new APPROVED entry appended.
+        # 監査証跡: APPROVED エントリが 1 件追加
         assert len(out.audit_trail) == len(gate.audit_trail) + 1
         assert out.audit_trail[-1].action == AuditAction.APPROVED
-        # Original Gate unchanged (frozen + pre-validate).
+        # 元の Gate は不変（frozen + pre-validate）
         assert gate.decision == ReviewDecision.PENDING
 
-    # PENDING → REJECTED via reject
+    # PENDING → REJECTED（reject 経由）
     def test_reject_pending_to_rejected(self) -> None:
-        """TC-UT-GT-004: ``reject`` on PENDING moves to REJECTED."""
+        """TC-UT-GT-004: PENDING に対する reject は REJECTED へ遷移."""
         gate = make_gate()
         ts = _next_ts(gate)
         out = gate.reject(uuid4(), "needs revision", decided_at=ts)
@@ -132,9 +132,9 @@ class TestSevenAllowedTransitions:
         assert out.feedback_text == "needs revision"
         assert out.audit_trail[-1].action == AuditAction.REJECTED
 
-    # PENDING → CANCELLED via cancel
+    # PENDING → CANCELLED（cancel 経由）
     def test_cancel_pending_to_cancelled(self) -> None:
-        """TC-UT-GT-013: ``cancel`` on PENDING moves to CANCELLED."""
+        """TC-UT-GT-013: PENDING に対する cancel は CANCELLED へ遷移."""
         gate = make_gate()
         ts = _next_ts(gate)
         out = gate.cancel(uuid4(), "directive withdrawn", decided_at=ts)
@@ -143,36 +143,37 @@ class TestSevenAllowedTransitions:
         assert out.feedback_text == "directive withdrawn"
         assert out.audit_trail[-1].action == AuditAction.CANCELLED
 
-    # 4 record_view self-loops — one per decision state
+    # 4 record_view self-loop ── 各 decision ごとに 1 件
     @pytest.mark.parametrize(
         "decision",
         list(ReviewDecision),
         ids=lambda d: d.value,
     )
     def test_record_view_self_loop_in_each_state(self, decision: ReviewDecision) -> None:
-        """TC-UT-GT-006: ``record_view`` is a self-loop in every state."""
+        """TC-UT-GT-006: record_view は全状態で self-loop となる."""
         gate = _make_gate_in_decision(decision)
         ts = _next_ts(gate)
         out = gate.record_view(uuid4(), viewed_at=ts)
-        assert out.decision == decision  # state unchanged
-        # Decided_at unchanged (record_view is purely an audit op).
+        assert out.decision == decision  # 状態は変化しない
+        # decided_at は変化しない（record_view は純粋な監査操作）
         assert out.decided_at == gate.decided_at
         assert out.feedback_text == gate.feedback_text
-        # Audit trail: 1 new VIEWED entry appended.
+        # 監査証跡: VIEWED エントリが 1 件追加
         assert len(out.audit_trail) == len(gate.audit_trail) + 1
         assert out.audit_trail[-1].action == AuditAction.VIEWED
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-GT-005: 9 ✗ cells (decision_already_decided)
+# TC-UT-GT-005: 9 ✗ セル (decision_already_decided)
 # ---------------------------------------------------------------------------
 class TestDecisionAlreadyDecidedRejection:
-    """9 ✗ cells: approve/reject/cancel on APPROVED/REJECTED/CANCELLED → MSG-GT-001.
+    """9 ✗ セル: APPROVED/REJECTED/CANCELLED に対する approve/reject/cancel
+    → MSG-GT-001。
 
-    The 16-cell matrix splits as: 7 ✓ + 9 ✗. Every ✗ cell is a
-    PENDING-only action attempted on a non-PENDING Gate.
-    ``decision_already_decided`` fires (MSG-GT-001 with the
-    ``allowed_actions`` hint pointing to record_view).
+    16 セルマトリクスは 7 ✓ + 9 ✗ に分かれる。✗ セルはいずれも PENDING
+    限定アクションを非 PENDING な Gate に投げるケース。
+    decision_already_decided が発火し（MSG-GT-001）、allowed_actions
+    ヒントが record_view を指す。
     """
 
     @pytest.mark.parametrize(
@@ -190,16 +191,17 @@ class TestDecisionAlreadyDecidedRejection:
         decision: ReviewDecision,
         action: GateAction,
     ) -> None:
-        """Each (terminal decision, PENDING-only action) raises decision_already_decided."""
+        """各 (terminal decision, PENDING 限定 action) で
+        decision_already_decided が発火."""
         gate = _make_gate_in_decision(decision)
         with pytest.raises(ExternalReviewGateInvariantViolation) as exc_info:
             _invoke_action(gate, action)
         assert exc_info.value.kind == "decision_already_decided"
-        # The detail surfaces the allowed_actions list — the only
-        # legal action from a terminal decision is ``record_view``.
-        # MSG-GT-001 itself routes the operator via "issue a new
-        # directive" hint; the structured allowed_actions belongs to
-        # detail (consumed by application-layer error reporters).
+        # detail には allowed_actions リストが現れる。terminal decision
+        # から正当な唯一のアクションは record_view。MSG-GT-001 自体は
+        # "issue a new directive" ヒントで運用者を誘導。構造化された
+        # allowed_actions は detail に置く（アプリケーション層の
+        # エラーレポータが消費）。
         allowed = exc_info.value.detail.get("allowed_actions")
         assert allowed == ["record_view"], (
             f"[FAIL] terminal Gate must list ['record_view'] as the only "
@@ -211,15 +213,14 @@ class TestDecisionAlreadyDecidedRejection:
 # TC-UT-GT-006 (補強): record_view 冪等性なし (§確定 G)
 # ---------------------------------------------------------------------------
 class TestRecordViewIsNotIdempotent:
-    """§確定 G: same owner + same timestamp = 2 audit entries.
+    """§確定 G: 同一 owner + 同一 timestamp = 監査エントリ 2 件.
 
-    The audit requirement is "誰がいつ何度見たか" (who, when, how
-    many times). Collapsing duplicates would discard the very
-    frequency signal the audit trail is supposed to preserve.
+    監査要件は「誰がいつ何度見たか」。重複折りたたみは監査証跡が保持
+    すべき頻度シグナル自体を捨ててしまう。
     """
 
     def test_same_owner_same_time_appends_twice(self) -> None:
-        """Two record_view calls with identical owner + time → 2 distinct entries."""
+        """同一 owner + 同一時刻の record_view 2 回 → 別エントリ 2 件."""
         gate = make_gate()
         owner = uuid4()
         ts = datetime(2026, 4, 28, 14, 0, 0, tzinfo=UTC)
@@ -228,15 +229,15 @@ class TestRecordViewIsNotIdempotent:
 
         assert len(once.audit_trail) == 1
         assert len(twice.audit_trail) == 2
-        # Both entries carry the same actor + occurred_at, but their
-        # ``id`` differs (uuid4 inside _rebuild_with_state).
+        # 両エントリは同一 actor + occurred_at を持つが、id は別
+        # （_rebuild_with_state 内の uuid4 由来）
         e1, e2 = twice.audit_trail
         assert e1.actor_id == e2.actor_id == owner
         assert e1.occurred_at == e2.occurred_at == ts
         assert e1.id != e2.id
 
     def test_three_views_record_three_entries(self) -> None:
-        """A 3-view sequence accumulates 3 audit entries."""
+        """3 連続 view で監査エントリは 3 件積まれる."""
         gate = make_gate()
         viewer = uuid4()
         for _ in range(3):
@@ -245,7 +246,8 @@ class TestRecordViewIsNotIdempotent:
         assert all(e.action == AuditAction.VIEWED for e in gate.audit_trail)
 
     def test_record_view_preserves_decision_and_decided_at(self) -> None:
-        """record_view does NOT change decision / decided_at / feedback_text."""
+        """record_view は decision / decided_at / feedback_text
+        を変更しない."""
         gate = make_approved_gate(feedback_text="approved!")
         before_decision = gate.decision
         before_decided_at = gate.decided_at
@@ -259,20 +261,19 @@ class TestRecordViewIsNotIdempotent:
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-GT-015: pre-validate failure leaves source Gate unchanged (§確定 E)
+# TC-UT-GT-015: pre-validate 失敗時に元 Gate は不変 (§確定 E)
 # ---------------------------------------------------------------------------
 class TestPreValidateLeavesSourceUnchanged:
-    """TC-UT-GT-015: a failed behavior call does not mutate the original Gate.
+    """TC-UT-GT-015: 失敗した behavior 呼び出しは元 Gate を変更しない.
 
-    The §確定 E pre-validate rebuild path means a behavior either
-    returns a new Gate or raises — never partially-mutates the source
-    instance. We assert this by attempting a `decision_already_decided`
-    on a terminal Gate and inspecting the original Gate's full
-    attribute set.
+    §確定 E の pre-validate rebuild 経路は、behavior が新 Gate を返す
+    か例外を発するかのいずれかで、元インスタンスを部分的に変更しない。
+    terminal Gate に decision_already_decided を仕掛けて、元 Gate の全
+    属性集合を検査することで保証を確認。
     """
 
     def test_failed_approve_on_approved_keeps_source_unchanged(self) -> None:
-        """An ``approve`` on APPROVED raises and does not touch the source."""
+        """APPROVED に対する approve は例外を発し、元 Gate に触れない."""
         gate = make_approved_gate()
         snapshot = gate.model_dump()
 
@@ -283,55 +284,54 @@ class TestPreValidateLeavesSourceUnchanged:
 
 
 # ---------------------------------------------------------------------------
-# Lifecycle integration scenarios
+# ライフサイクル統合シナリオ
 # ---------------------------------------------------------------------------
 class TestLifecycleIntegration:
-    """Aggregate-internal "integration" — multi-method round-trip scenarios."""
+    """Aggregate 内部「統合」── 複数メソッドのラウンドトリップシナリオ."""
 
     def test_pending_approve_then_views_then_approve_again_rejected(self) -> None:
-        """PENDING → APPROVED → record_view x 2 → re-approve raises."""
+        """PENDING → APPROVED → record_view x 2 → 再 approve は例外発火."""
         gate = make_gate()
         viewer_a = uuid4()
         viewer_b = uuid4()
 
-        # Approve.
+        # 承認
         gate = gate.approve(uuid4(), "all good", decided_at=_next_ts(gate))
         assert gate.decision == ReviewDecision.APPROVED
 
-        # 2 distinct viewers record their views.
+        # 別々の閲覧者 2 名が view を記録
         gate = gate.record_view(viewer_a, viewed_at=_next_ts(gate))
         gate = gate.record_view(viewer_b, viewed_at=_next_ts(gate))
         assert len(gate.audit_trail) == 3  # 1 APPROVED + 2 VIEWED
 
-        # Re-approve must raise — Gate is single-decision.
+        # 再 approve は必ず例外発火。Gate は単一 decision
         with pytest.raises(ExternalReviewGateInvariantViolation) as exc_info:
             gate.approve(uuid4(), "re-approve", decided_at=_next_ts(gate))
         assert exc_info.value.kind == "decision_already_decided"
 
-        # Audit trail must have 3 entries unchanged (the failed
-        # approve did NOT add an entry — pre-validate left source
-        # intact).
+        # 監査証跡は 3 件のまま不変（失敗 approve はエントリを追加しない。
+        # pre-validate が元を保ったため）
         assert len(gate.audit_trail) == 3
 
     def test_pending_reject_record_view_still_legal(self) -> None:
-        """A REJECTED Gate still accepts late record_view audits."""
+        """REJECTED の Gate も後続の record_view 監査を受理."""
         gate = make_gate()
         gate = gate.reject(uuid4(), "needs more work", decided_at=_next_ts(gate))
         assert gate.decision == ReviewDecision.REJECTED
 
         for _ in range(2):
             gate = gate.record_view(uuid4(), viewed_at=_next_ts(gate))
-        # 1 REJECTED + 2 VIEWED = 3 entries.
+        # 1 REJECTED + 2 VIEWED = 3 件。
         assert len(gate.audit_trail) == 3
         assert gate.audit_trail[0].action == AuditAction.REJECTED
         assert gate.audit_trail[1].action == AuditAction.VIEWED
         assert gate.audit_trail[2].action == AuditAction.VIEWED
 
     def test_pending_cancel_then_record_view_still_legal(self) -> None:
-        """A CANCELLED Gate still accepts late record_view audits.
+        """CANCELLED の Gate も後続の record_view 監査を受理.
 
-        §確定 G コンプライアンス観点: "3 ヶ月前に CANCELLED した Gate
-        を再確認した" ログ価値 — record_view permitted in every state.
+        §確定 G コンプライアンス観点: 「3 ヶ月前に CANCELLED した
+        Gate を再確認した」ログ価値。record_view は全状態で許可。
         """
         gate = make_gate()
         gate = gate.cancel(uuid4(), "withdrawn", decided_at=_next_ts(gate))
@@ -341,10 +341,10 @@ class TestLifecycleIntegration:
 
 
 # ---------------------------------------------------------------------------
-# Reachability sanity — each allowed transition produces consistent fields
+# 到達性確認 ── 各許可遷移は整合性あるフィールドを生成
 # ---------------------------------------------------------------------------
 class TestAuditTrailGrowsByOnePerCall:
-    """Every behavior method appends exactly one audit entry."""
+    """全 behavior メソッドは監査エントリをちょうど 1 件追加."""
 
     @pytest.mark.parametrize(
         "decision",
@@ -352,7 +352,7 @@ class TestAuditTrailGrowsByOnePerCall:
         ids=lambda d: d.value,
     )
     def test_legal_action_grows_audit_by_one(self, decision: ReviewDecision) -> None:
-        """For every legal (decision, action), audit_trail length grows by 1."""
+        """合法 (decision, action) 全てで audit_trail 長は +1 となる."""
         legal_actions: list[GateAction] = [a for (d, a) in TRANSITIONS if d == decision]
         assert legal_actions, f"decision {decision} has zero legal actions"
         for action in legal_actions:
@@ -364,5 +364,5 @@ class TestAuditTrailGrowsByOnePerCall:
             )
 
 
-# Sanity import to keep pyright happy with the GateAction type usage above.
+# GateAction 型使用に対して pyright を満足させるサニティ import
 _ = GateAction

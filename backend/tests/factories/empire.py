@@ -1,26 +1,26 @@
-"""Factories for the Empire aggregate and its reference VOs.
+"""Empire アグリゲートと参照 VO のファクトリ群.
 
-Per ``docs/features/empire/test-design.md`` (REQ-EM-001〜005, factories), each
-factory:
+``docs/features/empire/test-design.md`` (REQ-EM-001〜005, factories) 準拠。
+各ファクトリは:
 
-* Returns a *valid* default instance built via the production constructor.
-* Allows keyword overrides so individual tests can exercise specific edge
-  cases without copy-pasting full kwargs.
-* Registers the produced instance in :data:`_SYNTHETIC_REGISTRY` so
-  :func:`is_synthetic` can later confirm "this object came from a factory".
+* 本番コンストラクタ経由で *妥当* なデフォルトインスタンスを返す。
+* キーワード上書きを許可し、個別テストが完全な kwargs を貼り付けずに
+  特定の境界値を検証できるようにする。
+* 生成したインスタンスを :data:`_SYNTHETIC_REGISTRY` に登録し、
+  :func:`is_synthetic` で後から「ファクトリ由来か」を確認できるようにする。
 
-Why a ``WeakValueDictionary`` over inline metadata?
+``WeakValueDictionary`` をインラインメタデータより優先する理由:
 
-* :class:`bakufu.domain.empire.Empire`, :class:`RoomRef` and :class:`AgentRef`
-  are ``frozen=True`` Pydantic v2 models with ``extra='forbid'`` — adding a
-  ``_meta.synthetic`` attribute (the naive approach) is physically impossible.
-* A weak-value registry keyed by ``id(instance)`` lets us flag instances
-  externally; entries auto-evict when the value is garbage collected, so
-  ``id`` reuse on a freshly allocated, unrelated instance simply yields a
-  cache miss instead of a false positive.
+* :class:`bakufu.domain.empire.Empire`、:class:`RoomRef`、:class:`AgentRef`
+  は ``frozen=True`` で ``extra='forbid'`` の Pydantic v2 モデル ──
+  素朴な ``_meta.synthetic`` 属性追加は物理的に不可能。
+* ``id(instance)`` をキーとする弱参照レジストリは外側からインスタンスに
+  フラグ付けする。値が GC されるとエントリは自動失効するので、無関係な
+  新規 allocate で ``id`` が再利用されても false positive ではなく
+  キャッシュミスとなる。
 
-Production code MUST NOT import this module — it lives under ``tests/`` to
-keep the synthetic-data boundary auditable.
+本モジュールを本番コードから import してはならない ── 合成データ境界を
+監査可能に保つため ``tests/`` 配下に配置されている。
 """
 
 from __future__ import annotations
@@ -36,29 +36,29 @@ from pydantic import BaseModel
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-# Module-scope registry. Values are kept weakly so GC pressure stays neutral;
-# we only want to know "did a factory produce this object" while it's alive.
+# モジュールスコープのレジストリ。値は弱参照で保持するので GC 圧は中立 ──
+# 「このオブジェクトはファクトリ由来か」をオブジェクト生存中だけ知ればよい。
 _SYNTHETIC_REGISTRY: WeakValueDictionary[int, BaseModel] = WeakValueDictionary()
 
 
 def is_synthetic(instance: BaseModel) -> bool:
-    """Return ``True`` when ``instance`` was created by a factory in this module.
+    """``instance`` が本モジュールのファクトリで生成されたものなら ``True`` を返す。
 
-    The check is identity-based (``id``) rather than structural so two
-    independently-produced equal instances are still distinguishable: only the
-    actual object the factory returned is marked synthetic.
+    検査は構造的ではなく ID ベース (``id``)。これにより独立に生成された
+    等値の 2 インスタンスは区別される ── ファクトリが返した実オブジェクトのみ
+    合成印が付く。
     """
     cached = _SYNTHETIC_REGISTRY.get(id(instance))
     return cached is instance
 
 
 def _register(instance: BaseModel) -> None:
-    """Record ``instance`` in the synthetic registry."""
+    """``instance`` を合成レジストリに記録する。"""
     _SYNTHETIC_REGISTRY[id(instance)] = instance
 
 
 # ---------------------------------------------------------------------------
-# RoomRef factory
+# RoomRef ファクトリ
 # ---------------------------------------------------------------------------
 def make_room_ref(
     *,
@@ -66,7 +66,7 @@ def make_room_ref(
     name: str = "ルーム",
     archived: bool = False,
 ) -> RoomRef:
-    """Build a valid :class:`RoomRef` and register it as synthetic."""
+    """妥当な :class:`RoomRef` を構築し合成印を付ける。"""
     ref = RoomRef(
         room_id=room_id if room_id is not None else uuid4(),
         name=name,
@@ -77,7 +77,7 @@ def make_room_ref(
 
 
 # ---------------------------------------------------------------------------
-# AgentRef factory
+# AgentRef ファクトリ
 # ---------------------------------------------------------------------------
 def make_agent_ref(
     *,
@@ -85,7 +85,7 @@ def make_agent_ref(
     name: str = "エージェント",
     role: Role = Role.DEVELOPER,
 ) -> AgentRef:
-    """Build a valid :class:`AgentRef` and register it as synthetic."""
+    """妥当な :class:`AgentRef` を構築し合成印を付ける。"""
     ref = AgentRef(
         agent_id=agent_id if agent_id is not None else uuid4(),
         name=name,
@@ -96,7 +96,7 @@ def make_agent_ref(
 
 
 # ---------------------------------------------------------------------------
-# Empire factory
+# Empire ファクトリ
 # ---------------------------------------------------------------------------
 def make_empire(
     *,
@@ -105,12 +105,11 @@ def make_empire(
     rooms: Sequence[RoomRef] | None = None,
     agents: Sequence[AgentRef] | None = None,
 ) -> Empire:
-    """Build a valid :class:`Empire` and register it as synthetic.
+    """妥当な :class:`Empire` を構築し合成印を付ける。
 
-    Defaults yield an empty Empire with no rooms or agents — the simplest
-    valid aggregate state, suitable for the majority of tests that then mutate
-    via the public ``hire_agent`` / ``establish_room`` / ``archive_room``
-    behaviors.
+    上書きなしの場合、room / agent なしの空 Empire を返す ── 最小妥当な
+    aggregate 状態。これは公開 behavior (``hire_agent`` / ``establish_room``
+    / ``archive_room``) で変更する大多数のテストに適している。
     """
     empire = Empire(
         id=empire_id if empire_id is not None else uuid4(),
@@ -129,16 +128,16 @@ def make_populated_empire(
     n_rooms: int = 2,
     n_agents: int = 3,
 ) -> Empire:
-    """Build an Empire with N rooms + M agents for Repository round-trip tests.
+    """Repository ラウンドトリップテスト用に N rooms + M agents の Empire を構築する。
 
-    The Empire-Repository PR (#25) needs this factory to exercise the
-    §確定 B delete-then-insert flow — empty Empires touch only the
-    ``empires`` table while a populated Empire writes all three tables
-    (empires + empire_room_refs + empire_agent_refs) so the test can
-    assert that the side tables actually receive their bulk INSERTs.
+    Empire-Repository PR (#25) は §確定 B delete-then-insert フローを
+    検証するために本ファクトリを必要とする ── 空 Empire は ``empires``
+    テーブルのみを触るが、populated Empire は 3 テーブル全て
+    (empires + empire_room_refs + empire_agent_refs) に書く。これにより
+    side テーブルが実際にバルク INSERT を受けることをテストでアサートできる。
 
-    Roles cycle through DEVELOPER / TESTER / REVIEWER so a 3-agent
-    Empire spans three distinct Role enum values.
+    role は DEVELOPER / TESTER / REVIEWER を巡回する ── 3 agent の Empire は
+    3 つの別 Role enum 値を網羅する。
     """
     rooms = [make_room_ref(name=f"ルーム{i + 1}") for i in range(n_rooms)]
     role_cycle = [Role.DEVELOPER, Role.TESTER, Role.REVIEWER]

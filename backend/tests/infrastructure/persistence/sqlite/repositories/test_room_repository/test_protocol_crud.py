@@ -1,10 +1,10 @@
-"""Room Repository: Protocol surface + basic CRUD coverage.
+"""Room Repository: Protocol サーフェス + 基本 CRUD カバレッジ。
 
-TC-UT-RR-001 / 004 / 005 / 006 — the entry-point behaviors plus the
-**4-method Protocol surface** (``find_by_id`` / ``count`` / ``save`` /
-``find_by_name``, §確定 R1-A + R1-F).
+TC-UT-RR-001 / 004 / 005 / 006 ── エントリポイント挙動と
+**4 メソッドの Protocol サーフェス** (``find_by_id`` / ``count`` / ``save`` /
+``find_by_name``、§確定 R1-A + R1-F)。
 
-Per ``docs/features/room-repository/test-design.md``.
+``docs/features/room-repository/test-design.md`` 準拠。
 """
 
 from __future__ import annotations
@@ -35,10 +35,10 @@ pytestmark = pytest.mark.asyncio
 # REQ-RR-001: Protocol definition + 4-method surface (§確定 R1-A)
 # ---------------------------------------------------------------------------
 class TestRoomRepositoryProtocol:
-    """TC-UT-RR-001: Protocol declares 4 async methods."""
+    """TC-UT-RR-001: Protocol が 4 つの async メソッドを宣言する。"""
 
     async def test_protocol_declares_four_async_methods(self) -> None:
-        """TC-UT-RR-001: ``RoomRepository`` has find_by_id / count / save / find_by_name."""
+        """TC-UT-RR-001: ``RoomRepository`` が find_by_id / count / save / find_by_name を持つ。"""
         assert hasattr(RoomRepository, "find_by_id")
         assert hasattr(RoomRepository, "count")
         assert hasattr(RoomRepository, "save")
@@ -48,11 +48,10 @@ class TestRoomRepositoryProtocol:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-UT-RR-001: ``SqliteRoomRepository`` is assignable to ``RoomRepository``.
+        """TC-UT-RR-001: ``SqliteRoomRepository`` を ``RoomRepository`` に代入できる。
 
-        The variable annotation acts as a static-type assertion; pyright
-        strict will reject the assignment if any of the 4 Protocol
-        methods is missing or has a wrong signature.
+        変数アノテーションが静的型アサーションとして機能する。pyright strict は、
+        Protocol メソッドが欠落または誤シグネチャの場合に代入を拒否する。
         """
         async with session_factory() as session:
             repo: RoomRepository = SqliteRoomRepository(session)
@@ -62,11 +61,11 @@ class TestRoomRepositoryProtocol:
             assert hasattr(repo, "find_by_name")
 
     async def test_protocol_does_not_expose_count_by_empire(self) -> None:
-        """TC-UT-RR-001: ``count_by_empire`` is NOT part of the Protocol (YAGNI).
+        """TC-UT-RR-001: ``count_by_empire`` は Protocol に含まれない（YAGNI）。
 
-        §確定 R1-A froze ``count_by_empire`` as YAGNI — the method must not
-        appear on the public Protocol surface. A future PR that re-adds it
-        must update §確定 R1-A first; otherwise this assertion fires.
+        §確定 R1-A が ``count_by_empire`` を YAGNI として凍結したため、
+        メソッドは公開 Protocol サーフェスに現れてはならない。再追加する将来の
+        PR は §確定 R1-A の更新を先に行う必要がある。さもなくば本アサーションが発火する。
         """
         assert not hasattr(RoomRepository, "count_by_empire"), (
             "[FAIL] RoomRepository.count_by_empire must not exist (YAGNI, §確定 R1-A).\n"
@@ -78,7 +77,7 @@ class TestRoomRepositoryProtocol:
 # REQ-RR-002 (find_by_id basic round-trip)
 # ---------------------------------------------------------------------------
 class TestFindById:
-    """find_by_id retrieves saved Rooms; returns None for unknown."""
+    """find_by_id は保存済み Room を取得する。未知の id は None を返す。"""
 
     async def test_find_by_id_returns_saved_room(
         self,
@@ -86,12 +85,12 @@ class TestFindById:
         seeded_empire_id: UUID,
         seeded_workflow_id: UUID,
     ) -> None:
-        """``find_by_id(room.id)`` returns a structurally-equal Room (no secrets in default).
+        """``find_by_id(room.id)`` が構造的に等価な Room を返す（デフォルトでは secret なし）。
 
-        Default factory ``prompt_kit.prefix_markdown=''`` contains no
-        Schneier-#6 secrets, so masking is a no-op and round-trip
-        equality holds. Secret-bearing prefix round-trip lives in
-        :mod:`...test_masking_prompt_kit` (§確定 R1-J §不可逆性).
+        デフォルト factory の ``prompt_kit.prefix_markdown=''`` には
+        Schneier-#6 の secret が含まれないため、マスキングは no-op となり
+        ラウンドトリップ等価性が成立する。secret を含む prefix のラウンドトリップは
+        :mod:`...test_masking_prompt_kit` (§確定 R1-J §不可逆性) で扱う。
         """
         room = make_room(workflow_id=seeded_workflow_id)
         async with session_factory() as session, session.begin():
@@ -107,7 +106,7 @@ class TestFindById:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """``find_by_id(uuid4())`` returns ``None`` without raising."""
+        """``find_by_id(uuid4())`` は例外を投げず ``None`` を返す。"""
         unknown_id = uuid4()
         async with session_factory() as session:
             fetched = await SqliteRoomRepository(session).find_by_id(unknown_id)
@@ -119,7 +118,7 @@ class TestFindById:
         seeded_empire_id: UUID,
         seeded_workflow_id: UUID,
     ) -> None:
-        """``find_by_id`` returns a Room with its members hydrated."""
+        """``find_by_id`` がメンバを hydrate した Room を返す。"""
         room = make_populated_room(workflow_id=seeded_workflow_id)
         async with session_factory() as session, session.begin():
             await SqliteRoomRepository(session).save(room, seeded_empire_id)
@@ -128,14 +127,14 @@ class TestFindById:
             fetched = await SqliteRoomRepository(session).find_by_id(room.id)
 
         assert fetched is not None
-        assert len(fetched.members) == 2  # LEADER + DEVELOPER from make_populated_room
+        assert len(fetched.members) == 2  # make_populated_room による LEADER + DEVELOPER
 
 
 # ---------------------------------------------------------------------------
 # TC-UT-RR-004: count() must issue SQL-level COUNT(*)
 # ---------------------------------------------------------------------------
 class TestCountIssuesScalarCount:
-    """TC-UT-RR-004: ``count()`` issues ``SELECT COUNT(*)``, not a full row scan."""
+    """TC-UT-RR-004: ``count()`` は ``SELECT COUNT(*)`` を発行し、行を全件スキャンしない。"""
 
     async def test_count_emits_select_count_not_full_load(
         self,
@@ -144,11 +143,11 @@ class TestCountIssuesScalarCount:
         seeded_empire_id: UUID,
         seeded_workflow_id: UUID,
     ) -> None:
-        """SQL log shows ``SELECT count(*)`` for ``count()``.
+        """SQL ログが ``count()`` に対し ``SELECT count(*)`` を示す。
 
-        Follows empire-repository §確定 D 補強 contract — ``count()`` must
-        never stream full Room rows back to Python, especially once Rooms
-        carry large ``prompt_kit_prefix_markdown`` content.
+        empire-repository §確定 D 補強の契約に従う ── ``count()`` は Python へ
+        Room 行を全件ストリームしてはならない。Room が大きな
+        ``prompt_kit_prefix_markdown`` を持つようになると特に重要。
         """
         async with session_factory() as session, session.begin():
             await SqliteRoomRepository(session).save(
@@ -193,23 +192,22 @@ class TestCountIssuesScalarCount:
 # TC-UT-RR-005: find_by_name Empire-scoped (§確定 R1-F)
 # ---------------------------------------------------------------------------
 class TestFindByNameEmpireScoped:
-    """TC-UT-RR-005: ``find_by_name`` enforces Empire scoping.
+    """TC-UT-RR-005: ``find_by_name`` が Empire スコープを強制する。
 
-    Three orthogonal cases per §確定 R1-F:
+    §確定 R1-F に沿う 3 つの直交ケース:
 
-    1. **Hit**: Room named ``foo`` inside ``empire_a`` is returned.
-    2. **Miss in same Empire**: name ``bar`` under ``empire_a`` returns None.
-    3. **Cross-Empire isolation**: name ``foo`` under ``empire_b`` returns None
-       even though ``foo`` exists in ``empire_a``. This is the IDOR
-       guard — without ``WHERE empire_id=:empire_id`` an attacker
-       could read another tenant's Room by guessing the name.
+    1. **ヒット**: ``empire_a`` 内の ``foo`` という名前の Room が返る。
+    2. **同 Empire 内ミス**: ``empire_a`` 配下の ``bar`` という名前は None を返す。
+    3. **Empire 間隔離**: ``foo`` が ``empire_a`` に存在しても、``empire_b`` 配下の
+       ``foo`` 検索は None を返す。これが IDOR ガード ── ``WHERE empire_id=:empire_id``
+       がなければ攻撃者が名前を推測して別テナントの Room を読み取れる。
     """
 
     async def test_find_by_name_returns_room_when_present(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """Hit path: name + empire_id pair returns the Room."""
+        """ヒット経路: name + empire_id ペアが Room を返す。"""
         empire_a = await seed_empire(session_factory)
         wf = await seed_workflow(session_factory)
         room = make_room(name="room_a", workflow_id=wf)
@@ -227,7 +225,7 @@ class TestFindByNameEmpireScoped:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """Miss path: unknown name in known Empire returns None."""
+        """ミス経路: 既知 Empire 内の未知の名前は None を返す。"""
         empire_a = await seed_empire(session_factory)
         wf = await seed_workflow(session_factory)
         async with session_factory() as session, session.begin():
@@ -243,11 +241,11 @@ class TestFindByNameEmpireScoped:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """**IDOR guard**: same name under different Empire returns None.
+        """**IDOR ガード**: 別 Empire 配下の同名は None を返す。
 
-        This is the test-design.md §確定 R1-F core contract. A regression
-        that drops the ``WHERE empire_id`` clause would let an attacker
-        read cross-tenant Rooms — this assertion fires loudly in that case.
+        本テストは test-design.md §確定 R1-F の中核契約。``WHERE empire_id`` 句を
+        落とす回帰は攻撃者にテナント越境で Room を読ませてしまう ──
+        本アサーションがそれを即座に表面化させる。
         """
         empire_a = await seed_empire(session_factory)
         empire_b = await seed_empire(session_factory)
@@ -257,8 +255,8 @@ class TestFindByNameEmpireScoped:
             await SqliteRoomRepository(session).save(room_in_a, empire_a)
 
         async with session_factory() as session:
-            # Look up the same name but in a DIFFERENT empire — must
-            # return None even though "shared_name" exists in empire_a.
+            # 同じ名前を別の empire で検索する ── empire_a に "shared_name" が
+            # 存在しても None を返さなければならない。
             fetched = await SqliteRoomRepository(session).find_by_name(empire_b, "shared_name")
         assert fetched is None, (
             "[FAIL] find_by_name leaked a Room across Empire boundaries.\n"
@@ -271,13 +269,11 @@ class TestFindByNameEmpireScoped:
         session_factory: async_sessionmaker[AsyncSession],
         app_engine: AsyncEngine,
     ) -> None:
-        """SQL log shows ``WHERE rooms.empire_id = ?`` and ``LIMIT 1``.
+        """SQL ログに ``WHERE rooms.empire_id = ?`` と ``LIMIT 1`` が含まれる。
 
-        Defense-in-depth on top of the behavioural test above: even if
-        the cross-Empire test happens to pass via row-coincidence,
-        the SQL itself must carry the scope clause. We attach a
-        ``before_cursor_execute`` listener and grep for the empire_id
-        predicate.
+        上の振る舞いテストに対する多層防御: クロス Empire テストが行偶発で
+        pass してしまっても、SQL 自体がスコープ句を持たねばならない。
+        ``before_cursor_execute`` リスナを取り付け、empire_id 述語を grep する。
         """
         empire_a = await seed_empire(session_factory)
         wf = await seed_workflow(session_factory)
@@ -306,10 +302,10 @@ class TestFindByNameEmpireScoped:
         finally:
             event.remove(sync_engine, "before_cursor_execute", _on_execute)
 
-        # Locate the SELECT that hit ``rooms`` to look up the RoomId.
+        # RoomId を検索するために ``rooms`` を叩いた SELECT を探す。
         room_id_selects = [s for s in captured if "FROM rooms" in s and "SELECT" in s.upper()]
         assert room_id_selects, "find_by_name must SELECT from rooms"
-        # The SELECT must carry both the empire_id predicate and LIMIT.
+        # SELECT は empire_id 述語と LIMIT の両方を持たねばならない。
         target_stmt = room_id_selects[0]
         assert "empire_id" in target_stmt, (
             f"[FAIL] find_by_name SQL missing empire_id predicate.\nCaptured: {target_stmt!r}"
@@ -323,17 +319,17 @@ class TestFindByNameEmpireScoped:
 # TC-UT-RR-006: Lifecycle integration (§確定 R1-B)
 # ---------------------------------------------------------------------------
 class TestLifecycleIntegration:
-    """TC-UT-RR-006: full save → lookup → update flow."""
+    """TC-UT-RR-006: save → 検索 → 更新の完全フロー。"""
 
     async def test_full_lifecycle_with_description_update(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """Save → find_by_name → find_by_id → update description → save.
+        """Save → find_by_name → find_by_id → description 更新 → save。
 
-        Verifies the 4 Protocol methods cooperate end-to-end and that
-        a description update via re-save reaches the DB through the
-        UPSERT path (Step 1 of §確定 R1-B 3-step).
+        4 つの Protocol メソッドがエンドツーエンドで協調し、再 save 経由の
+        description 更新が UPSERT 経路（§確定 R1-B 3 ステップの Step 1）で
+        DB に到達することを検証する。
         """
         empire_a = await seed_empire(session_factory)
         wf = await seed_workflow(session_factory)
@@ -355,7 +351,7 @@ class TestLifecycleIntegration:
         assert via_id is not None
         assert via_id == via_name
 
-        # Update: change description and re-save.
+        # 更新: description を変更して再 save。
         updated = original.model_copy(update={"description": "更新後の説明"})
         async with session_factory() as session, session.begin():
             await SqliteRoomRepository(session).save(updated, empire_a)

@@ -1,21 +1,20 @@
-"""Workflow Aggregate Root (REQ-WF-001〜006).
+"""Workflow Aggregate Root（REQ-WF-001〜006）。
 
-This module owns only the :class:`Workflow` class itself. The 10 invariant
-helpers it dispatches over live in
-:mod:`bakufu.domain.workflow.dag_validators`, and the inner Entities live in
-:mod:`bakufu.domain.workflow.entities`. The directory split is the *physical*
-ground for Confirmation F's twin-defense: aggregate-level checks cannot share
-code with Stage self-validation because they don't even share a file.
+本モジュールは :class:`Workflow` クラス自体のみを所有する。ディスパッチ対象の 10
+個の不変条件ヘルパは :mod:`bakufu.domain.workflow.dag_validators` に、内部 Entity
+は :mod:`bakufu.domain.workflow.entities` に置かれる。このディレクトリ分割は
+Confirmation F twin-defense の *物理的* 根拠である: Aggregate レベル チェックは
+そもそもファイルを共有しないため、Stage 自己検証とコードを共有できない。
 
-Design contract (do not break without re-running design review):
+設計コントラクト（再設計レビュー無しに破壊しないこと）:
 
-* **Pre-validate rebuild (Confirmation A)** — every state-changing behavior
-  serializes via ``model_dump()``, swaps the target collection, and re-runs
-  ``Workflow.model_validate(...)``. ``model_copy(update=...)`` is intentionally
-  avoided because Pydantic v2 defaults it to ``validate=False``.
-* **NotifyChannel SSRF / token masking (Confirmation G)** — handled inside
-  :class:`bakufu.domain.value_objects.NotifyChannel`; this module consumes
-  the validated VO without re-checking URL shape.
+* **Pre-validate rebuild（Confirmation A）** — 全ての状態変更ビヘイビアは
+  ``model_dump()`` でシリアライズし、対象コレクションをスワップし、
+  ``Workflow.model_validate(...)`` を再実行する。``model_copy(update=...)`` は
+  Pydantic v2 がデフォルトで ``validate=False`` とするため意図的に避ける。
+* **NotifyChannel SSRF / トークン マスキング（Confirmation G）** —
+  :class:`bakufu.domain.value_objects.NotifyChannel` 内部で処理される。本モジュール
+  は検証済み VO を消費するだけで URL 形状は再チェックしない。
 """
 
 from __future__ import annotations
@@ -53,7 +52,7 @@ from bakufu.domain.workflow.entities import Stage, Transition
 
 
 class Workflow(BaseModel):
-    """V-model orchestration graph composed of Stages and Transitions."""
+    """Stage と Transition で構成される V モデル オーケストレーション グラフ。"""
 
     model_config = ConfigDict(
         frozen=True,
@@ -67,7 +66,7 @@ class Workflow(BaseModel):
     transitions: list[Transition] = []
     entry_stage_id: StageId
 
-    # ---- pre-validation -------------------------------------------------
+    # ---- 事前検証 -------------------------------------------------------
     @field_validator("name", mode="before")
     @classmethod
     def _normalize_name(cls, value: object) -> object:
@@ -75,13 +74,12 @@ class Workflow(BaseModel):
 
     @model_validator(mode="after")
     def _check_invariants(self) -> Self:
-        """Dispatch over the aggregate-level helpers in deterministic order.
+        """Aggregate レベル ヘルパを決定的順序でディスパッチする。
 
-        Order matters for failure attribution: capacity → uniqueness →
-        reference integrity → semantic (notify / required_role) → graph
-        topology. Earlier failures hide later ones, which keeps error
-        messages focused on the *root* cause. Capacity is **first** so the
-        T2 DoS payload cannot reach BFS.
+        失敗箇所の特定のため順序が重要: capacity → 一意性 → 参照整合性 → 意味
+        （notify / required_role） → グラフ トポロジ。先行する失敗が後続を隠す
+        ため、エラー メッセージは *根本* 原因に集中する。Capacity は **最初**
+        にあり、T2 DoS ペイロードが BFS に到達できないようにする。
         """
         self._check_name_range()
         _validate_capacity(self.stages, self.transitions)
@@ -109,24 +107,25 @@ class Workflow(BaseModel):
                 detail={"length": length},
             )
 
-    # ---- behaviors (Tell, Don't Ask) ------------------------------------
+    # ---- 振る舞い（Tell, Don't Ask） -----------------------------------
     def add_stage(self, stage: Stage) -> Workflow:
-        """Return a new Workflow with ``stage`` appended (REQ-WF-002)."""
+        """``stage`` を追加した新しい Workflow を返す（REQ-WF-002）。"""
         return self._rebuild_with(stages=[*self.stages, stage])
 
     def add_transition(self, transition: Transition) -> Workflow:
-        """Return a new Workflow with ``transition`` appended (REQ-WF-003)."""
+        """``transition`` を追加した新しい Workflow を返す（REQ-WF-003）。"""
         return self._rebuild_with(transitions=[*self.transitions, transition])
 
     def remove_stage(self, stage_id: StageId) -> Workflow:
-        """Return a new Workflow with ``stage_id`` and its incident edges removed (REQ-WF-004).
+        """``stage_id`` とその接続エッジを除去した新しい Workflow を返す（REQ-WF-004）。
 
         Raises:
             WorkflowInvariantViolation:
-                * ``kind='cannot_remove_entry'`` (MSG-WF-010) if removing the entry stage.
-                * ``kind='stage_not_found'`` (MSG-WF-012) if no Stage matches.
-                * Any aggregate violation (e.g. ``unreachable_stage``) bubbling
-                  out of the rebuild — original Workflow stays unchanged.
+                * entry stage を削除しようとした場合 ``kind='cannot_remove_entry'``
+                  （MSG-WF-010）。
+                * 一致する Stage が無い場合 ``kind='stage_not_found'``（MSG-WF-012）。
+                * Aggregate 違反（例 ``unreachable_stage``）が rebuild から漏れる
+                  場合 — 元の Workflow は変更されない。
         """
         if stage_id == self.entry_stage_id:
             raise WorkflowInvariantViolation(
@@ -150,21 +149,20 @@ class Workflow(BaseModel):
 
     @classmethod
     def from_dict(cls, payload: object) -> Workflow:
-        """Bulk-import factory (REQ-WF-006).
+        """一括 import ファクトリ（REQ-WF-006）。
 
-        Accepts ``object`` so callers passing a non-dict still hit the
-        structured ``WorkflowInvariantViolation`` path rather than crashing
-        Pydantic with a confusing low-level error.
+        ``object`` を受け取るので、dict 以外を渡した呼び元も Pydantic の混乱した
+        低レベル エラーでクラッシュさせる代わりに、構造化された
+        ``WorkflowInvariantViolation`` 経路に到達できる。
 
-        Pydantic ``ValidationError`` (type, UUID, missing-field, NotifyChannel
-        URL allow list G1〜G10, MVP ``kind`` constraint) propagates as-is so
-        callers can introspect the loc/error structure.
+        Pydantic ``ValidationError``（型、UUID、欠落フィールド、NotifyChannel URL
+        の G1〜G10 アローリスト、MVP ``kind`` 制約）はそのまま伝播するため、呼び元
+        は loc / error 構造を内省できる。
 
-        ``StageInvariantViolation`` is wrapped into
-        ``WorkflowInvariantViolation(kind='from_dict_invalid')`` with the
-        offending stage index attached to ``detail`` — fulfilling
-        TC-UT-WF-027's debug-traceability contract from the design doc's
-        "なぜ from_dict はクラスメソッドか" section.
+        ``StageInvariantViolation`` は ``detail`` に該当 stage index を添付して
+        ``WorkflowInvariantViolation(kind='from_dict_invalid')`` にラップする —
+        設計ドキュメント「なぜ from_dict はクラスメソッドか」節の TC-UT-WF-027
+        デバッグ追跡コントラクトを満たす。
         """
         if not isinstance(payload, dict):
             raise WorkflowInvariantViolation(
@@ -194,19 +192,19 @@ class Workflow(BaseModel):
                         detail=detail,
                     ) from exc
                 except ValidationError:
-                    # Let cls.model_validate produce the canonical Pydantic
-                    # error with full loc paths so the caller can introspect.
+                    # 呼び元が内省できるよう、cls.model_validate に完全な loc パス
+                    # 込みの正準 Pydantic エラーを生成させる。
                     pass
         return cls.model_validate(payload_dict)
 
-    # ---- internal: pre-validate rebuild (Confirmation A) ----------------
+    # ---- 内部実装: 事前検証 rebuild（Confirmation A） -------------------
     def _rebuild_with(
         self,
         *,
         stages: list[Stage] | None = None,
         transitions: list[Transition] | None = None,
     ) -> Workflow:
-        """Re-construct via ``model_validate`` so ``_check_invariants`` re-fires."""
+        """``model_validate`` で再構築し ``_check_invariants`` を再発火させる。"""
         state = self.model_dump()
         if stages is not None:
             state["stages"] = [stage.model_dump() for stage in stages]

@@ -1,38 +1,35 @@
-"""``workflow_stages`` table — Workflow ↔ Stage child rows.
+"""``workflow_stages`` テーブル — Workflow ↔ Stage 子行。
 
-Stores :class:`bakufu.domain.workflow.entities.Stage` values as a side
-table of the Workflow Aggregate. ``stage_id`` is **intentionally not** a
-foreign key onto ``workflows.entry_stage_id`` (§確定 J in
-``docs/features/workflow-repository/detailed-design.md``); the
-Aggregate-level ``_validate_entry_in_stages`` already enforces the
-reference invariant.
+:class:`bakufu.domain.workflow.entities.Stage` の値を Workflow Aggregate の関連
+テーブルとして保存する。``stage_id`` は意図的に ``workflows.entry_stage_id`` への
+外部キーには **しない**（``docs/features/workflow-repository/detailed-design.md``
+§確定 J）。Aggregate レベルの ``_validate_entry_in_stages`` が既に参照不変条件を
+強制している。
 
-Cascade: deleting a Workflow row purges its stage rows
-(``ON DELETE CASCADE``). The ``UNIQUE(workflow_id, stage_id)`` constraint
-mirrors :func:`bakufu.domain.workflow.dag_validators._validate_stage_id_unique`
-at the row level.
+カスケード: Workflow 行の削除はその stage 行を消去する（``ON DELETE CASCADE``）。
+``UNIQUE(workflow_id, stage_id)`` 制約は
+:func:`bakufu.domain.workflow.dag_validators._validate_stage_id_unique` を行レベル
+でミラーする。
 
-Per-column secret-handling (§確定 H + 申し送り #6 of M2 persistence
-foundation):
+カラム別シークレット ハンドリング（§確定 H + M2 persistence foundation 申し送り #6）:
 
-* ``notify_channels_json`` is a :class:`MaskedJSONEncoded` column. The
-  ``process_bind_param`` hook re-routes every nested ``target`` field
-  through :func:`bakufu.infrastructure.security.masking.mask_in` so the
-  Discord webhook ``token`` segment never reaches disk in plaintext.
-  Defense-in-depth: ``NotifyChannel.field_serializer(when_used='json')``
-  already masks at ``model_dump(mode='json')`` time, but the
-  TypeDecorator is the *gate* that fires for both ORM and Core
-  ``insert(table).values(...)`` paths (BUG-PF-001 contract).
-* ``completion_policy_json`` is a plain :class:`JSONEncoded` column —
-  the VO carries no secret-bearing values per the Schneier申し送り #6
-  six-category scan, so ``MaskedJSONEncoded`` would be **over-masking**
-  (banned by §確定 I of the detailed design).
-* The remaining columns hold UUIDs / enums / CEO-authored Markdown
-  templates; none qualify as the six masking categories.
+* ``notify_channels_json`` は :class:`MaskedJSONEncoded` カラム。
+  ``process_bind_param`` フックがネストされた各 ``target`` フィールドを
+  :func:`bakufu.infrastructure.security.masking.mask_in` 経由でルーティングする
+  ため、Discord webhook の ``token`` セグメントが平文でディスクに到達することはない。
+  多層防御: ``NotifyChannel.field_serializer(when_used='json')`` も
+  ``model_dump(mode='json')`` 時にマスクするが、TypeDecorator が ORM と Core
+  ``insert(table).values(...)`` の両経路で発火する *ゲート* となる（BUG-PF-001
+  コントラクト）。
+* ``completion_policy_json`` は通常の :class:`JSONEncoded` カラム — VO は
+  Schneier 申し送り #6 の 6 カテゴリ スキャンに照らしてもシークレット保持値を
+  持たないため、``MaskedJSONEncoded`` だと **過剰マスキング**（詳細設計 §確定 I
+  で禁止）になる。
+* 残りのカラムは UUID / enum / CEO 著作の Markdown テンプレートを保持し、6 つの
+  マスキング カテゴリには該当しない。
 
-The CI three-layer defense pins exactly one
-``MaskedJSONEncoded`` column on this table (positive contract on
-``notify_channels_json``, no-mask on every other column).
+CI 3 層防御は本テーブル上の ``MaskedJSONEncoded`` カラム数を厳密に 1 個に固定する
+（``notify_channels_json`` への positive コントラクト、その他全カラムは no-mask）。
 """
 
 from __future__ import annotations
@@ -52,7 +49,7 @@ from bakufu.infrastructure.persistence.sqlite.base import (
 
 
 class WorkflowStageRow(Base):
-    """ORM mapping for the ``workflow_stages`` table."""
+    """``workflow_stages`` テーブルの ORM マッピング。"""
 
     __tablename__ = "workflow_stages"
 
@@ -72,9 +69,9 @@ class WorkflowStageRow(Base):
         default="",
     )
     completion_policy_json: Mapped[Any] = mapped_column(JSONEncoded, nullable=False)
-    # Default ``[]`` is enforced at the SQL level by the ``server_default``
-    # in 0003_workflow_aggregate.py; ORM-side defaulting is unnecessary
-    # because the Repository always passes an explicit list.
+    # デフォルト ``[]`` は 0003_workflow_aggregate.py の ``server_default`` で SQL
+    # レベルにおいて強制される。Repository が常に明示的なリストを渡すため、
+    # ORM 側のデフォルト指定は不要。
     notify_channels_json: Mapped[Any] = mapped_column(MaskedJSONEncoded, nullable=False)
 
     __table_args__ = (

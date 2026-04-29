@@ -1,15 +1,14 @@
-"""Room-specific Value Objects (:class:`AgentMembership` / :class:`PromptKit`).
+"""Room 固有の Value Object（:class:`AgentMembership` / :class:`PromptKit`）。
 
-These VOs live in the ``room/`` package rather than the global
-:mod:`bakufu.domain.value_objects` so the file-level boundary mirrors the
-responsibility boundary — same pattern Norman approved for the agent /
-workflow packages. ``Role`` and ``AgentId`` remain in the global module
-because they cross feature boundaries.
+これらの VO はファイル レベル境界が責務境界を反映するよう、グローバルな
+:mod:`bakufu.domain.value_objects` ではなく ``room/`` パッケージに置く —
+Norman が agent / workflow パッケージで承認したのと同じパターン。``Role`` と
+``AgentId`` はフィーチャー境界を跨ぐためグローバル モジュールに残す。
 
-``PromptKit.prefix_markdown`` applies **NFC only** (no strip): the field
-holds Markdown text where leading/trailing newlines are semantically
-significant for the downstream prompt renderer. Same rule the agent
-``Persona.prompt_body`` follows (Agent §確定 E / Room §確定 B).
+``PromptKit.prefix_markdown`` は **NFC のみ**（strip 無し）を適用する: このフィールド
+は Markdown テキストを保持し、先頭／末尾の改行は下流のプロンプト レンダラに対して
+意味的に重要。Agent の ``Persona.prompt_body`` と同じルール（Agent §確定 E /
+Room §確定 B）。
 """
 
 from __future__ import annotations
@@ -23,21 +22,21 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from bakufu.domain.value_objects import AgentId, Role
 
 # ---------------------------------------------------------------------------
-# AgentMembership (Room §確定 F — (agent_id, role) pair as the unique key)
+# AgentMembership（Room §確定 F — (agent_id, role) 対が一意キー）
 # ---------------------------------------------------------------------------
 
 
 class AgentMembership(BaseModel):
-    """Frozen membership entry: an :class:`Agent` taking on a :class:`Role`.
+    """フローズン メンバシップ エントリ: :class:`Role` を担う :class:`Agent`。
 
-    The Room aggregate stores a ``list[AgentMembership]`` and enforces
-    ``(agent_id, role)`` pair uniqueness — **not** ``agent_id`` alone — so a
-    single agent can hold multiple roles (e.g. LEADER + REVIEWER). Storing
-    ``joined_at`` per-role lets the UI surface "joined as LEADER on X, then
-    added REVIEWER on Y" naturally.
+    Room Aggregate は ``list[AgentMembership]`` を保持し、``(agent_id, role)`` 対の
+    一意性を強制する — ``agent_id`` 単独 **ではない** — そのため 1 体のエージェントが
+    複数のロールを持てる（例 LEADER + REVIEWER）。``joined_at`` をロール毎に保存する
+    ことで、UI は「X 日に LEADER として参加、Y 日に REVIEWER 追加」のような表示が
+    自然にできる。
 
-    Stored under ``docs/design/domain-model/value-objects.md`` §AgentMembership;
-    Room is the only feature that composes this VO today.
+    ``docs/design/domain-model/value-objects.md`` §AgentMembership に格納。現時点で
+    この VO を構成するのは Room のみ。
     """
 
     model_config = ConfigDict(
@@ -52,23 +51,23 @@ class AgentMembership(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# PromptKit (Room §確定 G — single-attribute VO, retained for Phase-2 growth)
+# PromptKit（Room §確定 G — 単一属性 VO、Phase-2 拡張のために構造を維持）
 # ---------------------------------------------------------------------------
 PROMPT_KIT_PREFIX_MAX: int = 10_000
 
 
 class PromptKit(BaseModel):
-    """Room-scoped system-prompt preamble (Markdown text).
+    """Room スコープのシステム プロンプト プリアンブル（Markdown テキスト）。
 
-    Single-attribute VO today; the structure exists so Phase 2 can extend it
-    with ``variables``, ``role_specific_prefix``, or ``sections`` without
-    forcing a schema migration on :class:`Room` (Room §確定 G).
+    現時点では単一属性 VO。構造は Phase 2 が ``variables``、``role_specific_prefix``、
+    ``sections`` で拡張する際に :class:`Room` のスキーマ マイグレーションを強いない
+    ようにするため存在する（Room §確定 G）。
 
-    The persistence layer applies secret masking to ``prefix_markdown``
-    *before* it lands in the SQLite ``rooms`` row — see
-    ``docs/design/domain-model/storage.md`` §シークレットマスキング規則.
-    The aggregate keeps the raw user input so the UI can read it back
-    unchanged; the masking gateway is **only** at the persistence boundary.
+    永続化層は ``prefix_markdown`` が SQLite の ``rooms`` 行に到達する *前* に
+    シークレット マスキングを適用する —
+    ``docs/design/domain-model/storage.md`` §シークレットマスキング規則 を参照。
+    Aggregate は UI が変更されない値を読み戻せるように生のユーザ入力を保持する。
+    マスキング ゲートウェイは **永続化境界のみ** に存在する。
     """
 
     model_config = ConfigDict(
@@ -82,21 +81,20 @@ class PromptKit(BaseModel):
     @field_validator("prefix_markdown", mode="before")
     @classmethod
     def _normalize_prefix(cls, value: object) -> object:
-        # NFC only — preserves leading/trailing Markdown whitespace (Room §確定 B).
+        # NFC のみ — Markdown の先頭／末尾空白を保持する（Room §確定 B）。
         if isinstance(value, str):
             return unicodedata.normalize("NFC", value)
         return value
 
     @model_validator(mode="after")
     def _check_self_invariants(self) -> Self:
-        """Length cap raises :class:`pydantic.ValidationError` (MSG-RM-007).
+        """長さ上限超過時に :class:`pydantic.ValidationError` を送出（MSG-RM-007）。
 
-        Room detailed-design §確定 I freezes that PromptKit length violations
-        surface as ``ValidationError`` — not ``RoomInvariantViolation`` —
-        because the failure happens *before* any Room aggregate is in scope.
-        ``RoomService.update_prompt_kit`` then catches in two layers (VO
-        construction → ``ValidationError``; aggregate behavior → archived
-        terminal etc.).
+        Room detailed-design §確定 I は PromptKit の長さ違反が
+        ``RoomInvariantViolation`` ではなく ``ValidationError`` として表面化する
+        ことを凍結する — Room Aggregate がスコープに入る *前* に失敗するため。
+        ``RoomService.update_prompt_kit`` は 2 層で捕捉する（VO 構築 →
+        ``ValidationError``、Aggregate 振る舞い → archived 終端 等）。
         """
         length = len(self.prefix_markdown)
         if length > PROMPT_KIT_PREFIX_MAX:

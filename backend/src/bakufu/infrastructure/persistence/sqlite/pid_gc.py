@@ -1,25 +1,24 @@
-"""Bootstrap stage 4 orphan-process garbage collection (§確定 E).
+"""Bootstrap stage 4 のオーファン プロセス ガベージ コレクション（§確定 E）。
 
-The previous run of bakufu may have left subprocess (claude / codex /
-etc.) trees alive — a crash, a SIGKILL of the parent, an exotic OS
-state. This module sweeps :class:`PidRegistryRow` entries on startup,
-classifies each, and either DELETEs the row alone (the PID is gone or
-has been recycled by an unrelated process) or kills the descendants
-and DELETEs the row.
+bakufu の前回実行がサブプロセス（claude / codex 等）ツリーを生かしたままにする
+場合がある — クラッシュ、親プロセスの SIGKILL、OS の特殊な状態など。本モジュール
+は起動時に :class:`PidRegistryRow` エントリをスイープし、各行を分類して、行のみを
+DELETE するか（PID が消失している、または無関係なプロセスに再利用されている）、
+子孫プロセスを kill してから DELETE するかを決める。
 
-Classification logic
---------------------
-Each row carries the snapshot ``started_at`` from the original
-``psutil.Process.create_time()``. That timestamp is the **PID-collision
-guard**: if a different process happened to land on the same PID, its
-``create_time()`` will not match and we must not kill it.
+分類ロジック
+------------
+各行はオリジナルの ``psutil.Process.create_time()`` から取得したスナップショット
+``started_at`` を保持する。このタイムスタンプが **PID 衝突ガード** となる: 別の
+プロセスが同じ PID にたまたま入った場合、``create_time()`` が一致しないため
+kill してはならない。
 
-| psutil result                         | classification | action                       |
-|---------------------------------------|----------------|------------------------------|
-| ``NoSuchProcess``                     | ``absent``     | DELETE the row only          |
-| Process exists, ``create_time`` match | ``orphan_kill``| Kill descendants + DELETE    |
-| Process exists, ``create_time`` mismatch | ``protected``  | DELETE the row only (PID reused) |
-| ``AccessDenied``                       | (no class.)    | WARN, leave row for next GC  |
+| psutil 結果                            | 分類             | アクション                       |
+|----------------------------------------|------------------|----------------------------------|
+| ``NoSuchProcess``                      | ``absent``       | 行のみ DELETE                    |
+| プロセス存在 + ``create_time`` 一致    | ``orphan_kill``  | 子孫を kill + DELETE             |
+| プロセス存在 + ``create_time`` 不一致  | ``protected``    | 行のみ DELETE（PID 再利用）      |
+| ``AccessDenied``                       | （分類なし）     | WARN、行は次回 GC に残す         |
 """
 
 from __future__ import annotations
@@ -40,7 +39,7 @@ from bakufu.infrastructure.persistence.sqlite.tables.pid_registry import (
 
 logger = logging.getLogger(__name__)
 
-# Confirmation E: SIGTERM grace before SIGKILL.
+# Confirmation E: SIGKILL の前に与える SIGTERM 猶予。
 SIGTERM_GRACE_SECONDS: int = 5
 
 PidClassification = Literal["orphan_kill", "protected", "absent"]
@@ -49,16 +48,15 @@ PidClassification = Literal["orphan_kill", "protected", "absent"]
 async def run_startup_gc(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> dict[str, int]:
-    """Sweep ``bakufu_pid_registry`` and reconcile against the OS.
+    """``bakufu_pid_registry`` をスイープして OS に対して整合性を取る。
 
     Args:
-        session_factory: AsyncSession factory used to read / DELETE
-            registry rows.
+        session_factory: registry 行の読み取り／DELETE に使用する AsyncSession
+            ファクトリ。
 
     Returns:
-        Counts dict with keys ``killed`` / ``protected`` / ``absent`` /
-        ``access_denied`` so Bootstrap can include them in the stage-4
-        completion log line.
+        ``killed`` / ``protected`` / ``absent`` / ``access_denied`` のキーを持つ
+        カウント辞書。Bootstrap が stage-4 完了ログに含められる。
     """
     counts = {"killed": 0, "protected": 0, "absent": 0, "access_denied": 0}
 
@@ -93,11 +91,11 @@ async def run_startup_gc(
 
 
 def _classify_row(pid: int, recorded_started_at: datetime) -> PidClassification:
-    """Compare the recorded ``started_at`` with the live process.
+    """記録された ``started_at`` と現在のプロセスを比較する。
 
     Raises:
-        psutil.AccessDenied: surfaces upward so the caller can WARN-log
-            the row and skip DELETE (next GC retries).
+        psutil.AccessDenied: 上位に伝播するため、呼び元は当該行を WARN ログに
+            残し DELETE をスキップできる（次回 GC で再試行）。
     """
     try:
         proc = psutil.Process(pid)
@@ -111,9 +109,9 @@ def _classify_row(pid: int, recorded_started_at: datetime) -> PidClassification:
     except psutil.AccessDenied:
         raise
 
-    # ``psutil.Process.create_time`` returns POSIX seconds; we stored a
-    # tz-aware datetime. Compare with millisecond tolerance to absorb
-    # rounding noise across psutil versions.
+    # ``psutil.Process.create_time`` は POSIX 秒を返す。一方こちらは tz-aware の
+    # datetime を保存している。psutil バージョン間の丸めノイズを吸収するため
+    # ミリ秒単位の許容で比較する。
     recorded_seconds = recorded_started_at.timestamp()
     if abs(live_create_time - recorded_seconds) > 0.001:
         return "protected"
@@ -121,11 +119,10 @@ def _classify_row(pid: int, recorded_started_at: datetime) -> PidClassification:
 
 
 def _kill_descendants(pid: int) -> None:
-    """SIGTERM all descendants → 5-second grace → SIGKILL stragglers.
+    """全子孫に SIGTERM → 5 秒待機 → 残存プロセスに SIGKILL。
 
-    Uses ``psutil.Process.children(recursive=True)`` so the entire
-    subtree (claude → codex → grandchildren) is reaped, not just the
-    direct child.
+    ``psutil.Process.children(recursive=True)`` を使い、サブツリー全体
+    （claude → codex → 孫プロセス）を刈り取る — 直接子のみではない。
     """
     try:
         proc = psutil.Process(pid)

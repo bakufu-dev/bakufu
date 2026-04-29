@@ -1,19 +1,17 @@
-"""Aggregate-level invariant validators for :class:`Workflow` (Confirmation F).
+""":class:`Workflow` の Aggregate レベル不変条件バリデータ（Confirmation F）。
 
-Each helper is a **module-level pure function** so:
+各ヘルパは **モジュールレベルの純粋関数** として実装する。理由:
 
-1. Tests can ``import`` them and invoke directly (TC-UT-WF-060) to prove the
-   aggregate path does not share code with :class:`Stage` self-validation —
-   the physical ground for Confirmation F's twin-defense (TC-UT-WF-006a vs
-   006b).
-2. :class:`Workflow.model_validator` stays a thin dispatch over the ten
-   checks, with order documented for failure attribution (capacity →
-   structural shape → reference integrity → semantic → graph topology).
+1. テストから ``import`` して直接呼べる（TC-UT-WF-060）。これにより、Aggregate
+   経路が :class:`Stage` 自己検証とコードを共有しないことを証明できる — Confirmation F
+   の twin-defense（TC-UT-WF-006a vs 006b）の物理的根拠。
+2. :class:`Workflow.model_validator` は 10 個のチェックの薄いディスパッチに留まり、
+   失敗箇所の特定のために順序が文書化されている（capacity → 構造形状 → 参照整合性 →
+   意味 → グラフ トポロジ）。
 
-Living in :mod:`dag_validators` (separate file from
-:mod:`bakufu.domain.workflow.entities` and ``workflow``) makes the
-twin-defense boundary visible at the directory level, not just the function
-prefix — Norman's review feedback.
+:mod:`dag_validators`（:mod:`bakufu.domain.workflow.entities` および ``workflow``
+とは別ファイル）に置くことで、関数プレフィックスだけでなくディレクトリ レベルでも
+twin-defense 境界を可視化する — Norman のレビュー フィードバック。
 """
 
 from __future__ import annotations
@@ -25,7 +23,7 @@ from bakufu.domain.value_objects import StageId, StageKind, TransitionCondition,
 from bakufu.domain.workflow.entities import Stage, Transition
 
 # ---------------------------------------------------------------------------
-# Module-level constants (Workflow §Confirmation E + name bounds)
+# モジュール レベル定数（Workflow §Confirmation E と名前境界）
 # ---------------------------------------------------------------------------
 MAX_STAGES: int = 30
 MAX_TRANSITIONS: int = 60
@@ -34,13 +32,13 @@ MAX_NAME_LENGTH: int = 80
 
 
 # ---------------------------------------------------------------------------
-# Helpers (each shares zero code with Stage._check_self_invariants)
+# ヘルパ（各々 Stage._check_self_invariants とコードを共有しない）
 # ---------------------------------------------------------------------------
 def _validate_capacity(
     stages: list[Stage],
     transitions: list[Transition],
 ) -> None:
-    """T2 DoS guard. Run **first** so huge payloads short-circuit before BFS."""
+    """T2 DoS ガード。BFS の前に巨大ペイロードを短絡させるため **最初** に実行。"""
     stages_count = len(stages)
     if stages_count > MAX_STAGES:
         raise WorkflowInvariantViolation(
@@ -52,7 +50,7 @@ def _validate_capacity(
             detail={"stages_count": stages_count, "max_stages": MAX_STAGES},
         )
     if stages_count < 1:
-        # 1〜30 is the contract; zero stages cannot satisfy entry_stage_id.
+        # 1〜30 がコントラクト。stage 0 個では entry_stage_id を満たせない。
         raise WorkflowInvariantViolation(
             kind="capacity_exceeded",
             message=(
@@ -77,7 +75,7 @@ def _validate_capacity(
 
 
 def _validate_stage_id_unique(stages: list[Stage]) -> None:
-    """No two Stages may share an id (MSG-WF-008)."""
+    """2 つの Stage が同じ id を共有してはならない（MSG-WF-008）。"""
     seen: set[StageId] = set()
     for stage in stages:
         if stage.id in seen:
@@ -90,13 +88,12 @@ def _validate_stage_id_unique(stages: list[Stage]) -> None:
 
 
 def _validate_transition_id_unique(transitions: list[Transition]) -> None:
-    """No two Transitions may share an id (symmetric to ``_validate_stage_id_unique``).
+    """2 つの Transition が同じ id を共有してはならない（``_validate_stage_id_unique`` と対称）。
 
-    The detailed-design row "transitions: 0〜60 件、transition_id の重複なし"
-    requires this; without it, two distinct edges with the same id slip
-    through and only the persistence-layer UNIQUE constraint catches them
-    later. Steve's PR #16 review caught this gap and required the helper to
-    sit alongside ``_validate_stage_id_unique`` for symmetry.
+    detailed-design 行「transitions: 0〜60 件、transition_id の重複なし」が要求する。
+    これがないと、同 id の異なる 2 エッジが通過し、永続化層の UNIQUE 制約が後で捕捉
+    することになる。Steve の PR #16 レビューがこのギャップを指摘し、対称性のため
+    ヘルパを ``_validate_stage_id_unique`` と並べて配置することを要求した。
     """
     seen: set[TransitionId] = set()
     for transition in transitions:
@@ -113,7 +110,7 @@ def _validate_entry_in_stages(
     stages: list[Stage],
     entry_stage_id: StageId,
 ) -> None:
-    """``entry_stage_id`` must reference a known Stage (MSG-WF-002)."""
+    """``entry_stage_id`` は既知の Stage を参照しなければならない（MSG-WF-002）。"""
     if not any(stage.id == entry_stage_id for stage in stages):
         raise WorkflowInvariantViolation(
             kind="entry_not_in_stages",
@@ -126,7 +123,7 @@ def _validate_transition_refs(
     stages: list[Stage],
     transitions: list[Transition],
 ) -> None:
-    """Every Transition's from/to must point at a known Stage (MSG-WF-009)."""
+    """全 Transition の from/to は既知の Stage を指していなければならない（MSG-WF-009）。"""
     stage_ids: set[StageId] = {stage.id for stage in stages}
     for transition in transitions:
         if transition.from_stage_id not in stage_ids or transition.to_stage_id not in stage_ids:
@@ -145,7 +142,7 @@ def _validate_transition_refs(
 
 
 def _validate_transition_determinism(transitions: list[Transition]) -> None:
-    """``(from_stage_id, condition)`` must be unique across Transitions (MSG-WF-005)."""
+    """``(from_stage_id, condition)`` は Transition 全体で一意でなければならない（MSG-WF-005）。"""
     seen: set[tuple[StageId, TransitionCondition]] = set()
     for transition in transitions:
         key = (transition.from_stage_id, transition.condition)
@@ -166,11 +163,11 @@ def _validate_transition_determinism(transitions: list[Transition]) -> None:
 
 
 def _validate_external_review_notify(stages: list[Stage]) -> None:
-    """All ``EXTERNAL_REVIEW`` Stages must declare notify_channels (MSG-WF-006).
+    """全 ``EXTERNAL_REVIEW`` Stage は notify_channels を宣言しなければならない（MSG-WF-006）。
 
-    Aggregate-side twin of ``Stage._check_self_invariants``; tests
-    (TC-UT-WF-006b) call this with stages whose self-validator was bypassed
-    to prove the aggregate path catches the violation independently.
+    ``Stage._check_self_invariants`` の Aggregate 側 twin。テスト（TC-UT-WF-006b）は
+    自己検証をバイパスした stages を渡してこれを呼び出し、Aggregate 経路が独立して
+    違反を捕捉することを証明する。
     """
     for stage in stages:
         if stage.kind is StageKind.EXTERNAL_REVIEW and not stage.notify_channels:
@@ -184,9 +181,9 @@ def _validate_external_review_notify(stages: list[Stage]) -> None:
 
 
 def _validate_required_role_non_empty(stages: list[Stage]) -> None:
-    """Every Stage's ``required_role`` must be non-empty (MSG-WF-007).
+    """全 Stage の ``required_role`` は非空でなければならない（MSG-WF-007）。
 
-    Aggregate twin-defense (mirrors :class:`Stage` self-check).
+    Aggregate 側の twin-defense（:class:`Stage` 自己チェックと対称）。
     """
     for stage in stages:
         if not stage.required_role:
@@ -202,16 +199,16 @@ def _validate_dag_reachability(
     transitions: list[Transition],
     entry_stage_id: StageId,
 ) -> None:
-    """BFS from ``entry`` over the transition graph; reject orphan stages (MSG-WF-003).
+    """transition グラフ上で ``entry`` から BFS を行い、孤立 stage を拒否する（MSG-WF-003）。
 
-    ``collections.deque`` keeps memory bounded and safely terminates even on
-    cyclic graphs (visited set rejects re-enqueue).
+    ``collections.deque`` がメモリを抑え、循環グラフでも安全に終了する（visited
+    集合が再エンキューを拒否）。
     """
     adjacency: dict[StageId, list[StageId]] = {stage.id: [] for stage in stages}
     for transition in transitions:
-        # Defensive: skip dangling refs; ``_validate_transition_refs`` runs
-        # before this and would have raised, but keep BFS robust if a caller
-        # invokes the helper directly with malformed input.
+        # 防御: 宙吊り参照はスキップ。``_validate_transition_refs`` がここより前に
+        # 走って例外を送出するはずだが、呼び元がヘルパを不正入力で直接呼ぶ場合でも
+        # BFS が頑健に動くようにする。
         if transition.from_stage_id in adjacency:
             adjacency[transition.from_stage_id].append(transition.to_stage_id)
 
@@ -240,10 +237,10 @@ def _validate_dag_sink_exists(
     transitions: list[Transition],
     entry_stage_id: StageId,
 ) -> None:
-    """At least one Stage must have no outgoing Transition (MSG-WF-004).
+    """少なくとも 1 つの Stage は外向き Transition を持たないこと（MSG-WF-004）。
 
-    Pure cycle-only workflows have zero sinks, which makes Task termination
-    impossible — reject them.
+    純粋な循環のみのワークフローは sink が 0 となり、Task の終了が不可能になる —
+    これを拒否する。
     """
     has_outgoing: set[StageId] = {transition.from_stage_id for transition in transitions}
     if all(stage.id in has_outgoing for stage in stages):

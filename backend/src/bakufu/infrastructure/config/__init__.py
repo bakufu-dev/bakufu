@@ -1,6 +1,6 @@
-"""Bootstrap-stage configuration helpers (DATA_DIR resolution etc.).
+"""Bootstrap Stage 用の設定ヘルパ群（DATA_DIR 解決など）。
 
-These modules wire OS-level state into the rest of the infrastructure
-layer. They sit *outside* the persistence package because they run
-before the SQLite engine is ready (Bootstrap stage 1).
+これらのモジュールは OS レベルの状態をインフラストラクチャ層の
+他の部分へ橋渡しする。SQLite エンジン準備前（Bootstrap Stage 1）に
+動作するため、persistence パッケージの *外側* に位置する。
 """

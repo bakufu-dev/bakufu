@@ -1,11 +1,10 @@
-"""Agent Repository: Protocol surface + basic CRUD coverage.
+"""Agent Repository: Protocol サーフェス + 基本 CRUD カバレッジ。
 
-TC-UT-AGR-001 / 004 / 005 — the entry-point behaviors plus the
-**4-method Protocol surface** (the agent-repository is the first
-Repository to add ``find_by_name`` on top of the empire / workflow
-3-method template, §確定 F).
+TC-UT-AGR-001 / 004 / 005 ── エントリポイント挙動と
+**4 メソッドの Protocol サーフェス**（agent-repository は empire / workflow の
+3 メソッドテンプレートに ``find_by_name`` を加える最初の Repository。§確定 F）。
 
-Per ``docs/features/agent-repository/test-design.md``.
+``docs/features/agent-repository/test-design.md`` 準拠。
 """
 
 from __future__ import annotations
@@ -32,30 +31,30 @@ pytestmark = pytest.mark.asyncio
 
 
 # ---------------------------------------------------------------------------
-# REQ-AGR-001: Protocol definition + 4-method surface (§確定 A + F)
+# REQ-AGR-001: Protocol 定義 + 4 メソッドサーフェス (§確定 A + F)
 # ---------------------------------------------------------------------------
 class TestAgentRepositoryProtocol:
-    """TC-UT-AGR-001: Protocol declares 4 async methods incl. ``find_by_name``."""
+    """TC-UT-AGR-001: Protocol が ``find_by_name`` を含む 4 つの async メソッドを宣言する。"""
 
     async def test_protocol_declares_four_async_methods(self) -> None:
-        """TC-UT-AGR-001: ``AgentRepository`` has find_by_id / count / save / find_by_name."""
-        # Marked async so module-level pytestmark = asyncio does not warn.
+        """TC-UT-AGR-001: ``AgentRepository`` が
+        find_by_id / count / save / find_by_name を持つ。"""
+        # モジュールレベルの pytestmark = asyncio が警告しないよう async を付ける。
         assert hasattr(AgentRepository, "find_by_id")
         assert hasattr(AgentRepository, "count")
         assert hasattr(AgentRepository, "save")
-        # ``find_by_name`` is the 4th method introduced by §確定 F —
-        # the first M2 Repository PR to extend the 3-method template.
+        # ``find_by_name`` は §確定 F で導入された 4 番目のメソッド ──
+        # 3 メソッドテンプレートを最初に拡張する M2 Repository PR。
         assert hasattr(AgentRepository, "find_by_name")
 
     async def test_sqlite_repository_satisfies_protocol(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-UT-AGR-001: ``SqliteAgentRepository`` is assignable to ``AgentRepository``.
+        """TC-UT-AGR-001: ``SqliteAgentRepository`` を ``AgentRepository`` に代入できる。
 
-        The variable annotation acts as a static-type assertion; pyright
-        strict will reject the assignment if any of the 4 Protocol
-        methods is missing or has a wrong signature.
+        変数アノテーションが静的型アサーションとして機能する。pyright strict は、
+        Protocol メソッドが欠落または誤シグネチャの場合に代入を拒否する。
         """
         async with session_factory() as session:
             repo: AgentRepository = SqliteAgentRepository(session)
@@ -66,21 +65,21 @@ class TestAgentRepositoryProtocol:
 
 
 # ---------------------------------------------------------------------------
-# REQ-AGR-002 (find_by_id basic round-trip)
+# REQ-AGR-002 (find_by_id の基本ラウンドトリップ)
 # ---------------------------------------------------------------------------
 class TestFindById:
-    """find_by_id retrieves saved Agents; returns None for unknown."""
+    """find_by_id は保存済み Agent を取得する。未知の id は None を返す。"""
 
     async def test_find_by_id_returns_saved_agent(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_empire_id: UUID,
     ) -> None:
-        """``find_by_id(agent.id)`` returns a structurally-equal Agent (no secrets in default)."""
-        # Default factory ``prompt_body='You are a thorough reviewer.'``
-        # contains no Schneier-#6 secrets, so masking is a no-op and
-        # round-trip equality holds. Secret-bearing prompt round-trip
-        # lives in :mod:`...test_masking_persona` (§確定 H §不可逆性).
+        """``find_by_id(agent.id)`` が構造的に等価な Agent を返す（デフォルトでは secret なし）。"""
+        # デフォルト factory の ``prompt_body='You are a thorough reviewer.'`` には
+        # Schneier-#6 の secret が含まれないため、マスキングは no-op となり
+        # ラウンドトリップ等価性が成立する。secret を含む prompt のラウンドトリップは
+        # :mod:`...test_masking_persona` (§確定 H §不可逆性) で扱う。
         agent = make_agent(empire_id=seeded_empire_id)
         async with session_factory() as session, session.begin():
             await SqliteAgentRepository(session).save(agent)
@@ -95,7 +94,7 @@ class TestFindById:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """``find_by_id(uuid4())`` returns ``None`` without raising."""
+        """``find_by_id(uuid4())`` は例外を投げず ``None`` を返す。"""
         unknown_id = uuid4()
         async with session_factory() as session:
             fetched = await SqliteAgentRepository(session).find_by_id(unknown_id)
@@ -106,7 +105,7 @@ class TestFindById:
 # TC-UT-AGR-004: count() must issue SQL-level COUNT(*)
 # ---------------------------------------------------------------------------
 class TestCountIssuesScalarCount:
-    """TC-UT-AGR-004: ``count()`` issues ``SELECT COUNT(*)``, not a full row scan."""
+    """TC-UT-AGR-004: ``count()`` は ``SELECT COUNT(*)`` を発行し、行を全件スキャンしない。"""
 
     async def test_count_emits_select_count_not_full_load(
         self,
@@ -114,12 +113,11 @@ class TestCountIssuesScalarCount:
         app_engine: AsyncEngine,
         seeded_empire_id: UUID,
     ) -> None:
-        """SQL log shows ``SELECT count(*)`` for ``count()``.
+        """SQL ログが ``count()`` に対し ``SELECT count(*)`` を示す。
 
-        The empire-repository §確定 D 補強 contract continued — Agent
-        provider / skill rows can hold hundreds of records once the
-        preset library lands, so the COUNT(*) pattern matters even
-        more than for Empire.
+        empire-repository §確定 D 補強の契約を継続する ── Agent の
+        provider / skill 行は preset ライブラリ着地後は数百レコードを保持しうるため、
+        COUNT(*) パターンが Empire 以上に重要となる。
         """
         async with session_factory() as session, session.begin():
             await SqliteAgentRepository(session).save(make_agent(empire_id=seeded_empire_id))
@@ -160,23 +158,22 @@ class TestCountIssuesScalarCount:
 # TC-UT-AGR-005: find_by_name Empire-scoped (§確定 F)
 # ---------------------------------------------------------------------------
 class TestFindByNameEmpireScoped:
-    """TC-UT-AGR-005: ``find_by_name`` enforces Empire scoping.
+    """TC-UT-AGR-005: ``find_by_name`` が Empire スコープを強制する。
 
-    Three orthogonal cases per §確定 F:
+    §確定 F に沿う 3 つの直交ケース:
 
-    1. **Hit**: Agent named ``foo`` inside ``empire_a`` is returned.
-    2. **Miss in same Empire**: name ``bar`` under ``empire_a`` returns None.
-    3. **Cross-Empire isolation**: name ``foo`` under ``empire_b`` returns None
-       even though ``foo`` exists in ``empire_a``. This is the IDOR
-       guard — without ``WHERE empire_id=:empire_id`` an attacker
-       could read another tenant's Agent by guessing the name.
+    1. **ヒット**: ``empire_a`` 内の ``foo`` という名前の Agent が返る。
+    2. **同 Empire 内ミス**: ``empire_a`` 配下の ``bar`` という名前は None を返す。
+    3. **Empire 間隔離**: ``foo`` が ``empire_a`` に存在しても、``empire_b`` 配下の
+       ``foo`` 検索は None を返す。これが IDOR ガード ── ``WHERE empire_id=:empire_id``
+       がなければ攻撃者が名前を推測して別テナントの Agent を読み取れる。
     """
 
     async def test_find_by_name_returns_agent_when_present(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """Hit path: name + empire_id pair returns the Agent."""
+        """ヒット経路: name + empire_id ペアが Agent を返す。"""
         empire_a = await seed_empire(session_factory)
         agent = make_agent(empire_id=empire_a, name="agent_a")
         async with session_factory() as session, session.begin():
@@ -194,7 +191,7 @@ class TestFindByNameEmpireScoped:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """Miss path: unknown name in known Empire returns None."""
+        """ミス経路: 既知 Empire 内の未知の名前は None を返す。"""
         empire_a = await seed_empire(session_factory)
         async with session_factory() as session, session.begin():
             await SqliteAgentRepository(session).save(
@@ -209,12 +206,11 @@ class TestFindByNameEmpireScoped:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """**IDOR guard**: same name under different Empire returns None.
+        """**IDOR ガード**: 別 Empire 配下の同名は None を返す。
 
-        This is the test-design.md §確定 F core contract. A regression
-        that drops the ``WHERE empire_id`` clause (e.g. by globally
-        searching by name) would let an attacker read cross-tenant
-        Agents — this assertion fires loudly in that case.
+        本テストは test-design.md §確定 F の中核契約。``WHERE empire_id`` 句を落とす
+        回帰（例: 全 Empire 横断で name 検索）は、攻撃者がテナント越境で Agent を
+        読めてしまう ── このアサーションは即座にそれを表面化させる。
         """
         empire_a = await seed_empire(session_factory)
         empire_b = await seed_empire(session_factory)
@@ -223,8 +219,8 @@ class TestFindByNameEmpireScoped:
             await SqliteAgentRepository(session).save(agent_in_a)
 
         async with session_factory() as session:
-            # Look up the same name but in a DIFFERENT empire — must
-            # return None even though "shared_name" exists in empire_a.
+            # 同じ名前を別の empire で検索する ── empire_a に "shared_name" が
+            # 存在しても、None を返さねばならない。
             fetched = await SqliteAgentRepository(session).find_by_name(empire_b, "shared_name")
         assert fetched is None, (
             "[FAIL] find_by_name leaked an Agent across Empire boundaries.\n"
@@ -237,13 +233,11 @@ class TestFindByNameEmpireScoped:
         session_factory: async_sessionmaker[AsyncSession],
         app_engine: AsyncEngine,
     ) -> None:
-        """SQL log shows ``WHERE agents.empire_id = ?`` and ``LIMIT 1``.
+        """SQL ログに ``WHERE agents.empire_id = ?`` と ``LIMIT 1`` が含まれる。
 
-        Defense-in-depth on top of the behavioural test above: even if
-        the cross-Empire test happens to pass via row-coincidence
-        (e.g. name conflict in seed data), the SQL itself must carry
-        the scope clause. We attach a ``before_cursor_execute``
-        listener and grep for the empire_id predicate.
+        上の振る舞いテストに対する多層防御: クロス Empire テストが seed の名前衝突など
+        行偶発で pass してしまっても、SQL 自体がスコープ句を持たねばならない。
+        ``before_cursor_execute`` リスナを取り付け、empire_id 述語を grep する。
         """
         empire_a = await seed_empire(session_factory)
         async with session_factory() as session, session.begin():
@@ -271,11 +265,11 @@ class TestFindByNameEmpireScoped:
         finally:
             event.remove(sync_engine, "before_cursor_execute", _on_execute)
 
-        # Locate the SELECT that hit ``agents`` to look up the AgentId.
+        # AgentId を検索するために ``agents`` を叩いた SELECT を探す。
         agent_id_selects = [s for s in captured if "FROM agents" in s and "SELECT" in s.upper()]
         assert agent_id_selects, "find_by_name must SELECT from agents"
-        # The first such SELECT must carry both the empire_id predicate
-        # and a LIMIT clause to avoid full-table scans.
+        # 該当する最初の SELECT は、フルテーブルスキャンを避けるため、
+        # empire_id 述語と LIMIT 句の両方を持たねばならない。
         target_stmt = agent_id_selects[0]
         assert "empire_id" in target_stmt, (
             f"[FAIL] find_by_name SQL missing empire_id predicate.\nCaptured: {target_stmt!r}"
@@ -286,20 +280,19 @@ class TestFindByNameEmpireScoped:
 
 
 # ---------------------------------------------------------------------------
-# Lifecycle integration: save → find_by_name → find_by_id → save (update)
+# ライフサイクル統合: save → find_by_name → find_by_id → save (更新)
 # ---------------------------------------------------------------------------
 class TestLifecycleIntegration:
-    """TC-IT-AGR-LIFECYCLE: full save → lookup → update flow."""
+    """TC-IT-AGR-LIFECYCLE: save → 検索 → 更新の完全フロー。"""
 
     async def test_full_lifecycle_with_persona_update(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """Save → find_by_name → find_by_id → update persona → save.
+        """Save → find_by_name → find_by_id → persona 更新 → save。
 
-        Verifies the 4 Protocol methods cooperate end-to-end and that
-        a persona update via re-save reaches the DB through the
-        UPSERT path (Step 1 of §確定 B 5-step).
+        4 つの Protocol メソッドがエンドツーエンドで協調し、再 save 経由の
+        persona 更新が UPSERT 経路（§確定 B 5 ステップの Step 1）で DB に到達することを検証する。
         """
         from bakufu.domain.agent import Persona
 
@@ -328,7 +321,7 @@ class TestLifecycleIntegration:
         assert via_id is not None
         assert via_id == via_name
 
-        # Update: change the persona display_name and re-save.
+        # 更新: persona display_name を変更して再 save。
         updated = original.model_copy(
             update={
                 "persona": Persona(

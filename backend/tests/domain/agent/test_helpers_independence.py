@@ -1,11 +1,10 @@
-"""Aggregate + path helpers invoked independently (Confirmation F equivalent).
+"""集約・パスヘルパの独立呼び出し（Confirmation F 同等）。
 
-The 5 ``_validate_*`` helpers in ``aggregate_validators.py`` and the 10
-``_h*_check_*`` helpers in ``path_validators.py`` are module-level pure
-functions — tests can import and call them directly without first
-constructing an Agent. This proves the aggregate path does not share code
-with the VO self-checks (twin-defense from workflow Confirmation F carried
-forward to agent).
+``aggregate_validators.py`` の 5 つの ``_validate_*`` ヘルパと、
+``path_validators.py`` の 10 個の ``_h*_check_*`` ヘルパはモジュールレベルの
+純関数である — テストは Agent を構築する前に直接 import して呼び出せる。
+これは集約経路が VO 自己検証とコードを共有していないこと（workflow の
+Confirmation F に由来する双子防御を agent にも引き継いだもの）を証明する。
 """
 
 from __future__ import annotations
@@ -40,7 +39,7 @@ from tests.factories.agent import make_provider_config, make_skill_ref
 
 
 class TestAggregateHelpersIndependent:
-    """Each ``_validate_*`` is invokable directly and raises the right kind."""
+    """各 ``_validate_*`` は直接呼び出し可能で、正しい kind を送出する。"""
 
     def test_provider_capacity_rejects_zero(self) -> None:
         with pytest.raises(AgentInvariantViolation) as excinfo:
@@ -93,7 +92,7 @@ class TestAggregateHelpersIndependent:
 
 
 class TestPathHelpersIndependent:
-    """Each Hx helper raises with the corresponding ``check`` discriminator."""
+    """各 Hx ヘルパは対応する ``check`` 識別子を伴う例外を送出する。"""
 
     def test_h1_normalizes(self) -> None:
         import unicodedata
@@ -143,7 +142,7 @@ class TestPathHelpersIndependent:
 
 
 class TestValueObjectFactoryRegistry:
-    """Synthetic-vs-real bookkeeping (cross-cutting smoke)."""
+    """合成と実体の判別管理（クロスカット系のスモークテスト）。"""
 
     def test_factory_built_persona_is_synthetic(self) -> None:
         from tests.factories.agent import is_synthetic

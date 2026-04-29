@@ -1,26 +1,26 @@
-"""Factories for the Workflow aggregate, its entities, and VOs.
+"""Workflow アグリゲート、エンティティ、VO のファクトリ群.
 
-Per ``docs/features/workflow/test-design.md`` (REQ-WF-001〜007, factories), each
-factory:
+``docs/features/workflow/test-design.md`` (REQ-WF-001〜007, factories) 準拠。
+各ファクトリは:
 
-* Returns a *valid* default instance built via the production constructor.
-* Allows keyword overrides so individual tests can exercise specific edge
-  cases without copy-pasting full kwargs.
-* Registers the produced instance in :data:`_SYNTHETIC_REGISTRY` so
-  :func:`is_synthetic` can later confirm "this object came from a factory".
+* 本番コンストラクタ経由で *妥当* なデフォルトインスタンスを返す。
+* キーワード上書きを許可し、個別テストが完全な kwargs を貼り付けずに
+  特定の境界値を検証できるようにする。
+* 生成したインスタンスを :data:`_SYNTHETIC_REGISTRY` に登録し、
+  :func:`is_synthetic` で後から「ファクトリ由来か」を確認できるようにする。
 
-Why a ``WeakValueDictionary`` over inline metadata?
+``WeakValueDictionary`` をインラインメタデータより優先する理由:
 
-* :class:`bakufu.domain.workflow.Workflow` / :class:`Stage` / :class:`Transition`
-  and the workflow VOs (:class:`NotifyChannel`, :class:`CompletionPolicy`) are
-  ``frozen=True`` Pydantic v2 models with ``extra='forbid'``: adding a
-  ``_meta.synthetic`` attribute is physically impossible.
-* A weak-value registry keyed by ``id(instance)`` flags instances externally;
-  entries auto-evict on GC so id reuse on a freshly allocated, unrelated
-  instance simply yields a cache miss instead of a false positive.
+* :class:`bakufu.domain.workflow.Workflow` / :class:`Stage` /
+  :class:`Transition` および workflow の VO (:class:`NotifyChannel`,
+  :class:`CompletionPolicy`) は ``frozen=True`` で ``extra='forbid'`` の
+  Pydantic v2 モデル ── ``_meta.synthetic`` 属性追加が物理的に不可能。
+* ``id(instance)`` をキーとする弱参照レジストリは外側からインスタンスに
+  フラグ付けする。エントリは GC で自動失効するため、新規 allocate で
+  id が再利用されても false positive ではなくキャッシュミスとなる。
 
-Production code MUST NOT import this module. The module mirrors empire's
-factory pattern (single source of truth for the synthetic-vs-real boundary).
+本モジュールを本番コードから import してはならない。empire の
+ファクトリパターンを踏襲し、合成 vs 実物境界の単一情報源を担う。
 """
 
 from __future__ import annotations
@@ -43,25 +43,25 @@ from pydantic import BaseModel
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-# Module-scope registry. Values are kept weakly so GC pressure stays neutral;
-# we only want to know "did a factory produce this object" while it's alive.
+# モジュールスコープのレジストリ。値は弱参照で保持するので GC 圧は中立 ──
+# 「このオブジェクトはファクトリ由来か」をオブジェクト生存中だけ知ればよい。
 _SYNTHETIC_REGISTRY: WeakValueDictionary[int, BaseModel] = WeakValueDictionary()
 
-# A real-shape Discord webhook URL for tests that need a *valid* target.
-# Token segment uses URL-safe characters (G7) and stays under 100 chars (G7).
+# *妥当* なターゲットを必要とするテスト向けの実形 Discord webhook URL。
+# トークン部は URL-safe 文字 (G7) を使い、100 文字未満に収める (G7)。
 DEFAULT_DISCORD_WEBHOOK = (
     "https://discord.com/api/webhooks/123456789012345678/SyntheticToken_-abcXYZ"
 )
 
 
 def is_synthetic(instance: BaseModel) -> bool:
-    """Return ``True`` when ``instance`` was created by a factory in this module."""
+    """``instance`` が本モジュールのファクトリで生成されたものなら ``True`` を返す。"""
     cached = _SYNTHETIC_REGISTRY.get(id(instance))
     return cached is instance
 
 
 def _register(instance: BaseModel) -> None:
-    """Record ``instance`` in the synthetic registry."""
+    """``instance`` を合成レジストリに記録する。"""
     _SYNTHETIC_REGISTRY[id(instance)] = instance
 
 
@@ -73,7 +73,7 @@ def make_completion_policy(
     kind: str = "approved_by_reviewer",
     description: str = "review approval",
 ) -> CompletionPolicy:
-    """Build a valid :class:`CompletionPolicy`."""
+    """妥当な :class:`CompletionPolicy` を構築する。"""
     policy = CompletionPolicy.model_validate({"kind": kind, "description": description})
     _register(policy)
     return policy
@@ -83,7 +83,7 @@ def make_notify_channel(
     *,
     target: str = DEFAULT_DISCORD_WEBHOOK,
 ) -> NotifyChannel:
-    """Build a valid :class:`NotifyChannel` (kind='discord')."""
+    """妥当な :class:`NotifyChannel` (kind='discord') を構築する。"""
     channel = NotifyChannel(kind="discord", target=target)
     _register(channel)
     return channel
@@ -102,17 +102,17 @@ def make_stage(
     completion_policy: CompletionPolicy | None = None,
     notify_channels: Sequence[NotifyChannel] | None = None,
 ) -> Stage:
-    """Build a valid :class:`Stage`.
+    """妥当な :class:`Stage` を構築する。
 
-    Defaults choose ``kind=WORK`` with ``required_role={DEVELOPER}`` so the
-    Stage's self-validator (REQ-WF-007) passes without further tweaking.
-    Callers exercising EXTERNAL_REVIEW must supply ``notify_channels``.
+    デフォルトは ``kind=WORK`` + ``required_role={DEVELOPER}``。これで
+    Stage の自己バリデータ (REQ-WF-007) が追加調整なしに通過する。
+    EXTERNAL_REVIEW を使う呼び出し側は ``notify_channels`` を渡すこと。
     """
     if required_role is None:
         required_role = frozenset({Role.DEVELOPER})
     if completion_policy is None:
         completion_policy = make_completion_policy()
-    # EXTERNAL_REVIEW requires non-empty notify_channels for the Stage self-check.
+    # EXTERNAL_REVIEW は Stage の自己チェックのため非空の notify_channels を要する。
     if notify_channels is None:
         notify_channels = [make_notify_channel()] if kind is StageKind.EXTERNAL_REVIEW else []
     stage = Stage(
@@ -136,7 +136,7 @@ def make_transition(
     condition: TransitionCondition = TransitionCondition.APPROVED,
     label: str = "",
 ) -> Transition:
-    """Build a valid :class:`Transition`."""
+    """妥当な :class:`Transition` を構築する。"""
     transition = Transition(
         id=transition_id if transition_id is not None else uuid4(),
         from_stage_id=from_stage_id,
@@ -159,10 +159,10 @@ def make_workflow(
     transitions: Sequence[Transition] | None = None,
     entry_stage_id: StageId | None = None,
 ) -> Workflow:
-    """Build a valid :class:`Workflow`.
+    """妥当な :class:`Workflow` を構築する。
 
-    With no overrides, returns a single-Stage workflow where ``entry == sink``
-    (the simplest valid aggregate state per TC-UT-WF-001).
+    上書きなしの場合、``entry == sink`` の単一 Stage ワークフローを返す
+    (TC-UT-WF-001 における最小妥当 aggregate 状態)。
     """
     if stages is None:
         single = make_stage()
@@ -185,11 +185,11 @@ def make_workflow(
 
 
 # ---------------------------------------------------------------------------
-# V-model rendering example (transactions.md §レンダリング例)
+# V モデルレンダリング例 (transactions.md §レンダリング例)
 # ---------------------------------------------------------------------------
-# Stage names from the design book's V-model example. 13 stages: 4 work/review
-# pairs (req analysis, req def, basic design, detail design) + 4 implementation
-# work stages (impl, unit test, integ test, e2e test) + 1 final review.
+# 設計書の V モデル例による Stage 名。13 ステージ: 4 つの作業/レビュー対
+# (要求分析、要件定義、基本設計、詳細設計) + 4 つの実装作業ステージ
+# (実装、単体テスト、結合テスト、e2e テスト) + 最終レビュー 1 つ。
 _V_MODEL_STAGES: tuple[tuple[str, StageKind, frozenset[Role]], ...] = (
     ("要求分析", StageKind.WORK, frozenset({Role.LEADER})),
     ("要求分析レビュー", StageKind.EXTERNAL_REVIEW, frozenset({Role.REVIEWER})),
@@ -208,16 +208,16 @@ _V_MODEL_STAGES: tuple[tuple[str, StageKind, frozenset[Role]], ...] = (
 
 
 def build_v_model_payload() -> dict[str, object]:
-    """Return a ``Workflow.from_dict``-ready payload for the V-model preset.
+    """V モデルプリセット用に ``Workflow.from_dict`` 即可なペイロードを返す。
 
-    Contract:
-        * 13 stages (matches transactions.md §レンダリング例).
-        * 15 transitions: 12 APPROVED forward edges (stage[i] → stage[i+1])
-          plus 3 REJECTED back edges from review → preceding work stage so the
-          deterministic-condition check (one ``(from, condition)`` per pair)
-          stays satisfied while still demonstrating non-trivial topology.
-        * Final stage (``完了レビュー``) has no outgoing edge → satisfies the
-          sink-exists invariant.
+    契約:
+        * 13 ステージ (transactions.md §レンダリング例 と一致)。
+        * 15 transition: 12 件の APPROVED 順方向 (stage[i] → stage[i+1])
+          + review → 直前 work ステージへの REJECTED 逆方向 3 件。
+          これにより決定性条件チェック (各 ``(from, condition)`` が 1 件) を
+          満たしつつ、非自明な topology を示す。
+        * 最終ステージ (``完了レビュー``) は出辺を持たない → sink 存在不変条件を
+          満たす。
     """
     stages: list[dict[str, object]] = []
     stage_ids: list[UUID] = []
@@ -243,7 +243,7 @@ def build_v_model_payload() -> dict[str, object]:
         stages.append(stage_payload)
 
     transitions: list[dict[str, object]] = []
-    # 12 forward APPROVED transitions (stage[i] → stage[i+1]).
+    # 順方向 APPROVED transition 12 件 (stage[i] → stage[i+1])。
     for index in range(len(stage_ids) - 1):
         transitions.append(
             {
@@ -254,8 +254,8 @@ def build_v_model_payload() -> dict[str, object]:
                 "label": "approve",
             }
         )
-    # 3 REJECTED back edges from review → preceding work stage. Use indices
-    # 1, 3, 5 (the early review stages) to vary the pattern.
+    # review → 直前 work ステージへの REJECTED 逆方向 3 件。
+    # パターンを多様にするため、早期 review ステージのインデックス 1, 3, 5 を使う。
     for review_index in (1, 3, 5):
         transitions.append(
             {

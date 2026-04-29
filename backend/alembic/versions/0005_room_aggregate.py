@@ -1,27 +1,26 @@
-"""Room Aggregate tables: rooms + room_members; empire_room_refs FK closure.
+"""Room Aggregate テーブル群: rooms + room_members、加えて empire_room_refs の FK クロージャ。
 
-Adds the two tables that back :class:`SqliteRoomRepository`:
+:class:`SqliteRoomRepository` を支える 2 つのテーブルを追加する:
 
-* ``rooms`` (id PK + empire_id FK CASCADE + workflow_id FK RESTRICT +
-  5 scalar columns). The ``prompt_kit_prefix_markdown`` column is stored as
-  ``TEXT`` here (Alembic does not know about ``MaskedText``); the masking
-  gate lives on the Python side via the TypeDecorator.
-* ``room_members`` (composite PK(room_id, agent_id, role) + FK CASCADE on
-  room_id + UNIQUE(room_id, agent_id, role) for §確定 R1-D Defense-in-Depth
-  + no FK on agent_id per room §確定).
+* ``rooms``（id PK + empire_id FK CASCADE + workflow_id FK RESTRICT +
+  スカラー 5 カラム）。``prompt_kit_prefix_markdown`` カラムは Alembic 側では
+  ``TEXT`` として保存される（Alembic は ``MaskedText`` を知らない）。マスキング
+  ゲートは TypeDecorator により Python 側で行う。
+* ``room_members``（複合 PK(room_id, agent_id, role) + room_id に FK CASCADE +
+  §確定 R1-D Defense-in-Depth のための UNIQUE(room_id, agent_id, role) +
+  room §確定 に従い agent_id には FK を付けない）。
 
-Also closes BUG-EMR-001 FK closure:
+加えて BUG-EMR-001 の FK クロージャを完了する:
 
-* ``empire_room_refs.room_id → rooms.id`` FK (ON DELETE CASCADE) is added
-  via ``op.batch_alter_table('empire_room_refs', recreate='always')`` because
-  SQLite does not support ``ALTER TABLE ... ADD CONSTRAINT FOREIGN KEY``
-  directly. The batch operation rebuilds the table internally so all existing
-  rows are preserved.
+* ``empire_room_refs.room_id → rooms.id`` FK（ON DELETE CASCADE）を
+  ``op.batch_alter_table('empire_room_refs', recreate='always')`` 経由で追加する。
+  SQLite は ``ALTER TABLE ... ADD CONSTRAINT FOREIGN KEY`` を直接サポートしないため
+  である。バッチ操作はテーブルを内部的に再構築するため、既存行はすべて保持される。
 
-Per ``docs/features/empire-repository/detailed-design.md`` §確定 F each
-subsequent ``feature/{aggregate}-repository`` PR appends its own revision;
-this revision pins ``down_revision = "0004_agent_aggregate"`` strictly so the
-chain check enforces a single head.
+``docs/features/empire-repository/detailed-design.md`` §確定 F に従い、後続の
+``feature/{aggregate}-repository`` PR はそれぞれの revision を積み重ねる。
+本 revision は ``down_revision = "0004_agent_aggregate"`` を厳密に固定し、
+チェーン検査が単一 head を強制するようにする。
 
 Revision ID: 0005_room_aggregate
 Revises: 0004_agent_aggregate
@@ -42,7 +41,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # Step 1: rooms table (empire_id FK CASCADE + workflow_id FK RESTRICT).
+    # Step 1: rooms テーブル（empire_id FK CASCADE + workflow_id FK RESTRICT）。
     op.create_table(
         "rooms",
         sa.Column("id", sa.CHAR(32), primary_key=True, nullable=False),
@@ -65,8 +64,8 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("''"),
         ),
-        # MaskedText TypeDecorator serializes as TEXT in SQLite. The
-        # Python-side decorator does the masking gate (base.py MaskedText).
+        # MaskedText TypeDecorator は SQLite では TEXT として直列化される。
+        # マスキングゲートは Python 側のデコレータで行う（base.py の MaskedText）。
         sa.Column(
             "prompt_kit_prefix_markdown",
             sa.Text(),
@@ -81,9 +80,9 @@ def upgrade() -> None:
         ),
     )
 
-    # §確定 R1-F: non-UNIQUE composite index for Empire-scoped find_by_name.
-    # Left-prefix optimises both ``WHERE empire_id = ?`` and
-    # ``WHERE empire_id = ? AND name = ?`` queries.
+    # §確定 R1-F: Empire スコープの find_by_name 用の非 UNIQUE 複合インデックス。
+    # 左端プレフィックスにより ``WHERE empire_id = ?`` と
+    # ``WHERE empire_id = ? AND name = ?`` の両方のクエリを最適化する。
     op.create_index(
         "ix_rooms_empire_id_name",
         "rooms",
@@ -91,7 +90,7 @@ def upgrade() -> None:
         unique=False,
     )
 
-    # Step 2: room_members table (composite PK + FK CASCADE + UNIQUE §確定 R1-D).
+    # Step 2: room_members テーブル（複合 PK + FK CASCADE + §確定 R1-D の UNIQUE）。
     op.create_table(
         "room_members",
         sa.Column(
@@ -106,8 +105,8 @@ def upgrade() -> None:
             sa.CHAR(32),
             primary_key=True,
             nullable=False,
-            # Intentionally no FK onto agents.id — application-layer
-            # responsibility (room §確定, see detailed-design §設計判断補足).
+            # agents.id への FK を意図的に付けない — アプリケーション層の責務
+            # （room §確定、detailed-design §設計判断補足 を参照）。
         ),
         sa.Column(
             "role",
@@ -120,9 +119,9 @@ def upgrade() -> None:
             sa.DateTime(timezone=True),
             nullable=False,
         ),
-        # §確定 R1-D: explicit UniqueConstraint in addition to composite PK so
-        # CI Layer 2 arch test can assert constraint existence via
-        # ``__table_args__`` scanning (agent_providers pattern).
+        # §確定 R1-D: 複合 PK に加え明示的に UniqueConstraint を宣言する。
+        # これにより CI の Layer 2 アーキテクチャテストが ``__table_args__``
+        # スキャンによって制約の存在を検証できる（agent_providers と同パターン）。
         sa.UniqueConstraint(
             "room_id",
             "agent_id",
@@ -131,12 +130,11 @@ def upgrade() -> None:
         ),
     )
 
-    # Step 3: empire_room_refs FK closure (BUG-EMR-001 close).
-    # SQLite does not support ``ALTER TABLE ... ADD CONSTRAINT FOREIGN KEY``
-    # directly. Alembic's ``batch_alter_table(recreate='always')`` rebuilds
-    # the table internally, copying existing rows, then renames. The
-    # ``recreate='always'`` flag forces the rebuild even when no column
-    # changes are detected — necessary for FK addition in SQLite.
+    # Step 3: empire_room_refs の FK クロージャ（BUG-EMR-001 のクローズ）。
+    # SQLite は ``ALTER TABLE ... ADD CONSTRAINT FOREIGN KEY`` を直接サポートしない。
+    # Alembic の ``batch_alter_table(recreate='always')`` はテーブルを内部的に再構築し、
+    # 既存行をコピーした上で rename する。``recreate='always'`` フラグはカラム変更が
+    # 検出されない場合でも再構築を強制する — SQLite で FK を追加するために必要。
     with op.batch_alter_table("empire_room_refs", recreate="always") as batch_op:
         batch_op.create_foreign_key(
             "fk_empire_room_refs_room_id",
@@ -148,11 +146,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Reverse order: FK closure → index → child table → root table.
+    # 逆順: FK クロージャ → インデックス → 子テーブル → 親テーブル。
     with op.batch_alter_table("empire_room_refs", recreate="always") as batch_op:
         batch_op.drop_constraint("fk_empire_room_refs_room_id", type_="foreignkey")
 
     op.drop_index("ix_rooms_empire_id_name", table_name="rooms")
-    # Drop child table first (room_members.room_id FK CASCADE onto rooms.id).
+    # 子テーブルから先に削除する（room_members.room_id は rooms.id への FK CASCADE）。
     op.drop_table("room_members")
     op.drop_table("rooms")
