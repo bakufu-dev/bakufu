@@ -97,10 +97,10 @@ class TestFifthRevisionApplied:
             )
             index_names = {row[0] for row in result}
         assert "ix_rooms_empire_id_name" in index_names, (
-            f"[FAIL] ix_rooms_empire_id_name インデックスが rooms テーブルから不足。\n"
+            f"[FAIL] ix_rooms_empire_id_name インデックスが不足。\n"
             f"見つかったインデックス: {index_names}\n"
-            f"次：0005_room_aggregate.py upgrade() に ``op.create_index('ix_rooms_empire_id_name', ...)`` "
-            f"が存在することを確認。"
+            f"次：0005_room_aggregate.py upgrade() に "
+            f"``op.create_index('ix_rooms_empire_id_name', ...)`` が存在を確認。"
         )
 
     async def test_empire_room_refs_fk_closure_applied(
@@ -120,12 +120,12 @@ class TestFifthRevisionApplied:
             fk_rows = list(result)
         # PRAGMA foreign_key_list はカラムを持つ行を返す:
         #   id, seq, table, from, to, on_update, on_delete, match
-        referenced_tables = {row[2] for row in fk_rows}  # カラムインデックス 2 = 'table'
+        referenced_tables = {row[2] for row in fk_rows}  # カラムインデックス 2
         assert "rooms" in referenced_tables, (
-            f"[FAIL] empire_room_refs は rooms への FK を持たない (BUG-EMR-001 が閉じられていない)。\n"
+            f"[FAIL] empire_room_refs は rooms への FK を持たない。\n"
             f"FK 参照が見つかりました: {referenced_tables}\n"
-            f"次：0005_room_aggregate.py で op.batch_alter_table('empire_room_refs') が"
-            f"rooms.id への FK を追加することを確認。"
+            f"次：0005_room_aggregate.py で batch_alter_table が "
+            f"rooms.id への FK を追加を確認。"
         )
 
 

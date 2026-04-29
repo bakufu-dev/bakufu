@@ -81,7 +81,9 @@ class TestSixthRevisionApplied:
         self,
         empty_engine: AsyncEngine,
     ) -> None:
-        """``ix_directives_target_room_id_created_at`` コンポジットインデックスが存在 (§確定 R1-D)。"""
+        """``ix_directives_target_room_id_created_at`` コンポジット
+        インデックスが存在 (§確定 R1-D)。
+        """
         await run_upgrade_head(empty_engine)
         async with empty_engine.connect() as conn:
             result = await conn.execute(
@@ -339,9 +341,9 @@ class TestBugDrr001TaskIdFkClosure:
         referenced_tables = {row[2] for row in fk_rows}
         assert "tasks" in referenced_tables, (
             f"[FAIL] directives.task_id FK to 'tasks' が HEAD レベルで不足。\n"
-            f"BUG-DRR-001 closure は 0007_task_aggregate が "
-            f"op.batch_alter_table('directives') + create_foreign_key('fk_directives_task_id', "
-            f"'tasks', ['task_id'], ['id'], ondelete='RESTRICT') 経由で FK を追加することを必要とする。\n"
+            f"BUG-DRR-001 closure は 0007_task_aggregate が batch_alter_table"
+            f"('directives') 経由で fk_directives_task_id ('tasks' の 'task_id' on "
+            f"delete RESTRICT) を追加することを必要とする。\n"
             f"FK 参照が見つかりました: {referenced_tables}"
         )
 
@@ -355,7 +357,8 @@ class TestBugDrr001TaskIdFkClosure:
             result = await conn.execute(text("PRAGMA table_info('directives')"))
             columns = {row[1]: {"notnull": row[3], "dflt": row[4]} for row in result}
         assert "task_id" in columns, (
-            f"[FAIL] task_id カラムが directives から不足。\nカラムが見つかりました: {list(columns.keys())}"
+            f"[FAIL] task_id カラムが directives から不足。\n"
+            f"カラムが見つかりました: {list(columns.keys())}"
         )
         assert columns["task_id"]["notnull"] == 0, (
             "[FAIL] task_id は 0006 レベルで nullable である必要があります (§BUG-DRR-001)。"
