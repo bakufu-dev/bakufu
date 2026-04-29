@@ -94,9 +94,7 @@ class TestComputeDecisionRejected:
         """REJECTED wins even when other roles have APPROVED."""
         v_approved = make_verdict(role="reviewer", decision=VerdictDecision.APPROVED)
         v_rejected = make_verdict(role="ux", decision=VerdictDecision.REJECTED)
-        result = compute_decision(
-            (v_approved, v_rejected), frozenset({"reviewer", "ux"})
-        )
+        result = compute_decision((v_approved, v_rejected), frozenset({"reviewer", "ux"}))
         assert result == GateDecision.REJECTED
 
     def test_rejected_checked_before_all_approved(self) -> None:
@@ -108,9 +106,7 @@ class TestComputeDecisionRejected:
         v_approved = make_verdict(role="reviewer", decision=VerdictDecision.APPROVED)
         v_rejected = make_verdict(role="ux", decision=VerdictDecision.REJECTED)
         # Both required roles submitted → Rule 2 would fire if Rule 1 didn't exist.
-        result = compute_decision(
-            (v_approved, v_rejected), frozenset({"reviewer", "ux"})
-        )
+        result = compute_decision((v_approved, v_rejected), frozenset({"reviewer", "ux"}))
         assert result == GateDecision.REJECTED
 
 

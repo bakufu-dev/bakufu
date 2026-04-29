@@ -32,9 +32,7 @@ class TestErrorResponseModel:
 
     def test_error_response_serializes_to_nested_dict(self) -> None:
         """ErrorResponse.model_dump() produces {"error": {"code": ..., "message": ...}}."""
-        response = ErrorResponse(
-            error=ErrorDetail(code="not_found", message="Resource not found.")
-        )
+        response = ErrorResponse(error=ErrorDetail(code="not_found", message="Resource not found."))
         assert response.model_dump() == {
             "error": {"code": "not_found", "message": "Resource not found."}
         }
@@ -111,7 +109,7 @@ class TestEmpireServiceSkeleton:
 # TC-UT-HAF-010: 依存方向静的解析 — ast モジュール (Q-3)
 # ---------------------------------------------------------------------------
 class TestStaticDependencyAnalysis:
-    """TC-UT-HAF-010: interfaces/http/ must not have top-level bakufu.domain / .infrastructure imports.
+    """TC-UT-HAF-010: interfaces/http/ has no top-level bakufu.domain/.infrastructure imports.
 
     Uses ast.parse() to extract module-level (top-level) import/from-import statements
     from every .py file under interfaces/http/.
@@ -144,12 +142,9 @@ class TestStaticDependencyAnalysis:
         for py_file in sorted(interfaces_dir.rglob("*.py")):
             for module_name, lineno in self._collect_toplevel_imports(py_file):
                 if module_name.startswith("bakufu.domain"):
-                    violations.append(
-                        f"{py_file.name}:{lineno}: top-level import of {module_name}"
-                    )
+                    violations.append(f"{py_file.name}:{lineno}: top-level import of {module_name}")
         assert violations == [], (
-            "Direct bakufu.domain imports detected at module level:\n"
-            + "\n".join(violations)
+            "Direct bakufu.domain imports detected at module level:\n" + "\n".join(violations)
         )
 
     def test_no_toplevel_bakufu_infrastructure_import(self) -> None:
@@ -159,9 +154,7 @@ class TestStaticDependencyAnalysis:
         for py_file in sorted(interfaces_dir.rglob("*.py")):
             for module_name, lineno in self._collect_toplevel_imports(py_file):
                 if module_name.startswith("bakufu.infrastructure"):
-                    violations.append(
-                        f"{py_file.name}:{lineno}: top-level import of {module_name}"
-                    )
+                    violations.append(f"{py_file.name}:{lineno}: top-level import of {module_name}")
         assert violations == [], (
             "Direct bakufu.infrastructure imports detected at module level:\n"
             + "\n".join(violations)
@@ -215,7 +208,9 @@ class TestHttpExceptionHandlerUnit:
         """HTTPException(403) → code "forbidden"."""
         from bakufu.interfaces.http.error_handlers import http_exception_handler
 
-        resp = await http_exception_handler(self._make_request(), self._make_http_exc(403, "Forbidden"))  # type: ignore[arg-type]
+        req = self._make_request()
+        exc = self._make_http_exc(403, "Forbidden")
+        resp = await http_exception_handler(req, exc)  # type: ignore[arg-type]
         import json
 
         body = json.loads(resp.body)  # type: ignore[union-attr]
@@ -235,7 +230,9 @@ class TestHttpExceptionHandlerUnit:
         """HTTPException(401) → code "http_error_401" (catch-all branch)."""
         from bakufu.interfaces.http.error_handlers import http_exception_handler
 
-        resp = await http_exception_handler(self._make_request(), self._make_http_exc(401, "Unauthorized"))  # type: ignore[arg-type]
+        req = self._make_request()
+        exc = self._make_http_exc(401, "Unauthorized")
+        resp = await http_exception_handler(req, exc)  # type: ignore[arg-type]
         import json
 
         body = json.loads(resp.body)  # type: ignore[union-attr]
@@ -243,9 +240,8 @@ class TestHttpExceptionHandlerUnit:
 
     async def test_wrong_exception_type_raises_type_error(self) -> None:
         """Non-HTTPException → TypeError (Fail Fast 確認)."""
-        from bakufu.interfaces.http.error_handlers import http_exception_handler
-
         import pytest as _pytest
+        from bakufu.interfaces.http.error_handlers import http_exception_handler
 
         with _pytest.raises(TypeError, match="Expected StarletteHTTPException"):
             await http_exception_handler(self._make_request(), ValueError("oops"))  # type: ignore[arg-type]
@@ -269,11 +265,11 @@ class TestMainEnvVarBinding:
 
     def test_bind_host_env_var_present_in_source(self) -> None:
         """main.py contains os.environ.get("BAKUFU_BIND_HOST", ...) (REQ-HAF-007)."""
-        assert 'BAKUFU_BIND_HOST' in self._main_source()
+        assert "BAKUFU_BIND_HOST" in self._main_source()
 
     def test_bind_port_env_var_present_in_source(self) -> None:
         """main.py contains os.environ.get("BAKUFU_BIND_PORT", ...) (REQ-HAF-007)."""
-        assert 'BAKUFU_BIND_PORT' in self._main_source()
+        assert "BAKUFU_BIND_PORT" in self._main_source()
 
     def test_bind_host_default_is_loopback(self) -> None:
         """Default BAKUFU_BIND_HOST is "127.0.0.1" (not 0.0.0.0 — OWASP A01)."""

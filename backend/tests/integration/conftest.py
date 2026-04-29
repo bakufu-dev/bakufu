@@ -19,15 +19,16 @@ present in ``conftest.__dict__`` when FastAPI does its introspection.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest_asyncio
+
+# ── Module-level symbols needed for FastAPI annotation resolution ──────────────
+from bakufu.interfaces.http.dependencies import SessionDep
 from fastapi import APIRouter
 from httpx import ASGITransport, AsyncClient
 from pydantic import BaseModel
-
-# ── Module-level symbols needed for FastAPI annotation resolution ──────────────
-from bakufu.interfaces.http.dependencies import SessionDep  # noqa: E402
 
 
 class _Item(BaseModel):
@@ -78,7 +79,7 @@ def _build_test_router() -> APIRouter:
 
 
 @pytest_asyncio.fixture
-async def app_client(tmp_path: Path) -> AsyncClient:  # type: ignore[override]
+async def app_client(tmp_path: Path) -> AsyncIterator[AsyncClient]:
     """httpx.AsyncClient wired to the FastAPI app with test routes and real SQLite tempdb.
 
     Lifespan is intentionally bypassed: ``app.state.session_factory`` is set
@@ -88,6 +89,7 @@ async def app_client(tmp_path: Path) -> AsyncClient:  # type: ignore[override]
     otherwise surface as a test-level ``RuntimeError``.
     """
     from bakufu.interfaces.http.app import create_app
+
     from tests.factories.db import make_test_engine, make_test_session_factory
 
     app = create_app()
@@ -102,6 +104,6 @@ async def app_client(tmp_path: Path) -> AsyncClient:  # type: ignore[override]
 
     transport = ASGITransport(app=app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client  # type: ignore[misc]
+        yield client
 
     await engine.dispose()

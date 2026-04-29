@@ -8,8 +8,8 @@ any external I/O — same zero-IO pattern as the sibling agent / directive / roo
 workflow integration tests.
 
 Covers:
-  TC-IT-IRG-001  Gate lifecycle 完走（PENDING → ALL_APPROVED）(AC#2, 3, 4)
-  TC-IT-IRG-002  REJECTED 経路（1件 REJECTED → 即遷移、残り未提出でも）(AC#5)
+  TC-IT-IRG-001  Gate lifecycle 完走(PENDING → ALL_APPROVED)(AC#2, 3, 4)
+  TC-IT-IRG-002  REJECTED 経路(1件 REJECTED → 即遷移、残り未提出でも)(AC#5)
 
 Issue: #65
 """
@@ -31,7 +31,7 @@ def _ts() -> datetime:
 
 
 # ---------------------------------------------------------------------------
-# TC-IT-IRG-001: Gate lifecycle 完走（PENDING → ALL_APPROVED）
+# TC-IT-IRG-001: Gate lifecycle 完走(PENDING → ALL_APPROVED)
 # ---------------------------------------------------------------------------
 class TestGateLifecycleAllApproved:
     """TC-IT-IRG-001: full multi-step lifecycle PENDING → partial → ALL_APPROVED → guard."""
@@ -68,19 +68,28 @@ class TestGateLifecycleAllApproved:
         """Step 3: submission to ALL_APPROVED Gate raises gate_already_decided."""
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
         gate = gate.submit_verdict(
-            role="reviewer", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-            comment="", decided_at=_ts(),
+            role="reviewer",
+            agent_id=uuid4(),
+            decision=VerdictDecision.APPROVED,
+            comment="",
+            decided_at=_ts(),
         )
         gate = gate.submit_verdict(
-            role="ux", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-            comment="", decided_at=_ts(),
+            role="ux",
+            agent_id=uuid4(),
+            decision=VerdictDecision.APPROVED,
+            comment="",
+            decided_at=_ts(),
         )
         assert gate.gate_decision == GateDecision.ALL_APPROVED
 
         with pytest.raises(InternalReviewGateInvariantViolation) as exc_info:
             gate.submit_verdict(
-                role="reviewer", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-                comment="", decided_at=_ts(),
+                role="reviewer",
+                agent_id=uuid4(),
+                decision=VerdictDecision.APPROVED,
+                comment="",
+                decided_at=_ts(),
             )
         assert exc_info.value.kind == "gate_already_decided"
 
@@ -90,14 +99,20 @@ class TestGateLifecycleAllApproved:
         snapshot_initial = gate_initial.model_dump()
 
         gate_mid = gate_initial.submit_verdict(
-            role="reviewer", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-            comment="", decided_at=_ts(),
+            role="reviewer",
+            agent_id=uuid4(),
+            decision=VerdictDecision.APPROVED,
+            comment="",
+            decided_at=_ts(),
         )
         snapshot_mid = gate_mid.model_dump()
 
         gate_final = gate_mid.submit_verdict(
-            role="ux", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-            comment="", decided_at=_ts(),
+            role="ux",
+            agent_id=uuid4(),
+            decision=VerdictDecision.APPROVED,
+            comment="",
+            decided_at=_ts(),
         )
 
         # Original and mid-state gates must not have changed.
@@ -111,12 +126,18 @@ class TestGateLifecycleAllApproved:
         roles = frozenset({"reviewer", "ux"})
         gate = make_gate(required_gate_roles=roles)
         gate = gate.submit_verdict(
-            role="reviewer", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-            comment="LGTM", decided_at=_ts(),
+            role="reviewer",
+            agent_id=uuid4(),
+            decision=VerdictDecision.APPROVED,
+            comment="LGTM",
+            decided_at=_ts(),
         )
         gate = gate.submit_verdict(
-            role="ux", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-            comment="UX OK", decided_at=_ts(),
+            role="ux",
+            agent_id=uuid4(),
+            decision=VerdictDecision.APPROVED,
+            comment="UX OK",
+            decided_at=_ts(),
         )
         # All required roles have verdicts.
         submitted_roles = frozenset(v.role for v in gate.verdicts)
@@ -126,7 +147,7 @@ class TestGateLifecycleAllApproved:
 
 
 # ---------------------------------------------------------------------------
-# TC-IT-IRG-002: REJECTED 経路（1件 REJECTED → 即遷移、残り未提出でも）
+# TC-IT-IRG-002: REJECTED 経路(1件 REJECTED → 即遷移、残り未提出でも)
 # ---------------------------------------------------------------------------
 class TestGateLifecycleRejected:
     """TC-IT-IRG-002: immediate REJECTED transition with remaining roles unpublished."""
@@ -151,16 +172,22 @@ class TestGateLifecycleRejected:
         """REJECTED Gate also rejects any new Verdict (gate_already_decided)."""
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux", "security"}))
         gate = gate.submit_verdict(
-            role="reviewer", agent_id=uuid4(), decision=VerdictDecision.REJECTED,
-            comment="バグ発見", decided_at=_ts(),
+            role="reviewer",
+            agent_id=uuid4(),
+            decision=VerdictDecision.REJECTED,
+            comment="バグ発見",
+            decided_at=_ts(),
         )
         assert gate.gate_decision == GateDecision.REJECTED
 
         # ux tries to APPROVE after Gate is already REJECTED.
         with pytest.raises(InternalReviewGateInvariantViolation) as exc_info:
             gate.submit_verdict(
-                role="ux", agent_id=uuid4(), decision=VerdictDecision.APPROVED,
-                comment="", decided_at=_ts(),
+                role="ux",
+                agent_id=uuid4(),
+                decision=VerdictDecision.APPROVED,
+                comment="",
+                decided_at=_ts(),
             )
         assert exc_info.value.kind == "gate_already_decided"
 
@@ -169,7 +196,10 @@ class TestGateLifecycleRejected:
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
         feedback = "テストカバレッジが不十分です。修正してください。"
         gate = gate.submit_verdict(
-            role="reviewer", agent_id=uuid4(), decision=VerdictDecision.REJECTED,
-            comment=feedback, decided_at=_ts(),
+            role="reviewer",
+            agent_id=uuid4(),
+            decision=VerdictDecision.REJECTED,
+            comment=feedback,
+            decided_at=_ts(),
         )
         assert gate.verdicts[0].comment == feedback
