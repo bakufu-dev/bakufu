@@ -49,22 +49,38 @@ async def seed_gate(
     from tests.factories.directive import make_directive
     from tests.factories.external_review_gate import make_gate
     from tests.factories.task import make_deliverable, make_task
-    from tests.integration.test_room_http_api.helpers import (
-        _create_empire,
-        _create_room,
-        _seed_workflow,
-    )
+    from tests.integration.test_room_http_api.helpers import _create_empire, _create_room
 
     task_id = uuid4()
     stage_id = uuid4()
     directive_id = uuid4()
+    workflow_stage_id = uuid4()
     unique_suffix = uuid4().hex[:12]
     empire = await _create_empire(ctx.client, name=f"ERG-{unique_suffix}")
-    workflow = await _seed_workflow(ctx.session_factory)
+    workflow = await ctx.client.post(
+        "/api/workflows",
+        json={
+            "name": f"ERG Workflow {unique_suffix}",
+            "stages": [
+                {
+                    "id": str(workflow_stage_id),
+                    "name": "外部レビュー前提",
+                    "kind": "WORK",
+                    "required_role": ["DEVELOPER"],
+                    "completion_policy": None,
+                    "notify_channels": [],
+                    "deliverable_template": "",
+                }
+            ],
+            "transitions": [],
+            "entry_stage_id": str(workflow_stage_id),
+        },
+    )
+    assert workflow.status_code == 201, workflow.text
     room = await _create_room(
         ctx.client,
         str(empire["id"]),
-        str(workflow.id),  # type: ignore[attr-defined]
+        str(workflow.json()["id"]),
         name=f"ERG Room {unique_suffix}",
     )
     directive = make_directive(

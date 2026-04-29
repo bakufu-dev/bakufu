@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
-from bakufu.application.security.masking import mask
+from bakufu.application.security.masking import ApplicationMasking
 from bakufu.interfaces.http.schemas.task import TaskResponse
 
 
@@ -31,7 +31,7 @@ class DirectiveResponse(BaseModel):
 
     @field_serializer("text")
     def _mask_text(self, value: str) -> str:
-        return mask(value)
+        return ApplicationMasking.mask(value)
 
     @model_validator(mode="before")
     @classmethod

@@ -8,7 +8,8 @@
     interfaces → infrastructure の直接依存なし（TC-UT-AGH-009 制約を維持）
 
 冪等性:
-    ``mask()`` は冪等。``<REDACTED:*>`` を入力しても同一の ``<REDACTED:*>`` を返す。
+    ``ApplicationMasking.mask()`` は冪等。``<REDACTED:*>`` を入力しても同一の
+    ``<REDACTED:*>`` を返す。
     GET パス field_serializer の二重 masking が副作用を持たないことを保証する。
 """
 
@@ -25,6 +26,4 @@ class ApplicationMasking:
         return MaskingGateway.mask(value)
 
 
-mask = ApplicationMasking.mask
-
-__all__ = ["mask"]
+__all__ = ["ApplicationMasking"]

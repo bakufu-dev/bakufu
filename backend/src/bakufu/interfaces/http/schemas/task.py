@@ -11,7 +11,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
-from bakufu.application.security.masking import mask
+from bakufu.application.security.masking import ApplicationMasking
 
 
 class TaskAssign(BaseModel):
@@ -79,7 +79,7 @@ class DeliverableResponse(BaseModel):
 
     @field_serializer("body_markdown")
     def _mask_body_markdown(self, value: str) -> str:
-        return mask(value)
+        return ApplicationMasking.mask(value)
 
     @model_validator(mode="before")
     @classmethod
@@ -115,7 +115,7 @@ class TaskResponse(BaseModel):
     def _mask_last_error(self, value: str | None) -> str | None:
         if value is None:
             return None
-        return mask(value)
+        return ApplicationMasking.mask(value)
 
     @model_validator(mode="before")
     @classmethod

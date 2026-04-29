@@ -52,11 +52,27 @@ def test_http_boundary_does_not_expose_public_top_level_functions() -> None:
 
 def test_security_masking_does_not_expose_public_top_level_functions() -> None:
     """TC-STATIC-ERG-HTTP-004: masking ゲートウェイも class/classmethod に閉じる。"""
-    path = BACKEND_ROOT / "src/bakufu/infrastructure/security/masking.py"
-    assert _public_top_level_functions(path) == []
+    paths = [
+        BACKEND_ROOT / "src/bakufu/infrastructure/security/masking.py",
+        BACKEND_ROOT / "src/bakufu/application/security/masking.py",
+    ]
+    violations = {
+        str(path): _public_top_level_functions(path)
+        for path in paths
+        if _public_top_level_functions(path)
+    }
+    assert violations == {}
 
 
 def test_security_masking_does_not_expose_public_callable_aliases() -> None:
     """TC-STATIC-ERG-HTTP-005: MaskingGateway の公開 alias 再輸出を禁止する。"""
-    path = BACKEND_ROOT / "src/bakufu/infrastructure/security/masking.py"
-    assert _public_callable_aliases(path) == []
+    paths = [
+        BACKEND_ROOT / "src/bakufu/infrastructure/security/masking.py",
+        BACKEND_ROOT / "src/bakufu/application/security/masking.py",
+    ]
+    violations = {
+        str(path): _public_callable_aliases(path)
+        for path in paths
+        if _public_callable_aliases(path)
+    }
+    assert violations == {}

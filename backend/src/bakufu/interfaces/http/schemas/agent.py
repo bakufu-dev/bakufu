@@ -19,7 +19,7 @@ from pydantic import (
     model_validator,
 )
 
-from bakufu.application.security.masking import mask
+from bakufu.application.security.masking import ApplicationMasking
 
 # ---------------------------------------------------------------------------
 # 有効値定数（domain import なし — Q-3 interfaces→domain 直接依存禁止）
@@ -174,7 +174,7 @@ class PersonaResponse(BaseModel):
         import パスは ``bakufu.application.security.masking``（interfaces → application）。
         TC-UT-AGH-009 の ``bakufu.infrastructure`` 禁止制約を維持する（§確定 I）。
         """
-        return mask(value)
+        return ApplicationMasking.mask(value)
 
     @model_validator(mode="before")
     @classmethod
