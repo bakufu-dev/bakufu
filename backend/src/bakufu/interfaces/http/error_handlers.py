@@ -118,6 +118,79 @@ async def empire_invariant_violation_handler(request: Request, exc: Exception) -
     return _error_response(VALIDATION_ERROR, cleaned, 422)
 
 
+# ── 確定 C: room 専用例外ハンドラ群 ──────────────────────────────────────
+# 登録順: empire ハンドラ群の直後 (より具体的な例外を先に登録する FastAPI 慣習)
+
+
+async def room_not_found_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``RoomNotFoundError`` → HTTP 404 / not_found (MSG-RM-HTTP-002)。"""
+    from bakufu.application.exceptions.room_exceptions import RoomNotFoundError
+
+    if not isinstance(exc, RoomNotFoundError):
+        raise TypeError(f"Expected RoomNotFoundError, got {type(exc).__name__}")
+    return _error_response(NOT_FOUND, "Room not found.", 404)
+
+
+async def room_name_already_exists_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``RoomNameAlreadyExistsError`` → HTTP 409 / conflict (MSG-RM-HTTP-001)。"""
+    from bakufu.application.exceptions.room_exceptions import RoomNameAlreadyExistsError
+
+    if not isinstance(exc, RoomNameAlreadyExistsError):
+        raise TypeError(f"Expected RoomNameAlreadyExistsError, got {type(exc).__name__}")
+    return _error_response(CONFLICT, "Room name already exists in this empire.", 409)
+
+
+async def room_archived_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``RoomArchivedError`` → HTTP 409 / conflict (MSG-RM-HTTP-003)。"""
+    from bakufu.application.exceptions.room_exceptions import RoomArchivedError
+
+    if not isinstance(exc, RoomArchivedError):
+        raise TypeError(f"Expected RoomArchivedError, got {type(exc).__name__}")
+    return _error_response(CONFLICT, "Room is archived and cannot be modified.", 409)
+
+
+async def workflow_not_found_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``WorkflowNotFoundError`` → HTTP 404 / not_found (MSG-RM-HTTP-006)。"""
+    from bakufu.application.exceptions.room_exceptions import WorkflowNotFoundError
+
+    if not isinstance(exc, WorkflowNotFoundError):
+        raise TypeError(f"Expected WorkflowNotFoundError, got {type(exc).__name__}")
+    return _error_response(NOT_FOUND, "Workflow not found.", 404)
+
+
+async def agent_not_found_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``AgentNotFoundError`` → HTTP 404 / not_found (MSG-RM-HTTP-004)。"""
+    from bakufu.application.exceptions.room_exceptions import AgentNotFoundError
+
+    if not isinstance(exc, AgentNotFoundError):
+        raise TypeError(f"Expected AgentNotFoundError, got {type(exc).__name__}")
+    return _error_response(NOT_FOUND, "Agent not found.", 404)
+
+
+async def room_invariant_violation_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``RoomInvariantViolation`` → HTTP 404 or 422 (MSG-RM-HTTP-005 / MSG-RM-HTTP-007)。
+
+    処理ルール (確定 C 凍結):
+    1. ``kind='member_not_found'`` → HTTP 404 / not_found (MSG-RM-HTTP-005)
+    2. その他の kind → HTTP 422 / validation_error (MSG-RM-HTTP-007 前処理済み本文)
+
+    前処理ルール (empire http-api §確定C と同一パターン):
+    1. ``[FAIL] `` プレフィックスを除去
+    2. ``\\nNext:`` 以降を除去して domain 内部フォーマットを隠蔽する
+    """
+    from bakufu.domain.exceptions import RoomInvariantViolation
+
+    if not isinstance(exc, RoomInvariantViolation):
+        raise TypeError(f"Expected RoomInvariantViolation, got {type(exc).__name__}")
+
+    if exc.kind == "member_not_found":
+        return _error_response(NOT_FOUND, "Agent membership not found in this room.", 404)
+
+    raw = str(exc)
+    cleaned = _FAIL_PREFIX_RE.sub("", raw).split("\nNext:")[0].strip()
+    return _error_response(VALIDATION_ERROR, cleaned, 422)
+
+
 # ── 確定 D: CSRF Origin 検証ミドルウェア ─────────────────────────────────
 _SAFE_METHODS: Final[frozenset[str]] = frozenset({"GET", "OPTIONS", "HEAD"})
 

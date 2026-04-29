@@ -73,16 +73,38 @@ async def get_empire_service(session: SessionDep) -> EmpireService:
 
 
 async def get_room_service(session: SessionDep) -> RoomService:
-    """RoomService を DI 注入する。"""
+    """RoomService を DI 注入する (確定 D)。
+
+    4 つの Repository と session を RoomService に渡す。各 repo は同一 session を
+    共有し、service が管理する UoW (``async with session.begin()``) 内で動作する。
+    """
     # 遅延 import: interfaces → infrastructure の直接依存を避けるため
     # モジュールロード時の循環参照リスクを回避し、
     # 依存方向 interfaces → application → infrastructure を遵守する
+    from bakufu.infrastructure.persistence.sqlite.repositories.agent_repository import (
+        SqliteAgentRepository,
+    )
+    from bakufu.infrastructure.persistence.sqlite.repositories.empire_repository import (
+        SqliteEmpireRepository,
+    )
     from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
         SqliteRoomRepository,
     )
+    from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
+        SqliteWorkflowRepository,
+    )
 
-    repo = SqliteRoomRepository(session)
-    return RoomService(repo)
+    room_repo = SqliteRoomRepository(session)
+    empire_repo = SqliteEmpireRepository(session)
+    workflow_repo = SqliteWorkflowRepository(session)
+    agent_repo = SqliteAgentRepository(session)
+    return RoomService(
+        room_repo=room_repo,
+        empire_repo=empire_repo,
+        workflow_repo=workflow_repo,
+        agent_repo=agent_repo,
+        session=session,
+    )
 
 
 async def get_workflow_service(session: SessionDep) -> WorkflowService:

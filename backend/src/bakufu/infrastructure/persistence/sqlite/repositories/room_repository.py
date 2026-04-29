@@ -136,6 +136,22 @@ class SqliteRoomRepository:
             return None
         return await self.find_by_id(found_id)
 
+    async def find_all_by_empire(self, empire_id: EmpireId) -> list[Room]:
+        """SELECT rooms WHERE empire_id = ? ORDER BY name ASC (§確定 H / Q-OPEN-2 暫定)."""
+        id_stmt = select(RoomRow.id).where(RoomRow.empire_id == empire_id).order_by(RoomRow.name)
+        room_ids = list((await self._session.execute(id_stmt)).scalars().all())
+        rooms: list[Room] = []
+        for room_id in room_ids:
+            room = await self.find_by_id(room_id)
+            if room is not None:
+                rooms.append(room)
+        return rooms
+
+    async def find_empire_id_by_room_id(self, room_id: RoomId) -> EmpireId | None:
+        """SELECT empire_id FROM rooms WHERE id = ?."""
+        stmt = select(RoomRow.empire_id).where(RoomRow.id == room_id).limit(1)
+        return (await self._session.execute(stmt)).scalar_one_or_none()
+
     # ---- private domain ↔ row converters (empire-repo §確定 C) -----------
     def _to_row(
         self,

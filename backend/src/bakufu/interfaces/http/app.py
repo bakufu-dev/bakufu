@@ -13,16 +13,23 @@ from starlette.middleware.cors import CORSMiddleware
 
 from bakufu.interfaces.http.error_handlers import (
     CsrfOriginMiddleware,
+    agent_not_found_handler,
     empire_already_exists_handler,
     empire_archived_handler,
     empire_invariant_violation_handler,
     empire_not_found_handler,
     http_exception_handler,
     internal_error_handler,
+    room_archived_handler,
+    room_invariant_violation_handler,
+    room_name_already_exists_handler,
+    room_not_found_handler,
     validation_error_handler,
+    workflow_not_found_handler,
 )
 from bakufu.interfaces.http.routers.empire import router as empire_router
 from bakufu.interfaces.http.routers.health import router as health_router
+from bakufu.interfaces.http.routers.rooms import empire_rooms_router, rooms_router
 
 
 def _parse_allowed_origins() -> list[str]:
@@ -79,18 +86,32 @@ def create_app() -> FastAPI:
     app.add_middleware(CsrfOriginMiddleware, allowed_origins=allowed_origins)
 
     # エラーハンドラ
-    # empire 専用ハンドラを先に登録する (より具体的な例外を優先, 確定 C)
+    # empire / room 専用ハンドラを先に登録する (より具体的な例外を優先, 確定 C)
     from bakufu.application.exceptions.empire_exceptions import (
         EmpireAlreadyExistsError,
         EmpireArchivedError,
         EmpireNotFoundError,
     )
-    from bakufu.domain.exceptions import EmpireInvariantViolation
+    from bakufu.application.exceptions.room_exceptions import (
+        AgentNotFoundError,
+        RoomArchivedError,
+        RoomNameAlreadyExistsError,
+        RoomNotFoundError,
+        WorkflowNotFoundError,
+    )
+    from bakufu.domain.exceptions import EmpireInvariantViolation, RoomInvariantViolation
 
     app.add_exception_handler(EmpireNotFoundError, empire_not_found_handler)
     app.add_exception_handler(EmpireAlreadyExistsError, empire_already_exists_handler)
     app.add_exception_handler(EmpireArchivedError, empire_archived_handler)
     app.add_exception_handler(EmpireInvariantViolation, empire_invariant_violation_handler)
+    # room 専用ハンドラ (empire ハンドラ群の直後 / HTTPException・Exception より前)
+    app.add_exception_handler(RoomNotFoundError, room_not_found_handler)
+    app.add_exception_handler(RoomNameAlreadyExistsError, room_name_already_exists_handler)
+    app.add_exception_handler(RoomArchivedError, room_archived_handler)
+    app.add_exception_handler(WorkflowNotFoundError, workflow_not_found_handler)
+    app.add_exception_handler(AgentNotFoundError, agent_not_found_handler)
+    app.add_exception_handler(RoomInvariantViolation, room_invariant_violation_handler)
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_error_handler)
     app.add_exception_handler(Exception, internal_error_handler)
@@ -98,6 +119,8 @@ def create_app() -> FastAPI:
     # ルーター
     app.include_router(health_router)
     app.include_router(empire_router)
+    app.include_router(empire_rooms_router)
+    app.include_router(rooms_router)
 
     return app
 
