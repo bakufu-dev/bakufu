@@ -91,7 +91,7 @@
 |---|---|---|
 | `display_name` | `str` | Persona.display_name |
 | `archetype` | `str` | Persona.archetype |
-| `prompt_body` | `str` | **§確定 A-masking（全パス凍結）**: `PersonaResponse.prompt_body` の `field_serializer` は GET / POST / PATCH 全レスポンスパスで発火する（R1-9 独立防御）。POST / PATCH 時は in-memory `Persona.prompt_body`（raw 値）を `application.security.masking.mask(value)` により伏字化する。GET 時は DB 復元済みの masked 値（`<REDACTED:*>`）に同じ `mask()` を適用する。`masking.mask()` は冪等（`<REDACTED:*>` → `<REDACTED:*>`）のため見た目上は変化しないが、**GET パスでも必ず field_serializer が発火する**ことで DB への raw token 直接 INSERT バイパスが発生しても HTTP レスポンスには露出しない（A02 二重防御）。import パスは `from bakufu.application.security.masking import mask`（interfaces → application 依存、TC-UT-AGH-009 の `bakufu.infrastructure` 禁止制約を維持 — §確定I 参照）。なお `prompt_body` は pydantic regex 制約なしのフリーテキストのため、masked 値を保持した Agent に対して `AgentRepository.find_by_id` が `pydantic.ValidationError` を起こすことはない（workflow R1-16 の EXTERNAL_REVIEW Stage 問題とは構造的に異なる）|
+| `prompt_body` | `str` | **§確定 A-masking（全パス凍結）**: `PersonaResponse.prompt_body` の `field_serializer` は GET / POST / PATCH 全レスポンスパスで発火する（R1-9 独立防御）。POST / PATCH 時は in-memory `Persona.prompt_body`（raw 値）を `ApplicationMasking.mask(value)` により伏字化する。GET 時は DB 復元済みの masked 値（`<REDACTED:*>`）に同じ `ApplicationMasking.mask()` を適用する。`ApplicationMasking.mask()` は冪等（`<REDACTED:*>` → `<REDACTED:*>`）のため見た目上は変化しないが、**GET パスでも必ず field_serializer が発火する**ことで DB への raw token 直接 INSERT バイパスが発生しても HTTP レスポンスには露出しない（A02 二重防御）。import パスは `from bakufu.application.security.masking import ApplicationMasking`（interfaces → application 依存、TC-UT-AGH-009 の `bakufu.infrastructure` 禁止制約を維持 — §確定I 参照）。なお `prompt_body` は pydantic regex 制約なしのフリーテキストのため、masked 値を保持した Agent に対して `AgentRepository.find_by_id` が `pydantic.ValidationError` を起こすことはない（workflow R1-16 の EXTERNAL_REVIEW Stage 問題とは構造的に異なる）|
 
 #### `ProviderConfigResponse`
 
@@ -263,10 +263,10 @@ MSG-AG-HTTP-004 は domain 層の `AgentInvariantViolation.message` を **前処
 | 項目 | 内容 |
 |---|---|
 | 新規ファイル | `bakufu/application/security/masking.py` |
-| 実装内容 | `infrastructure.security.masking.mask` を application 層から再エクスポートする薄いアダプタ。masking ロジックの実体は `infrastructure/security/masking.py` が唯一の真実源として保持する（DRY 原則）|
-| import パス（schemas から） | `from bakufu.application.security.masking import mask` |
+| 実装内容 | `ApplicationMasking` クラスが application 層の明示的なゲートウェイとして `MaskingGateway.mask()` を委譲呼び出しする。公開関数 alias は置かない。masking ロジックの実体は `infrastructure/security/masking.py` が唯一の真実源として保持する（DRY 原則）|
+| import パス（schemas から） | `from bakufu.application.security.masking import ApplicationMasking` |
 | 依存方向 | interfaces → application（許容）/ application → infrastructure（許容）/ interfaces → infrastructure の直接依存なし |
-| 冪等性保証 | `masking.mask()` は冪等。`<REDACTED:*>` を入力しても同一の `<REDACTED:*>` を返す。GET パス field_serializer の二重 masking が副作用を持たないことを保証する |
+| 冪等性保証 | `ApplicationMasking.mask()` は冪等。`<REDACTED:*>` を入力しても同一の `<REDACTED:*>` を返す。GET パス field_serializer の二重 masking が副作用を持たないことを保証する |
 | TC-UT-AGH-009 との整合 | `interfaces/http/schemas/` から `bakufu.infrastructure` への直接 import が存在しないことを静的解析で検証。`bakufu.application` への import は許容範囲 |
 
 ## 参照設計との整合確認
@@ -284,5 +284,5 @@ MSG-AG-HTTP-004 は domain 層の `AgentInvariantViolation.message` を **前処
 | # | 論点 | 起票先 |
 |---|---|---|
 | Q-OPEN-1 | `GET /api/empires/{empire_id}/agents` でアーカイブ済みを除外するクエリパラメータ（`?archived=false` 等）は MVP では不要と判断しスコープ外とした。将来 Agent 数が増えた場合に別 Issue で対応 | 将来 Issue |
-| ~~Q-OPEN-2~~ | ~~`PersonaResponse.prompt_body` の masking は `infrastructure.security.masking.mask()` を呼び出す（interfaces → infrastructure の依存）。依存方向として許容範囲だが、将来的に masking 関数を `application` 層のユーティリティに昇格させる案がある~~ → **本 PR で §確定I として凍結済み**。`application/security/masking.py` 昇格・interfaces → application 経由呼び出し・TC-UT-AGH-009 禁止制約を維持することで確定。 | ~~将来 Issue~~ → 本 PR 解決 |
+| ~~Q-OPEN-2~~ | ~~`PersonaResponse.prompt_body` の masking は infrastructure 層を直接呼び出す（interfaces → infrastructure の依存）。依存方向として許容範囲だが、将来的に masking 関数を `application` 層のユーティリティに昇格させる案がある~~ → **本 PR で §確定I として凍結済み**。`ApplicationMasking` 昇格・interfaces → application 経由呼び出し・TC-UT-AGH-009 禁止制約を維持することで確定。 | ~~将来 Issue~~ → 本 PR 解決 |
 | Q-OPEN-3 | `AgentUpdate` で `providers` / `skills` を個別に追加 / 削除する API（`POST /api/agents/{id}/providers` / `DELETE /api/agents/{id}/skills/{skill_id}` 等）は MVP では複雑性増加を避けるためスコープ外とした。UI ワークフローエディタの要件次第で将来追加 | 将来 Issue（agent-ui）|

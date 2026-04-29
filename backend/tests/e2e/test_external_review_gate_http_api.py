@@ -29,7 +29,10 @@ from tests.integration.test_room_http_api.helpers import (
     _create_empire,
     _create_room,
 )
-from tests.integration.test_workflow_http_api.helpers import _external_review_stage_payload
+from tests.integration.test_workflow_http_api.helpers import (
+    _external_review_stage_payload,
+    _minimal_stage_payload,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -128,14 +131,35 @@ async def _create_gate_through_public_http(
         placeholder_workflow.json()["id"],
         name=f"ERG E2E Room {unique}",
     )
-    stage_id = uuid4()
+    review_stage_id = uuid4()
+    approved_stage_id = uuid4()
+    rollback_stage_id = uuid4()
     workflow = await client.post(
         f"/api/rooms/{room['id']}/workflows",
         json={
             "name": f"ERG E2E Workflow {unique}",
-            "stages": [_external_review_stage_payload(stage_id)],
-            "transitions": [],
-            "entry_stage_id": str(stage_id),
+            "stages": [
+                _external_review_stage_payload(review_stage_id),
+                _minimal_stage_payload(approved_stage_id),
+                _external_review_stage_payload(rollback_stage_id),
+            ],
+            "transitions": [
+                {
+                    "id": str(uuid4()),
+                    "from_stage_id": str(review_stage_id),
+                    "to_stage_id": str(approved_stage_id),
+                    "condition": "APPROVED",
+                    "label": "approved",
+                },
+                {
+                    "id": str(uuid4()),
+                    "from_stage_id": str(review_stage_id),
+                    "to_stage_id": str(rollback_stage_id),
+                    "condition": "REJECTED",
+                    "label": "rejected",
+                },
+            ],
+            "entry_stage_id": str(review_stage_id),
         },
     )
     assert workflow.status_code == 201, workflow.text
@@ -175,7 +199,7 @@ async def _create_gate_through_public_http(
     return {
         "gate_id": gate["id"],
         "task_id": gate["task_id"],
-        "stage_id": gate["stage_id"],
+        "stage_id": str(rollback_stage_id),
         "agent_id": str(agent["id"]),
     }
 

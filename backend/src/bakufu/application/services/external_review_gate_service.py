@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,13 +13,23 @@ from bakufu.application.exceptions.external_review_gate_exceptions import (
     ExternalReviewGateDecisionConflictError,
     ExternalReviewGateNotFoundError,
 )
+from bakufu.application.exceptions.room_exceptions import RoomNotFoundError
+from bakufu.application.exceptions.task_exceptions import TaskStateConflictError
 from bakufu.application.ports.external_review_gate_repository import (
     ExternalReviewGateRepository,
 )
+from bakufu.application.ports.room_repository import RoomRepository
 from bakufu.application.ports.task_repository import TaskRepository
+from bakufu.application.ports.workflow_stage_resolver import WorkflowStageResolver
 from bakufu.domain.exceptions import ExternalReviewGateInvariantViolation
 from bakufu.domain.external_review_gate.gate import ExternalReviewGate
-from bakufu.domain.value_objects import GateId, OwnerId, TaskId, TaskStatus
+from bakufu.domain.value_objects import (
+    GateId,
+    OwnerId,
+    TaskId,
+    TaskStatus,
+    TransitionCondition,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,10 +52,14 @@ class ExternalReviewGateService:
         repo: ExternalReviewGateRepository,
         session: AsyncSession,
         task_repo: TaskRepository | None = None,
+        room_repo: RoomRepository | None = None,
+        workflow_stage_resolver: WorkflowStageResolver | None = None,
     ) -> None:
         self._repo = repo
         self._session = session
         self._task_repo = task_repo
+        self._room_repo = room_repo
+        self._workflow_stage_resolver = workflow_stage_resolver
 
     async def list_pending(self, subject: AuthenticatedSubject) -> list[ExternalReviewGate]:
         """認証済み reviewer の PENDING Gate 一覧を返す。"""
@@ -162,25 +176,49 @@ class ExternalReviewGateService:
         *,
         approved: bool,
     ) -> None:
-        if self._task_repo is None:
+        if (
+            self._task_repo is None
+            or self._room_repo is None
+            or self._workflow_stage_resolver is None
+        ):
             return
         task = await self._task_repo.find_by_id(gate.task_id)
         if task is None:
             return
         if task.status is not TaskStatus.AWAITING_EXTERNAL_REVIEW:
             return
+        room = await self._room_repo.find_by_id(task.room_id)
+        if room is None:
+            raise RoomNotFoundError(str(task.room_id))
+        condition = TransitionCondition.APPROVED if approved else TransitionCondition.REJECTED
+        transition_resolver = self._workflow_stage_resolver
+        transition = await transition_resolver.find_transition_by_workflow_stage_condition(
+            room.workflow_id,
+            gate.stage_id,
+            condition,
+        )
+        if transition is None:
+            raise TaskStateConflictError(
+                task_id=task.id,
+                current_status=task.status,
+                action="approve_review" if approved else "reject_review",
+                message=(
+                    "Workflow transition is not defined for external review decision: "
+                    f"stage_id={gate.stage_id}, condition={condition.value}"
+                ),
+            )
         if approved:
             updated_task = task.approve_review(
-                uuid4(),
+                transition.id,
                 owner_id,
-                gate.stage_id,
+                transition.to_stage_id,
                 updated_at=self._now(),
             )
         else:
             updated_task = task.reject_review(
-                uuid4(),
+                transition.id,
                 owner_id,
-                gate.stage_id,
+                transition.to_stage_id,
                 updated_at=self._now(),
             )
         await self._task_repo.save(updated_task)

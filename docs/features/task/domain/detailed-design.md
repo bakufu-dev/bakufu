@@ -365,67 +365,7 @@ UI 側 / Repository 側でも入力時マスキング / 永続化前マスキン
 
 ## 設計判断の補足
 
-### なぜ state machine を decision table 化するか
-
-`if-elif` 分岐実装の問題:
-
-- 6 status × 10 method = **60 経路** のうち実際に許可されるのは **13 遷移** のみ
-- 残り 47 経路は「許可されない」を if 分岐で書くと暗黙の拒否経路になり、後続 PR で「`unblock_retry` を IN_PROGRESS でも呼べる」等の誤実装が紛れ込む退行リスクが高い
-- 設計書で「table に存在しない遷移は禁止」と明示することで、code review / test 設計時に「許可される 13 経路のみを網羅」が機械的に確認できる
-
-state machine table を **`Final` + `MappingProxyType`** で凍結する（§確定 B）ことで、後続 PR の遷移追加を物理的に難しくし、設計書の修正と同期して行わせる。
-
-### なぜ `advance` を 4 method（`approve_review` / `reject_review` / `advance_to_next` / `complete`）に分解するか
-
-§確定 A-2 で凍結した通り、初版設計では `advance(transition_id, by_owner_id, next_stage_id, is_terminal: bool)` の単一 method が以下の 4 経路で振る舞いを変える設計だった:
-
-| current_status | 引数条件 | 旧 action 名 |
-|---|---|---|
-| `IN_PROGRESS` | `is_terminal=False` | `advance_to_next` |
-| `IN_PROGRESS` | `is_terminal=True` | `advance_to_done` |
-| `AWAITING_EXTERNAL_REVIEW` | `gate_decision=APPROVED` | `gate_approved` |
-| `AWAITING_EXTERNAL_REVIEW` | `gate_decision=REJECTED` | `gate_rejected` |
-
-これは **method 内部で current_status と引数を見て action を組み立てる暗黙の dispatch** が走る設計で、3 つの問題を抱えていた:
-
-| 問題 | 内容 |
-|---|---|
-| **(1) Tell, Don't Ask 違反** | application 層が `task.status` / `gate.decision` を見てから `task.advance(..., gate_decision=APPROVED)` と引数を組み立てる読み方になり、Task に「どう振る舞うか」を伝える形ではなく「Task の状態を見て分岐」する読み方になりやすい |
-| **(2) Aggregate 境界違反** | Task が `ReviewDecision`（Gate Aggregate VO）を import することになり、依存方向 `domain ← application ← infrastructure` のうち domain 内で別 Aggregate VO を import する逆方向流入が発生する |
-| **(3) 3 PR 連鎖の前提が揺れる** | task-repository / external-review-gate-aggregate / external-review-gate-repository の 3 PR が「method × current_status → action」の対応を**個別に解釈**することになり、整合性の局所最適化を後続 PR で繰り返す退行リスクが高い |
-
-専用 method 分離（§確定 A-2 採用）により:
-
-- method 名が**呼び出し側の意図を直接表明**（`task.approve_review(...)` ↔ `task.reject_review(...)`、Tell Don't Ask 遵守）
-- Task は `ReviewDecision` を**一切 import しない**（Aggregate 境界保護）
-- method × current_status → action が **1:1 静的対応**で揺れゼロ（dispatch 表で凍結）
-- 3 PR 連鎖の前提が「Gate decision → Task method 名」の単一の対応関係（APPROVED → `approve_review` / REJECTED → `reject_review`）で全 PR が同じ参照源を読む
-
-method 数は 7 → 10 に増えるが、各 method の責務が単一化し、test の網羅性も向上する（method ごとに正常系・異常系を独立して test、§test-design.md 参照）。
-
-### なぜ `assigned_agent_ids` を List で保持するか
-
-empire の `agents: list[AgentRef]` で**順序保持**を凍結済み（割当順が UI 表示順を決める）。Set にすると Pydantic v2 の serialize で順序が非決定論になり、Repository 永続化時に diff ノイズが出る。List + 重複チェック helper で凍結（§確定 F）。
-
-### なぜ `cancel(by_owner_id, reason)` の reason を Aggregate 属性として持たないか
-
-`cancel(by_owner_id, reason)` の `reason` は audit 情報。Aggregate 属性として持たない理由:
-
-- `reason` を持つと「CANCELLED の Task の reason は何か」が業務上見えるが、MVP では UI に CANCELLED Task の reason 表示は出ない
-- audit_log（admin CLI 経由のすべての操作を記録、storage.md §Admin CLI 監査ログ）に application 層が記録する責務
-- Aggregate を pure data に保ちたい（reason 引数は監査用 metadata）
-
-### なぜ `created_at` / `updated_at` を引数で受け取るか
-
-`datetime.now(timezone.utc)` を Aggregate 内で自動生成すると freezegun 等での test 制御が必要。application 層で生成して引数渡しすることで Aggregate 自体は時刻に依存しない pure data になり、test 容易性が向上（directive §設計判断補足の `created_at` 議論と同方針）。
-
-### なぜ `Deliverable` / `Attachment` を本 PR で導入するか
-
-`storage.md` §Deliverable / §Attachment で属性定義は凍結済みだが、Pydantic v2 BaseModel として実体化されていない。Task Aggregate が `deliverables: dict[StageId, Deliverable]` で参照するため、forward reference で逃げると後続 PR で `model_rebuild` が必要になり構造が複雑化。本 PR で同時に導入する（§確定 R1-E）。
-
-### なぜ自己遷移（`commit_deliverable` / `advance_to_next`）を state machine に明示列挙するか
-
-state を変えない自己遷移を table に載せるのは、**「IN_PROGRESS でのみ許可」を表で読めるようにするため**（§確定 A-2 dispatch 表 + §確定 B lookup の整合性）。PENDING / AWAITING / BLOCKED / DONE / CANCELLED で呼べば lookup 失敗 → `state_transition_invalid` で Fail Fast、code review が機械的になる。
+Norman 500 行ルールに従い、判断根拠は補章 [`detailed-design-rationale.md`](detailed-design-rationale.md) に分割する。本書は構造契約、責務分離、MSG文言の正本に集中する。
 
 ## ユーザー向けメッセージの確定文言
 
