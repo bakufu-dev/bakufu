@@ -1,8 +1,8 @@
-# 詳細設計書
+# 詳細設計書 — dev-workflow / domain
 
-<!-- 基本設計書とは別ファイル。統合禁止 -->
-<!-- feature単位で1ファイル。新規featureならテンプレートコピー、既存featureなら既存ファイルをREAD→EDIT -->
-<!-- 配置先: docs/features/dev-workflow/detailed-design.md -->
+> feature: `dev-workflow` / sub-feature: `domain`
+> 親 spec: [`../feature-spec.md`](../feature-spec.md) §9 受入基準 1〜13 / §10 Q-1〜Q-6
+> 関連: [`basic-design.md`](basic-design.md) §モジュール契約
 
 ## 記述ルール（必ず守ること）
 
@@ -218,7 +218,7 @@ shikomi の検証で確定した内容を bakufu でも踏襲する。convco に
 
 ## ユーザー向けメッセージの確定文言
 
-`requirements.md` §ユーザー向けメッセージ一覧 で ID のみ定義した MSG-DW-001〜014 の **正確な文言**を本節で凍結する。実装者・Sub-issue が勝手に改変できない契約として扱う。変更は本設計書の更新 PR のみで許可される。
+`../feature-spec.md` §機能要件一覧 で ID のみ定義した MSG-DW-001〜014 の **正確な文言**を本節で凍結する。実装者・Sub-issue が勝手に改変できない契約として扱う。変更は本設計書の更新 PR のみで許可される。
 
 ### プレフィックス統一
 
