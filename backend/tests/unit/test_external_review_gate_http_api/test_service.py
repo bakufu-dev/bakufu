@@ -51,8 +51,8 @@ class TestExternalReviewGateService:
     async def test_get_and_record_view_saves_viewed_gate(self) -> None:
         """TC-UT-ERG-HTTP-003: 詳細取得は VIEWED 追記後に save する。"""
         from bakufu.application.services.external_review_gate_service import (
+            AuthenticatedSubject,
             ExternalReviewGateService,
-            make_authenticated_subject,
         )
 
         from tests.factories.external_review_gate import make_gate
@@ -62,7 +62,10 @@ class TestExternalReviewGateService:
         repo = _Repo([gate])
         service = ExternalReviewGateService(repo, _Session())  # type: ignore[arg-type]
 
-        viewed = await service.get_and_record_view(gate.id, make_authenticated_subject(reviewer_id))
+        viewed = await service.get_and_record_view(
+            gate.id,
+            AuthenticatedSubject.from_owner_id(reviewer_id),
+        )
 
         assert [entry.action for entry in viewed.audit_trail] == ["VIEWED"]
         assert repo.saved == [viewed]
@@ -73,8 +76,8 @@ class TestExternalReviewGateService:
             ExternalReviewGateAuthorizationError,
         )
         from bakufu.application.services.external_review_gate_service import (
+            AuthenticatedSubject,
             ExternalReviewGateService,
-            make_authenticated_subject,
         )
 
         from tests.factories.external_review_gate import make_gate
@@ -83,7 +86,10 @@ class TestExternalReviewGateService:
         service = ExternalReviewGateService(_Repo([gate]), _Session())  # type: ignore[arg-type]
 
         with pytest.raises(ExternalReviewGateAuthorizationError):
-            await service.get_and_record_view(gate.id, make_authenticated_subject(uuid4()))
+            await service.get_and_record_view(
+                gate.id,
+                AuthenticatedSubject.from_owner_id(uuid4()),
+            )
 
     async def test_conflict_mapper_converts_decided_gate_violation(self) -> None:
         """TC-UT-ERG-HTTP-006: 既決 Gate の再判断は decision conflict error。"""
@@ -91,8 +97,8 @@ class TestExternalReviewGateService:
             ExternalReviewGateDecisionConflictError,
         )
         from bakufu.application.services.external_review_gate_service import (
+            AuthenticatedSubject,
             ExternalReviewGateService,
-            make_authenticated_subject,
         )
 
         from tests.factories.external_review_gate import make_approved_gate
@@ -102,13 +108,17 @@ class TestExternalReviewGateService:
         service = ExternalReviewGateService(_Repo([gate]), _Session())  # type: ignore[arg-type]
 
         with pytest.raises(ExternalReviewGateDecisionConflictError):
-            await service.approve(gate.id, make_authenticated_subject(reviewer_id), "again")
+            await service.approve(
+                gate.id,
+                AuthenticatedSubject.from_owner_id(reviewer_id),
+                "again",
+            )
 
     async def test_list_by_task_filters_other_reviewers(self) -> None:
         """TC-UT-ERG-HTTP-007: Task 履歴は subject reviewer の Gate だけ返す。"""
         from bakufu.application.services.external_review_gate_service import (
+            AuthenticatedSubject,
             ExternalReviewGateService,
-            make_authenticated_subject,
         )
 
         from tests.factories.external_review_gate import make_gate
@@ -119,6 +129,9 @@ class TestExternalReviewGateService:
         other_gate = make_gate(task_id=task_id, reviewer_id=uuid4())
         service = ExternalReviewGateService(_Repo([own_gate, other_gate]), _Session())  # type: ignore[arg-type]
 
-        gates = await service.list_by_task(task_id, make_authenticated_subject(reviewer_id))
+        gates = await service.list_by_task(
+            task_id,
+            AuthenticatedSubject.from_owner_id(reviewer_id),
+        )
 
         assert gates == [own_gate]

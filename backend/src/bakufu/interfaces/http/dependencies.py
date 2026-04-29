@@ -26,7 +26,6 @@ from bakufu.application.services.empire_service import EmpireService
 from bakufu.application.services.external_review_gate_service import (
     AuthenticatedSubject,
     ExternalReviewGateService,
-    make_authenticated_subject,
 )
 from bakufu.application.services.room_service import RoomService
 from bakufu.application.services.task_service import TaskService
@@ -50,8 +49,6 @@ __all__ = [
     "get_agent_service",
     "get_directive_service",
     "get_empire_service",
-    "get_external_review_gate_service",
-    "get_external_review_subject",
     "get_room_service",
     "get_session",
     "get_task_service",
@@ -217,54 +214,60 @@ async def get_directive_service(session: SessionDep) -> DirectiveService:
 DirectiveServiceDep = Annotated[DirectiveService, Depends(get_directive_service)]
 
 
-async def get_external_review_gate_service(
-    session: SessionDep,
-) -> ExternalReviewGateService:
-    """ExternalReviewGateService を DI 注入する。"""
-    # 遅延 import: interfaces → infrastructure の直接依存を避けるため
-    # モジュールロード時の循環参照リスクを回避し、
-    # 依存方向 interfaces → application → infrastructure を遵守する
-    from bakufu.infrastructure.persistence.sqlite.repositories.external_review_gate_repository import (  # noqa: E501
-        SqliteExternalReviewGateRepository,
-    )
+class ExternalReviewGateDependencies:
+    """ExternalReviewGate HTTP 境界の DI を閉じ込める。"""
 
-    repo = SqliteExternalReviewGateRepository(session)
-    return ExternalReviewGateService(repo, session)
+    @classmethod
+    async def get_service(
+        cls,
+        session: SessionDep,
+    ) -> ExternalReviewGateService:
+        """ExternalReviewGateService を DI 注入する。"""
+        # 遅延 import: interfaces → infrastructure の直接依存を避けるため
+        # モジュールロード時の循環参照リスクを回避し、
+        # 依存方向 interfaces → application → infrastructure を遵守する
+        from bakufu.infrastructure.persistence.sqlite.repositories.external_review_gate_repository import (  # noqa: E501
+            SqliteExternalReviewGateRepository,
+        )
+
+        repo = SqliteExternalReviewGateRepository(session)
+        return ExternalReviewGateService(repo, session)
+
+    @classmethod
+    async def get_subject(
+        cls,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> AuthenticatedSubject:
+        """Bearer token から ExternalReviewGate reviewer subject を解決する。"""
+        configured_token = os.environ.get("BAKUFU_OWNER_API_TOKEN", "")
+        configured_owner_id = os.environ.get("BAKUFU_OWNER_ID", "")
+        if not cls._is_valid_bearer_token(authorization, configured_token):
+            raise HTTPException(status_code=401, detail="Authentication failed.")
+        try:
+            owner_id = UUID(configured_owner_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=401, detail="Authentication failed.") from exc
+        return AuthenticatedSubject.from_owner_id(owner_id)
+
+    @classmethod
+    def _is_valid_bearer_token(cls, authorization: str | None, configured_token: str) -> bool:
+        if len(configured_token.encode("utf-8")) < 32:
+            return False
+        if authorization is None:
+            return False
+        scheme, separator, token = authorization.partition(" ")
+        if separator != " " or scheme.lower() != "bearer":
+            return False
+        return hmac.compare_digest(token, configured_token)
 
 
 ExternalReviewGateServiceDep = Annotated[
     ExternalReviewGateService,
-    Depends(get_external_review_gate_service),
+    Depends(ExternalReviewGateDependencies.get_service),
 ]
-
-
-async def get_external_review_subject(
-    authorization: Annotated[str | None, Header()] = None,
-) -> AuthenticatedSubject:
-    """Bearer token から ExternalReviewGate reviewer subject を解決する。"""
-    configured_token = os.environ.get("BAKUFU_OWNER_API_TOKEN", "")
-    configured_owner_id = os.environ.get("BAKUFU_OWNER_ID", "")
-    if not _is_valid_bearer_token(authorization, configured_token):
-        raise HTTPException(status_code=401, detail="Authentication failed.")
-    try:
-        owner_id = UUID(configured_owner_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=401, detail="Authentication failed.") from exc
-    return make_authenticated_subject(owner_id)
 
 
 ExternalReviewSubjectDep = Annotated[
     AuthenticatedSubject,
-    Depends(get_external_review_subject),
+    Depends(ExternalReviewGateDependencies.get_subject),
 ]
-
-
-def _is_valid_bearer_token(authorization: str | None, configured_token: str) -> bool:
-    if len(configured_token.encode("utf-8")) < 32:
-        return False
-    if authorization is None:
-        return False
-    scheme, separator, token = authorization.partition(" ")
-    if separator != " " or scheme.lower() != "bearer":
-        return False
-    return hmac.compare_digest(token, configured_token)

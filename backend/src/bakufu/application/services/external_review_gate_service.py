@@ -27,6 +27,11 @@ class AuthenticatedSubject:
 
     owner_id: OwnerId
 
+    @classmethod
+    def from_owner_id(cls, owner_id: UUID) -> AuthenticatedSubject:
+        """HTTP DI が UUID から subject を明示的に組み立てる入口。"""
+        return cls(owner_id=owner_id)
+
 
 class ExternalReviewGateService:
     """ExternalReviewGate Aggregate 操作の application 層サービス。"""
@@ -140,9 +145,4 @@ class ExternalReviewGateService:
         return datetime.now(UTC)
 
 
-def make_authenticated_subject(owner_id: UUID) -> AuthenticatedSubject:
-    """HTTP DI が UUID から subject を明示的に組み立てる入口。"""
-    return AuthenticatedSubject(owner_id=owner_id)
-
-
-__all__ = ["AuthenticatedSubject", "ExternalReviewGateService", "make_authenticated_subject"]
+__all__ = ["AuthenticatedSubject", "ExternalReviewGateService"]

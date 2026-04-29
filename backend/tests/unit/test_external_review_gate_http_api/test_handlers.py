@@ -82,14 +82,14 @@ class TestExternalReviewGateBearerTokenResolver:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """TC-UT-ERG-HTTP-012: 32 bytes 以上の一致 token だけ subject を作る。"""
-        from bakufu.interfaces.http.dependencies import get_external_review_subject
+        from bakufu.interfaces.http.dependencies import ExternalReviewGateDependencies
 
         owner_id = uuid4()
         token = "owner-api-token-32-bytes-minimum-value"
         monkeypatch.setenv("BAKUFU_OWNER_API_TOKEN", token)
         monkeypatch.setenv("BAKUFU_OWNER_ID", str(owner_id))
 
-        subject = await get_external_review_subject(f"Bearer {token}")
+        subject = await ExternalReviewGateDependencies.get_subject(f"Bearer {token}")
 
         assert subject.owner_id == owner_id
 
@@ -98,13 +98,13 @@ class TestExternalReviewGateBearerTokenResolver:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """TC-UT-ERG-HTTP-012: 設定 token が短ければ一致しても 401。"""
-        from bakufu.interfaces.http.dependencies import get_external_review_subject
+        from bakufu.interfaces.http.dependencies import ExternalReviewGateDependencies
 
         monkeypatch.setenv("BAKUFU_OWNER_API_TOKEN", "short-token")
         monkeypatch.setenv("BAKUFU_OWNER_ID", str(uuid4()))
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_external_review_subject("Bearer short-token")
+            await ExternalReviewGateDependencies.get_subject("Bearer short-token")
 
         assert exc_info.value.status_code == 401
 
@@ -113,13 +113,13 @@ class TestExternalReviewGateBearerTokenResolver:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """TC-UT-ERG-HTTP-012: 不一致 token は入力値を例外 detail に出さない。"""
-        from bakufu.interfaces.http.dependencies import get_external_review_subject
+        from bakufu.interfaces.http.dependencies import ExternalReviewGateDependencies
 
         monkeypatch.setenv("BAKUFU_OWNER_API_TOKEN", "owner-api-token-32-bytes-minimum-value")
         monkeypatch.setenv("BAKUFU_OWNER_ID", str(uuid4()))
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_external_review_subject("Bearer attacker-token-32-bytes-value")
+            await ExternalReviewGateDependencies.get_subject("Bearer attacker-token-32-bytes-value")
 
         assert "attacker-token" not in str(exc_info.value.detail)
 
@@ -128,13 +128,13 @@ class TestExternalReviewGateBearerTokenResolver:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """TC-UT-ERG-HTTP-012: token 一致でも owner UUID 不正なら 401。"""
-        from bakufu.interfaces.http.dependencies import get_external_review_subject
+        from bakufu.interfaces.http.dependencies import ExternalReviewGateDependencies
 
         token = "owner-api-token-32-bytes-minimum-value"
         monkeypatch.setenv("BAKUFU_OWNER_API_TOKEN", token)
         monkeypatch.setenv("BAKUFU_OWNER_ID", "not-a-uuid")
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_external_review_subject(f"Bearer {token}")
+            await ExternalReviewGateDependencies.get_subject(f"Bearer {token}")
 
         assert exc_info.value.status_code == 401
