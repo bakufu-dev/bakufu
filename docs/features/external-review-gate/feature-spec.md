@@ -101,13 +101,14 @@ bakufu システム全体のペルソナは [`docs/analysis/personas.md`](../../
 ### In Scope
 
 - ExternalReviewGate 業務概念全体で観察可能な業務ふるまい（UC-ERG-001〜005）
+- Gate 操作 HTTP API（`external-review-gate/http-api/`）。UI 以前の公開 API として reviewer 視点の一覧 / 詳細 / 承認 / 差し戻し / 取消を扱う
 - ふるまいの呼び出し失敗時に観察される拒否シグナル（業務ルール違反）
 - 業務概念単位の E2E 検証戦略 → [`system-test-design.md`](system-test-design.md)
 
 ### Out of Scope（参照）
 
 - CEO レビュー UI → 将来の `external-review-gate/ui/` sub-feature
-- application 層 `GateService` の実装 → `feature/external-review-gate-application`（未起票）
+- application 層 `GateService.create()` の実装 → 後続 application sub-feature の責務
 - Task Aggregate の業務ふるまい → `feature/task`（別 Aggregate）
 - `task_id` / `stage_id` / `reviewer_id` の参照整合性検証 → `GateService.create()` 責務（application 層）
 

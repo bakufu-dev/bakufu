@@ -116,7 +116,7 @@ backend/src/bakufu/
 | repository | `ExternalReviewGateRepository` | 既存 | `find_by_id` / `find_pending_by_reviewer` / `find_by_task_id` / `save` を使用 |
 | domain | `ExternalReviewGate` / `ReviewDecision` / `AuditEntry` | 既存 | 状態遷移は Domain に委譲 |
 | auth | `AuthenticatedSubject` dependency | 本 sub-feature | `Authorization: Bearer <token>` をサーバ設定の `BAKUFU_OWNER_API_TOKEN` と照合し、成功時だけ `BAKUFU_OWNER_ID` を `subject.owner_id` として返す。`reviewer_id` / `viewer_id` / `actor_id` の自己申告入力は禁止 |
-| security | `MaskedText` | 既存 | DB 保存時に `body_markdown` / `feedback_text` / audit comment を不可逆マスクする。HTTP レスポンス層では再マスクも原文復号もせず、Repository 復元値（secret は redacted）を返す |
+| security | `MaskedText` | 既存 | DB 保存時に `body_markdown` / `feedback_text` / audit comment を不可逆マスクする。HTTP レスポンス層は再マスクも復号もせず、Repository 復元値を返す。secret は redacted のまま返る |
 
 ## クラス設計（概要）
 
