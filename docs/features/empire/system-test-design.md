@@ -12,7 +12,8 @@
 ## E2E スコープ
 
 - domain sub-feature の組織構築 → repository sub-feature の永続化 → 再起動 → repository の復元 → domain の組織状態と構造的等価
-- 将来 http-api / ui sub-feature が完成した時点で `curl` / Playwright 経由の E2E を本書に追記
+- http-api sub-feature の HTTP CRUD E2E（POST → GET → PATCH → DELETE → GET(archived 確認)）: `httpx.AsyncClient` 経由でライフサイクル一気通貫を検証
+- 将来 ui sub-feature が完成した時点で Playwright 経由の E2E を本書に追記
 
 ## 観察主体
 
@@ -24,10 +25,10 @@
 |---------|---------|--------------|---------------------|------------|
 | TC-E2E-EM-001 | 組織状態の再起動跨ぎ保持（業務ルール R1-7） | 1) Empire 構築（name="山田の幕府"） 2) Agent 採用 3 件 3) Room 設立 2 件 4) Room 1 件 archive 5) アプリ再起動相当（DB 接続再生成） 6) Empire を ID で取得 | 復元された Empire が元の Empire と構造的等価。Agent 3 件、Room 2 件（archived 1 件、active 1 件）が完全に復元される | 10 |
 | TC-E2E-EM-002 | Empire シングルトン暫定検証（業務ルール R1-5） | 1) Empire #1 構築・永続化 2) `repository.count()` を呼ぶ | `count() == 1` を観察。<br>※ application 層 `EmpireService.create()` が将来 feature のため、本 E2E は repository.count() の観察までで暫定とし、`feature/empire-service` 着手時に「Empire #2 構築 → AlreadyExistsError」シナリオへ拡張 | 11 |
+| TC-E2E-EM-003 | HTTP API 経由 Empire ライフサイクル一気通貫（業務ルール R1-1, R1-5, R1-8）| 1) `POST /api/empires` name="山田の幕府" → 201, empire_id 取得 2) `GET /api/empires/{id}` → 200, archived=false 確認 3) `PATCH /api/empires/{id}` name="新山田の幕府" → 200, 更新確認 4) `DELETE /api/empires/{id}` → 204 5) `GET /api/empires/{id}` → 200, archived=true 確認 6) `PATCH /api/empires/{id}` → 409 Conflict（アーカイブ済み）7) `POST /api/empires` → 409 Conflict（R1-5: 既存 Empire あり）| 各ステップで受入基準 12〜20 を一気通貫で確認 | 12, 13, 14, 15, 16, 17, 18, 19 |
 
 将来追加予定:
 
-- TC-E2E-EM-003: HTTP API 経由での組織構築 → 永続化 → 取得（`empire/http-api/` 完成後）
 - TC-E2E-EM-004: UI 経由での組織編成（`empire/ui/` 完成後、Playwright）
 
 ## 検証方法
@@ -36,12 +37,14 @@
 |---|---|
 | 永続化層 | 実 SQLite（テスト用 in-memory または tempfile） |
 | domain 層 | 実 Empire / RoomRef / AgentRef Aggregate |
-| application 層 | 直接呼び出し（test harness） |
+| application 層 | 直接呼び出し（test harness）|
+| HTTP 層（TC-E2E-EM-003）| `httpx.AsyncClient(app=app, base_url="http://test")` （http-api-foundation 確定済み）|
 | 外部 LLM / Discord / GitHub | 本 E2E では未使用（business 概念に外部 I/O 無し） |
 
 ## カバレッジ基準
 
 - 受入基準 10, 11 が **E2E で最低 1 件** ずつ検証される
+- 受入基準 12〜20 が TC-E2E-EM-003 の **ライフサイクルシナリオで一気通貫** 検証される
 - 永続化跨ぎでの構造的等価を保証（`save → restart → find_by_id` ラウンドトリップ）
 - E2E はテスト戦略ガイド §E2E対象の判断「ライブラリ単独は IT で代替」に従い、本 feature では sub-feature 跨ぎの統合シナリオに絞る
 
@@ -49,10 +52,11 @@
 
 ```
 backend/tests/e2e/
-└── test_empire_lifecycle.py    # TC-E2E-EM-001, 002
+├── test_empire_lifecycle.py    # TC-E2E-EM-001, 002
+└── test_empire_http_api.py     # TC-E2E-EM-003（HTTP ライフサイクル一気通貫）
 ```
 
 ## 未決課題
 
 - TC-E2E-EM-002 のシングルトン強制の最終形は `feature/empire-service` 完成時に確定。本書は repository.count() の観察までを暫定 E2E とする
-- TC-E2E-EM-003, 004 は将来の sub-feature 追加時に本書を更新する別 PR で起票
+- TC-E2E-EM-004 は将来の `empire/ui/` 完成時に本書を更新する別 PR で起票
