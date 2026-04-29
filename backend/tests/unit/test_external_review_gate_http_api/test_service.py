@@ -170,6 +170,28 @@ class TestExternalReviewGateService:
                 "again",
             )
 
+    async def test_approve_fails_fast_when_task_advancement_dependency_is_missing(
+        self,
+    ) -> None:
+        """TC-UT-ERG-HTTP-013: approve の Task 遷移依存欠落は即失敗する。"""
+        from bakufu.application.services.external_review_gate_service import (
+            AuthenticatedSubject,
+            ExternalReviewGateService,
+        )
+
+        from tests.factories.external_review_gate import make_gate
+
+        reviewer_id = uuid4()
+        gate = make_gate(reviewer_id=reviewer_id)
+        service = ExternalReviewGateService(_Repo([gate]), _Session())  # type: ignore[arg-type]
+
+        with pytest.raises(RuntimeError, match="requires task_repo"):
+            await service.approve(
+                gate.id,
+                AuthenticatedSubject.from_owner_id(reviewer_id),
+                "ok",
+            )
+
     async def test_list_by_task_filters_other_reviewers(self) -> None:
         """TC-UT-ERG-HTTP-007: Task 履歴は subject reviewer の Gate だけ返す。"""
         from bakufu.application.services.external_review_gate_service import (

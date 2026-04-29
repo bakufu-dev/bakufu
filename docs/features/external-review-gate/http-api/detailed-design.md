@@ -145,7 +145,7 @@ HTTP schema serializer は `deliverable_snapshot.body_markdown` / `feedback_text
 
 ### 確定 E-2: Gate 判断後の Task 遷移は Workflow Transition 契約で解決する
 
-`ExternalReviewGateService.approve()` / `reject()` は Gate を保存した後、同一 UoW で Task を進める。ただし `gate.stage_id` を `next_stage_id` として再利用してはならない。Service は `TaskRepository` で Task を取得し、`RoomRepository` で `room.workflow_id` を解決し、`WorkflowStageResolver.find_transition_from_stage(workflow_id, gate.stage_id, APPROVED|REJECTED)` から `transition_id` と `to_stage_id` を得る。承認は APPROVED 遷移の `to_stage_id`、差し戻しは REJECTED 遷移の `to_stage_id` だけを `task.approve_review()` / `task.reject_review()` に渡す。
+`ExternalReviewGateService.approve()` / `reject()` は Gate を保存した後、同一 UoW で Task を進める。ただし `gate.stage_id` を `next_stage_id` として再利用してはならない。Service は `TaskRepository` で Task を取得し、`RoomRepository` で `room.workflow_id` を解決し、`WorkflowStageResolver.find_transition_by_workflow_stage_condition(workflow_id, gate.stage_id, APPROVED|REJECTED)` から `transition_id` と `to_stage_id` を得る。承認は APPROVED 遷移の `to_stage_id`、差し戻しは REJECTED 遷移の `to_stage_id` だけを `task.approve_review()` / `task.reject_review()` に渡す。
 
 ### 確定 F: CSRF Origin 検証
 

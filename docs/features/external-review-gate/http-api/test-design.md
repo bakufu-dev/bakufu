@@ -112,6 +112,7 @@
 | TC-UT-ERG-HTTP-010 | reject Task transition resolver | 正常系 | awaiting Task + Gate + REJECTED `WorkflowTransitionContract` | Task は REJECTED transition の `to_stage_id` に戻る。`gate.stage_id` は差し戻し先として使わない |
 | TC-UT-ERG-HTTP-011 | error handlers | 異常系 | 各 application exception | MSG-ERG-HTTP-001〜004 の 2 行文言一致（Next 行を含む） |
 | TC-UT-ERG-HTTP-012 | bearer token resolver | セキュリティ | token factory / env config | constant-time 比較を使い、欠落 / 不一致 / 不正 owner ID は 401。Authorization 値を log / response に出さない |
+| TC-UT-ERG-HTTP-013 | approve Task advancement dependency guard | 異常系 | PENDING Gate + Task 遷移依存なしの Service | `task_repo` / `room_repo` / `workflow_stage_resolver` 欠落を黙って無視せず fail fast する |
 | TC-CI-ERG-HTTP-001 | dependency audit | セキュリティ | CI `audit` job | FastAPI / Starlette / Pydantic / httpx / SQLAlchemy / SQLite 関連の critical/high CVE が未解決なら fail |
 | TC-STATIC-ERG-HTTP-001 | outbound call inventory | セキュリティ | router / service / schema | HTTP client / webhook fetch / URL dereference が追加されていない |
 | TC-STATIC-ERG-HTTP-002 | API inventory and wiring | セキュリティ | app wiring / OpenAPI | 6 API だけが登録され、auth / CSRF / error handler が有効 |

@@ -44,6 +44,13 @@ class AuthenticatedSubject:
         return cls(owner_id=owner_id)
 
 
+@dataclass(frozen=True, slots=True)
+class _TaskAdvancementDependencies:
+    task_repo: TaskRepository
+    room_repo: RoomRepository
+    workflow_stage_resolver: WorkflowStageResolver
+
+
 class ExternalReviewGateService:
     """ExternalReviewGate Aggregate 操作の application 層サービス。"""
 
@@ -176,26 +183,22 @@ class ExternalReviewGateService:
         *,
         approved: bool,
     ) -> None:
-        if (
-            self._task_repo is None
-            or self._room_repo is None
-            or self._workflow_stage_resolver is None
-        ):
-            return
-        task = await self._task_repo.find_by_id(gate.task_id)
+        dependencies = self._task_advancement_dependencies()
+        task = await dependencies.task_repo.find_by_id(gate.task_id)
         if task is None:
             return
         if task.status is not TaskStatus.AWAITING_EXTERNAL_REVIEW:
             return
-        room = await self._room_repo.find_by_id(task.room_id)
+        room = await dependencies.room_repo.find_by_id(task.room_id)
         if room is None:
             raise RoomNotFoundError(str(task.room_id))
         condition = TransitionCondition.APPROVED if approved else TransitionCondition.REJECTED
-        transition_resolver = self._workflow_stage_resolver
-        transition = await transition_resolver.find_transition_by_workflow_stage_condition(
-            room.workflow_id,
-            gate.stage_id,
-            condition,
+        transition = (
+            await dependencies.workflow_stage_resolver.find_transition_by_workflow_stage_condition(
+                room.workflow_id,
+                gate.stage_id,
+                condition,
+            )
         )
         if transition is None:
             raise TaskStateConflictError(
@@ -221,7 +224,22 @@ class ExternalReviewGateService:
                 transition.to_stage_id,
                 updated_at=self._now(),
             )
-        await self._task_repo.save(updated_task)
+        await dependencies.task_repo.save(updated_task)
+
+    def _task_advancement_dependencies(self) -> _TaskAdvancementDependencies:
+        if self._task_repo is None:
+            raise RuntimeError("ExternalReviewGateService requires task_repo for task advancement.")
+        if self._room_repo is None:
+            raise RuntimeError("ExternalReviewGateService requires room_repo for task advancement.")
+        if self._workflow_stage_resolver is None:
+            raise RuntimeError(
+                "ExternalReviewGateService requires workflow_stage_resolver for task advancement."
+            )
+        return _TaskAdvancementDependencies(
+            task_repo=self._task_repo,
+            room_repo=self._room_repo,
+            workflow_stage_resolver=self._workflow_stage_resolver,
+        )
 
     @staticmethod
     def _now() -> datetime:
