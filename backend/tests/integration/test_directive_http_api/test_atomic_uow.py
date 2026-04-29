@@ -38,9 +38,9 @@ async def test_issue_rolls_back_directive_when_task_save_fails(tmp_path: Path) -
     from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
         SqliteWorkflowRepository,
     )
-    from bakufu.interfaces.http.app import create_app
+    from bakufu.interfaces.http.app import HttpApplicationFactory
 
-    app = create_app()
+    app = HttpApplicationFactory.create()
     engine = make_test_engine(tmp_path / "atomic_uow.db")
     await create_all_tables(engine)
     session_factory = make_test_session_factory(engine)

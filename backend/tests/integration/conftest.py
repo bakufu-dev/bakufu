@@ -85,14 +85,14 @@ async def empire_app_client(tmp_path: Path) -> AsyncIterator[AsyncClient]:
     """empire ルート + 実 SQLite tempdb を配線した FastAPI app に繋ぐ httpx.AsyncClient。
 
     ``app_client`` と異なりテスト専用ルートは追加しない (empire ルータは
-    ``create_app()`` 経由で既に登録されている)。ORM テーブルは
+    ``HttpApplicationFactory.create()`` 経由で既に登録されている)。ORM テーブルは
     ``create_all_tables`` で作成され、CRUD 操作は実 SQLite DB に到達する。
     """
-    from bakufu.interfaces.http.app import create_app
+    from bakufu.interfaces.http.app import HttpApplicationFactory
 
     from tests.factories.db import create_all_tables, make_test_engine, make_test_session_factory
 
-    app = create_app()
+    app = HttpApplicationFactory.create()
     engine = make_test_engine(tmp_path / "test.db")
     await create_all_tables(engine)
     session_factory = make_test_session_factory(engine)
@@ -116,11 +116,11 @@ async def app_client(tmp_path: Path) -> AsyncIterator[AsyncClient]:
     の ``ServerErrorMiddleware`` はレスポンス送信後に必ず例外を再送出する
     ため、httpx 側ではテストレベルの ``RuntimeError`` として浮上してしまう。
     """
-    from bakufu.interfaces.http.app import create_app
+    from bakufu.interfaces.http.app import HttpApplicationFactory
 
     from tests.factories.db import make_test_engine, make_test_session_factory
 
-    app = create_app()
+    app = HttpApplicationFactory.create()
 
     # ── 本番 lifespan をバイパス ────────────────────────────────────────────
     engine = make_test_engine(tmp_path / "test.db")

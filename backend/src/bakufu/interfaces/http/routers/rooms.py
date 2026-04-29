@@ -25,11 +25,13 @@ domain 層への import はゼロ (Q-3 interfaces->domain 直接依存禁止)。
 
 from __future__ import annotations
 
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Depends, Response
 
-from bakufu.interfaces.http.dependencies import RoomServiceDep
+from bakufu.application.services.room_service import RoomService
+from bakufu.interfaces.http.dependencies import HttpDependencies
 from bakufu.interfaces.http.schemas.room import (
     AgentAssignRequest,
     RoomCreate,
@@ -41,6 +43,8 @@ from bakufu.interfaces.http.schemas.room import (
 # 2 つの router: empire スコープ / room スコープ (確定 E)
 empire_rooms_router = APIRouter(prefix="/api/empires", tags=["room"])
 rooms_router = APIRouter(prefix="/api/rooms", tags=["room"])
+
+RoomServiceDep = Annotated[RoomService, Depends(HttpDependencies.get_room_service)]
 
 
 @empire_rooms_router.post(

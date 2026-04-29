@@ -38,23 +38,20 @@ __all__ = [
     "DirectiveRepository",
     "DirectiveServiceDep",
     "EmpireRepository",
-    "EmpireServiceDep",
     "ExternalReviewGateRepository",
     "ExternalReviewGateServiceDep",
     "ExternalReviewSubjectDep",
     "HttpDependencies",
     "RoomRepository",
-    "RoomServiceDep",
     "SessionDep",
     "TaskRepository",
     "TaskServiceDep",
     "WorkflowRepository",
-    "WorkflowServiceDep",
 ]
 
 
 class HttpDependencies:
-    """HTTP DI 境界を公開関数ではなく classmethod に閉じる。"""
+    """HTTP 境界の共通 DI を閉じ込める。"""
 
     @classmethod
     async def get_session(cls, request: Request) -> AsyncGenerator[AsyncSession, None]:
@@ -65,12 +62,7 @@ class HttpDependencies:
 
     @classmethod
     async def get_empire_service(cls, session: SessionDep) -> EmpireService:
-        """EmpireService を DI 注入する。
-
-        session を repo と service の両方に渡す:
-        - repo: SQLite クエリ実行に使用
-        - service: UoW (``async with session.begin()``) の管理に使用
-        """
+        """EmpireService を DI 注入する。"""
         from bakufu.infrastructure.persistence.sqlite.repositories.empire_repository import (
             SqliteEmpireRepository,
         )
@@ -80,11 +72,7 @@ class HttpDependencies:
 
     @classmethod
     async def get_room_service(cls, session: SessionDep) -> RoomService:
-        """RoomService を DI 注入する (確定 D)。
-
-        4 つの Repository と session を RoomService に渡す。各 repo は同一 session を
-        共有し、service が管理する UoW (``async with session.begin()``) 内で動作する。
-        """
+        """RoomService を DI 注入する (確定 D)。"""
         from bakufu.infrastructure.persistence.sqlite.repositories.agent_repository import (
             SqliteAgentRepository,
         )
@@ -126,7 +114,7 @@ class HttpDependencies:
 
     @classmethod
     async def get_agent_service(cls, session: SessionDep) -> AgentService:
-        """AgentService を DI 注入する（§確定 H: EmpireRepository + session を追加）。"""
+        """AgentService を DI 注入する。"""
         from bakufu.infrastructure.persistence.sqlite.repositories.agent_repository import (
             SqliteAgentRepository,
         )
@@ -184,9 +172,6 @@ class HttpDependencies:
 
 
 SessionDep = Annotated[AsyncSession, Depends(HttpDependencies.get_session)]
-EmpireServiceDep = Annotated[EmpireService, Depends(HttpDependencies.get_empire_service)]
-RoomServiceDep = Annotated[RoomService, Depends(HttpDependencies.get_room_service)]
-WorkflowServiceDep = Annotated[WorkflowService, Depends(HttpDependencies.get_workflow_service)]
 AgentServiceDep = Annotated[AgentService, Depends(HttpDependencies.get_agent_service)]
 TaskServiceDep = Annotated[TaskService, Depends(HttpDependencies.get_task_service)]
 DirectiveServiceDep = Annotated[DirectiveService, Depends(HttpDependencies.get_directive_service)]

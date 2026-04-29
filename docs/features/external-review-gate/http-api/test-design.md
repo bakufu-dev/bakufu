@@ -43,7 +43,7 @@
 | API6 | sensitive flow protection | TC-IT-ERG-HTTP-007 / 014 | 結合 | セキュリティ | — |
 | API7 / API10 | no outbound API consumption | TC-STATIC-ERG-HTTP-001 | 静的確認 | セキュリティ | — |
 | API8 / API9 | app wiring / API inventory | TC-STATIC-ERG-HTTP-002 | 静的確認 | セキュリティ | — |
-| HTTP/DI 境界 | `BakufuHttpApplication` / `HttpDependencies` / `ExternalReviewGateDependencies` | TC-STATIC-ERG-HTTP-003 | 静的確認 | 設計原則 | — |
+| HTTP/DI 境界 | `HttpApplicationFactory` / `HttpDependencies` / `ExternalReviewGateDependencies` | TC-STATIC-ERG-HTTP-003 | 静的確認 | 設計原則 | — |
 
 **マトリクス充足の証拠**:
 - REQ-ERG-HTTP-001〜006 すべてに最低 1 件の結合テストを割り当てる。
@@ -57,7 +57,7 @@
 | 外部 I/O | 用途 | raw fixture | schema | factory | characterization 状態 | テスト戦略 |
 |---|---|---|---|---|---|---|
 | SQLite tempfile DB | Gate 永続化 / 再取得 | 不要（内部 DB。結合は実接続） | 不要 | `tests/factories/db.py`, `tests/factories/external_review_gate.py` | 対象外 | 実 DB + TestClient。DB 直接 assert は seed / fixture 準備に限定し、検証は API ラウンドトリップで行う |
-| FastAPI app | ルーティング / error handler | 不要（プロセス内 ASGI） | 不要 | `create_app` fixture | 対象外 | httpx ASGITransport / TestClient で公開 API から呼ぶ |
+| FastAPI app | ルーティング / error handler | 不要（プロセス内 ASGI） | 不要 | `HttpApplicationFactory.create()` fixture | 対象外 | httpx ASGITransport / TestClient で公開 API から呼ぶ |
 | Clock | decided_at / viewed_at | 不要（外部サービスではない） | 不要 | monkeypatch 可能な service clock / fixed datetime factory | 対象外 | UTC aware datetime の存在、単調な順序、audit action との対応を検証 |
 | Auth subject provider | reviewer 認可境界 | 不要（外部サービスではない） | 不要 | subject factory | 対象外 | `Authorization: Bearer <token>` と test config の `BAKUFU_OWNER_ID` から検証済み subject を作る。query/body/header の自己申告 ID は使わない |
 | CSRF Origin middleware | 状態変更 POST の Origin 検証 | 不要（プロセス内 ASGI） | 不要 | 不要 | 対象外 | `Origin: http://evil.example.com` で approve / reject / cancel が 403 になることを確認 |
@@ -93,7 +93,7 @@
 | TC-IT-ERG-HTTP-014 | CSRF Origin guard | なし | PENDING Gate、subject=A | `Origin: http://evil.example.com` 付きで approve / reject / cancel | 403、http-api-foundation MSG-HAF-004 |
 | TC-IT-ERG-HTTP-015 | auth subject required | なし | PENDING Gate | Authorization 欠落 / 不正 token / `X-Reviewer-Id` のみ指定 | 401 または 403。Service は呼ばれず、自己申告 ID では成功しない |
 | TC-IT-ERG-HTTP-016 | Bearer token operation | なし | `BAKUFU_OWNER_API_TOKEN` と `BAKUFU_OWNER_ID` を test config に設定 | 32 bytes 以上の token で成功、短い token 設定 / 不一致 token / 不正 owner UUID を送る | 成功時だけ subject が作られる。失敗時は 401、token 値と Authorization ヘッダはログに出ない |
-| TC-STATIC-ERG-HTTP-003 | HTTP app / DI 境界封入 | なし | `interfaces/http/app.py` と `interfaces/http/dependencies.py` | AST でトップレベル関数定義を棚卸し | 公開関数定義は 0。app 初期化は `BakufuHttpApplication`、DI は `HttpDependencies` / `ExternalReviewGateDependencies` の classmethod に閉じる |
+| TC-STATIC-ERG-HTTP-003 | HTTP app / DI 境界封入 | なし | `interfaces/http/app.py` と `interfaces/http/dependencies.py` | AST でトップレベル関数定義を棚卸し | 公開関数定義は 0。app 初期化は `HttpApplicationFactory`、DI は `HttpDependencies` / `ExternalReviewGateDependencies` の classmethod に閉じる |
 
 ## ユニットテストケース
 
@@ -134,7 +134,7 @@
 - T1〜T6 と OWASP API Security Top 10 2023 API1〜API10 の各脅威に対する対策または非該当根拠が最低 1 件のテストケースで確認されている。
 - Bearer token 運用（生成強度、保管、ローテーション、ログ非露出）が TC-IT-ERG-HTTP-016 / TC-UT-ERG-HTTP-012 に接続されている。
 - API 6 本すべてが単発ケースとユーザー観測可能な API flow smoke のどちらかで最低 1 回通る。
-- HTTP app / DI 境界にトップレベル公開関数を残さない。`create_app` 互換名は classmethod bound method だけにし、FastAPI `Depends` には classmethod を渡す。
+- HTTP app / DI 境界にトップレベル公開関数を残さない。app 初期化は `HttpApplicationFactory.create()`、FastAPI `Depends` は `HttpDependencies` / `ExternalReviewGateDependencies` の classmethod を渡す。
 - 行カバレッジ目標: `external_review_gate_service.py` / `external_review_gates.py` / `schemas/external_review_gate.py` / `external_review_gate_exceptions.py` 合計 90% 以上。
 
 ## 人間が動作確認できるタイミング
