@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Final
 
 from fastapi import Request
@@ -17,6 +18,7 @@ NOT_FOUND: Final[str] = "not_found"
 VALIDATION_ERROR: Final[str] = "validation_error"
 INTERNAL_ERROR: Final[str] = "internal_error"
 FORBIDDEN: Final[str] = "forbidden"
+CONFLICT: Final[str] = "conflict"
 
 
 def _error_response(code: str, message: str, status_code: int) -> JSONResponse:
@@ -62,6 +64,58 @@ async def validation_error_handler(request: Request, exc: Exception) -> JSONResp
 
 async def internal_error_handler(request: Request, exc: Exception) -> JSONResponse:
     return _error_response(INTERNAL_ERROR, "An internal server error occurred.", 500)
+
+
+# ── 確定 C: empire 専用例外ハンドラ群 ────────────────────────────────────
+# 登録順: 既存 HTTPException / RequestValidationError / Exception ハンドラより前
+# (より具体的な例外を先に登録する FastAPI 慣習に従う)
+
+
+async def empire_not_found_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``EmpireNotFoundError`` → HTTP 404 / not_found (MSG-EM-HTTP-002)。"""
+    from bakufu.application.exceptions.empire_exceptions import EmpireNotFoundError
+
+    if not isinstance(exc, EmpireNotFoundError):
+        raise TypeError(f"Expected EmpireNotFoundError, got {type(exc).__name__}")
+    return _error_response(NOT_FOUND, "Empire not found.", 404)
+
+
+async def empire_already_exists_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``EmpireAlreadyExistsError`` → HTTP 409 / conflict (MSG-EM-HTTP-001)。"""
+    from bakufu.application.exceptions.empire_exceptions import EmpireAlreadyExistsError
+
+    if not isinstance(exc, EmpireAlreadyExistsError):
+        raise TypeError(f"Expected EmpireAlreadyExistsError, got {type(exc).__name__}")
+    return _error_response(CONFLICT, "Empire already exists.", 409)
+
+
+async def empire_archived_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``EmpireArchivedError`` → HTTP 409 / conflict (MSG-EM-HTTP-003)。"""
+    from bakufu.application.exceptions.empire_exceptions import EmpireArchivedError
+
+    if not isinstance(exc, EmpireArchivedError):
+        raise TypeError(f"Expected EmpireArchivedError, got {type(exc).__name__}")
+    return _error_response(CONFLICT, "Empire is archived and cannot be modified.", 409)
+
+
+# 確定 C: [FAIL] プレフィックスと \nNext:... 除去パターン (凍結)
+_FAIL_PREFIX_RE: Final = re.compile(r"^\[FAIL\]\s*")
+
+
+async def empire_invariant_violation_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``EmpireInvariantViolation`` → HTTP 422 / validation_error (MSG-EM-HTTP-004)。
+
+    前処理ルール (確定 C):
+    1. ``[FAIL] `` プレフィックスを除去
+    2. ``\\nNext:`` 以降を除去して domain 内部フォーマットを隠蔽する
+    """
+    from bakufu.domain.exceptions import EmpireInvariantViolation
+
+    if not isinstance(exc, EmpireInvariantViolation):
+        raise TypeError(f"Expected EmpireInvariantViolation, got {type(exc).__name__}")
+    raw = str(exc)
+    cleaned = _FAIL_PREFIX_RE.sub("", raw).split("\nNext:")[0].strip()
+    return _error_response(VALIDATION_ERROR, cleaned, 422)
 
 
 # ── 確定 D: CSRF Origin 検証ミドルウェア ─────────────────────────────────
