@@ -189,6 +189,7 @@ E2E（受入基準 8〜10, 12）は [`system-test-design.md`](system-test-design
 |-----|------|
 | Q-1 | 型検査 / lint エラーゼロ（CI pyright strict / ruff 警告ゼロ）|
 | Q-2 | カバレッジ 90% 以上（domain sub-feature、`pytest --cov=bakufu.domain.internal_review_gate`）|
+| Q-3 | 内部実装契約の物理保証（frozen / extra='forbid' / comment NFC 合成形保持 / 2 行エラー構造 / Aggregate 責務分離）— VerdictDecision 型強制（ambiguous 拒否）/ Pydantic ValidationError 物理確認（frozen 代入拒否 / extra='forbid'）/ `assert "Next:" in str(exc)` CI 強制（全 4 MSG-IRG）/ 参照整合性は application 層責務であることの物理確認 |
 
 各 sub-feature の `basic-design.md §モジュール契約` / `test-design.md §カバレッジ基準` で個別に管理する。本書では業務要求のみ凍結。
 

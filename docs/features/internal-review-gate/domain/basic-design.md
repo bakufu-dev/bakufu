@@ -230,11 +230,16 @@ sequenceDiagram
 
 | # | カテゴリ | 対応状況 |
 |---|---------|---------|
-| A01 | Broken Access Control | 該当なし（domain 層）|
-| A02 | Cryptographic Failures | **適用**: `verdicts[*].comment` の永続化前マスキング（後続 repository sub-feature で配線）|
-| A03 | Injection | **適用**: Pydantic 型強制 + GateRole slug パターンバリデーション + StrEnum |
-| A04 | Insecure Design | **適用**: pre-validate 方式 / frozen model / compute_decision / 4 不変条件の多重防衛 |
-| A08 | Data Integrity Failures | **適用**: frozen model / pre-validate / compute_decision 整合性 + 4 重防衛 |
+| A01 | Broken Access Control | **domain 層は意図的に無防護（application 層の認可が前提）**: domain 層は agent_id の真正性検証も GateRole 権限認可も行わない（§確定 I）。application 層（InternalGateService）が ①agent_id が AgentRepository に存在すること、②呼び出し元エージェントが指定 GateRole を持つ権限があること（GateRole 詐称防止）を必ず認可すること。domain 層が認可を持たない理由は「責務分離」であり、「認可が不要」ではない |
+| A02 | Cryptographic Failures | **適用**: `verdicts[*].comment` の永続化前マスキング（後続 repository sub-feature で配線）。**既知リスクウィンドウ**: repository sub-feature 実装前は comment が plaintext で永続化される（申し送り #1 で追跡中）。domain 層は現時点で raw テキストを保持し、masking は repository 層責務として分離 |
+| A03 | Injection | **適用**: Pydantic 型強制 + GateRole slug パターンバリデーション（1〜40 文字 `^[a-z0-9-]+$`）+ StrEnum による列挙値制限 |
+| A04 | Insecure Design | **適用**: pre-validate 方式 / frozen model / compute_decision 純粋関数 / 4 不変条件の多重防衛（Fail Fast 原則）|
+| A05 | Security Misconfiguration | **N/A（domain 層）**: HTTP / インフラ設定は application / infrastructure 層が担う。domain 層はサーバー設定に依存しない純粋 Python |
+| A06 | Vulnerable and Outdated Components | **N/A（domain 層固有の対応なし）**: ライブラリ脆弱性は `dev-workflow/audit` ジョブ（`uv audit`）が全ライブラリ横断で管理。domain 層個別の追加対応なし |
+| A07 | Identification and Authentication Failures | **N/A（domain 層）+ application 層責務を明示**: domain 層は agent_id を VO として保持するのみ（§確定 I）。**GateRole 詐称リスク**: 任意エージェントが `role="security"` を自称して Verdict を提出できる経路を、application 層（InternalGateService）が「呼び出し元エージェントの GateRole 権限認可」で必ず閉じること。この認可責務は §確定 I の application 層責務一覧に明示 |
+| A08 | Data Integrity Failures | **適用**: frozen model（不変インスタンス）/ pre-validate model_validator（4 不変条件 = required_gate_roles 非空 / role 含有 / 重複なし / gate_decision 整合性）/ compute_decision 純粋関数（決定論的）|
+| A09 | Security Logging and Monitoring Failures | **N/A（domain 層）+ application 層責務を明示**: domain 層は audit_log を直接操作しない。application 層（InternalGateService）が ALL_APPROVED / REJECTED 遷移イベントを `audit_log` に記録する責務を持つ（`docs/design/threat-model.md §audit_log`: 追記のみ・改ざん防止 DB トリガ付き）。誰がいつどの GateRole で Verdict を提出し、Gate 決定がどう確定したかの証跡が必須 |
+| A10 | Server-Side Request Forgery | **N/A（domain 層）**: domain 層は外部 HTTP リクエストを一切発行しない。SSRF 攻撃面なし |
 
 ## ER 図
 
