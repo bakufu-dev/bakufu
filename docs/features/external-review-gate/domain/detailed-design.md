@@ -62,9 +62,9 @@ classDiagram
 
 **不変条件（application 層責務、Aggregate 内では守らない、§確定 R1-A）**:
 - `task_id` の Task 存在 — `GateService.create()` で `TaskRepository.find_by_id`
-- `stage_id` の Stage 存在 + `kind == EXTERNAL_REVIEW` — `GateService.create()` で `WorkflowRepository.find_by_id`
-- `reviewer_id` の Owner 存在 — `GateService.create()` で `OwnerRepository.find_by_id`
-- Task の current_stage と Gate の stage_id が一致すること — `GateService.create()` で確認
+- `stage_id` の Stage 存在 + `kind == EXTERNAL_REVIEW` — `TaskService.commit_deliverable()` で Room → WorkflowStageResolver により Stage 契約を解決して確認
+- `reviewer_id` の解決 — `TaskService` に注入された `ExternalReviewReviewerResolver` port で解決。HTTP 境界の実装は実行環境から reviewer を解決するが、application service は実行環境を直接読まない
+- Task の current_stage と Gate の stage_id が一致すること — `TaskService.commit_deliverable()` で確認
 
 **ふるまい**（全 4 種、すべて新インスタンス返却。**method 名 = action 名で 1:1 対応**、§確定 A dispatch 表で凍結）:
 - `approve(by_owner_id: OwnerId, comment: str, decided_at: datetime) -> ExternalReviewGate`: PENDING → APPROVED、`decided_at` 設定、audit_trail に APPROVED エントリ追加
@@ -295,7 +295,7 @@ UI 側 / Repository 側でも入力時マスキング / 永続化前マスキン
 | `feedback_text` range | ✓（`_validate_feedback_text_range`）| ✗ |
 | `audit_trail` append-only | ✓（`_validate_audit_trail_append_only`）| ✗ |
 | `task_id` の Task 存在 | ✗ | ✓（`GateService.create()` で `TaskRepository.find_by_id`）|
-| `stage_id` の Stage 存在 + `kind == EXTERNAL_REVIEW` | ✗ | ✓（`GateService.create()` で `WorkflowRepository.find_by_id`）|
+| `stage_id` の Stage 存在 + `kind == EXTERNAL_REVIEW` | ✗ | ✓（`TaskService.commit_deliverable()` で Room → WorkflowStageResolver により Stage 契約を解決）|
 | `reviewer_id` の Owner 存在 | ✗ | ✓（同上）|
 | Task の current_stage と Gate の stage_id 一致 | ✗ | ✓（`GateService.create()` で確認）|
 | **Gate decision → Task method dispatch（APPROVED → `approve_review`、REJECTED → `reject_review`）** | ✗ | ✓（**`GateService.approve()` / `reject()` 完了後の連鎖呼び出し、task #42 §確定 A-2 連携先**）|

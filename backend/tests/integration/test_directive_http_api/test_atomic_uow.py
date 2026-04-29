@@ -35,8 +35,8 @@ async def test_issue_rolls_back_directive_when_task_save_fails(tmp_path: Path) -
     from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
         SqliteRoomRepository,
     )
-    from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
-        SqliteWorkflowRepository,
+    from bakufu.infrastructure.persistence.sqlite.repositories.workflow_stage_resolver import (
+        SqliteWorkflowStageResolver,
     )
     from bakufu.interfaces.http.app import HttpApplicationFactory
 
@@ -52,7 +52,7 @@ async def test_issue_rolls_back_directive_when_task_save_fails(tmp_path: Path) -
             directive_repo=SqliteDirectiveRepository(session),
             task_repo=_FailingTaskRepository(),  # type: ignore[arg-type]
             room_repo=SqliteRoomRepository(session),
-            workflow_repo=SqliteWorkflowRepository(session),
+            workflow_stage_resolver=SqliteWorkflowStageResolver(session),
             session=session,
         )
 

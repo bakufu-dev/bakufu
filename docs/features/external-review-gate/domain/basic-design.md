@@ -131,15 +131,16 @@ classDiagram
 
 ## 処理フロー
 
-### ユースケース 1: Gate 生成（GateService.create 経由）
+### ユースケース 1: Gate 生成（TaskService.commit_deliverable 経由）
 
-1. application 層 `TaskService.request_external_review(task_id)` が `task.request_external_review()` を呼び AWAITING_EXTERNAL_REVIEW 遷移（task #37、本 PR スコープ外）
-2. application 層 `GateService.create(task_id, stage_id, deliverable, reviewer_id)` が呼ばれる:
-   - `WorkflowRepository.find_by_id(workflow_id)` で Stage の `kind == EXTERNAL_REVIEW` を検証
+1. application 層 `TaskService.commit_deliverable(...)` が Task の成果物を更新する
+2. `TaskService` が Room → WorkflowStageResolver で現 Stage 契約を解決し、Stage の `kind == EXTERNAL_REVIEW` を検証する。EXTERNAL_REVIEW 以外では Gate を生成しない
+3. `TaskService` が注入された reviewer resolver で reviewer を解決し、未設定なら Gate を生成しない
+4. EXTERNAL_REVIEW かつ reviewer 解決済みの場合、`TaskService` が `task.request_external_review()` を呼び AWAITING_EXTERNAL_REVIEW へ遷移し、ExternalReviewGate を生成する:
    - Deliverable VO を inline コピー（**snapshot 凍結**、`storage.md` §snapshot 凍結方式、実 inline コピー実装は #36 で配線）
    - `ExternalReviewGate(id=uuid4(), task_id=task_id, stage_id=stage_id, deliverable_snapshot=deliverable_copy, reviewer_id=reviewer_id, decision=PENDING, feedback_text='', audit_trail=[], created_at=now, decided_at=None)` を構築
-3. Pydantic 型バリデーション → `model_validator(mode='after')` で 5 不変条件検査が走る（構築時は decided_at_inconsistent と feedback_text_range のみ発動可能性、他 3 種は always pass）
-4. valid なら `GateRepository.save(gate)`（後続 #36）
+5. Pydantic 型バリデーション → `model_validator(mode='after')` で 5 不変条件検査が走る（構築時は decided_at_inconsistent と feedback_text_range のみ発動可能性、他 3 種は always pass）
+6. valid なら `TaskRepository.save(updated_task)` と `GateRepository.save(gate)` を同一 Unit-of-Work 内で実行する
 
 ### ユースケース 2: CEO 閲覧（record_view）
 

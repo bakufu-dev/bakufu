@@ -29,6 +29,7 @@ from tests.integration.test_room_http_api.helpers import (
     _create_empire,
     _create_room,
 )
+from tests.integration.test_workflow_http_api.helpers import _external_review_stage_payload
 
 pytestmark = pytest.mark.asyncio
 
@@ -119,14 +120,25 @@ async def _create_gate_through_public_http(
 ) -> dict[str, str]:
     unique = uuid4().hex[:12]
     empire = await _create_empire(client, name=f"ERG E2E {unique}")
-    workflow = await client.post("/api/workflows", json={"preset_name": "v-model"})
-    assert workflow.status_code == 201, workflow.text
+    placeholder_workflow = await client.post("/api/workflows", json={"preset_name": "v-model"})
+    assert placeholder_workflow.status_code == 201, placeholder_workflow.text
     room = await _create_room(
         client,
         str(empire["id"]),
-        workflow.json()["id"],
+        placeholder_workflow.json()["id"],
         name=f"ERG E2E Room {unique}",
     )
+    stage_id = uuid4()
+    workflow = await client.post(
+        f"/api/rooms/{room['id']}/workflows",
+        json={
+            "name": f"ERG E2E Workflow {unique}",
+            "stages": [_external_review_stage_payload(stage_id)],
+            "transitions": [],
+            "entry_stage_id": str(stage_id),
+        },
+    )
+    assert workflow.status_code == 201, workflow.text
     agent = await _create_agent_via_http(client, str(empire["id"]), name=f"ERG Agent {unique}")
     room_assign = await client.post(
         f"/api/rooms/{room['id']}/agents",

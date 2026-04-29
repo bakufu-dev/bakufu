@@ -162,14 +162,13 @@ classDiagram
 
 ### ユースケース 4: External Review 要求 → 承認連鎖（**専用 method 分離**、detailed-design §確定 A-2）
 
-1. Agent が Stage の成果物を commit 完了 → `TaskService.request_external_review(task_id)` が呼ばれる
-2. application 層が現 Stage の `kind == EXTERNAL_REVIEW` を検証（外部知識、Aggregate 内では守らない）
-3. `task.request_external_review()` → IN_PROGRESS → AWAITING_EXTERNAL_REVIEW
-4. application 層が `ExternalReviewGate(task_id=task.id, stage_id=task.current_stage_id, deliverable_snapshot=task.deliverables[stage_id], ...)` を構築（別 Aggregate、本 PR スコープ外）
-5. CEO が UI で Gate を APPROVED / REJECTED → application 層 `GateService.approve()` / `reject()` 完了後、**Gate decision → Task method の dispatch を application 層が静的に実行**:
+1. Agent が Stage の成果物を commit → `TaskService.commit_deliverable(...)` が Task を更新する
+2. application 層が Room → WorkflowStageResolver で現 Stage 契約を解決し、現 Stage の `kind == EXTERNAL_REVIEW` を検証する（外部知識、Aggregate 内では守らない）
+3. EXTERNAL_REVIEW なら、注入された reviewer resolver で reviewer を解決し、`task.request_external_review()` → IN_PROGRESS → AWAITING_EXTERNAL_REVIEW と Gate Aggregate 生成を同一 Unit-of-Work で行う。EXTERNAL_REVIEW 以外なら Gate を生成しない
+4. CEO が UI で Gate を APPROVED / REJECTED → application 層 `GateService.approve()` / `reject()` 完了後、**Gate decision → Task method の dispatch を application 層が静的に実行**:
    - Gate APPROVED → `task.approve_review(transition_id, by_owner_id, next_stage_id)` → AWAITING_EXTERNAL_REVIEW → IN_PROGRESS（`next_stage_id` は次 Stage）
    - Gate REJECTED → `task.reject_review(transition_id, by_owner_id, next_stage_id)` → AWAITING_EXTERNAL_REVIEW → IN_PROGRESS（`next_stage_id` は差し戻し先）
-6. 終端 Stage + APPROVED の場合 → `task.approve_review(...)` で IN_PROGRESS に戻った後、application 層が次の advance を判定し `task.complete(transition_id, by_owner_id)` → IN_PROGRESS → DONE（terminal）。EXTERNAL_REVIEW を経由しない通常 Stage 進行は `task.advance_to_next(...)`（IN_PROGRESS の自己遷移）
+5. 終端 Stage + APPROVED の場合 → `task.approve_review(...)` で IN_PROGRESS に戻った後、application 層が次の advance を判定し `task.complete(transition_id, by_owner_id)` → IN_PROGRESS → DONE（terminal）。EXTERNAL_REVIEW を経由しない通常 Stage 進行は `task.advance_to_next(...)`（IN_PROGRESS の自己遷移）
 
 ##### Task / Gate Aggregate 境界の凍結
 

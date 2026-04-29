@@ -25,7 +25,10 @@ from bakufu.application.ports.external_review_reviewer_resolver import (
 )
 from bakufu.application.ports.room_repository import RoomRepository
 from bakufu.application.ports.task_repository import TaskRepository
-from bakufu.application.ports.workflow_repository import WorkflowRepository
+from bakufu.application.ports.workflow_stage_resolver import (
+    WorkflowStageContract,
+    WorkflowStageResolver,
+)
 from bakufu.domain.exceptions import TaskInvariantViolation
 from bakufu.domain.external_review_gate.gate import ExternalReviewGate
 from bakufu.domain.task.task import Task
@@ -37,9 +40,8 @@ from bakufu.domain.value_objects import (
     StageId,
     StageKind,
     TaskId,
-    TransitionCondition,
+    WorkflowId,
 )
-from bakufu.domain.workflow.workflow import Workflow
 
 
 class TaskService:
@@ -50,7 +52,7 @@ class TaskService:
         task_repo: TaskRepository,
         room_repo: RoomRepository,
         agent_repo: AgentRepository,
-        workflow_repo: WorkflowRepository,
+        workflow_stage_resolver: WorkflowStageResolver,
         external_review_gate_repo: ExternalReviewGateRepository,
         external_review_reviewer_resolver: ExternalReviewReviewerResolver,
         session: AsyncSession,
@@ -58,7 +60,7 @@ class TaskService:
         self._task_repo = task_repo
         self._room_repo = room_repo
         self._agent_repo = agent_repo
-        self._workflow_repo = workflow_repo
+        self._workflow_stage_resolver = workflow_stage_resolver
         self._external_review_gate_repo = external_review_gate_repo
         self._external_review_reviewer_resolver = external_review_reviewer_resolver
         self._session = session
@@ -159,49 +161,40 @@ class TaskService:
         task: Task,
         deliverable: Deliverable,
     ) -> ExternalReviewGate | None:
-        room = await self._room_repo.find_by_id(task.room_id)
-        if room is None:
-            return None
-        workflow = await self._workflow_repo.find_by_id(room.workflow_id)
-        if workflow is None:
-            return None
-        if not self._requires_external_review(workflow, task.current_stage_id):
+        workflow_id, stage = await self._find_current_stage(task)
+        if stage.kind is not StageKind.EXTERNAL_REVIEW:
             return None
         reviewer_id = await self._external_review_reviewer_resolver.resolve(
             task=task,
-            workflow_id=workflow.id,
-            stage_id=task.current_stage_id,
+            workflow_id=workflow_id,
+            stage_id=stage.id,
         )
         if reviewer_id is None:
             return None
         return ExternalReviewGate(
             id=uuid4(),
             task_id=task.id,
-            stage_id=task.current_stage_id,
+            stage_id=stage.id,
             deliverable_snapshot=deliverable,
             reviewer_id=reviewer_id,
             created_at=self._now(),
         )
 
-    @staticmethod
-    def _requires_external_review(workflow: Workflow, stage_id: StageId) -> bool:
-        stages_by_id = {stage.id: stage for stage in workflow.stages}
-        current = stages_by_id.get(stage_id)
-        if current is None:
-            return False
-        if current.kind is StageKind.EXTERNAL_REVIEW:
-            return True
-        approved_next_stage_ids = {
-            transition.to_stage_id
-            for transition in workflow.transitions
-            if transition.from_stage_id == stage_id
-            and transition.condition is TransitionCondition.APPROVED
-        }
-        return any(
-            stages_by_id[next_stage_id].kind
-            in {StageKind.INTERNAL_REVIEW, StageKind.EXTERNAL_REVIEW}
-            for next_stage_id in approved_next_stage_ids
-            if next_stage_id in stages_by_id
+    async def _find_current_stage(self, task: Task) -> tuple[WorkflowId, WorkflowStageContract]:
+        room = await self._room_repo.find_by_id(task.room_id)
+        if room is None:
+            raise RoomNotFoundError(str(task.room_id))
+        stage = await self._workflow_stage_resolver.find_by_workflow_and_stage(
+            room.workflow_id,
+            task.current_stage_id,
+        )
+        if stage is not None:
+            return room.workflow_id, stage
+        raise TaskStateConflictError(
+            task_id=task.id,
+            current_status=task.status,
+            action="commit_deliverable",
+            message=f"Current stage is not defined in workflow: {task.current_stage_id}",
         )
 
     async def _find_by_id_in_uow(self, task_id: TaskId) -> Task:

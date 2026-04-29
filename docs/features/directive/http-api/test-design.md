@@ -29,13 +29,13 @@
 
 | 要件 ID | 実装アーティファクト | テストケース ID | テストレベル | 種別 | 実装済みテスト |
 |---|---|---|---|---|---|
-| REQ-DR-HTTP-001（正常系）| `directive_router` POST + `DirectiveService.issue` + `WorkflowRepository.find_by_id(room.workflow_id)` + Task 起票 | TC-E2E-DR-003 | E2E | 正常系 | `TestDirectiveTaskHttpE2E.test_directive_issue_creates_task_and_task_lifecycle_is_observable` |
+| REQ-DR-HTTP-001（正常系）| `directive_router` POST + `DirectiveService.issue` + `WorkflowStageResolver.find_entry_stage_id(room.workflow_id)` + Task 起票 | TC-E2E-DR-003 | E2E | 正常系 | `TestDirectiveTaskHttpE2E.test_directive_issue_creates_task_and_task_lifecycle_is_observable` |
 | REQ-DR-HTTP-001（masking: text）| `DirectiveResponse.text` field_serializer | TC-E2E-DR-003 | E2E | セキュリティ | `TestDirectiveTaskHttpE2E.test_directive_issue_creates_task_and_task_lifecycle_is_observable` |
 | REQ-DR-HTTP-001（Room 不在 / archived）| `RoomNotFoundError` / `RoomArchivedError` handlers | TC-E2E-DR-003 | E2E | 異常系 | `TestDirectiveTaskHttpE2E.test_directive_issue_rejects_missing_and_archived_room` |
 | 確定B atomic UoW | `DirectiveService.issue` の単一 `session.begin()` | TC-IT-DRH-017 | 結合 | 異常系 | `test_issue_rolls_back_directive_when_task_save_fails` |
 
 **マトリクス充足の証拠**:
-- `Workflow.entry_stage_id` は Room から直接参照せず、`WorkflowRepository.find_by_id(room.workflow_id)` で取得する
+- `Workflow.entry_stage_id` は Room から直接参照せず、`WorkflowStageResolver.find_entry_stage_id(room.workflow_id)` で取得する
 - Directive 発行時に Task が同時起票され、`directive.task_id == task.id` を E2E で観測する
 - raw token を含む Directive text が HTTP レスポンスで露出しないことを E2E で観測する
 - Room 不在 404 / archived 409 を E2E で観測する

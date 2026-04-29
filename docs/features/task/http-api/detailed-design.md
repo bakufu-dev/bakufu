@@ -13,7 +13,7 @@
 | 確定B | `find_all_by_room` の追加（P-2）| `TaskRepository` Protocol に `find_all_by_room(room_id: RoomId) -> list[Task]` を追加。Room 不在時は空リストを返す（`RoomNotFoundError` は raise しない）|
 | 確定C | `task_exceptions.py` 新規作成（P-1）| `TaskNotFoundError(task_id)` / `TaskStateConflictError(task_id, current_status, action)` を定義。実装どおり `Exception` を基底クラスとし、HTTP 層で明示的に 404 / 409 へマッピングする |
 | 確定D | `TaskInvariantViolation` の HTTP ステータス分岐 | `kind in ('terminal_violation', 'state_transition_invalid')` → service 層で catch して `TaskStateConflictError` に変換 → 409。その他 kind → `TaskInvariantViolation` のまま伝播 → error_handlers.py が 422 に変換 |
-| 確定E | `TaskService` のコンストラクタ | `__init__(self, task_repo: TaskRepository, room_repo: RoomRepository, agent_repo: AgentRepository, session: AsyncSession) -> None`。`assign` は Agent が active かつ `Room.members` 内であることを検証し、`commit_deliverable` は `submitted_by` が active かつ Task 担当 Agent であることを検証する |
+| 確定E | `TaskService` のコンストラクタ | `TaskRepository` / `RoomRepository` / `AgentRepository` / `WorkflowStageResolver` / `ExternalReviewGateRepository` / `ExternalReviewReviewerResolver` / `AsyncSession` を注入する。`assign` は Agent が active かつ `Room.members` 内であることを検証し、`commit_deliverable` は `submitted_by` が active かつ Task 担当 Agent であること、現 Stage が EXTERNAL_REVIEW の場合だけ reviewer resolver を経由して Gate を生成することを検証する |
 | 確定F | deliverables の HTTP レスポンス形式 | `TaskResponse.deliverables` は `dict[str, DeliverableResponse]`（`stage_id` の str 表現をキーとする）。`stage_id` は UUID の str 表現 |
 | 確定G | GET /api/rooms/{room_id}/tasks の Room 不在時ふるまい | 空リストを返す（404 しない）。Room が archived でも同様。Task 一覧は現状の DB 状態のみに基づく |
 
@@ -146,7 +146,7 @@ ValidationError (Pydantic)  → 422 validation_error（既存 http-api-foundatio
 
 | 関数名 | シグネチャ概要 | 責務 |
 |-------|-------------|------|
-| `get_task_service` | `(session=Depends(get_session)) -> TaskService` | `TaskRepository`（SQLite 実装）/ `RoomRepository`（SQLite 実装）/ `AgentRepository`（SQLite 実装）/ `session` を注入して `TaskService` を生成する |
+| `get_task_service` | `(session=Depends(get_session)) -> TaskService` | `TaskRepository`（SQLite 実装）/ `RoomRepository`（SQLite 実装）/ `AgentRepository`（SQLite 実装）/ `WorkflowStageResolver`（SQLite 実装）/ `ExternalReviewGateRepository`（SQLite 実装）/ `ExternalReviewReviewerResolver`（HTTP 境界実装）/ `session` を注入して `TaskService` を生成する |
 
 ## `TaskService` メソッド実装仕様
 

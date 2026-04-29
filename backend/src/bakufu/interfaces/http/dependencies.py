@@ -141,8 +141,8 @@ class HttpDependencies:
         from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
             SqliteTaskRepository,
         )
-        from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
-            SqliteWorkflowRepository,
+        from bakufu.infrastructure.persistence.sqlite.repositories.workflow_stage_resolver import (
+            SqliteWorkflowStageResolver,
         )
         from bakufu.infrastructure.reviewers.env_reviewer_resolver import (
             EnvExternalReviewReviewerResolver,
@@ -152,7 +152,7 @@ class HttpDependencies:
             task_repo=SqliteTaskRepository(session),
             room_repo=SqliteRoomRepository(session),
             agent_repo=SqliteAgentRepository(session),
-            workflow_repo=SqliteWorkflowRepository(session),
+            workflow_stage_resolver=SqliteWorkflowStageResolver(session),
             external_review_gate_repo=SqliteExternalReviewGateRepository(session),
             external_review_reviewer_resolver=EnvExternalReviewReviewerResolver(),
             session=session,
@@ -170,15 +170,15 @@ class HttpDependencies:
         from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
             SqliteTaskRepository,
         )
-        from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
-            SqliteWorkflowRepository,
+        from bakufu.infrastructure.persistence.sqlite.repositories.workflow_stage_resolver import (
+            SqliteWorkflowStageResolver,
         )
 
         return DirectiveService(
             directive_repo=SqliteDirectiveRepository(session),
             task_repo=SqliteTaskRepository(session),
             room_repo=SqliteRoomRepository(session),
-            workflow_repo=SqliteWorkflowRepository(session),
+            workflow_stage_resolver=SqliteWorkflowStageResolver(session),
             session=session,
         )
 

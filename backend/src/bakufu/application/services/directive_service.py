@@ -15,7 +15,7 @@ from bakufu.application.exceptions.workflow_exceptions import WorkflowNotFoundEr
 from bakufu.application.ports.directive_repository import DirectiveRepository
 from bakufu.application.ports.room_repository import RoomRepository
 from bakufu.application.ports.task_repository import TaskRepository
-from bakufu.application.ports.workflow_repository import WorkflowRepository
+from bakufu.application.ports.workflow_stage_resolver import WorkflowStageResolver
 from bakufu.domain.directive.directive import Directive
 from bakufu.domain.task.task import Task
 from bakufu.domain.value_objects import RoomId, TaskStatus
@@ -29,13 +29,13 @@ class DirectiveService:
         directive_repo: DirectiveRepository,
         task_repo: TaskRepository,
         room_repo: RoomRepository,
-        workflow_repo: WorkflowRepository,
+        workflow_stage_resolver: WorkflowStageResolver,
         session: AsyncSession,
     ) -> None:
         self._directive_repo = directive_repo
         self._task_repo = task_repo
         self._room_repo = room_repo
-        self._workflow_repo = workflow_repo
+        self._workflow_stage_resolver = workflow_stage_resolver
         self._session = session
 
     async def issue(self, room_id: RoomId, raw_text: str) -> tuple[Directive, Task]:
@@ -47,8 +47,10 @@ class DirectiveService:
             if room.archived:
                 raise RoomArchivedError(str(room_id))
 
-            workflow = await self._workflow_repo.find_by_id(room.workflow_id)
-            if workflow is None:
+            entry_stage_id = await self._workflow_stage_resolver.find_entry_stage_id(
+                room.workflow_id
+            )
+            if entry_stage_id is None:
                 raise WorkflowNotFoundError(str(room.workflow_id))
 
             now = self._now()
@@ -63,7 +65,7 @@ class DirectiveService:
                 id=uuid4(),
                 room_id=room_id,
                 directive_id=directive.id,
-                current_stage_id=workflow.entry_stage_id,
+                current_stage_id=entry_stage_id,
                 status=TaskStatus.PENDING,
                 assigned_agent_ids=[],
                 deliverables={},

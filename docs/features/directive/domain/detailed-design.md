@@ -174,7 +174,7 @@ UI 側でも入力時マスキングを実装するが、本 Aggregate 層では
 1. `text = raw_text if raw_text.startswith('$') else '$' + raw_text` で `$` プレフィックス正規化
 2. `RoomRepository.find_by_id(target_room_id)` で Room 取得（不在なら `RoomNotFoundError(MSG-DR-004)` を Fail Fast）
 3. Room の `archived == True` 検証（archived Room への directive 発行は禁止 — 本 PR スコープ外、`feature/directive-application` で凍結）
-4. `WorkflowRepository.find_by_id(room.workflow_id)` で Workflow 取得（不在なら `WorkflowNotFoundError(MSG-DR-005)`）
+4. `WorkflowStageResolver.find_entry_stage_id(room.workflow_id)` で entry stage を取得（不在なら `WorkflowNotFoundError(MSG-DR-005)`）
 5. Directive 構築 + `DirectiveRepository.save(directive)`
 6. 同一 Tx 内で Task 構築 → `TaskRepository.save(task)` → `directive.link_task(task.id)` → `DirectiveRepository.save(updated_directive)`
 

@@ -69,7 +69,8 @@ classDiagram
 - `current_stage_id` の Workflow 内存在 — `TaskService` が `WorkflowRepository.find_by_id` で確認
 - `assigned_agent_ids` の各 AgentId が Room.members 内 — 同上、`RoomRepository.find_by_id` で確認
 - `transition_id` / `next_stage_id` の Workflow 内存在 — `TaskService.approve_review()` / `reject_review()` / `advance_to_next()` / `complete()` で確認
-- 現 Stage の `kind == EXTERNAL_REVIEW`（`request_external_review` 呼び出し前提） — `TaskService.request_external_review()` で確認
+- 現 Stage の `kind == EXTERNAL_REVIEW`（Gate 生成前提） — `TaskService.commit_deliverable()` が Room → WorkflowStageResolver で Stage 契約を解決して確認する。EXTERNAL_REVIEW 以外なら Gate を生成しない
+- EXTERNAL_REVIEW Stage の reviewer 解決 — `TaskService` は `ExternalReviewReviewerResolver` port に委譲する。application service は実行環境を直接読まない
 - `commit_deliverable` の `by_agent_id` が `assigned_agent_ids` 内 — `TaskService.commit_deliverable()` で確認
 - 現 Stage の `kind` が終端（`complete` 呼び出し前提） — `TaskService.complete()` で確認
 
@@ -356,7 +357,8 @@ UI 側 / Repository 側でも入力時マスキング / 永続化前マスキン
 | `current_stage_id` の Workflow 内存在 | ✗ | ✓（`TaskService.approve_review()` / `reject_review()` / `advance_to_next()` / `complete()` で `WorkflowRepository.find_by_id`） |
 | `assigned_agent_ids` 各 AgentId が Room.members 内 | ✗ | ✓（`TaskService.assign()` で `RoomRepository.find_by_id`） |
 | `transition_id` / `next_stage_id` の Workflow 内存在 | ✗ | ✓（同上、Stage 進行系 4 method 共通） |
-| 現 Stage の `kind == EXTERNAL_REVIEW`（request_external_review 前提） | ✗ | ✓（`TaskService.request_external_review()` で `WorkflowRepository.find_by_id`） |
+| 現 Stage の `kind == EXTERNAL_REVIEW`（Gate 生成前提） | ✗ | ✓（`TaskService.commit_deliverable()` で Room → WorkflowStageResolver により Stage 契約を解決し、EXTERNAL_REVIEW の場合だけ `task.request_external_review()` と Gate 生成を行う） |
+| EXTERNAL_REVIEW reviewer 解決 | ✗ | ✓（`ExternalReviewReviewerResolver` port を `TaskService` に注入し、HTTP 境界の実装が実行環境から reviewer を解決する） |
 | 現 Stage の `kind` が終端（complete 前提） | ✗ | ✓（`TaskService.complete()` で `WorkflowRepository.find_by_id` + Workflow.transitions に出辺なし or terminal Stage 集合に含まれることを確認） |
 | `commit_deliverable` の `by_agent_id` が `assigned_agent_ids` 内 | ✗ | ✓（`TaskService.commit_deliverable()` で確認、§確定 G） |
 | Gate decision → Task method dispatch（APPROVED → `approve_review`、REJECTED → `reject_review`） | ✗ | ✓（`GateService.approve()` / `reject()` 完了後の連鎖呼び出し、§確定 A-2 の 3 PR 連鎖契約） |

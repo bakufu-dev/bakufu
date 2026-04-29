@@ -14,7 +14,7 @@
 | 確定C | `$` プレフィックス正規化 | `DirectiveService.issue()` が `text = raw_text if raw_text.startswith('$') else '$' + raw_text` で正規化（業務ルール R1-A）。Aggregate 側は valid な text しか受け取らない契約 |
 | 確定D | DirectiveInvariantViolation → 422 | domain 層の `DirectiveInvariantViolation` は application 層でそのまま伝播させ、error_handlers.py が 422 に変換 |
 | 確定E | Room archived 確認 | `DirectiveService.issue()` が Room を取得し `room.archived` を確認。`RoomArchivedError` を raise → 409 |
-| 確定F | DirectiveService のコンストラクタ | `__init__(self, directive_repo: DirectiveRepository, task_repo: TaskRepository, room_repo: RoomRepository, workflow_repo: WorkflowRepository, session: AsyncSession) -> None`。Task の `current_stage_id` は `Workflow.entry_stage_id` でなければならず、Room は `workflow_id` だけを保持するため、WorkflowRepository 参照を application 層責務として明示する |
+| 確定F | DirectiveService のコンストラクタ | `DirectiveRepository` / `TaskRepository` / `RoomRepository` / `WorkflowStageResolver` / `AsyncSession` を注入する。Task の `current_stage_id` は Workflow の `entry_stage_id` でなければならず、Room は `workflow_id` だけを保持するため、Workflow 全体を再水和せず Stage 契約 resolver で entry stage を解決する |
 
 ## Pydantic スキーマ定義
 
@@ -75,7 +75,7 @@ ValidationError (Pydantic)  → 422 validation_error（既存 http-api-foundatio
 
 | 関数名 | シグネチャ概要 | 責務 |
 |-------|-------------|------|
-| `get_directive_service` | `(session=Depends(get_session)) -> DirectiveService` | `DirectiveRepository`（SQLite 実装）/ `TaskRepository`（SQLite 実装）/ `RoomRepository`（SQLite 実装）/ `WorkflowRepository`（SQLite 実装）/ `session` を注入して `DirectiveService` を生成する |
+| `get_directive_service` | `(session=Depends(get_session)) -> DirectiveService` | `DirectiveRepository`（SQLite 実装）/ `TaskRepository`（SQLite 実装）/ `RoomRepository`（SQLite 実装）/ `WorkflowStageResolver`（SQLite 実装）/ `session` を注入して `DirectiveService` を生成する |
 
 ## 確定G: `DirectiveService.issue()` の例外優先順位（凍結）
 
