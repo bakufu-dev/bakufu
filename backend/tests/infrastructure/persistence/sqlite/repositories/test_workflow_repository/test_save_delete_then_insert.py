@@ -159,8 +159,8 @@ class TestSaveSqlOrder:
                 )
             )
         ]
-        # Step 1 (UPSERT workflows) → Step 2 (DELETE workflow_stages) →
-        # Step 3 (INSERT workflow_stages) → Step 4 (DELETE workflow_transitions) →
+        # Step 1（UPSERT workflows）→ Step 2（DELETE workflow_stages）→
+        # Step 3（INSERT workflow_stages）→ Step 4（DELETE workflow_transitions）→
         # Step 5 (INSERT workflow_transitions)。
         assert len(dml) >= 5, (
             f"[FAIL] save emitted only {len(dml)} DML statements; expected ≥5.\n"

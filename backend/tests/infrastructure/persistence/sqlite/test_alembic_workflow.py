@@ -33,7 +33,7 @@ pytestmark = pytest.mark.asyncio
 
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# フィクスチャ
 # ---------------------------------------------------------------------------
 @pytest_asyncio.fixture
 async def empty_engine(tmp_path: Path) -> AsyncIterator[AsyncEngine]:
@@ -114,7 +114,7 @@ class TestUpgradeDowngradeIdempotent:
         empty_engine: AsyncEngine,
     ) -> None:
         """TC-IT-WFR-021: upgrade head → downgrade base → upgrade head。"""
-        # Up.
+        # アップグレード。
         await run_upgrade_head(empty_engine)
         # Alembic コマンドで base にダウン (asyncio 内で同期)。
         from alembic import command  # ローカルインポートはグローバルサイドエフェクト回避
@@ -194,7 +194,7 @@ class TestRevisionChainLinear:
             # 上記のガード後、``down`` は ``str | None`` に絞られた。
             current_id = down  # pyright: ignore[reportAssignmentType]
 
-        # 0003 → 0002 → 0001 → base (None)
+        # ダウングレード経路: 0003 → 0002 → 0001 → base（None）
         assert chain == [
             "0003_workflow_aggregate",
             "0002_empire_aggregate",

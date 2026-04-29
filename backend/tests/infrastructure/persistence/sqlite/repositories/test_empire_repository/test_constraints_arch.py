@@ -90,8 +90,8 @@ class TestUniqueConstraintViolation:
             await SqliteEmpireRepository(session).save(empire)
 
         room_id = uuid4()
-        # Alembic 0005 added empire_room_refs.room_id → rooms.id FK (BUG-EMR-001
-        # closure). Seed the room row before inserting into empire_room_refs.
+        # Alembic 0005 で empire_room_refs.room_id → rooms.id FK が追加された（BUG-EMR-001
+        # クローズ）。empire_room_refs に挿入する前に room 行を seed する。
         await seed_rooms(session_factory, empire.id, [room_id])
         async with session_factory() as session, session.begin():
             await session.execute(
@@ -142,12 +142,12 @@ class TestNoMaskTemplateStructure:
             _NO_MASK_TABLES,  # pyright: ignore[reportPrivateUsage]
         )
 
-        # Empire 3 tables must be in the no-mask list.
+        # Empire の 3 テーブルは no-mask リストに含まれる必要がある。
         assert "empires" in _NO_MASK_TABLES
         assert "empire_room_refs" in _NO_MASK_TABLES
         assert "empire_agent_refs" in _NO_MASK_TABLES
-        # Empire columns must NOT appear in the masking-contract list
-        # (positive contract).
+        # Empire のカラムは masking 契約リストに **現れない** こと
+        # （ポジティブ契約）。
         empire_table_names = {"empires", "empire_room_refs", "empire_agent_refs"}
         contract_tables = {tbl for tbl, _, _ in _MASKING_CONTRACT}
         assert contract_tables.isdisjoint(empire_table_names)

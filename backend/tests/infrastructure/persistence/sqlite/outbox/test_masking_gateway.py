@@ -185,5 +185,5 @@ class TestAuditLogAndPidRegistryMaskingHook:
             stmt = select(PidRegistryRow).where(PidRegistryRow.pid == row.pid)
             fetched = (await session.execute(stmt)).scalar_one()
         assert "<REDACTED:ANTHROPIC_KEY>" in fetched.cmd
-        # The plaintext ``ANTHROPIC_KEY`` must not survive.
+        # 平文の ``ANTHROPIC_KEY`` が残ってはならない。
         assert ANTHROPIC_KEY not in fetched.cmd

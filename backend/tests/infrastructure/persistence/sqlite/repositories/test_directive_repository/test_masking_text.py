@@ -61,7 +61,7 @@ _GITHUB_TOKEN = "ghp_" + "X" * 40
 # Bearer token ── Authorization: Bearer <token> に一致。
 _BEARER_TOKEN = "eyJhbGciOi.tokenpart.signature"
 
-# Redaction sentinel
+# Redaction センチネル
 _DISCORD_SENTINEL = "<REDACTED:DISCORD_TOKEN>"
 _ANTHROPIC_SENTINEL = "<REDACTED:ANTHROPIC_KEY>"
 _GITHUB_SENTINEL = "<REDACTED:GITHUB_PAT>"

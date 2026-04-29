@@ -70,7 +70,7 @@ class TestEmpireLifecycleE2E:
         roundtrip = await empire_e2e_client.get(f"/api/empires/{empire_id}")
         assert roundtrip.json()["name"] == "新山田の幕府"
 
-        # ── Step 4: DELETE → 204 No Content ────────────────────────────────
+        # ── Step 4: DELETE → 204 No Content（204 応答）─────────────────────
         delete_resp = await empire_e2e_client.delete(f"/api/empires/{empire_id}")
         assert delete_resp.status_code == 204
         assert delete_resp.content == b""

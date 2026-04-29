@@ -39,7 +39,7 @@ pytestmark = pytest.mark.asyncio
 
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# フィクスチャ
 # ---------------------------------------------------------------------------
 @pytest_asyncio.fixture
 async def empty_engine(tmp_path: Path) -> AsyncIterator[AsyncEngine]:
@@ -118,7 +118,7 @@ class TestFifthRevisionApplied:
             result = await conn.execute(text("PRAGMA foreign_key_list('empire_room_refs')"))
             fk_rows = list(result)
         # PRAGMA foreign_key_list はカラムを持つ行を返す:
-        #   id, seq, table, from, to, on_update, on_delete, match
+        #   PRAGMA foreign_key_list の列: id, seq, table, from, to, on_update, on_delete, match
         referenced_tables = {row[2] for row in fk_rows}  # カラムインデックス 2
         assert "rooms" in referenced_tables, (
             f"[FAIL] empire_room_refs は rooms への FK を持たない。\n"

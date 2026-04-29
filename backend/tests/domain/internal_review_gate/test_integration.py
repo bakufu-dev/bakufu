@@ -140,10 +140,10 @@ class TestGateLifecycleAllApproved:
             comment="UX OK",
             decided_at=_ts(),
         )
-        # All required roles have verdicts.
+        # 必須 role 全てに verdict が付与済み。
         submitted_roles = frozenset(v.role for v in gate.verdicts)
         assert submitted_roles == roles
-        # Every verdict is APPROVED.
+        # 全 verdict が APPROVED である。
         assert all(v.decision == VerdictDecision.APPROVED for v in gate.verdicts)
 
 
@@ -165,7 +165,7 @@ class TestGateLifecycleRejected:
             decided_at=_ts(),
         )
         assert gate_rejected.gate_decision == GateDecision.REJECTED
-        # Only 1 verdict: remaining 2 roles are still not submitted.
+        # verdict は 1 件のみ: 残り 2 つの role は未投稿。
         assert len(gate_rejected.verdicts) == 1
         assert gate_rejected.verdicts[0].decision == VerdictDecision.REJECTED
 
@@ -181,7 +181,7 @@ class TestGateLifecycleRejected:
         )
         assert gate.gate_decision == GateDecision.REJECTED
 
-        # ux tries to APPROVE after Gate is already REJECTED.
+        # Gate が REJECTED 後に ux が APPROVE を試みるケース。
         with pytest.raises(InternalReviewGateInvariantViolation) as exc_info:
             gate.submit_verdict(
                 role="ux",

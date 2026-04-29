@@ -44,7 +44,7 @@ pytestmark = pytest.mark.asyncio
 
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# フィクスチャ
 # ---------------------------------------------------------------------------
 @pytest_asyncio.fixture
 async def empty_engine(tmp_path: Path) -> AsyncIterator[AsyncEngine]:

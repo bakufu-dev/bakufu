@@ -63,7 +63,7 @@ def _invoke_action(gate: ExternalReviewGate, action: GateAction) -> ExternalRevi
         return gate.reject(uuid4(), "synthetic reject comment", decided_at=ts)
     if action == "cancel":
         return gate.cancel(uuid4(), "synthetic cancel reason", decided_at=ts)
-    # record_view
+    # record_view（閲覧記録）
     return gate.record_view(uuid4(), viewed_at=ts)
 
 
@@ -106,7 +106,7 @@ class TestStateMachineTableLocked:
 class TestSevenAllowedTransitions:
     """TC-UT-GT-003 / 004 / 006 / 013 ── 分岐テーブルの ✓ セル 7 件。"""
 
-    # PENDING → APPROVED via approve
+    # PENDING → APPROVED（approve 経由）
     def test_approve_pending_to_approved(self) -> None:
         """TC-UT-GT-003: PENDING に対する approve は APPROVED へ遷移."""
         gate = make_gate()
@@ -121,7 +121,7 @@ class TestSevenAllowedTransitions:
         # 元の Gate は不変（frozen + pre-validate）
         assert gate.decision == ReviewDecision.PENDING
 
-    # PENDING → REJECTED via reject
+    # PENDING → REJECTED（reject 経由）
     def test_reject_pending_to_rejected(self) -> None:
         """TC-UT-GT-004: PENDING に対する reject は REJECTED へ遷移."""
         gate = make_gate()
@@ -132,7 +132,7 @@ class TestSevenAllowedTransitions:
         assert out.feedback_text == "needs revision"
         assert out.audit_trail[-1].action == AuditAction.REJECTED
 
-    # PENDING → CANCELLED via cancel
+    # PENDING → CANCELLED（cancel 経由）
     def test_cancel_pending_to_cancelled(self) -> None:
         """TC-UT-GT-013: PENDING に対する cancel は CANCELLED へ遷移."""
         gate = make_gate()
@@ -295,7 +295,7 @@ class TestLifecycleIntegration:
         viewer_a = uuid4()
         viewer_b = uuid4()
 
-        # Approve
+        # 承認
         gate = gate.approve(uuid4(), "all good", decided_at=_next_ts(gate))
         assert gate.decision == ReviewDecision.APPROVED
 

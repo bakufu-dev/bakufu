@@ -199,8 +199,8 @@ class TestSaveSqlOrder:
                 for prefix in ("INSERT INTO EMPIRES", "DELETE FROM EMPIRE", "INSERT INTO EMPIRE")
             )
         ]
-        # Step 1 (UPSERT empires) → Step 2 (DELETE empire_room_refs) →
-        # Step 3 (INSERT empire_room_refs) → Step 4 (DELETE
+        # Step 1（UPSERT empires）→ Step 2（DELETE empire_room_refs）→
+        # Step 3（INSERT empire_room_refs）→ Step 4（DELETE
         # empire_agent_refs) → Step 5 (INSERT empire_agent_refs)。
         assert len(dml) >= 5
         assert dml[0].upper().startswith("INSERT INTO EMPIRES")

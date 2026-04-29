@@ -232,7 +232,7 @@ class TestEmptyToFullGateUpdate:
         """TC-UT-ERGR-005c: Empty gate が audit entries を持つ APPROVED gate にアップグレード。"""
         task_id, stage_id, reviewer_id = seeded_gate_context
 
-        # Empty gate save (PENDING, no audit_trail)
+        # 空 gate の保存（PENDING、audit_trail 空）
         gate = make_gate(task_id=task_id, stage_id=stage_id, reviewer_id=reviewer_id)
         async with session_factory() as session, session.begin():
             await SqliteExternalReviewGateRepository(session).save(gate)

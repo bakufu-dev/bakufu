@@ -61,7 +61,7 @@ class TestStateMachineTableLocked:
 class TestThirteenAllowedTransitions:
     """TC-UT-TS-003 / 008 / 030〜035 + cancel x 4 = 13 ✓ cells。"""
 
-    # PENDING → IN_PROGRESS via assign
+    # PENDING → IN_PROGRESS（assign 経由）
     def test_assign_pending_to_in_progress(self) -> None:
         """TC-UT-TS-003: PENDING で ``assign`` が IN_PROGRESS に移行。"""
         task = make_task()
@@ -72,7 +72,7 @@ class TestThirteenAllowedTransitions:
         # 元のタスク変更なし (frozen + pre-validate)
         assert task.status == TaskStatus.PENDING
 
-    # IN_PROGRESS self-loop via commit_deliverable
+    # IN_PROGRESS の self-loop（commit_deliverable 経由）
     def test_commit_deliverable_self_loop(self) -> None:
         """TC-UT-TS-030: IN_PROGRESS で ``commit_deliverable`` がステータス保持、エントリ追加。"""
         task = make_in_progress_task()
@@ -87,14 +87,14 @@ class TestThirteenAllowedTransitions:
         assert out.deliverables[task.current_stage_id] == deliverable
         assert out.updated_at > task.updated_at
 
-    # IN_PROGRESS → AWAITING via request_external_review
+    # IN_PROGRESS → AWAITING（request_external_review 経由）
     def test_request_external_review_to_awaiting(self) -> None:
         """TC-UT-TS-031: IN_PROGRESS → AWAITING_EXTERNAL_REVIEW。"""
         task = make_in_progress_task()
         out = task.request_external_review(updated_at=next_ts(task))
         assert out.status == TaskStatus.AWAITING_EXTERNAL_REVIEW
 
-    # AWAITING → IN_PROGRESS via approve_review (Gate APPROVED)
+    # AWAITING → IN_PROGRESS（approve_review 経由、Gate APPROVED）
     def test_approve_review_back_to_in_progress(self) -> None:
         """TC-UT-TS-032: ``approve_review`` が current_stage_id を前進。"""
         task = make_task_in_status(TaskStatus.AWAITING_EXTERNAL_REVIEW)
@@ -103,7 +103,7 @@ class TestThirteenAllowedTransitions:
         assert out.status == TaskStatus.IN_PROGRESS
         assert out.current_stage_id == next_stage
 
-    # AWAITING → IN_PROGRESS via reject_review (Gate REJECTED)
+    # AWAITING → IN_PROGRESS（reject_review 経由、Gate REJECTED）
     def test_reject_review_back_to_in_progress(self) -> None:
         """TC-UT-TS-032b: ``reject_review`` が current_stage_id をロールバック。"""
         task = make_task_in_status(TaskStatus.AWAITING_EXTERNAL_REVIEW)
@@ -112,7 +112,7 @@ class TestThirteenAllowedTransitions:
         assert out.status == TaskStatus.IN_PROGRESS
         assert out.current_stage_id == rollback_stage
 
-    # IN_PROGRESS self-loop via advance_to_next
+    # IN_PROGRESS の self-loop（advance_to_next 経由）
     def test_advance_to_next_keeps_in_progress(self) -> None:
         """TC-UT-TS-032c: ``advance_to_next`` が current_stage_id を更新、ステータス変更なし。"""
         task = make_in_progress_task()
@@ -121,7 +121,7 @@ class TestThirteenAllowedTransitions:
         assert out.status == TaskStatus.IN_PROGRESS
         assert out.current_stage_id == next_stage
 
-    # IN_PROGRESS → DONE via complete
+    # IN_PROGRESS → DONE（complete 経由）
     def test_complete_terminates_at_done(self) -> None:
         """TC-UT-TS-033: ``complete`` はターミナル遷移。
 
@@ -134,7 +134,7 @@ class TestThirteenAllowedTransitions:
         assert out.status == TaskStatus.DONE
         assert out.current_stage_id == original_stage
 
-    # IN_PROGRESS → BLOCKED via block
+    # IN_PROGRESS → BLOCKED（block 経由）
     def test_block_attaches_last_error(self) -> None:
         """TC-UT-TS-035: ``block`` は non-empty last_error が必須。"""
         task = make_in_progress_task()
@@ -142,7 +142,7 @@ class TestThirteenAllowedTransitions:
         assert out.status == TaskStatus.BLOCKED
         assert out.last_error == "AuthExpired: ..."
 
-    # BLOCKED → IN_PROGRESS via unblock_retry, last_error cleared (§確定 D)
+    # BLOCKED → IN_PROGRESS（unblock_retry 経由、last_error はクリア、§確定 D）
     def test_unblock_retry_clears_last_error(self) -> None:
         """TC-UT-TS-008: ``unblock_retry`` が last_error を None にクリア (§確定 D)。"""
         task = make_blocked_task(last_error="AuthExpired: synthetic")
@@ -150,7 +150,7 @@ class TestThirteenAllowedTransitions:
         assert out.status == TaskStatus.IN_PROGRESS
         assert out.last_error is None
 
-    # cancel from each of the 4 non-terminal states (§確定 E)
+    # 4 つの非ターミナル状態それぞれからの cancel（§確定 E）
     @pytest.mark.parametrize(
         "starting_status",
         [
@@ -173,5 +173,5 @@ class TestThirteenAllowedTransitions:
         assert out.last_error is None
 
 
-# Importing Deliverable / Task to use type checkers downstream
+# Deliverable / Task をダウンストリームの型チェッカ用にインポート
 _ = Deliverable, Task

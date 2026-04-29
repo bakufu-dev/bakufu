@@ -49,7 +49,7 @@ _DISCORD_TOKEN = "MTk4NjIyNDgz" + "NDcxOTI1MjQ4.ClFDg_." + "A" * 27
 # GitHub PAT ── (?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}
 _GITHUB_TOKEN = "ghp_" + "X" * 40
 
-# redaction sentinel
+# redaction センチネル
 _DISCORD_SENTINEL = "<REDACTED:DISCORD_TOKEN>"
 _GITHUB_SENTINEL = "<REDACTED:GITHUB_PAT>"
 
@@ -327,14 +327,14 @@ class TestTwoColumnSimultaneousMasking:
         persisted_last_error = await _read_last_error(session_factory, blocked.id)
         persisted_deliv = await _read_deliverable_body(session_factory, blocked.id)
 
-        # tasks.last_error ── Discord
+        # tasks.last_error フィールドの Discord トークン検査
         assert persisted_last_error is not None
         assert _DISCORD_SENTINEL in persisted_last_error, (
             "[FAIL] tasks.last_error missing Discord sentinel in 2-column test."
         )
         assert _DISCORD_TOKEN not in persisted_last_error
 
-        # deliverables.body_markdown ── GitHub
+        # deliverables.body_markdown フィールドの GitHub PAT 検査
         assert persisted_deliv is not None
         assert _GITHUB_SENTINEL in persisted_deliv, (
             "[FAIL] deliverables.body_markdown missing GitHub sentinel in 2-column test."

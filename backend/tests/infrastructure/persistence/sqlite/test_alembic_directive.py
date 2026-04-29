@@ -38,7 +38,7 @@ pytestmark = pytest.mark.asyncio
 
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# フィクスチャ
 # ---------------------------------------------------------------------------
 @pytest_asyncio.fixture
 async def empty_engine(tmp_path: Path) -> AsyncIterator[AsyncEngine]:
@@ -106,7 +106,7 @@ class TestSixthRevisionApplied:
         async with empty_engine.connect() as conn:
             result = await conn.execute(text("PRAGMA foreign_key_list('directives')"))
             fk_rows = list(result)
-        # PRAGMA foreign_key_list columns: id, seq, table, from, to, ...
+        # PRAGMA foreign_key_list の列: id, seq, table, from, to, ...
         referenced_tables = {row[2] for row in fk_rows}
         assert "rooms" in referenced_tables, (
             f"[FAIL] directives has no FK to rooms (§確定 R1-B).\n"

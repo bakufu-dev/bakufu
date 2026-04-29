@@ -33,7 +33,7 @@ pytestmark = pytest.mark.asyncio
 
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# フィクスチャ
 # ---------------------------------------------------------------------------
 @pytest_asyncio.fixture
 async def empty_engine(tmp_path: Path) -> AsyncIterator[AsyncEngine]:
@@ -110,7 +110,7 @@ class TestUpgradeDowngradeIdempotent:
         empty_engine: AsyncEngine,
     ) -> None:
         """TC-IT-EMR-015: upgrade head → downgrade base → upgrade head。"""
-        # Up.
+        # アップグレード。
         await run_upgrade_head(empty_engine)
         # Alembic コマンドで base にダウン (asyncio 内で同期)。
         from alembic import command  # ローカルインポートはグローバルサイドエフェクト回避

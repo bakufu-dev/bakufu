@@ -46,7 +46,7 @@ ALL_ACTIONS: list[TaskAction] = [
     "cancel",
 ]
 
-# All 6 status values — sanity bound for the 60-cell matrix.
+# 全 6 つの status 値 — 60 セル行列のサニティ範囲。
 ALL_STATUSES: list[TaskStatus] = list(TaskStatus)
 
 
@@ -87,7 +87,7 @@ def invoke_action(task: Task, action: TaskAction, *, agent_id: UUID | None = Non
         return task.block("synthetic reason", "synthetic last_error", updated_at=ts)
     if action == "unblock_retry":
         return task.unblock_retry(updated_at=ts)
-    # cancel
+    # cancel 経路
     return task.cancel(uuid4(), "synthetic cancel reason", updated_at=ts)
 
 

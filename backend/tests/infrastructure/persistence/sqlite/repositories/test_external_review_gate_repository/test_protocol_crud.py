@@ -383,13 +383,13 @@ class TestLifecycle:
         assert len(pending) == 1
         assert pending[0].id == gate1.id
 
-        # (3) find_by_task_id
+        # (3) find_by_task_id の検証
         async with session_factory() as session:
             by_task = await SqliteExternalReviewGateRepository(session).find_by_task_id(task_id)
         assert len(by_task) == 1
         assert by_task[0].id == gate1.id
 
-        # (4) find_by_id
+        # (4) find_by_id の検証
         async with session_factory() as session:
             single = await SqliteExternalReviewGateRepository(session).find_by_id(gate1.id)
         assert single is not None

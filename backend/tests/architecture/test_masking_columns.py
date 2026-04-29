@@ -97,7 +97,7 @@ _MASKING_CONTRACT: list[tuple[str, str, type]] = [
 ]
 
 # No-mask contract: §逆引き表「Empire 関連カラム: masking 対象なし」 +
-# Workflow root + Workflow transitions.
+# Workflow ルート + Workflow transitions。
 # 後続の Aggregate Repository PR が、masking 対象なしと指定したテーブルを
 # 本リストに順次追加する。
 _NO_MASK_TABLES: list[str] = [

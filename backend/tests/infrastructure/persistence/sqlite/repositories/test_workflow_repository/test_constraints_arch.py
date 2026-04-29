@@ -84,7 +84,7 @@ class TestForeignKeyCascade:
 
 # ---------------------------------------------------------------------------
 # TC-IT-WFR-018: UNIQUE制約 (workflow_id, stage_id) および
-#                                       (workflow_id, transition_id)
+#                                       （workflow_id, transition_id）の複合キー
 # ---------------------------------------------------------------------------
 class TestUniqueConstraintViolation:
     """TC-IT-WFR-018: 重複 (workflow_id, stage_id) / (..., transition_id) は例外を発生させる。"""

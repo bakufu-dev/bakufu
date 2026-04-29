@@ -117,11 +117,11 @@ class TestLifecycleIntegration:
         agent_a = uuid4()
         stage_a = task.current_stage_id
 
-        # Step 1: assign → IN_PROGRESS
+        # Step 1: assign → IN_PROGRESS への遷移
         task = task.assign([agent_a], updated_at=next_ts(task))
         assert task.status == TaskStatus.IN_PROGRESS
 
-        # Step 2: commit_deliverable
+        # Step 2: commit_deliverable で成果物を登録
         d1 = make_deliverable(stage_id=stage_a)
         task = task.commit_deliverable(
             stage_id=stage_a,
@@ -131,7 +131,7 @@ class TestLifecycleIntegration:
         )
         assert task.deliverables[stage_a] == d1
 
-        # Step 3: request_external_review → AWAITING
+        # Step 3: request_external_review → AWAITING への遷移
         task = task.request_external_review(updated_at=next_ts(task))
         assert task.status == TaskStatus.AWAITING_EXTERNAL_REVIEW
 
@@ -141,7 +141,7 @@ class TestLifecycleIntegration:
         assert task.status == TaskStatus.IN_PROGRESS
         assert task.current_stage_id == stage_b
 
-        # Step 5: commit + complete
+        # Step 5: commit + complete でタスク完了
         d2 = make_deliverable(stage_id=stage_b)
         task = task.commit_deliverable(
             stage_id=stage_b,

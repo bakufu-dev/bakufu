@@ -288,7 +288,7 @@ class TestRoomMembersCascadeOnRoomDelete:
                 },
             )
 
-        # Delete the parent room — member rows must cascade.
+        # 親 room を削除 — member 行が CASCADE で削除されるはず。
         async with session_factory() as session, session.begin():
             await session.execute(
                 text("DELETE FROM rooms WHERE id = :id"),

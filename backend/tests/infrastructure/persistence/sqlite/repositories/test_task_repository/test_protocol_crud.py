@@ -403,7 +403,7 @@ class TestLifecycleIntegration:
             await repo.save(pending)
             await repo.save(blocked)
 
-        # Step 2: count_by_status
+        # Step 2: count_by_status の検証
         async with session_factory() as session:
             blocked_count = await SqliteTaskRepository(session).count_by_status(TaskStatus.BLOCKED)
         assert blocked_count == 1
@@ -414,12 +414,12 @@ class TestLifecycleIntegration:
         assert len(blocked_tasks) == 1
         assert blocked_tasks[0].id == blocked.id
 
-        # Step 4: count_by_room
+        # Step 4: count_by_room の検証
         async with session_factory() as session:
             room_count = await SqliteTaskRepository(session).count_by_room(room_id)  # type: ignore[arg-type]
         assert room_count == 2
 
-        # Step 5: count
+        # Step 5: count の検証
         async with session_factory() as session:
             total = await SqliteTaskRepository(session).count()
         assert total == 2
@@ -438,7 +438,7 @@ class TestLifecycleIntegration:
             blocked_after = await SqliteTaskRepository(session).find_blocked()
         assert blocked_after == []
 
-        # Step 8: count_by_status(BLOCKED) == 0
+        # Step 8: count_by_status(BLOCKED) == 0 の検証
         async with session_factory() as session:
             blocked_count_after = await SqliteTaskRepository(session).count_by_status(
                 TaskStatus.BLOCKED

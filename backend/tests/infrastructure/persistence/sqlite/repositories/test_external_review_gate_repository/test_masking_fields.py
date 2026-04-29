@@ -475,13 +475,13 @@ class TestThreeColumnSimultaneousMasking:
         persisted_feedback = await _read_persisted_feedback_text(session_factory, gate.id)
         persisted_comment = await _read_persisted_audit_comment(session_factory, gate.id)
 
-        # snapshot_body_markdown ── Discord
+        # snapshot_body_markdown フィールドの Discord トークン検査
         assert _DISCORD_SENTINEL in persisted_snapshot, (
             "[FAIL] snapshot_body_markdown missing Discord sentinel in 3-column test."
         )
         assert _DISCORD_TOKEN not in persisted_snapshot
 
-        # feedback_text ── Slack
+        # feedback_text フィールドの Slack トークン検査
         assert _SLACK_SENTINEL in persisted_feedback, (
             "[FAIL] feedback_text missing Slack sentinel in 3-column test."
         )

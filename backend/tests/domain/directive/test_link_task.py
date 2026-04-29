@@ -102,7 +102,7 @@ class TestPreValidateRollback:
         directive = make_linked_directive(task_id=existing_task_id)
         with pytest.raises(DirectiveInvariantViolation):
             directive.link_task(uuid4())
-        # The original instance still references the original task_id.
+        # 元のインスタンスは元の task_id を参照したままである。
         assert directive.task_id == existing_task_id
 
     def test_failed_relink_can_be_repeated_without_progress(self) -> None:

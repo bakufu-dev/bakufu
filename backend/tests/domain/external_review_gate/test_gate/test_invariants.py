@@ -383,7 +383,7 @@ class TestAuditTrailChainIntegrity:
         before_approve = copy.copy(gate.audit_trail)
         assert len(before_approve) == 2
 
-        # Approve
+        # 承認
         gate = gate.approve(uuid4(), "all good", decided_at=ts3)
 
         # 既存 2 件はバイト等価（§確定 C 契約）
