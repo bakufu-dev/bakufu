@@ -29,8 +29,8 @@
 | REQ-WF-HTTP-001〜007 | `workflow_router` | `backend/src/bakufu/interfaces/http/routers/workflows.py` | Workflow CRUD + Stage 一覧 + プリセット一覧 エンドポイント（7 本）|
 | REQ-WF-HTTP-001〜007 | `WorkflowService` | `backend/src/bakufu/application/services/workflow_service.py` | http-api-foundation で骨格確定済み。本 sub-feature で全メソッドを肉付け |
 | REQ-WF-HTTP-001〜007 | `WorkflowSchemas` | `backend/src/bakufu/interfaces/http/schemas/workflow.py` | Pydantic v2 リクエスト / レスポンスモデル（新規ファイル）|
-| 横断 | `workflow 例外ハンドラ群` | `backend/src/bakufu/interfaces/http/error_handlers.py`（既存追記）| `WorkflowNotFoundError` / `WorkflowArchivedError` / `WorkflowInvariantViolation` → `ErrorResponse` 変換 |
-| 横断 | `application 例外定義` | `backend/src/bakufu/application/exceptions/workflow_exceptions.py`（新規）| `WorkflowNotFoundError` / `WorkflowArchivedError`（room sub-feature の暫定定義を本ファイルに正式移転）|
+| 横断 | `workflow 例外ハンドラ群` | `backend/src/bakufu/interfaces/http/error_handlers.py`（既存追記）| `WorkflowNotFoundError` / `WorkflowArchivedError` / `WorkflowIrreversibleError` / `WorkflowInvariantViolation` → `ErrorResponse` 変換 |
+| 横断 | `application 例外定義` | `backend/src/bakufu/application/exceptions/workflow_exceptions.py`（新規）| `WorkflowNotFoundError` / `WorkflowArchivedError` / `WorkflowIrreversibleError`（room sub-feature の暫定定義を本ファイルに正式移転）|
 | REQ-WF-HTTP-004, 005 | `WorkflowService` DI 拡張 | `backend/src/bakufu/interfaces/http/dependencies.py`（既存追記）| `get_workflow_service()` を WorkflowRepository + RoomRepository を受け取る形に拡張 |
 
 ```
@@ -90,7 +90,7 @@ backend/
 | 入力 | パスパラメータ `id: UUID` + `WorkflowUpdate(name: str \| None, stages: list[StageCreate] \| None, transitions: list[TransitionCreate] \| None, entry_stage_id: UUID \| None)`（None は変更なし）|
 | 処理 | `WorkflowService.update(workflow_id, name, stages, transitions, entry_stage_id)` → 1) `find_by_id` → 不在 → 404 / archived → 409 (R1-14) 2) 変更フィールドのみ差し替えた dict で `Workflow(...)` 再構築（pre-validate、DAG 検査 R1-1〜9 が再実行）3) `WorkflowRepository.save(updated_workflow)` |
 | 出力 | HTTP 200, 更新済み `WorkflowResponse` |
-| エラー時 | 不在 → 404 (MSG-WF-HTTP-001) / archived → 409 (MSG-WF-HTTP-002) / DAG 違反 → 422 (MSG-WF-HTTP-005) / 不正 UUID → 422 |
+| エラー時 | 不在 → 404 (MSG-WF-HTTP-001) / archived → 409 (MSG-WF-HTTP-002) / notify_channels masked → 409 (MSG-WF-HTTP-008) / DAG 違反 → 422 (MSG-WF-HTTP-005) / 不正 UUID → 422 |
 
 ### REQ-WF-HTTP-005: Workflow アーカイブ（DELETE /api/workflows/{id}）
 
@@ -131,6 +131,7 @@ backend/
 | MSG-WF-HTTP-005 | エラー（検証）| `WorkflowInvariantViolation` の DAG 業務ルール違反本文（R1-1〜9）| 422 |
 | MSG-WF-HTTP-006 | エラー（不在）| Room が見つからない（room_id スコープのエラー）| 404 |
 | MSG-WF-HTTP-007 | エラー（競合）| アーカイブ済み Room への Workflow 作成（R1-14 / Room R1-5 違反）| 409 |
+| MSG-WF-HTTP-008 | エラー（競合）| notify_channels が masked 状態の Workflow への更新操作（R1-16 違反）| 409 |
 
 ## 依存関係
 
@@ -311,7 +312,7 @@ classDiagram
 ### ユースケース 4: Workflow 更新（PATCH /api/workflows/{id}）
 
 1. `id: UUID` + `WorkflowUpdate` 取得
-2. `WorkflowService.update(workflow_id, ...)` → `find_by_id` → None → 404 / archived → 409
+2. `WorkflowService.update(workflow_id, ...)` → `find_by_id` → None → 404 / archived → 409 / notify_channels masked (pydantic.ValidationError) → 409 (R1-16)
 3. 変更フィールドのみ差し替えた dict で `Workflow(...)` 再構築（pre-validate、DAG 検査実行）
 4. `async with session.begin()`: `WorkflowRepository.save(updated_workflow)`
 5. `WorkflowResponse` で HTTP 200
@@ -446,6 +447,7 @@ ER は [`../repository/basic-design.md §ER 図`](../repository/basic-design.md)
 |---------|---------|---------|---------------|
 | `WorkflowNotFoundError` | `WorkflowService.find_by_id`（None 時）/ archive（None 時）| `error_handlers.py` 専用ハンドラ → HTTP 404 | 404 |
 | `WorkflowArchivedError` | `WorkflowService.update`（archived=True 時）| 専用ハンドラ → HTTP 409 (MSG-WF-HTTP-002) | 409 |
+| `WorkflowIrreversibleError` | `WorkflowService.update`（pydantic.ValidationError 発生時 — notify_channels masked）| 専用ハンドラ → HTTP 409 (MSG-WF-HTTP-008) | 409 |
 | `WorkflowPresetNotFoundError` | `WorkflowService.create_for_room`（未知 preset_name）| 専用ハンドラ → HTTP 404 (MSG-WF-HTTP-004) | 404 |
 | `WorkflowInvariantViolation` | domain Workflow 構築 / update 時（DAG / 容量 / SSRF 等）| 専用ハンドラ → HTTP 422 (MSG-WF-HTTP-005 前処理済み本文)| 422 |
 | `RoomNotFoundError` | `WorkflowService.create_for_room` / `find_by_room`（Room 不在時）| room http-api 既存ハンドラが処理 | 404 |
