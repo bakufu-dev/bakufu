@@ -369,6 +369,58 @@ class TaskInvariantViolation(Exception):  # noqa: N818
         self.detail: dict[str, object] = masked_detail
 
 
+type InternalReviewGateViolationKind = Literal[
+    "role_already_submitted",
+    "gate_already_decided",
+    "comment_too_long",
+    "invalid_role",
+    "required_gate_roles_empty",
+    "verdict_role_invalid",
+    "duplicate_role_verdict",
+    "gate_decision_inconsistent",
+]
+"""Discriminator for :class:`InternalReviewGateInvariantViolation` per
+internal-review-gate detailed-design. The closed set of eight kinds covers the
+submit-verdict guard conditions and the four structural invariants enforced by
+``model_validator(mode='after')``."""
+
+
+# DDD: "Violation" describes an invariant breach, not a programming bug, so
+# the N818 "Error suffix" rule does not apply here.
+class InternalReviewGateInvariantViolation(Exception):  # noqa: N818
+    """Raised when an :class:`InternalReviewGate` aggregate invariant is violated.
+
+    Mirrors :class:`ExternalReviewGateInvariantViolation` in shape
+    (``kind`` + ``message`` + ``detail`` + immutable copy of detail).
+    Internal-review content (comments, role names) is agent-authored
+    and does not embed Discord webhook URLs, so no secret masking is
+    applied at this layer — the standard ``kind`` / ``message`` /
+    ``detail`` triple is sufficient.
+
+    Attributes:
+        kind: One of the canonical violation discriminators in
+            :data:`InternalReviewGateViolationKind`. Stable string values
+            used by tests and HTTP API mappers; never localized.
+        message: The full ``[FAIL] ...`` user-facing string per the
+            internal-review-gate detailed-design §MSG.
+        detail: Structured context (role names, lengths, counts) for
+            diagnostics and audit logging. Stored as a fresh ``dict`` copy
+            to keep the exception immutable from the caller's view.
+    """
+
+    def __init__(
+        self,
+        *,
+        kind: InternalReviewGateViolationKind,
+        message: str,
+        detail: Mapping[str, object] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.kind: InternalReviewGateViolationKind = kind
+        self.message: str = message
+        self.detail: dict[str, object] = dict(detail) if detail else {}
+
+
 type ExternalReviewGateViolationKind = Literal[
     "decision_already_decided",
     "decided_at_inconsistent",
@@ -430,6 +482,8 @@ __all__ = [
     "EmpireViolationKind",
     "ExternalReviewGateInvariantViolation",
     "ExternalReviewGateViolationKind",
+    "InternalReviewGateInvariantViolation",
+    "InternalReviewGateViolationKind",
     "RoomInvariantViolation",
     "RoomViolationKind",
     "StageInvariantViolation",
