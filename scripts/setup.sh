@@ -396,7 +396,11 @@ install_node_tools() {
 # scripts/setup.sh 自身が依存解決を担う。
 install_repo_deps() {
     if [[ -f "pyproject.toml" ]]; then
-        uv sync
+        # workspace 全 package の dev グループまで含めて同期する。
+        # backend/pyproject.toml の dev グループ（httpx / pytest-asyncio 等）は
+        # 素の `uv sync` だと root の .venv に取り込まれず、CI の
+        # test-backend / typecheck が ModuleNotFoundError で落ちる。
+        uv sync --all-packages --all-groups
     fi
     if [[ -f "package.json" ]]; then
         pnpm install --frozen-lockfile
