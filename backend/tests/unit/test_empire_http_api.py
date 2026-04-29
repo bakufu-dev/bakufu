@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -200,7 +201,7 @@ class TestEmpireInvariantViolationHandler:
     期待: HTTP 422, message から [FAIL] プレフィックスと \\nNext:.* が除去される
     """
 
-    def _make_request(self) -> object:
+    def _make_request(self) -> Any:
         from unittest.mock import MagicMock
 
         return MagicMock()
@@ -216,7 +217,8 @@ class TestEmpireInvariantViolationHandler:
                 "\nNext: 1〜80 文字の名前を指定してください。"
             ),
         )
-        resp = await empire_invariant_violation_handler(self._make_request(), exc)  # type: ignore[arg-type]
+        req = self._make_request()
+        resp = await empire_invariant_violation_handler(req, exc)  # type: ignore[arg-type]
         assert resp.status_code == 422  # type: ignore[union-attr]
 
     async def test_handler_error_code_is_validation_error(self) -> None:
@@ -232,7 +234,8 @@ class TestEmpireInvariantViolationHandler:
                 "\nNext: 1〜80 文字の名前を指定してください。"
             ),
         )
-        resp = await empire_invariant_violation_handler(self._make_request(), exc)  # type: ignore[arg-type]
+        req = self._make_request()
+        resp = await empire_invariant_violation_handler(req, exc)  # type: ignore[arg-type]
         body = json.loads(resp.body)  # type: ignore[union-attr]
         assert body["error"]["code"] == "validation_error"
 
@@ -250,7 +253,8 @@ class TestEmpireInvariantViolationHandler:
                 "\nNext: 1〜80 文字の名前を指定してください。"
             ),
         )
-        resp = await empire_invariant_violation_handler(self._make_request(), exc)  # type: ignore[arg-type]
+        req = self._make_request()
+        resp = await empire_invariant_violation_handler(req, exc)  # type: ignore[arg-type]
         body = json.loads(resp.body)  # type: ignore[union-attr]
         assert "[FAIL]" not in body["error"]["message"]
 
@@ -268,7 +272,8 @@ class TestEmpireInvariantViolationHandler:
                 "\nNext: 1〜80 文字の名前を指定してください。"
             ),
         )
-        resp = await empire_invariant_violation_handler(self._make_request(), exc)  # type: ignore[arg-type]
+        req = self._make_request()
+        resp = await empire_invariant_violation_handler(req, exc)  # type: ignore[arg-type]
         body = json.loads(resp.body)  # type: ignore[union-attr]
         assert "Next:" not in body["error"]["message"]
 
@@ -286,7 +291,8 @@ class TestEmpireInvariantViolationHandler:
                 "\nNext: 1〜80 文字の名前を指定してください。"
             ),
         )
-        resp = await empire_invariant_violation_handler(self._make_request(), exc)  # type: ignore[arg-type]
+        req = self._make_request()
+        resp = await empire_invariant_violation_handler(req, exc)  # type: ignore[arg-type]
         body = json.loads(resp.body)  # type: ignore[union-attr]
         assert body["error"]["message"] == "Empire name は 1〜80 文字でなければなりません。"
 

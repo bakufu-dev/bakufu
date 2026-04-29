@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -174,13 +175,13 @@ class TestHttpExceptionHandlerUnit:
     status code branches including cases not easily triggered via routing.
     """
 
-    def _make_request(self) -> object:
+    def _make_request(self) -> Any:
         """Return a minimal mock Request object."""
         from unittest.mock import MagicMock
 
         return MagicMock()
 
-    def _make_http_exc(self, status_code: int, detail: str | None = None) -> object:
+    def _make_http_exc(self, status_code: int, detail: str | None = None) -> Any:
         from starlette.exceptions import HTTPException as StarletteHTTPException
 
         return StarletteHTTPException(status_code=status_code, detail=detail)
