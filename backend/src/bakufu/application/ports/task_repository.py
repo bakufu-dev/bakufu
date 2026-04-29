@@ -45,6 +45,13 @@ class TaskRepository(Protocol):
         """
         ...
 
+    async def find_all_by_room(self, room_id: RoomId) -> list[Task]:
+        """指定 Room に紐付く Task 全件を返す。
+
+        Room 不在時も参照整合性検査は行わず、該当 Task がなければ空リストを返す。
+        """
+        ...
+
     async def count(self) -> int:
         """``SELECT COUNT(*) FROM tasks`` を返す。
 

@@ -7,7 +7,7 @@
 
 本書は **Directive 業務概念全体の E2E 検証戦略** を凍結する。各 sub-feature（[`domain/`](domain/) / [`repository/`](repository/) / 将来の http-api / ui）の境界を跨いで観察される業務ふるまいを、ブラックボックスで検証する。
 
-各 sub-feature の `test-design.md` は IT / UT のみを担当する。**E2E は本書だけが扱う**（sub-feature の test-design.md には E2E を書かない）。
+各 sub-feature の `test-design.md` は IT / UT と、親 E2E への参照だけを担当する。**E2E シナリオ定義の真実源は本書**とする。
 
 ## E2E スコープ
 
@@ -26,7 +26,7 @@
 | TC-E2E-DR-001 | Directive の再起動跨ぎ保持（業務ルール R1-G） | 1) Directive を構築（task_id=None、有効なテキスト・委譲先 Room・発行日時） 2) `DirectiveRepository.save(directive)` 3) アプリ再起動相当（DB 接続再生成） 4) `DirectiveRepository.find_by_id(directive.id)` | 復元された Directive が元の Directive と構造的等価（id / text / target_room_id / created_at / task_id が一致）。アプリ再起動後も Directive の状態（text・Room 紐付け・発行日時）が保持される | 10 |
 | TC-E2E-DR-002 | task_id 紐付け済み Directive の再起動跨ぎ保持 | 1) task_id=None で Directive を構築 2) `DirectiveRepository.save(directive)` 3) `directive.link_task(task_id)` で Task を紐付けた新 Directive を取得 4) `DirectiveRepository.save(updated_directive)` 5) 再起動 6) `DirectiveRepository.find_by_id(directive.id)` | 復元された Directive の task_id が更新済み TaskId と等価。Task 紐付けがアプリ再起動後も保持される | 10 |
 
-| TC-E2E-DR-003 | HTTP API 経由 Directive 発行 + Task 起票 + 再起動跨ぎ一貫性（受入基準 12〜15 複合） | 1) POST /api/rooms/{room_id}/directives — text="ブログ分析機能を作って"（`$` プレフィックスなし）→ 201 DirectiveWithTaskResponse（directive.text masked / task.status=PENDING）2) GET /api/tasks/{task_id} → task.last_error=null 3) アプリ再起動相当（DB 接続再生成）4) GET /api/tasks/{task_id} → status=PENDING 保持 5) POST /api/tasks/{task_id}/assign — agent_ids=[agent_id] → 200 TaskResponse（status=IN_PROGRESS）6) POST /api/rooms/{not_exist_room_id}/directives → 404 7) POST /api/rooms/{archived_room_id}/directives → 409 | POST 201 + directive.text masked（`<REDACTED:*>` or 元テキスト）/ task.status=PENDING / 再起動後 GET 状態保持 / assign 後 IN_PROGRESS / Room 不在 404 / Room archived 409 | 12, 13, 14, 15 |
+| TC-E2E-DR-003 | HTTP API 経由 Directive 発行 + Task 起票（受入基準 12〜15 複合） | 1) POST /api/rooms/{room_id}/directives — secret を含む text → 201 DirectiveWithTaskResponse（directive.text masked / task.status=PENDING）2) GET /api/tasks/{task_id} → status=PENDING 3) POST /api/tasks/{task_id}/assign — agent_ids=[agent_id] → 200 TaskResponse（status=IN_PROGRESS）4) POST /api/rooms/{not_exist_room_id}/directives → 404 5) POST /api/rooms/{archived_room_id}/directives → 409 | POST 201 + directive.text masked / task.status=PENDING / assign 後 IN_PROGRESS / Room 不在 404 / Room archived 409 | 12, 13, 14, 15 |
 
 将来追加予定:
 
@@ -66,11 +66,11 @@
 ```
 backend/tests/e2e/
 ├── test_directive_lifecycle.py    # TC-E2E-DR-001, 002
-└── test_directive_http_api.py     # TC-E2E-DR-003（http-api sub-feature 完成後）
+└── test_directive_task_http_api.py # TC-E2E-DR-003（Issue #60 実装済み）
 ```
 
 ## 未決課題
 
-- TC-E2E-DR-003 は http-api sub-feature（Issue #60）の実装完了後に実行可能。本書は検証シナリオを凍結済み
+- TC-E2E-DR-003 は http-api sub-feature（Issue #60）で実装済み
 - TC-E2E-DR-004（UI Playwright）は将来の `directive/ui/` sub-feature 追加時に本書を更新する別 PR で起票
 - masking 不可逆性の E2E 確認（text に secret を含む Directive を永続化して再起動後に `<REDACTED:*>` が保持されること）は TC-E2E-DR-001/002 の派生として将来追加可能

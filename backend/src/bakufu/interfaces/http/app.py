@@ -17,16 +17,22 @@ from bakufu.interfaces.http.error_handlers import (
     agent_invariant_violation_handler,
     agent_name_already_exists_handler,
     agent_not_found_handler,
+    directive_invariant_violation_handler,
     empire_already_exists_handler,
     empire_archived_handler,
     empire_invariant_violation_handler,
     empire_not_found_handler,
     http_exception_handler,
     internal_error_handler,
+    pydantic_validation_error_handler,
     room_archived_handler,
     room_invariant_violation_handler,
     room_name_already_exists_handler,
     room_not_found_handler,
+    task_authorization_error_handler,
+    task_invariant_violation_handler,
+    task_not_found_handler,
+    task_state_conflict_handler,
     validation_error_handler,
     workflow_archived_handler,
     workflow_invariant_violation_handler,
@@ -35,9 +41,11 @@ from bakufu.interfaces.http.error_handlers import (
     workflow_preset_not_found_handler,
 )
 from bakufu.interfaces.http.routers.agents import agents_router, empire_agents_router
+from bakufu.interfaces.http.routers.directives import room_directives_router
 from bakufu.interfaces.http.routers.empire import router as empire_router
 from bakufu.interfaces.http.routers.health import router as health_router
 from bakufu.interfaces.http.routers.rooms import empire_rooms_router, rooms_router
+from bakufu.interfaces.http.routers.tasks import room_tasks_router, tasks_router
 from bakufu.interfaces.http.routers.workflows import room_workflows_router, workflows_router
 
 
@@ -96,6 +104,8 @@ def create_app() -> FastAPI:
 
     # エラーハンドラ
     # empire / room 専用ハンドラを先に登録する (より具体的な例外を優先, 確定 C)
+    from pydantic import ValidationError
+
     from bakufu.application.exceptions.agent_exceptions import (
         AgentArchivedError,
         AgentNameAlreadyExistsError,
@@ -111,6 +121,11 @@ def create_app() -> FastAPI:
         RoomNameAlreadyExistsError,
         RoomNotFoundError,
     )
+    from bakufu.application.exceptions.task_exceptions import (
+        TaskAuthorizationError,
+        TaskNotFoundError,
+        TaskStateConflictError,
+    )
     from bakufu.application.exceptions.workflow_exceptions import (
         WorkflowArchivedError,
         WorkflowIrreversibleError,
@@ -119,8 +134,10 @@ def create_app() -> FastAPI:
     )
     from bakufu.domain.exceptions import (
         AgentInvariantViolation,
+        DirectiveInvariantViolation,
         EmpireInvariantViolation,
         RoomInvariantViolation,
+        TaskInvariantViolation,
         WorkflowInvariantViolation,
     )
 
@@ -143,6 +160,12 @@ def create_app() -> FastAPI:
     app.add_exception_handler(AgentArchivedError, agent_archived_handler)
     app.add_exception_handler(AgentInvariantViolation, agent_invariant_violation_handler)
     app.add_exception_handler(RoomInvariantViolation, room_invariant_violation_handler)
+    app.add_exception_handler(DirectiveInvariantViolation, directive_invariant_violation_handler)
+    app.add_exception_handler(TaskNotFoundError, task_not_found_handler)
+    app.add_exception_handler(TaskStateConflictError, task_state_conflict_handler)
+    app.add_exception_handler(TaskAuthorizationError, task_authorization_error_handler)
+    app.add_exception_handler(TaskInvariantViolation, task_invariant_violation_handler)
+    app.add_exception_handler(ValidationError, pydantic_validation_error_handler)
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_error_handler)
     app.add_exception_handler(Exception, internal_error_handler)
@@ -156,6 +179,9 @@ def create_app() -> FastAPI:
     app.include_router(workflows_router)
     app.include_router(empire_agents_router)
     app.include_router(agents_router)
+    app.include_router(room_directives_router)
+    app.include_router(room_tasks_router)
+    app.include_router(tasks_router)
 
     return app
 

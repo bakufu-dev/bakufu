@@ -14,7 +14,7 @@
 | 確定C | `$` プレフィックス正規化 | `DirectiveService.issue()` が `text = raw_text if raw_text.startswith('$') else '$' + raw_text` で正規化（業務ルール R1-A）。Aggregate 側は valid な text しか受け取らない契約 |
 | 確定D | DirectiveInvariantViolation → 422 | domain 層の `DirectiveInvariantViolation` は application 層でそのまま伝播させ、error_handlers.py が 422 に変換 |
 | 確定E | Room archived 確認 | `DirectiveService.issue()` が Room を取得し `room.archived` を確認。`RoomArchivedError` を raise → 409 |
-| 確定F | DirectiveService のコンストラクタ | `__init__(self, directive_repo: DirectiveRepository, task_repo: TaskRepository, room_repo: RoomRepository, session: AsyncSession) -> None` |
+| 確定F | DirectiveService のコンストラクタ | `__init__(self, directive_repo: DirectiveRepository, task_repo: TaskRepository, room_repo: RoomRepository, workflow_repo: WorkflowRepository, session: AsyncSession) -> None`。Task の `current_stage_id` は `Workflow.entry_stage_id` でなければならず、Room は `workflow_id` だけを保持するため、WorkflowRepository 参照を application 層責務として明示する |
 
 ## Pydantic スキーマ定義
 
@@ -75,7 +75,7 @@ ValidationError (Pydantic)  → 422 validation_error（既存 http-api-foundatio
 
 | 関数名 | シグネチャ概要 | 責務 |
 |-------|-------------|------|
-| `get_directive_service` | `(session=Depends(get_session)) -> DirectiveService` | `DirectiveRepository`（SQLite 実装）/ `TaskRepository`（SQLite 実装）/ `RoomRepository`（SQLite 実装）/ `session` を注入して `DirectiveService` を生成する |
+| `get_directive_service` | `(session=Depends(get_session)) -> DirectiveService` | `DirectiveRepository`（SQLite 実装）/ `TaskRepository`（SQLite 実装）/ `RoomRepository`（SQLite 実装）/ `WorkflowRepository`（SQLite 実装）/ `session` を注入して `DirectiveService` を生成する |
 
 ## 確定G: `DirectiveService.issue()` の例外優先順位（凍結）
 
@@ -85,10 +85,11 @@ ValidationError (Pydantic)  → 422 validation_error（既存 http-api-foundatio
 |-------|---------|---------|------|
 | 1 | Room 存在確認（`room_repo.find_by_id` → None）| `RoomNotFoundError` | 404 |
 | 2 | Room archived 確認（`room.archived == True`）| `RoomArchivedError` | 409 |
-| 3 | `$` プレフィックス正規化（R1-A） | — （例外なし、補完するのみ）| — |
-| 4 | `Directive(...)` 構築・不変条件検査 | `DirectiveInvariantViolation` | 422 |
-| 5 | `Task(...)` 構築・不変条件検査 | `TaskInvariantViolation` | 422 |
-| 6 | `async with session.begin()` UoW | DB 例外 → 自動ロールバック | 500 |
+| 3 | Workflow 存在確認（`workflow_repo.find_by_id(room.workflow_id)` → None）| `WorkflowNotFoundError` | 404 |
+| 4 | `$` プレフィックス正規化（R1-A） | — （例外なし、補完するのみ）| — |
+| 5 | `Directive(...)` 構築・不変条件検査 | `DirectiveInvariantViolation` | 422 |
+| 6 | `Task(...)` 構築・不変条件検査 | `TaskInvariantViolation` | 422 |
+| 7 | `async with session.begin()` UoW | DB 例外 → 自動ロールバック | 500 |
 
 **Room 不在は archived より先に確認する**（存在しない Room に archived 確認は無意味）。Directive 構築は Room 確認後。この順序を実装者が守らないと、テストが揺れる。
 

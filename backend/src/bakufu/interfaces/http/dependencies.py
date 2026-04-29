@@ -9,6 +9,7 @@ from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bakufu.application.ports.agent_repository import AgentRepository
+from bakufu.application.ports.directive_repository import DirectiveRepository
 from bakufu.application.ports.empire_repository import EmpireRepository
 from bakufu.application.ports.external_review_gate_repository import (
     ExternalReviewGateRepository,
@@ -17,6 +18,7 @@ from bakufu.application.ports.room_repository import RoomRepository
 from bakufu.application.ports.task_repository import TaskRepository
 from bakufu.application.ports.workflow_repository import WorkflowRepository
 from bakufu.application.services.agent_service import AgentService
+from bakufu.application.services.directive_service import DirectiveService
 from bakufu.application.services.empire_service import EmpireService
 from bakufu.application.services.external_review_gate_service import (
     ExternalReviewGateService,
@@ -29,13 +31,17 @@ from bakufu.application.services.workflow_service import WorkflowService
 __all__ = [
     "AgentRepository",
     "AgentServiceDep",
+    "DirectiveRepository",
+    "DirectiveServiceDep",
     "EmpireRepository",
     "ExternalReviewGateRepository",
     "RoomRepository",
     "SessionDep",
     "TaskRepository",
+    "TaskServiceDep",
     "WorkflowRepository",
     "get_agent_service",
+    "get_directive_service",
     "get_empire_service",
     "get_external_review_gate_service",
     "get_room_service",
@@ -155,12 +161,52 @@ async def get_task_service(session: SessionDep) -> TaskService:
     # 遅延 import: interfaces → infrastructure の直接依存を避けるため
     # モジュールロード時の循環参照リスクを回避し、
     # 依存方向 interfaces → application → infrastructure を遵守する
+    from bakufu.infrastructure.persistence.sqlite.repositories.agent_repository import (
+        SqliteAgentRepository,
+    )
+    from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
+        SqliteRoomRepository,
+    )
     from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
         SqliteTaskRepository,
     )
 
-    repo = SqliteTaskRepository(session)
-    return TaskService(repo)
+    return TaskService(
+        task_repo=SqliteTaskRepository(session),
+        room_repo=SqliteRoomRepository(session),
+        agent_repo=SqliteAgentRepository(session),
+        session=session,
+    )
+
+
+TaskServiceDep = Annotated[TaskService, Depends(get_task_service)]
+
+
+async def get_directive_service(session: SessionDep) -> DirectiveService:
+    """DirectiveService を DI 注入する。"""
+    from bakufu.infrastructure.persistence.sqlite.repositories.directive_repository import (
+        SqliteDirectiveRepository,
+    )
+    from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
+        SqliteRoomRepository,
+    )
+    from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
+        SqliteTaskRepository,
+    )
+    from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
+        SqliteWorkflowRepository,
+    )
+
+    return DirectiveService(
+        directive_repo=SqliteDirectiveRepository(session),
+        task_repo=SqliteTaskRepository(session),
+        room_repo=SqliteRoomRepository(session),
+        workflow_repo=SqliteWorkflowRepository(session),
+        session=session,
+    )
+
+
+DirectiveServiceDep = Annotated[DirectiveService, Depends(get_directive_service)]
 
 
 async def get_external_review_gate_service(

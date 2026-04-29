@@ -249,6 +249,69 @@ async def agent_invariant_violation_handler(request: Request, exc: Exception) ->
     return _error_response(VALIDATION_ERROR, cleaned, 422)
 
 
+async def directive_invariant_violation_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``DirectiveInvariantViolation`` → HTTP 422 / validation_error."""
+    from bakufu.domain.exceptions import DirectiveInvariantViolation
+
+    if not isinstance(exc, DirectiveInvariantViolation):
+        raise TypeError(f"Expected DirectiveInvariantViolation, got {type(exc).__name__}")
+    raw = str(exc)
+    cleaned = _FAIL_PREFIX_RE.sub("", raw).split("\nNext:")[0].strip()
+    return _error_response(VALIDATION_ERROR, cleaned, 422)
+
+
+async def task_not_found_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``TaskNotFoundError`` → HTTP 404 / not_found."""
+    from bakufu.application.exceptions.task_exceptions import TaskNotFoundError
+
+    if not isinstance(exc, TaskNotFoundError):
+        raise TypeError(f"Expected TaskNotFoundError, got {type(exc).__name__}")
+    return _error_response(NOT_FOUND, "Task not found.", 404)
+
+
+async def task_state_conflict_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``TaskStateConflictError`` → HTTP 409 / conflict."""
+    from bakufu.application.exceptions.task_exceptions import TaskStateConflictError
+
+    if not isinstance(exc, TaskStateConflictError):
+        raise TypeError(f"Expected TaskStateConflictError, got {type(exc).__name__}")
+    raw = str(exc)
+    cleaned = _FAIL_PREFIX_RE.sub("", raw).split("\nNext:")[0].strip()
+    return _error_response(CONFLICT, cleaned, 409)
+
+
+async def task_authorization_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``TaskAuthorizationError`` → HTTP 403 / forbidden."""
+    from bakufu.application.exceptions.task_exceptions import TaskAuthorizationError
+
+    if not isinstance(exc, TaskAuthorizationError):
+        raise TypeError(f"Expected TaskAuthorizationError, got {type(exc).__name__}")
+    return _error_response(FORBIDDEN, exc.reason, 403)
+
+
+async def task_invariant_violation_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``TaskInvariantViolation`` → HTTP 422 / validation_error."""
+    from bakufu.domain.exceptions import TaskInvariantViolation
+
+    if not isinstance(exc, TaskInvariantViolation):
+        raise TypeError(f"Expected TaskInvariantViolation, got {type(exc).__name__}")
+    raw = str(exc)
+    cleaned = _FAIL_PREFIX_RE.sub("", raw).split("\nNext:")[0].strip()
+    return _error_response(VALIDATION_ERROR, cleaned, 422)
+
+
+async def pydantic_validation_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    """application/domain 構築時の Pydantic ValidationError → HTTP 422。"""
+    from pydantic import ValidationError
+
+    if not isinstance(exc, ValidationError):
+        raise TypeError(f"Expected ValidationError, got {type(exc).__name__}")
+    detail = "; ".join(
+        f"{'.'.join(str(loc) for loc in e['loc'])}: {e['msg']}" for e in exc.errors()
+    )
+    return _error_response(VALIDATION_ERROR, f"Validation failed: {detail}", 422)
+
+
 async def room_invariant_violation_handler(request: Request, exc: Exception) -> JSONResponse:
     """``RoomInvariantViolation`` → HTTP 404 or 422 (MSG-RM-HTTP-005 / MSG-RM-HTTP-007)。
 
