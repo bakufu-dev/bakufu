@@ -28,8 +28,8 @@
 | REQ-DW-016 | `.github/CODEOWNERS` | TC-UT-006 | ユニット | 正常系 | Q-2 |
 | REQ-DW-017 | `CONTRIBUTING.md §Secret 混入時の緊急対応` | TC-UT-007 | ユニット | 正常系 | Q-3 |
 | REQ-DW-018 | `lefthook.yml::commit-msg.no-ai-footer` + `justfile::commit-msg-no-ai-footer` | TC-IT-010, TC-UT-014〜016 | 結合/ユニット | 異常系/正常系 | Q-4 |
-| REQ-DW-006（追加契約） | `scripts/ci/audit-pin-sync.sh` | TC-UT-008, TC-UT-009 | ユニット | 正常系/異常系 | 内部品質基準 |
-| T9 補助 | ピン定数 upstream 同期 | TC-UT-017 | ユニット | 正常系 | 内部品質基準 |
+| REQ-DW-006（追加契約） | `scripts/ci/audit-pin-sync.sh` | TC-UT-008, TC-UT-009 | ユニット | 正常系/異常系 | Q-5 |
+| T9 補助 | ピン定数 upstream 同期 | TC-UT-017 | ユニット | 正常系 | Q-6 |
 | REQ-DW-002（typecheck 新規） | `lefthook.yml::pre-commit.typecheck` + `justfile::typecheck` | TC-IT-011, TC-UT-018 | 結合/ユニット | 異常系 | 2, 11 |
 
 ## 外部I/O依存マップ
@@ -102,8 +102,8 @@
 | TC-UT-005 | `lefthook.yml::fail_text` 全 7 箇所 | 正常系 | YAML + 文字列照合 | 7 箇所（fmt-check/lint/typecheck/audit-secrets/test/convco/no-ai-footer）全てが MSG-DW-001/002/014/010/003/004/013 確定文言と文字単位で一致、`{variables}` / `{files}` 等の動的展開が含まれない（T7 対策） |
 | TC-UT-006 | `.github/CODEOWNERS` | 正常系 | grep | `/lefthook.yml` / `/justfile` / `/scripts/setup.sh` / `/scripts/setup.ps1` / `/scripts/ci/` の 5 パスが `@kkm-horikawa` 所有で登録 |
 | TC-UT-007 | `CONTRIBUTING.md §Secret 混入時の緊急対応` | 正常系 | Markdown 節抽出 + 3 項目 grep | (a) 該当キーを発行元で即 revoke (b) **`git filter-repo --path <file> --invert-paths` の具体コマンド + feature ブランチ限定 force-push + `main`/`develop` への force-push 禁止の明記** (c) **GitHub Support への cache purge 依頼と secret scanning alert の resolve の明記** — 3 項目全てが存在（Q-3） |
-| TC-UT-008 | `audit-pin-sync.sh` positive | 正常系 | setup.sh / setup.ps1 が同期済み | exit 0、`[OK] pin 定数の sh/ps1 同期を確認しました（30 件）`（5 ツール × 5 プラットフォーム + 5 VERSION）|
-| TC-UT-009 | `audit-pin-sync.sh` negative | 異常系 | 30 定数の 1 箇所を意図的に乖離 | exit 1、`[FAIL] <VAR> が setup.sh / setup.ps1 で乖離しています` / 2 ファイルの値が diff 表示 |
+| TC-UT-008 | `audit-pin-sync.sh` positive（Q-5） | 正常系 | setup.sh / setup.ps1 が同期済み | exit 0、`[OK] pin 定数の sh/ps1 同期を確認しました（30 件）`（5 ツール × 5 プラットフォーム + 5 VERSION）|
+| TC-UT-009 | `audit-pin-sync.sh` negative（Q-5） | 異常系 | 30 定数の 1 箇所を意図的に乖離 | exit 1、`[FAIL] <VAR> が setup.sh / setup.ps1 で乖離しています` / 2 ファイルの値が diff 表示 |
 | TC-UT-010 | `justfile::fmt-check` 単体 | 異常系 | format 違反 factory（Python + TS 両方） | exit 非 0（`ruff format --check` / `biome format` の exit code を集約） |
 | TC-UT-011 | `justfile::commit-msg-check` 単体 | 異常系 | convco が受理するメッセージ factory + 受理しないメッセージ factory | convco の実 CLI（`check --from-stdin --strip`）が受理する引数形式で呼ばれていること。**存在しないサブコマンドで exit 2 を返さないこと** |
 | TC-UT-012 | `justfile::audit-secrets` 単体 | 異常系 | 実在 AWS キーパターン factory | `gitleaks protect --staged --no-banner` が exit 1 |
@@ -111,7 +111,7 @@
 | TC-UT-014 | `justfile::commit-msg-no-ai-footer` P1 | 異常系 | `🤖 + Generated with + Claude` を含むファイル factory（大小文字・改行位置バリエーション） | 全バリエーションで exit 1 |
 | TC-UT-015 | 同 P2 | 異常系 | `Co-Authored-By: + @anthropic.com` ドメイン factory（大小文字・トレーラ前後空白バリエーション） | 全バリエーションで exit 1 |
 | TC-UT-016 | 同 P3 | 異常系 | `Co-Authored-By: + \bClaude\b` factory（モデル名揺れ / Claude 単体） | 全バリエーションで exit 1。**注記**: `Co-Authored-By: Claude Shannon <...>` も P3 にヒットして reject される（設計意図通り） |
-| TC-UT-017 | ピン定数 ↔ upstream checksums 同期 | 正常系 | 5 ツール × checksums.json（要起票） | 25 SHA256 定数（5 ツール × 5 プラットフォーム）が upstream の公式 checksums.txt と**文字単位で一致** |
+| TC-UT-017 | ピン定数 ↔ upstream checksums 同期（Q-6） | 正常系 | 5 ツール × checksums.json（要起票） | 25 SHA256 定数（5 ツール × 5 プラットフォーム）が upstream の公式 checksums.txt と**文字単位で一致** |
 | TC-UT-018 | `justfile::typecheck` 単体 | 異常系 | 型エラー factory（Python + TS 両方） | exit 非 0（`pyright` / `tsc --noEmit` の exit code を集約） |
 
 ## カバレッジ基準
@@ -120,7 +120,7 @@
 
 - REQ-DW-001〜018 の各要件が最低 1 件のテストケース（ユニット/結合/E2E のいずれか）で検証されている
 - MSG-DW-001〜014 の 14 文言が全て静的文字列で照合されている（TC-UT-005 + TC-E2E 各種）
-- 受入基準 1〜13 の各々が最低 1 件の E2E テストケースで検証されている（Q-1〜Q-6 は domain/test-design.md §結合/ユニットテストケースで網羅）
+- 受入基準 1〜13 の各々が最低 1 件の E2E テストケースで検証されている（Q-1〜Q-4 は E2E / 結合 / ユニットで網羅、Q-5（TC-UT-008/009）/ Q-6（TC-UT-017）はユニットで網羅）
 - T1〜T9 の各脅威に対する対策が最低 1 件のテストケースで有効性を確認されている
 
 ## 人間が動作確認できるタイミング
