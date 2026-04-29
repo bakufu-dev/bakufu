@@ -11,7 +11,7 @@
 |-----|------|---------|
 | 確定A | masking 要否（`last_error` / `body_markdown` の HTTP レスポンス） | `TaskResponse.last_error` / `DeliverableResponse.body_markdown` に `@field_serializer` で `mask()` 適用（defense-in-depth）。`@field_serializer` は GET / POST / PATCH **全レスポンスパス**で発火する（mode 制限なし）。DB は MaskedText TypeDecorator で既にマスキング済み（R1-12）。`mask()` は冪等性あり（二重 masking なし）。GET /api/tasks/{task_id} で BLOCKED Task を取得する場合も `last_error` に field_serializer が適用され、DB バイパス経路（raw 値直接 INSERT）でも HTTP レスポンスに secret が露出しない |
 | 確定B | `find_all_by_room` の追加（P-2）| `TaskRepository` Protocol に `find_all_by_room(room_id: RoomId) -> list[Task]` を追加。Room 不在時は空リストを返す（`RoomNotFoundError` は raise しない）|
-| 確定C | `task_exceptions.py` 新規作成（P-1）| `TaskNotFoundError(task_id)` / `TaskStateConflictError(task_id, current_status, action)` を定義。`ApplicationError` を基底クラスとする（room_exceptions.py パターン踏襲）|
+| 確定C | `task_exceptions.py` 新規作成（P-1）| `TaskNotFoundError(task_id)` / `TaskStateConflictError(task_id, current_status, action)` を定義。実装どおり `Exception` を基底クラスとし、HTTP 層で明示的に 404 / 409 へマッピングする |
 | 確定D | `TaskInvariantViolation` の HTTP ステータス分岐 | `kind in ('terminal_violation', 'state_transition_invalid')` → service 層で catch して `TaskStateConflictError` に変換 → 409。その他 kind → `TaskInvariantViolation` のまま伝播 → error_handlers.py が 422 に変換 |
 | 確定E | `TaskService` のコンストラクタ | `__init__(self, task_repo: TaskRepository, room_repo: RoomRepository, agent_repo: AgentRepository, session: AsyncSession) -> None`。`assign` は Agent が active かつ `Room.members` 内であることを検証し、`commit_deliverable` は `submitted_by` が active かつ Task 担当 Agent であることを検証する |
 | 確定F | deliverables の HTTP レスポンス形式 | `TaskResponse.deliverables` は `dict[str, DeliverableResponse]`（`stage_id` の str 表現をキーとする）。`stage_id` は UUID の str 表現 |
@@ -123,12 +123,12 @@ ValidationError (Pydantic)  → 422 validation_error（既存 http-api-foundatio
 
 ## `task_exceptions.py` 定義仕様（P-1）
 
-`backend/src/bakufu/application/exceptions/task_exceptions.py` を新規作成。`room_exceptions.py` の構造を踏襲する。
+`backend/src/bakufu/application/exceptions/task_exceptions.py` を新規作成する。
 
 | クラス名 | 基底クラス | コンストラクタ引数 | 意味 |
 |--------|----------|----------------|------|
-| `TaskNotFoundError` | `ApplicationError` | `task_id: TaskId` | 指定 ID の Task が存在しない（404 マッピング）|
-| `TaskStateConflictError` | `ApplicationError` | `task_id: TaskId`, `current_status: TaskStatus`, `action: str` | terminal 状態 / state machine 上の不正遷移（409 マッピング）|
+| `TaskNotFoundError` | `Exception` | `task_id: TaskId \| str` | 指定 ID の Task が存在しない（404 マッピング）|
+| `TaskStateConflictError` | `Exception` | `task_id: TaskId \| str`, `current_status: TaskStatus \| str`, `action: str`, `message: str \| None = None` | terminal 状態 / state machine 上の不正遷移（409 マッピング）|
 
 ## `TaskRepository` Protocol 拡張仕様（P-2）
 
