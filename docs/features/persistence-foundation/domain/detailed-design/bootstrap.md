@@ -17,7 +17,7 @@
 
 **「process_iter で claude プロセスを kill する」実装の禁止**を明文化（[`tech-stack.md`](../../../design/tech-stack.md) §子孫追跡 と同方針）。bakufu 起動前に同一ユーザーが手動で起動した CLI を巻き込まない。
 
-## 確定 G: Backend 起動シーケンスの順序保証（[`../requirements-analysis.md`](../requirements-analysis.md) §確定 R1-C 再掲、実装側）
+## 確定 G: Backend 起動シーケンスの順序保証（[`../feature-spec.md`](../feature-spec.md) §確定 R1-C 再掲、実装側）
 
 | 順 | 段階 | 失敗時の挙動 | 後続段階 |
 |---|---|---|---|
