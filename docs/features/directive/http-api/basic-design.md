@@ -11,15 +11,15 @@
 ソースコードと二重管理になりメンテナンスコストしか生まない。
 必要なのは構造契約（クラス・モジュール・データの関係）であり、実装の細部は [detailed-design.md](detailed-design.md) で凍結する。
 
-## 前提条件（実装着手前に充足すること）
+## 実装前提（Issue #60 で充足済み）
 
-本 sub-feature の実装前に以下の変更が必要である:
+本 sub-feature は以下の横断変更を同一 PR 内で充足する:
 
 | 前提 | 対象ファイル | 内容 |
 |-----|------------|------|
-| **P-1: task_exceptions.py 新規作成** | `backend/src/bakufu/application/exceptions/task_exceptions.py` | `TaskNotFoundError` / `TaskStateConflictError` を新規定義する（本 PR で同時作成）|
-| **P-2: TaskRepository.find_all_by_room 追加** | `backend/src/bakufu/application/ports/task_repository.py` | `find_all_by_room(room_id: RoomId) -> list[Task]` を Protocol に追加する（本 PR で同時更新）|
-| **P-3: DirectiveService 骨格実装** | `backend/src/bakufu/application/services/directive_service.py` | 現在 skeleton（`__init__` のみ）。本 PR で `issue()` メソッドを肉付けする |
+| **P-1: task_exceptions.py 新規作成** | `backend/src/bakufu/application/exceptions/task_exceptions.py` | `TaskNotFoundError` / `TaskStateConflictError` / `TaskAuthorizationError` を定義する |
+| **P-2: TaskRepository.find_all_by_room 追加** | `backend/src/bakufu/application/ports/task_repository.py` | `find_all_by_room(room_id: RoomId) -> list[Task]` を Protocol に追加する |
+| **P-3: DirectiveService.issue 実装** | `backend/src/bakufu/application/services/directive_service.py` | `WorkflowRepository` で entry stage を解決し、Directive + Task を atomic UoW で保存する |
 
 ## モジュール構成
 
@@ -63,7 +63,7 @@ backend/
 | 項目 | 内容 |
 |---|---|
 | 入力 | パスパラメータ `room_id: UUID` / リクエスト Body `DirectiveCreate`（`text: str`）|
-| 処理 | `DirectiveService.issue(room_id, raw_text)` → 1) Room 存在確認（不在 → `RoomNotFoundError` 404）2) Room archived 確認（archived → `RoomArchivedError` 409）3) `WorkflowRepository.find_by_id(room.workflow_id)` で Workflow 存在確認（不在 → `WorkflowNotFoundError` 404）4) `$` プレフィックス正規化（R1-A: `text = raw_text if raw_text.startswith('$') else '$' + raw_text`）5) `Directive(id=uuid4(), text=text, target_room_id=room_id, created_at=now())` 構築（不変条件検査 → `DirectiveInvariantViolation` 422）6) `Task(id=uuid4(), room_id=room_id, directive_id=directive.id, current_stage_id=workflow.entry_stage_id, status=PENDING, ...)` 構築 7) `async with session.begin()`: `DirectiveRepository.save(directive)` + `directive.link_task(task.id)` + `DirectiveRepository.save(updated_directive)` + `TaskRepository.save(task)`（アトミック UoW）8) `DirectiveWithTaskResponse` を構築して返す |
+| 処理 | `DirectiveService.issue(room_id, raw_text)` → 1) Room 存在確認（不在 → `RoomNotFoundError` 404）2) Room archived 確認（archived → `RoomArchivedError` 409）3) `WorkflowRepository.find_by_id(room.workflow_id)` で Workflow を取得し、`Workflow.entry_stage_id` を Task 初期ステージとして解決 4) `$` プレフィックス正規化（R1-A: `text = raw_text if raw_text.startswith('$') else '$' + raw_text`）5) `Directive(id=uuid4(), text=text, target_room_id=room_id, created_at=now())` 構築（不変条件検査 → `DirectiveInvariantViolation` 422）6) `Task(id=uuid4(), room_id=room_id, directive_id=directive.id, current_stage_id=workflow.entry_stage_id, status=PENDING, ...)` 構築 7) `async with session.begin()`: `DirectiveRepository.save(directive)` + `directive.link_task(task.id)` + `DirectiveRepository.save(updated_directive)` + `TaskRepository.save(task)`（アトミック UoW）8) `DirectiveWithTaskResponse` を構築して返す |
 | 出力 | HTTP 201, `DirectiveWithTaskResponse`（directive: DirectiveResponse + task: TaskResponse）|
 | エラー時 | Room 不在 → 404 / Room archived → 409 / Directive 業務ルール違反 → 422 (MSG-DR-HTTP-001) / 不正 UUID → 422 |
 
