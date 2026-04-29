@@ -12,6 +12,7 @@ from .helpers import (
     action_names,
     seed_gate,
     seed_gate_for_existing_task,
+    seed_gate_with_awaiting_approved_transition,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -60,15 +61,20 @@ async def test_task_history_returns_only_authenticated_reviewer_gates(
 async def test_reviewer_flow_uses_public_http_only(
     external_review_gate_http_ctx: ExternalReviewGateHttpCtx,
 ) -> None:
-    """一覧、詳細閲覧、承認、履歴を HTTP レスポンスだけで観測する。"""
+    """TC-IT-ERG-HTTP-004/011: 承認で Task が APPROVED 遷移先へ進む。"""
     ctx = external_review_gate_http_ctx
-    ids = await seed_gate(ctx)
+    ids = await seed_gate_with_awaiting_approved_transition(ctx)
 
     listed = await ctx.client.get("/api/gates", headers=ctx.headers)
     assert listed.status_code == 200, listed.text
     assert listed.json()["total"] == 1
     assert listed.json()["items"][0]["id"] == ids["gate_id"]
     assert RAW_SECRET not in listed.text
+
+    before_task = await ctx.client.get(f"/api/tasks/{ids['task_id']}")
+    assert before_task.status_code == 200, before_task.text
+    assert before_task.json()["status"] == "AWAITING_EXTERNAL_REVIEW"
+    assert before_task.json()["current_stage_id"] == ids["review_stage_id"]
 
     viewed = await ctx.client.get(f"/api/gates/{ids['gate_id']}", headers=ctx.headers)
     assert viewed.status_code == 200, viewed.text
@@ -82,6 +88,11 @@ async def test_reviewer_flow_uses_public_http_only(
     assert approved.status_code == 200, approved.text
     assert approved.json()["decision"] == "APPROVED"
     assert action_names(approved.json()) == ["VIEWED", "APPROVED"]
+
+    advanced_task = await ctx.client.get(f"/api/tasks/{ids['task_id']}")
+    assert advanced_task.status_code == 200, advanced_task.text
+    assert advanced_task.json()["status"] == "IN_PROGRESS"
+    assert advanced_task.json()["current_stage_id"] == ids["approved_stage_id"]
 
     history = await ctx.client.get(f"/api/tasks/{ids['task_id']}/gates", headers=ctx.headers)
     assert history.status_code == 200, history.text

@@ -81,14 +81,14 @@
 | TC-IT-ERG-HTTP-001 | Router + Service + Repository | なし | subject=A、reviewer A の PENDING Gate 2 件、他 reviewer 1 件 | `GET /api/gates?decision=PENDING` | 200、A の 2 件のみ、新しい順 |
 | TC-IT-ERG-HTTP-002 | Task 履歴 API | なし | subject=A、同一 task に A の Gate 2 件、B の Gate 1 件 | `GET /api/tasks/{task_id}/gates` | 200、A の 2 件のみ、古い順 |
 | TC-IT-ERG-HTTP-003 | 詳細取得 + audit 保存 | なし | subject=A、A の PENDING Gate 1 件 | `GET /api/gates/{id}` | 200、audit_trail に VIEWED が 1 件増える |
-| TC-IT-ERG-HTTP-004 | approve | なし | A の PENDING Gate | `POST /api/gates/{id}/approve` | 200、decision=APPROVED、decided_at set、APPROVED audit 追記 |
+| TC-IT-ERG-HTTP-004 | approve + Task E-2 遷移 | なし | subject=A、A の PENDING Gate、対象 Task は `AWAITING_EXTERNAL_REVIEW`、Gate stage から APPROVED 遷移先 Stage への実 transition seed 済み | `GET /api/tasks/{task_id}` で AWAITING を観測 → `POST /api/gates/{id}/approve` → `GET /api/tasks/{task_id}` | Gate は 200、decision=APPROVED、decided_at set、APPROVED audit 追記。Task 公開 API で status=`IN_PROGRESS` かつ `current_stage_id` が APPROVED transition の `to_stage_id` へ変わったことを観測する |
 | TC-IT-ERG-HTTP-005 | reject | なし | A の PENDING Gate | `POST /api/gates/{id}/reject` with feedback | 200、decision=REJECTED、feedback_text set |
 | TC-IT-ERG-HTTP-006 | cancel | なし | A の PENDING Gate | `POST /api/gates/{id}/cancel` | 200、decision=CANCELLED |
 | TC-IT-ERG-HTTP-007 | 再承認不能 | なし | APPROVED Gate | `POST /api/gates/{id}/approve` | 409、MSG-ERG-HTTP-003 |
 | TC-IT-ERG-HTTP-008 | subject 不一致拒否 | なし | Gate reviewer=A、認証済み subject=B | B が GET / approve / reject / cancel | 403、MSG-ERG-HTTP-002 の 2 行文言 |
 | TC-IT-ERG-HTTP-009 | validation | なし | なし | 不正 UUID / `decision=APPROVED` / 空 feedback / body に `actor_id` 混入 | 422、MSG-ERG-HTTP-004 |
 | TC-IT-ERG-HTTP-010 | HTTP Repository restored response / DB masking boundary | なし | snapshot / feedback / audit comment に webhook URL を含む Gate を Repository 経由で保存済み | 認可済み subject で GET detail | 200、HTTP response は Repository 復元値を返す。保存済み secret は redacted のまま、HTTP schema は再マスクも raw secret 復号もしない。DB 保存値の masking は repository TC-IT-ERGR-020-masking-* が担当 |
-| TC-IT-ERG-HTTP-011 | HTTP API flow smoke | なし | PENDING Gate、reviewer A | 一覧 → 詳細閲覧 → approve → 詳細再取得 | 6 API のうち一覧 / 詳細 / approve がユーザー観測可能な一連の経路として成立し、audit に VIEWED と APPROVED が見える |
+| TC-IT-ERG-HTTP-011 | HTTP API flow smoke | なし | PENDING Gate、reviewer A、Task は `AWAITING_EXTERNAL_REVIEW`、APPROVED transition seed 済み | 一覧 → Task 単件取得 → 詳細閲覧 → approve → Task 単件取得 → Task 履歴取得 | 6 API のうち一覧 / 詳細 / approve / Task 取得がユーザー観測可能な一連の経路として成立し、audit に VIEWED と APPROVED が見える。Task は APPROVED transition の `to_stage_id` へ進む |
 | TC-IT-ERG-HTTP-012 | reject API flow smoke | なし | PENDING Gate、reviewer A | 詳細閲覧 → reject with feedback → Task 履歴取得 | feedback と REJECTED が履歴 API から観測できる |
 | TC-IT-ERG-HTTP-013 | cancel API flow smoke | なし | PENDING Gate、reviewer A | cancel with reason → 一覧取得 | CANCELLED 後の Gate は PENDING 一覧から消え、Task 履歴に残る |
 | TC-IT-ERG-HTTP-014 | CSRF Origin guard | なし | PENDING Gate、subject=A | `Origin: http://evil.example.com` 付きで approve / reject / cancel | 403、http-api-foundation MSG-HAF-004 |
@@ -173,7 +173,7 @@ backend/tests/
 - `backend/tests/integration/test_external_review_gate_http_api/test_validation_static.py`: TC-IT-ERG-HTTP-007 / 009 / 014 と TC-STATIC-ERG-HTTP-001 / 002。既決 Gate、UUID/query/body validation、CSRF、Next 文、API 棚卸し、外部 HTTP 非依存を検証する。
 - `backend/tests/integration/test_external_review_gate_http_api/test_boundary_static.py`: TC-STATIC-ERG-HTTP-003。`app.py` / `dependencies.py` / `error_handlers.py` / `routers/*.py` 全件にトップレベル公開関数定義が残っていないことを検証する。
 - `backend/tests/integration/test_external_review_gate_http_api/conftest.py`: 実 DB セッションと HTTP 結合テスト用 app fixture を提供する。
-- `backend/tests/integration/test_external_review_gate_http_api/helpers.py`: 結合テストの seed と HTTP request helper を提供する。
+- `backend/tests/integration/test_external_review_gate_http_api/helpers.py`: 結合テストの seed と HTTP request helper を提供する。`seed_gate_with_awaiting_approved_transition()` は `TC-IT-ERG-HTTP-004` 用に `AWAITING_EXTERNAL_REVIEW` Task と実 APPROVED transition を seed する。
 - `backend/tests/unit/test_external_review_gate_http_api/test_schemas.py`: TC-UT-ERG-HTTP-001 / 002 / 005 / 008。
 - `backend/tests/unit/test_external_review_gate_http_api/test_service.py`: TC-UT-ERG-HTTP-003 / 004 / 006 / 007 / 009 / 010 / 015。
 - `backend/tests/unit/test_external_review_gate_http_api/test_handlers.py`: TC-UT-ERG-HTTP-011 / 012。
