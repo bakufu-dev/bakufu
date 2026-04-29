@@ -33,6 +33,7 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from bakufu.domain.exceptions import InternalReviewGateInvariantViolation
 from bakufu.domain.internal_review_gate.state_machine import compute_decision
 from bakufu.domain.value_objects import (
+    _VERDICT_COMMENT_MAX_CHARS,
     AgentId,
     GateDecision,
     GateRole,
@@ -42,8 +43,6 @@ from bakufu.domain.value_objects import (
     Verdict,
     VerdictDecision,
 )
-
-_COMMENT_MAX_CHARS: int = 5_000
 
 
 class InternalReviewGate(BaseModel):
@@ -107,21 +106,24 @@ class InternalReviewGate(BaseModel):
     ) -> InternalReviewGate:
         """Append one agent verdict and recompute the gate decision.
 
-        Step order (§確定 A 7 ステップ厳守):
+        Step order (§確定 A 8 ステップ厳守):
 
         1. Guard: ``gate_decision`` must be PENDING (decided Gates are
            immutable).
         2. Guard: ``role`` must not already have a verdict in
            ``self.verdicts`` (one verdict per role per Gate).
-        3. Guard: ``comment`` length after NFC normalization must not
-           exceed 5000 characters (strip is **not** applied).
-        4. Build the new :class:`Verdict` and append to the tuple.
-        5. Compute the new :class:`GateDecision` via
+        3. NFC-normalize ``comment`` (strip is **not** applied).
+        4. Guard: ``role`` must be in ``required_gate_roles``
+           (invalid roles are rejected before Verdict construction).
+        5. Guard: NFC-normalized ``comment`` length must not exceed
+           5000 characters.
+        6. Build the new :class:`Verdict` and append to the tuple.
+        7. Compute the new :class:`GateDecision` via
            :func:`compute_decision`.
-        6. Reconstruct via ``model_dump`` / dict-update /
+        8. Reconstruct via ``model_dump`` / dict-update /
            ``model_validate`` so ``_check_invariants`` re-fires
-           (pre-validate rebuild pattern, §確定 E).
-        7. Return the new instance.
+           (pre-validate rebuild pattern, §確定 E), then return the
+           new instance.
 
         Args:
             role: The GateRole the submitting agent is acting as.
@@ -141,8 +143,8 @@ class InternalReviewGate(BaseModel):
             :class:`InternalReviewGateInvariantViolation`:
                 ``gate_already_decided`` — the Gate is no longer PENDING.
                 ``role_already_submitted`` — the role already has a verdict.
-                ``comment_too_long`` — NFC-normalized comment exceeds 5000 chars.
                 ``invalid_role`` — role not in required_gate_roles.
+                ``comment_too_long`` — NFC-normalized comment exceeds 5000 chars.
                 (The last two are also caught by ``_check_invariants`` on
                 rebuild, but are checked early here for user-friendly messages.)
         """
@@ -176,25 +178,16 @@ class InternalReviewGate(BaseModel):
                 },
             )
 
-        # Step 3: comment length check (NFC-normalized, no strip).
+        # Step 3: NFC-normalize comment (strip is intentionally not applied).
         normalized_comment = unicodedata.normalize("NFC", comment)
-        comment_length = len(normalized_comment)
-        if comment_length > _COMMENT_MAX_CHARS:
-            raise InternalReviewGateInvariantViolation(
-                kind="comment_too_long",
-                message=(
-                    f"[FAIL] コメントが文字数上限（5000文字）を超えています"  # noqa: RUF001
-                    f"（{comment_length}文字）。\n"  # noqa: RUF001
-                    f"Next: 5000文字以内に短縮してください。"
-                ),
-                detail={
-                    "gate_id": str(self.id),
-                    "length": comment_length,
-                    "max_length": _COMMENT_MAX_CHARS,
-                },
-            )
 
         # Step 4: validate role membership before building Verdict.
+        # Behavior 層での早期チェック:
+        # invariant 層 (_validate_verdict_roles_in_required) でも同一条件を検査するが、
+        # MSG-IRG-004 の日本語エラーメッセージを返すためにここで先に raise する。
+        # invariant 層は InternalReviewGateInvariantViolation の
+        # kind='verdict_role_invalid' を raise するが、submit_verdict 経由の caller には
+        # kind='invalid_role' + 日本語 MSG が期待される。
         if role not in self.required_gate_roles:
             raise InternalReviewGateInvariantViolation(
                 kind="invalid_role",
@@ -211,6 +204,24 @@ class InternalReviewGate(BaseModel):
                 },
             )
 
+        # Step 5: comment length check (NFC-normalized, no strip).
+        comment_length = len(normalized_comment)
+        if comment_length > _VERDICT_COMMENT_MAX_CHARS:
+            raise InternalReviewGateInvariantViolation(
+                kind="comment_too_long",
+                message=(
+                    f"[FAIL] コメントが文字数上限（5000文字）を超えています"  # noqa: RUF001
+                    f"（{comment_length}文字）。\n"  # noqa: RUF001
+                    f"Next: 5000文字以内に短縮してください。"
+                ),
+                detail={
+                    "gate_id": str(self.id),
+                    "length": comment_length,
+                    "max_length": _VERDICT_COMMENT_MAX_CHARS,
+                },
+            )
+
+        # Step 6: build new Verdict and append to tuple.
         new_verdict = Verdict(
             role=role,
             agent_id=agent_id,
@@ -220,15 +231,14 @@ class InternalReviewGate(BaseModel):
         )
         new_verdicts = (*self.verdicts, new_verdict)
 
-        # Step 5: compute new gate_decision.
+        # Step 7: compute new gate_decision.
         new_gate_decision = compute_decision(new_verdicts, self.required_gate_roles)
 
-        # Step 6: pre-validate rebuild (model_dump → update → model_validate).
+        # Step 8: pre-validate rebuild (model_dump → update → model_validate)
+        # so _check_invariants re-fires, then return the new instance.
         state: dict[str, Any] = self.model_dump()
         state["verdicts"] = [v.model_dump() for v in new_verdicts]
         state["gate_decision"] = new_gate_decision
-
-        # Step 7: return the reconstructed instance.
         return InternalReviewGate.model_validate(state)
 
 
