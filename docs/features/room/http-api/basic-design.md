@@ -104,11 +104,11 @@ backend/
 | 出力 | HTTP 201, 更新済み `RoomResponse` |
 | エラー時 | Room 不在 → 404 / Room アーカイブ済み → 409 (MSG-RM-HTTP-003) / Agent 不在 → 404 (MSG-RM-HTTP-004) / `(agent_id, role)` 重複 → 422 / capacity 超過 → 422 / 不正 UUID → 422 |
 
-### REQ-RM-HTTP-007: Agent 割り当て解除（DELETE /api/rooms/{room_id}/agents/{agent_id}）
+### REQ-RM-HTTP-007: Agent 割り当て解除（DELETE /api/rooms/{room_id}/agents/{agent_id}/roles/{role}）
 
 | 項目 | 内容 |
 |---|---|
-| 入力 | パスパラメータ `room_id: UUID` / `agent_id: UUID` + クエリパラメータ `role: str`（必須。同一 agent_id の複数 role を区別するため）|
+| 入力 | パスパラメータ `room_id: UUID` / `agent_id: UUID` / `role: str`（Role enum 値。同一 agent_id の複数 role を区別するため、パスで一意識別）|
 | 処理 | `RoomService.unassign_agent(room_id, agent_id, role)` → 1) Room 存在確認・archived 確認 2) `room.remove_member(agent_id, role)` （不在 → `RoomInvariantViolation(kind='member_not_found')` 404）3) `RoomRepository.save(updated_room, empire_id)` |
 | 出力 | HTTP 204 No Content |
 | エラー時 | Room 不在 → 404 (MSG-RM-HTTP-002) / Room アーカイブ済み → 409 (MSG-RM-HTTP-003) / membership 不在 → 404 (MSG-RM-HTTP-005) / 不正 UUID → 422 |
@@ -124,7 +124,7 @@ backend/
 | MSG-RM-HTTP-003 | エラー（競合）| アーカイブ済み Room への更新 / Agent 操作（R1-5 違反）| 409 |
 | MSG-RM-HTTP-004 | エラー（不在）| Agent が見つからない | 404 |
 | MSG-RM-HTTP-005 | エラー（不在）| 指定した membership が Room に存在しない | 404 |
-| MSG-RM-HTTP-006 | エラー（競合）| Workflow が見つからない | 404 |
+| MSG-RM-HTTP-006 | エラー（不在）| Workflow が見つからない | 404 |
 | MSG-RM-HTTP-007 | エラー（検証）| `RoomInvariantViolation` の業務ルール違反本文 | 422 |
 
 ## 依存関係
@@ -135,7 +135,7 @@ backend/
 | HTTP フレームワーク | FastAPI / Pydantic v2 / httpx | pyproject.toml | http-api-foundation で確定済み |
 | DI パターン | `get_session()` / `get_room_service()` | http-api-foundation 確定E | `dependencies.py` に `get_room_repository()` / `get_room_service()` を追記 |
 | application 例外 | `RoomNotFoundError` / `RoomNameAlreadyExistsError` / `RoomArchivedError` / `WorkflowNotFoundError` / `AgentNotFoundError` | 本 PR で新規定義 | `application/exceptions/room_exceptions.py` |
-| domain | `Room` / `RoomId` / `RoomInvariantViolation` / `AgentMembership` / `PromptKit` | M1 確定 | room domain sub-feature（Issue #18）|
+| domain | `Room` / `RoomId` / `RoomInvariantViolation` / `AgentMembership` / `PromptKit` / `Role` | M1 確定 | room domain sub-feature（Issue #18）|
 | repository | `RoomRepository` Protocol / `SqliteRoomRepository` | M2 確定 + 本 PR で `find_all_by_empire` 追記 | room repository sub-feature（Issue #33）|
 | 基盤 | http-api-foundation（ErrorResponse / lifespan / CSRF / CORS）| M3-A 確定（Issue #55）| 全 error handler / app.state.session_factory を引き継ぐ |
 | empire 参照 | `EmpireRepository.find_by_id`（Empire 存在確認）/ `EmpireNotFoundError` | empire http-api（Issue #56）確定 | Empire 不在時 404 を返すため |
@@ -152,7 +152,7 @@ classDiagram
         +PATCH /api/rooms/{room_id}
         +DELETE /api/rooms/{room_id}
         +POST /api/rooms/{room_id}/agents
-        +DELETE /api/rooms/{room_id}/agents/{agent_id}
+        +DELETE /api/rooms/{room_id}/agents/{agent_id}/roles/{role}
     }
     class RoomService {
         -_room_repo: RoomRepository
@@ -280,9 +280,9 @@ classDiagram
 6. `async with session.begin()`: `RoomRepository.save(updated_room, empire_id)`
 7. HTTP 201, 更新済み `RoomResponse`
 
-### ユースケース 7: Agent 割り当て解除（DELETE /api/rooms/{room_id}/agents/{agent_id}）
+### ユースケース 7: Agent 割り当て解除（DELETE /api/rooms/{room_id}/agents/{agent_id}/roles/{role}）
 
-1. `room_id: UUID` / `agent_id: UUID` + クエリパラメータ `role: str` 取得（不正形式 → 422）
+1. `room_id: UUID` / `agent_id: UUID` / `role: str` パスパラメータ取得（不正 UUID → 422）
 2. `RoomService.unassign_agent(room_id, agent_id, role)` 呼び出し
 3. Room 存在確認（不在 → 404）/ archived 確認（archived → 409）
 4. `room.remove_member(agent_id, role)` → `RoomInvariantViolation(kind='member_not_found')` → 404
@@ -328,7 +328,7 @@ sequenceDiagram
 
 - **`docs/design/architecture.md`**: 変更なし（http-api-foundation で routers/ の配置はすでに明示済み）
 - **`docs/design/tech-stack.md`**: 変更なし
-- **`room/repository/basic-design.md`**: `find_all_by_empire()` メソッド追加（本 PR で実施、既存 `room_repository.md` の Protocol に追記）。room_repository.py の `REQ-RR-001` 定義に `find_all_by_empire` メソッドを加える
+- **`room/repository/basic-design.md`**: `find_all_by_empire()` メソッド追加（本 PR で実施、既存 Protocol に追記）
 - 既存 feature への波及: `error_handlers.py` に room 専用ハンドラを追記するが、既存ハンドラ（HTTPException / ValidationError / generic / empire 専用）は変更しない
 
 ## 外部連携
@@ -349,6 +349,7 @@ sequenceDiagram
 | 不正 UUID でパスパラメータ | 422 FastAPI validation_error |
 | 存在しない Agent を割り当て | 404 `{"error": {"code": "not_found", "message": "Agent not found."}}` |
 | 同一 (agent_id, role) を二重割り当て | 422 `RoomInvariantViolation` の業務ルール違反本文 |
+| DELETE /api/rooms/{room_id}/agents/{agent_id}/roles/LEADER で割り当て解除 | 204 No Content（role がパスで明示され認知負荷を最小化）|
 
 **アクセシビリティ方針**: 該当なし（HTTP API のため）。
 
