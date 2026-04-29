@@ -145,7 +145,8 @@ class TestHireAgentNameConflict:
             f"/api/empires/{empire['id']}/agents",
             json=_minimal_agent_payload("重複名エージェント"),
         )
-        assert resp.json()["error"]["message"] == "Agent with this name already exists in the Empire."
+        expected = "Agent with this name already exists in the Empire."
+        assert resp.json()["error"]["message"] == expected
 
 
 class TestHireAgentProvidersEmpty:

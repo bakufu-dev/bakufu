@@ -190,7 +190,14 @@ class TestUpdateAgentNameConflict:
             f"/api/agents/{agent_a['id']}",
             json={"name": "エージェントB"},
         )
-        assert resp.json()["error"]["message"] == "Agent with this name already exists in the Empire."
+        expected = "Agent with this name already exists in the Empire."
+        assert resp.json()["error"]["message"] == expected
+
+
+_TWO_DEFAULTS_PROVIDERS = [
+    {"provider_kind": "CLAUDE_CODE", "model": "claude-sonnet-4-5", "is_default": True},
+    {"provider_kind": "CODEX", "model": "gpt-4o", "is_default": True},
+]
 
 
 class TestUpdateAgentInvariantViolation:
@@ -201,12 +208,7 @@ class TestUpdateAgentInvariantViolation:
         agent = await _create_agent_via_http(ag_ctx.client, str(empire["id"]))
         resp = await ag_ctx.client.patch(
             f"/api/agents/{agent['id']}",
-            json={
-                "providers": [
-                    {"provider_kind": "CLAUDE_CODE", "model": "claude-sonnet-4-5", "is_default": True},
-                    {"provider_kind": "CODEX", "model": "gpt-4o", "is_default": True},
-                ]
-            },
+            json={"providers": _TWO_DEFAULTS_PROVIDERS},
         )
         assert resp.status_code == 422
 
@@ -215,12 +217,7 @@ class TestUpdateAgentInvariantViolation:
         agent = await _create_agent_via_http(ag_ctx.client, str(empire["id"]))
         resp = await ag_ctx.client.patch(
             f"/api/agents/{agent['id']}",
-            json={
-                "providers": [
-                    {"provider_kind": "CLAUDE_CODE", "model": "claude-sonnet-4-5", "is_default": True},
-                    {"provider_kind": "CODEX", "model": "gpt-4o", "is_default": True},
-                ]
-            },
+            json={"providers": _TWO_DEFAULTS_PROVIDERS},
         )
         assert resp.json()["error"]["code"] == "validation_error"
 

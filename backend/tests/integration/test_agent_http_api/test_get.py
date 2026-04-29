@@ -75,7 +75,7 @@ class TestGetAgentNotFound:
         assert resp.json()["error"]["message"] == "Agent not found."
 
 
-class TestGetAgentMaskingR1_9Independence:
+class TestGetAgentMaskingR19Independence:
     """TC-IT-AGH-013: GET prompt_body が masked — R1-9 独立防御証明 (R1-9 / T4 / A02).
 
     R1-8 バイパス経路: HTTP POST を経由せず直接 DB シードで raw token を INSERT する。

@@ -262,9 +262,8 @@ class TestAgentCreateSchema:
 
     def test_empty_name_raises(self) -> None:
         """(b) name='' → min_length 違反 ValidationError。"""
-        from pydantic import ValidationError
-
         from bakufu.interfaces.http.schemas.agent import AgentCreate
+        from pydantic import ValidationError
 
         payload = self._valid_payload()
         payload["name"] = ""
@@ -273,9 +272,8 @@ class TestAgentCreateSchema:
 
     def test_name_too_long_raises(self) -> None:
         """(c) name=41 文字 → max_length 違反 ValidationError。"""
-        from pydantic import ValidationError
-
         from bakufu.interfaces.http.schemas.agent import AgentCreate
+        from pydantic import ValidationError
 
         payload = self._valid_payload()
         payload["name"] = "x" * 41
@@ -284,9 +282,8 @@ class TestAgentCreateSchema:
 
     def test_empty_providers_raises(self) -> None:
         """(d) providers=[] → min_length=1 違反 ValidationError。"""
-        from pydantic import ValidationError
-
         from bakufu.interfaces.http.schemas.agent import AgentCreate
+        from pydantic import ValidationError
 
         payload = self._valid_payload()
         payload["providers"] = []
@@ -295,9 +292,8 @@ class TestAgentCreateSchema:
 
     def test_extra_field_raises(self) -> None:
         """(e) extra フィールド → extra='forbid' ValidationError。"""
-        from pydantic import ValidationError
-
         from bakufu.interfaces.http.schemas.agent import AgentCreate
+        from pydantic import ValidationError
 
         payload = self._valid_payload()
         payload["extra_field"] = "z"
@@ -306,9 +302,8 @@ class TestAgentCreateSchema:
 
     def test_invalid_role_raises(self) -> None:
         """(f) 不正 role → ValueError ValidationError。"""
-        from pydantic import ValidationError
-
         from bakufu.interfaces.http.schemas.agent import AgentCreate
+        from pydantic import ValidationError
 
         payload = self._valid_payload()
         payload["role"] = "UNKNOWN_ROLE"
@@ -317,9 +312,8 @@ class TestAgentCreateSchema:
 
     def test_invalid_provider_kind_raises(self) -> None:
         """(g) 不正 provider_kind → ValueError ValidationError。"""
-        from pydantic import ValidationError
-
         from bakufu.interfaces.http.schemas.agent import AgentCreate
+        from pydantic import ValidationError
 
         payload = self._valid_payload()
         payload["providers"] = [
@@ -356,7 +350,11 @@ class TestAgentUpdateSchema:
         obj = AgentUpdate.model_validate(
             {
                 "providers": [
-                    {"provider_kind": "CLAUDE_CODE", "model": "claude-sonnet-4-5", "is_default": True}
+                    {
+                        "provider_kind": "CLAUDE_CODE",
+                        "model": "claude-sonnet-4-5",
+                        "is_default": True,
+                    }
                 ]
             }
         )
@@ -365,18 +363,16 @@ class TestAgentUpdateSchema:
 
     def test_empty_name_raises(self) -> None:
         """(d) name='' → min_length 違反 ValidationError。"""
-        from pydantic import ValidationError
-
         from bakufu.interfaces.http.schemas.agent import AgentUpdate
+        from pydantic import ValidationError
 
         with pytest.raises(ValidationError):
             AgentUpdate.model_validate({"name": ""})
 
     def test_empty_providers_raises(self) -> None:
         """(e) providers=[] → min_length=1 違反 ValidationError。"""
-        from pydantic import ValidationError
-
         from bakufu.interfaces.http.schemas.agent import AgentUpdate
+        from pydantic import ValidationError
 
         with pytest.raises(ValidationError):
             AgentUpdate.model_validate({"providers": []})
@@ -521,7 +517,7 @@ class TestStaticDependencyAnalysis:
         )
 
     def test_no_toplevel_bakufu_infrastructure_import(self) -> None:
-        """interfaces/http/ が bakufu.infrastructure をモジュールトップレベルで import しないこと。"""
+        """interfaces/http/ が bakufu.infrastructure をトップレベルで import しないこと。"""
         interfaces_dir = self._interfaces_http_dir()
         violations: list[str] = []
         for py_file in sorted(interfaces_dir.rglob("*.py")):
