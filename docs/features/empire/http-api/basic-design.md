@@ -265,7 +265,7 @@ sequenceDiagram
 |---------|------------|
 | Empire 未作成で GET /api/empires | `{"items": [], "total": 0}` を返す（エラーではない）|
 | 既存 Empire に POST /api/empires | `{"error": {"code": "conflict", "message": "Empire already exists."}}` で 409 |
-| アーカイブ済み Empire に PATCH | `{"error": {"code": "conflict", "message": "Empire is archived."}}` で 409 |
+| アーカイブ済み Empire に PATCH | `{"error": {"code": "conflict", "message": "Empire is archived and cannot be modified."}}` で 409 |
 
 **アクセシビリティ方針**: 該当なし（HTTP API のため）。
 

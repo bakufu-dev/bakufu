@@ -94,7 +94,7 @@
 | TC-UT-EM-HTTP-001 | `EmpireCreate` スキーマ | 正常系 / 異常系 | (a) `name="山田の幕府"` (b) `name=""` (c) `name="x"*81` (d) `extra_field="z"` | (a) バリデーション通過 (b) min_length 違反で `ValidationError` (c) max_length 違反で `ValidationError` (d) extra 禁止で `ValidationError` |
 | TC-UT-EM-HTTP-002 | `EmpireUpdate` スキーマ | 正常系 / 異常系 | (a) `name="新名前"` (b) `name=None` (c) `name=""` | (a) バリデーション通過 (b) name=None で通過（部分更新）(c) min_length 違反で `ValidationError` |
 | TC-UT-EM-HTTP-003 | `EmpireResponse` スキーマ | 正常系 | Empire ドメインオブジェクト（id / name / archived / rooms / agents）| `id` が str、`archived` が bool、`rooms` / `agents` がリストで正しくシリアライズされる |
-| TC-UT-EM-HTTP-004 | `empire_invariant_violation_handler` | 異常系 | `EmpireInvariantViolation("Empire name は 1〜80 文字")` | HTTP 422, `{"error": {"code": "validation_error", "message": "Empire name は 1〜80 文字"}}` |
+| TC-UT-EM-HTTP-004 | `empire_invariant_violation_handler` | 異常系 | `EmpireInvariantViolation("[FAIL] Empire name は 1〜80 文字でなければなりません。\nNext: 1〜80 文字の名前を指定してください。")` | HTTP 422, `{"error": {"code": "validation_error", "message": "Empire name は 1〜80 文字でなければなりません。"}}` — `[FAIL]` プレフィックスと `\nNext:.*` が除去されていることを assert する（detailed-design.md §確定C 前処理ルール検証）|
 | TC-UT-EM-HTTP-005 | `EmpireService.__init__` + `create` | 正常系 | `MockEmpireRepository(count=0, save=None)` | `create("山田の幕府")` がインスタンス生成成功し、`_repo.save()` が 1 回呼ばれる |
 | TC-UT-EM-HTTP-010 | 依存方向（静的解析: `ast` モジュール）| 異常系 | `ast.parse()` で `interfaces/http/` 配下の全 `.py` を解析し、トップレベル `import` / `from ... import` 文を抽出 | `bakufu.domain` / `bakufu.infrastructure` への直接 import が存在しないことを `assert` で確認（http-api-foundation TC-UT-HAF-010 と同一検証パターン）|
 

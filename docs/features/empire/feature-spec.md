@@ -200,7 +200,7 @@ E2E（受入基準 10, 11）は [`system-test-design.md`](system-test-design.md)
 
 ## 11. 開放論点 (Open Questions)
 
-凍結時点で未確定の論点はなし — R1 レビューで全件凍結済み。確定 R1-1〜7 として §7 に集約。
+凍結時点で未確定の論点はなし — R1 レビューで全件凍結済み。確定 R1-1〜8 として §7 に集約。empire http-api sub-feature の詳細論点は [`http-api/detailed-design.md §開放論点`](http-api/detailed-design.md) を参照（Q-OPEN-3: domain 層 archived チェック防護）。
 
 ## 12. sub-feature 一覧とマイルストーン整理
 
