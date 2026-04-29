@@ -1,15 +1,15 @@
 # 業務仕様書（feature-spec）— Room
 
 > feature: `room`（業務概念単位）
-> sub-features: [`domain/`](domain/) | [`repository/`](repository/) | http-api（将来）| ui（将来）
-> 関連 Issue: [#18 feat(room): Room Aggregate Root (M1)](https://github.com/bakufu-dev/bakufu/issues/18) / [#33 feat(room-repository): Room SQLite Repository (M2)](https://github.com/bakufu-dev/bakufu/issues/33)
+> sub-features: [`domain/`](domain/) | [`repository/`](repository/) | [`http-api/`](http-api/) | ui（将来）
+> 関連 Issue: [#18 feat(room): Room Aggregate Root (M1)](https://github.com/bakufu-dev/bakufu/issues/18) / [#33 feat(room-repository): Room SQLite Repository (M2)](https://github.com/bakufu-dev/bakufu/issues/33) / [#57 feat(room-http-api): Room + Agent assignment HTTP API (M3)](https://github.com/bakufu-dev/bakufu/issues/57)
 > 凍結済み設計: [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Room / [`docs/design/domain-model/value-objects.md`](../../design/domain-model/value-objects.md) §AgentMembership
 
 ## 本書の役割
 
 本書は **Room という業務概念全体の業務仕様** を凍結する。bakufu 全体の要求分析（[`docs/analysis/`](../../analysis/)）を Room という業務概念で具体化し、ペルソナ（個人開発者 CEO）から見て **観察可能な業務ふるまい** を実装レイヤー（domain / repository / http-api / ui）に依存せず定義する。Vモデル正規工程では **要件定義（業務）** 相当（システムテスト ↔ [`system-test-design.md`](system-test-design.md)）。
 
-各 sub-feature（[`domain/`](domain/) / [`repository/`](repository/) / 将来の http-api / ui）は本書を **業務根拠の真実源** として参照する。各 sub-feature は本書の業務ルール R1-X を実装方針 §確定 A〜Z として展開し、本書には逆流させない（本書の更新は別 PR で先行する）。
+各 sub-feature（[`domain/`](domain/) / [`repository/`](repository/) / [`http-api/`](http-api/) / 将来の ui）は本書を **業務根拠の真実源** として参照する。各 sub-feature は本書の業務ルール R1-X を実装方針 §確定 A〜Z として展開し、本書には逆流させない（本書の更新は別 PR で先行する）。
 
 **書くこと**:
 - ペルソナ（CEO）が Room という業務概念で達成できるようになる行為（ユースケース）
@@ -33,7 +33,7 @@ Room の業務的なライフサイクルは複数の実装レイヤーを跨ぐ
 |---|---|---|
 | domain | [`domain/`](domain/) | Room の構造的整合性（不変条件・メンバー一意・容量・PromptKit 規約・archived terminal）を Aggregate 内で保証 |
 | repository | [`repository/`](repository/) | Room の状態を再起動跨ぎで保持（永続化）、PromptKit.prefix_markdown の secret マスキングを担保 |
-| http-api | (将来) | UI / 外部クライアントから Room を操作・取得する経路 |
+| http-api | [`http-api/`](http-api/) | 外部クライアントから Room を操作・取得する経路（7 エンドポイント：CRUD + Agent 割り当て/解除）|
 | ui | (将来) | CEO が Room を直感的に編成する画面 |
 
 本書はこれら全レイヤーを貫く **業務概念単位の凍結文書** であり、各 sub-feature は本書を引用して実装契約を凍結する。
@@ -48,6 +48,10 @@ Room の業務的なライフサイクルは複数の実装レイヤーを跨ぐ
 >
 > bakufu MVP（v0.1.0）M2「SQLite 永続化」の後続 Repository PR（empire-repository #25 のテンプレート責務継承）。**Room Aggregate** の SQLite 永続化を実装する。**`PromptKit.prefix_markdown` の Repository マスキング実適用**（room §確定 G 踏襲）が本 PR の核心。
 
+> Issue #57（M3 http-api）:
+>
+> bakufu MVP（v0.1.0）M3「HTTP API」の Room エンドポイント群を実装する。Room CRUD（作成 / 一覧 / 単件取得 / 更新 / アーカイブ）および Agent の Room 割り当て / 解除の 7 エンドポイントを提供し、外部クライアント（将来の UI / CLI / テスト）が HTTP 経由で Room を操作できるようにする。
+
 ## 3. 背景・痛点
 
 ### 現状の痛点
@@ -57,6 +61,7 @@ Room の業務的なライフサイクルは複数の実装レイヤーを跨ぐ
 3. UI の MVP は「Room 一覧 → Room 詳細」を中核ナビゲーションに据える設計で、Room の attribute / 不変条件が決まっていないと UI 側の画面・API も着手できない
 4. CEO が Room を編成しても再起動で状態が消えるなら業務として成立しない（Room 設立は持続的な組織概念）
 5. **room §確定 G 申し送り**: `PromptKit.prefix_markdown` に API key / GitHub PAT が混入した場合、Repository 経由での DB 永続化時に raw 流出する経路が残っている
+6. domain / repository が完成しても **HTTP API がなければ UI / テストが Room を操作できない**。curl / SDK / 将来の UI すべてが HTTP API 経由で Room CRUD を行う
 
 ### 解決されれば変わること
 
@@ -64,6 +69,7 @@ Room の業務的なライフサイクルは複数の実装レイヤーを跨ぐ
 - `directive` / `task` Issue が Room 参照を前提に実装可能になる
 - Room の状態がアプリ再起動を跨いで保持される
 - `PromptKit.prefix_markdown` に CEO が誤って API key / webhook URL を貼り付けても DB には `<REDACTED:*>` で永続化（**room §確定 G 実適用完了**）
+- HTTP API 経由で Room の CRUD と Agent 編成が外部クライアントから操作可能になる
 
 ### ビジネス価値
 
@@ -74,7 +80,7 @@ Room の業務的なライフサイクルは複数の実装レイヤーを跨ぐ
 
 | ペルソナ名 | 役割 | 観察主体 | 達成したいゴール |
 |-----------|------|---------|---------------|
-| 個人開発者 CEO | bakufu インスタンスのオーナー | 直接（将来の UI 経由）/ 間接（domain・repository sub-feature では application 層経由） | Room を設立し、Workflow / Agent / PromptKit を設定してチームに組み込み、再起動跨ぎで状態が保持される |
+| 個人開発者 CEO | bakufu インスタンスのオーナー | 直接（将来の UI 経由）/ 間接（domain・repository sub-feature では application 層経由）/ HTTP API（M3） | Room を設立し、Workflow / Agent / PromptKit を設定してチームに組み込み、再起動跨ぎで状態が保持される |
 
 bakufu システム全体ペルソナは [`docs/analysis/personas.md`](../../analysis/personas.md) を参照。
 
@@ -89,24 +95,31 @@ bakufu システム全体ペルソナは [`docs/analysis/personas.md`](../../ana
 | UC-RM-005 | CEO | Room をアーカイブできる（物理削除なし、terminal 状態） | 必須 | domain |
 | UC-RM-006 | CEO | 設立した Room の状態がアプリ再起動を跨いで保持される（永続化を意識しない） | 必須 | repository |
 | UC-RM-007 | CEO | 同 Empire 内で Room 名は一意でなければならない（重複設立は拒否される） | 必須 | repository（find_by_name 提供）+ application 層（強制） |
+| UC-RM-008 | CEO | HTTP API 経由で Room を作成できる（POST /api/empires/{empire_id}/rooms）| 必須 | http-api |
+| UC-RM-009 | CEO | HTTP API 経由で Empire 内の Room 一覧を取得できる（GET /api/empires/{empire_id}/rooms）| 必須 | http-api |
+| UC-RM-010 | CEO | HTTP API 経由で Room を単件取得できる（GET /api/rooms/{room_id}）| 必須 | http-api |
+| UC-RM-011 | CEO | HTTP API 経由で Room を更新できる（name / description / prompt_kit の部分更新、PATCH /api/rooms/{room_id}）| 必須 | http-api |
+| UC-RM-012 | CEO | HTTP API 経由で Room をアーカイブできる（DELETE /api/rooms/{room_id}、論理削除）| 必須 | http-api |
+| UC-RM-013 | CEO | HTTP API 経由で Room に Agent を割り当てられる（POST /api/rooms/{room_id}/agents）| 必須 | http-api |
+| UC-RM-014 | CEO | HTTP API 経由で Room の Agent 割り当てを解除できる（DELETE /api/rooms/{room_id}/agents/{agent_id}）| 必須 | http-api |
 
 ## 6. スコープ
 
 ### In Scope
 
-- Room 業務概念全体で観察可能な業務ふるまい（UC-RM-001〜007）
+- Room 業務概念全体で観察可能な業務ふるまい（UC-RM-001〜014）
 - ふるまいの呼び出し失敗時に観察される拒否シグナル（業務ルール違反）
+- HTTP API 経由の Room CRUD + Agent 割り当て/解除（UC-RM-008〜014）
 - 業務概念単位の E2E 検証戦略 → [`system-test-design.md`](system-test-design.md)
 
 ### Out of Scope（参照）
 
-- Room の HTTP API → 将来の `room/http-api/` sub-feature
 - Room の管理 UI → 将来の `room/ui/` sub-feature
 - Room の管理 CLI → 別 feature `feature/admin-cli`（横断的）
 - Directive / Task との結合（target_room_id 等） → `feature/directive` / `feature/task`
 - 永続化基盤の汎用責務（WAL / マイグレーション / masking gateway） → [`feature/persistence-foundation`](../persistence-foundation/)
 - LLM Adapter（Room の PromptKit を LLM に送信する経路） → 将来の `feature/llm-adapter`
-- 「Empire 内 name 一意」の application 層強制 → 将来の `feature/empire-application`（domain と repository の合間に位置）
+- 「Empire 内 name 一意」の application 層強制 → `RoomService.create` で担保（本 http-api sub-feature スコープ内）
 - leader 必須性（Workflow が要求する場合）の application 層強制 → 将来の `feature/room-application`
 
 ## 7. 業務ルールの確定（要求としての凍結）
@@ -141,11 +154,15 @@ bakufu システム全体ペルソナは [`docs/analysis/personas.md`](../../ana
 
 ### 確定 R1-8: 同 Empire 内の Room 名は一意
 
-**理由**: CEO が「部屋の重複」に気付かず設立すると、業務上の役割分担が曖昧になる。この不変条件は **Aggregate 外部の集合知識**（同 Empire 内の他 Room との比較を要する）のため、application 層 `EmpireService.establish_room()` が `RoomRepository.find_by_name(empire_id, name)` 経由で判定する。Aggregate 自身は自分の name の一意性を知らない設計。
+**理由**: CEO が「部屋の重複」に気付かず設立すると、業務上の役割分担が曖昧になる。この不変条件は **Aggregate 外部の集合知識**（同 Empire 内の他 Room との比較を要する）のため、application 層 `RoomService.create()` が `RoomRepository.find_by_name(empire_id, name)` 経由で判定する。Aggregate 自身は自分の name の一意性を知らない設計。
 
 ### 確定 R1-9: `PromptKit.prefix_markdown` は永続化前にシークレットマスキングを適用する
 
 **理由**: CEO が PromptKit 設計時に `prefix_markdown` に Discord webhook URL / API key を誤って含めた場合、DB 直読み / バックアップ / 監査ログ経路への raw token 流出を防ぐ（**room §確定 G 実適用**）。domain 層は raw 文字列を保持し、Repository 層の `MaskedText` TypeDecorator 経由で INSERT/UPDATE 前にマスキングを適用する。
+
+### 確定 R1-10: HTTP API の path parameter は FastAPI に型検証を委ねる
+
+**理由**: `empire_id` / `room_id` / `agent_id` はすべて UUID 型で受け取り、不正形式（非 UUID 文字列）には `RequestValidationError` → 422 を返す（500 ではない）。empire-http-api BUG-EM-SEC-001 解消方針に準拠。
 
 ## 8. 制約・前提
 
@@ -155,7 +172,7 @@ bakufu システム全体ペルソナは [`docs/analysis/personas.md`](../../ana
 | ライセンス | MIT |
 | 対象 OS | Windows 10 21H2+ / macOS 12+ / Linux glibc 2.35+ |
 | ネットワーク | 該当なし — Room 業務概念は外部通信を持たない（永続化はローカル SQLite） |
-| 依存 feature | M1 開始時点: empire / workflow / agent の M1 マージ済み / M2 開始時点: M1 `room/domain` + [`feature/persistence-foundation`](../persistence-foundation/) + empire-repo / workflow-repo / agent-repo マージ済み |
+| 依存 feature | M3 開始時点: M1 `room/domain` + M2 `room/repository` + `http-api-foundation`（Issue #55 マージ済み）+ `empire/http-api` マージ済み |
 
 実装技術スタック（Python 3.12 / Pydantic v2 / SQLAlchemy 2.x async / Alembic / pyright strict / pytest）は各 sub-feature の `basic-design.md §依存関係` に集約する。
 
@@ -176,12 +193,25 @@ bakufu システム全体ペルソナは [`docs/analysis/personas.md`](../../ana
 | 11 | `archive()` で `archived = True` の新 Room が返る | UC-RM-005 | TC-UT-RM-011 |
 | 12 | `archived == True` の Room への `archive()` も新インスタンスを返す（冪等、業務ルール R1-5） | UC-RM-005 | TC-UT-RM-012 |
 | 13 | `archived == True` の Room への `add_member` / `remove_member` / `update_prompt_kit` は拒否される（業務ルール R1-5） | UC-RM-001〜004 | TC-UT-RM-013 |
-| 14 | 業務ルール違反のエラーメッセージに Discord webhook URL が含まれていた場合、`<REDACTED:DISCORD_WEBHOOK>` として伏字化される（domain 層での多層防御、受入基準 18 の repository 層マスキングとは独立） | UC-RM-001 | TC-UT-RM-014 |
+| 14 | 業務ルール違反のエラーメッセージに Discord webhook URL が含まれていた場合、`<REDACTED:DISCORD_WEBHOOK>` として伏字化される（domain 層での多層防御） | UC-RM-001 | TC-UT-RM-014 |
 | 16 | 設立した Room の状態がアプリ再起動跨ぎで保持される（業務ルール R1-7） | UC-RM-006 | TC-E2E-RM-001（[`system-test-design.md`](system-test-design.md)） |
 | 17 | 同 Empire 内で同名 Room を設立しようとすると拒否される（業務ルール R1-8） | UC-RM-007 | TC-E2E-RM-002 |
 | 18 | `PromptKit.prefix_markdown` に webhook URL を含めて永続化すると DB には `<REDACTED:*>` で保存される（業務ルール R1-9） | UC-RM-006 | TC-IT-RR-008-masking（[`repository/test-design.md`](repository/test-design.md)） |
+| 19 | HTTP API 経由で Room を作成できる（POST /api/empires/{empire_id}/rooms → 201 + RoomResponse）| UC-RM-008 | TC-IT-RM-HTTP-001（[`http-api/test-design.md`](http-api/test-design.md)） |
+| 20 | 同 Empire 内で同名 Room を HTTP API 経由で作成しようとすると 409 が返る（業務ルール R1-8）| UC-RM-008 | TC-IT-RM-HTTP-002 |
+| 21 | 存在しない Empire への Room 作成（POST /api/empires/{empire_id}/rooms）は 404 が返る | UC-RM-008 | TC-IT-RM-HTTP-003 |
+| 22 | HTTP API 経由で Empire 内 Room 一覧を取得できる（GET /api/empires/{empire_id}/rooms → 200 + RoomListResponse）| UC-RM-009 | TC-IT-RM-HTTP-004 |
+| 23 | HTTP API 経由で Room を単件取得できる（GET /api/rooms/{room_id} → 200 + RoomResponse）| UC-RM-010 | TC-IT-RM-HTTP-005 |
+| 24 | 不在 Room への GET は 404 が返る | UC-RM-010 | TC-IT-RM-HTTP-006 |
+| 25 | HTTP API 経由で Room を部分更新できる（PATCH /api/rooms/{room_id} → 200 + RoomResponse）| UC-RM-011 | TC-IT-RM-HTTP-007 |
+| 26 | アーカイブ済み Room への PATCH は 409 が返る（業務ルール R1-5）| UC-RM-011 | TC-IT-RM-HTTP-008 |
+| 27 | HTTP API 経由で Room をアーカイブできる（DELETE /api/rooms/{room_id} → 204）| UC-RM-012 | TC-IT-RM-HTTP-009 |
+| 28 | HTTP API 経由で Agent を Room に割り当てられる（POST /api/rooms/{room_id}/agents → 201 + RoomResponse）| UC-RM-013 | TC-IT-RM-HTTP-010 |
+| 29 | アーカイブ済み Room への Agent 割り当ては 409 が返る（業務ルール R1-5）| UC-RM-013 | TC-IT-RM-HTTP-011 |
+| 30 | HTTP API 経由で Agent 割り当てを解除できる（DELETE /api/rooms/{room_id}/agents/{agent_id}?role={role} → 204）| UC-RM-014 | TC-IT-RM-HTTP-012 |
+| 31 | 不正な UUID パスパラメータ（empire_id / room_id / agent_id）は 422 が返る（業務ルール R1-10）| UC-RM-008〜014 | TC-IT-RM-HTTP-013 |
 
-E2E（受入基準 16, 17）は [`system-test-design.md`](system-test-design.md) で詳細凍結。受入基準 1〜14 は domain sub-feature の IT / UT で検証（[`domain/test-design.md`](domain/test-design.md)）。受入基準 18 は repository IT（TC-IT-RR-008）と E2E（TC-E2E-RM-003）の両方で検証。
+E2E（受入基準 16, 17）は [`system-test-design.md`](system-test-design.md) で詳細凍結。受入基準 1〜14 は domain sub-feature の IT / UT で検証（[`domain/test-design.md`](domain/test-design.md)）。受入基準 18 は repository IT（TC-IT-RR-008）と E2E（TC-E2E-RM-003）の両方で検証。受入基準 19〜31 は http-api sub-feature の IT で検証（[`http-api/test-design.md`](http-api/test-design.md)）。
 
 ## 10. 開発者品質基準（CI 担保、業務要求ではない）
 
@@ -191,7 +221,7 @@ E2E（受入基準 16, 17）は [`system-test-design.md`](system-test-design.md)
 
 ## 11. 開放論点 (Open Questions)
 
-凍結時点で未確定の論点はなし — R1 レビューで全件凍結済み。確定 R1-1〜9 として §7 に集約。
+凍結時点で未確定の論点はなし — R1 レビューで全件凍結済み。確定 R1-1〜10 として §7 に集約。
 
 ## 12. sub-feature 一覧とマイルストーン整理
 
@@ -214,4 +244,4 @@ E2E（受入基準 16, 17）は [`system-test-design.md`](system-test-design.md)
 | パフォーマンス | 業務ふるまい呼び出しの応答が CEO 視点で「即時」（数 ms 以内）と感じられること。MVP 想定規模（members ≤ 50）で domain 層 1ms 未満、永続化層 50ms 未満を目標 |
 | 可用性 | 永続化層の WAL モード + crash safety（[`feature/persistence-foundation`](../persistence-foundation/) 担保）により、書き込み中のクラッシュでも Room 状態が破損しない |
 | 可搬性 | 純 Python のみ。OS / ファイルシステム依存なし（SQLite はクロスプラットフォーム） |
-| セキュリティ | 業務ルール違反は早期に拒否される（Fail Fast）。`PromptKit.prefix_markdown` の Discord webhook URL / API key は `MaskedText` で永続化前マスキング（業務ルール R1-9、room §確定 G 実適用）。`RoomInvariantViolation` の例外経路での webhook URL 漏洩は webhook auto-mask で防御（多層防御） |
+| セキュリティ | 業務ルール違反は早期に拒否される（Fail Fast）。`PromptKit.prefix_markdown` の Discord webhook URL / API key は `MaskedText` で永続化前マスキング（業務ルール R1-9、room §確定 G 実適用）。`RoomInvariantViolation` の例外経路での webhook URL 漏洩は webhook auto-mask で防御（多層防御）。HTTP path parameter は FastAPI UUID 型検証で不正値 → 422（業務ルール R1-10）|
