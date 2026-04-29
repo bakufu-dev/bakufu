@@ -150,12 +150,60 @@ async def room_archived_handler(request: Request, exc: Exception) -> JSONRespons
 
 
 async def workflow_not_found_handler(request: Request, exc: Exception) -> JSONResponse:
-    """``WorkflowNotFoundError`` → HTTP 404 / not_found (MSG-RM-HTTP-006)。"""
-    from bakufu.application.exceptions.room_exceptions import WorkflowNotFoundError
+    """``WorkflowNotFoundError`` → HTTP 404 / not_found (MSG-WF-HTTP-001)。"""
+    from bakufu.application.exceptions.workflow_exceptions import WorkflowNotFoundError
 
     if not isinstance(exc, WorkflowNotFoundError):
         raise TypeError(f"Expected WorkflowNotFoundError, got {type(exc).__name__}")
     return _error_response(NOT_FOUND, "Workflow not found.", 404)
+
+
+async def workflow_archived_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``WorkflowArchivedError`` → HTTP 409 / conflict (MSG-WF-HTTP-002)。"""
+    from bakufu.application.exceptions.workflow_exceptions import WorkflowArchivedError
+
+    if not isinstance(exc, WorkflowArchivedError):
+        raise TypeError(f"Expected WorkflowArchivedError, got {type(exc).__name__}")
+    return _error_response(CONFLICT, "Workflow is archived and cannot be modified.", 409)
+
+
+async def workflow_preset_not_found_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``WorkflowPresetNotFoundError`` → HTTP 404 / not_found (MSG-WF-HTTP-004)。"""
+    from bakufu.application.exceptions.workflow_exceptions import WorkflowPresetNotFoundError
+
+    if not isinstance(exc, WorkflowPresetNotFoundError):
+        raise TypeError(f"Expected WorkflowPresetNotFoundError, got {type(exc).__name__}")
+    return _error_response(NOT_FOUND, "Workflow preset not found.", 404)
+
+
+async def workflow_irreversible_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``WorkflowIrreversibleError`` → HTTP 409 / conflict (MSG-WF-HTTP-008)。"""
+    from bakufu.application.exceptions.workflow_exceptions import WorkflowIrreversibleError
+
+    if not isinstance(exc, WorkflowIrreversibleError):
+        raise TypeError(f"Expected WorkflowIrreversibleError, got {type(exc).__name__}")
+    return _error_response(
+        CONFLICT,
+        "Workflow contains masked notify_channels and cannot be modified."
+        " Please recreate the workflow with new webhook URLs.",
+        409,
+    )
+
+
+async def workflow_invariant_violation_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``WorkflowInvariantViolation`` → HTTP 422 / validation_error (MSG-WF-HTTP-005)。
+
+    前処理ルール (確定 C):
+    1. ``[FAIL] `` プレフィックスを除去
+    2. ``\\nNext:`` 以降を除去して domain 内部フォーマットを隠蔽する
+    """
+    from bakufu.domain.exceptions import WorkflowInvariantViolation
+
+    if not isinstance(exc, WorkflowInvariantViolation):
+        raise TypeError(f"Expected WorkflowInvariantViolation, got {type(exc).__name__}")
+    raw = str(exc)
+    cleaned = _FAIL_PREFIX_RE.sub("", raw).split("\nNext:")[0].strip()
+    return _error_response(VALIDATION_ERROR, cleaned, 422)
 
 
 async def agent_not_found_handler(request: Request, exc: Exception) -> JSONResponse:

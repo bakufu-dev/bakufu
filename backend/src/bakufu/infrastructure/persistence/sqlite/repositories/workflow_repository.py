@@ -141,6 +141,7 @@ class SqliteWorkflowRepository:
             set_={
                 "name": upsert_stmt.excluded.name,
                 "entry_stage_id": upsert_stmt.excluded.entry_stage_id,
+                "archived": upsert_stmt.excluded.archived,
             },
         )
         await self._session.execute(upsert_stmt)
@@ -181,6 +182,7 @@ class SqliteWorkflowRepository:
             "id": workflow.id,
             "name": workflow.name,
             "entry_stage_id": workflow.entry_stage_id,
+            "archived": workflow.archived,
         }
         stage_rows: list[dict[str, Any]] = [
             {
@@ -241,6 +243,7 @@ class SqliteWorkflowRepository:
             stages=stages,
             transitions=transitions,
             entry_stage_id=_uuid(workflow_row.entry_stage_id),
+            archived=workflow_row.archived,
         )
 
     @staticmethod

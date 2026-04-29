@@ -6,7 +6,7 @@
 
 ## 本書の役割
 
-本書は **テストケースで検証可能な単位までトレーサビリティを担保する**。`basic-design.md §モジュール契約` の REQ-WF-HTTP-NNN / `detailed-design.md §MSG 確定文言表` の MSG-WF-HTTP-NNN / 親 `feature-spec.md §9 受入基準` #13〜21 / 脅威 T1〜T5 を、それぞれ最低 1 件のテストケースで検証する。
+本書は **テストケースで検証可能な単位までトレーサビリティを担保する**。`basic-design.md §モジュール契約` の REQ-WF-HTTP-NNN / `detailed-design.md §MSG 確定文言表` の MSG-WF-HTTP-NNN / 親 `feature-spec.md §9 受入基準` #13〜21 / 23 / 脅威 T1〜T5 を、それぞれ最低 1 件のテストケースで検証する。
 
 **書くこと**:
 - REQ-WF-HTTP-NNN / MSG-WF-HTTP-NNN / 受入基準 # / 脅威を実テストケース（TC-IT / TC-UT）に紐付けるマトリクス
@@ -27,7 +27,7 @@
 |---|---|
 | TC-IT-WFH-001〜030 | 結合テスト（HTTP リクエスト / DI / 例外ハンドラ）|
 | TC-IT-WFH-031〜 | 予約番号帯（将来の workflow 拡張 API で利用）|
-| TC-UT-WFH-001〜010 | ユニットテスト（スキーマ / 例外ハンドラ / サービス）|
+| TC-UT-WFH-001〜011 | ユニットテスト（スキーマ / 例外ハンドラ / サービス）|
 | TC-UT-WFH-020〜 | 静的解析系テスト専用帯（依存方向 / import 解析）|
 
 ## テストマトリクス
@@ -61,11 +61,13 @@
 | REQ-WF-HTTP-007（ルーティング順序）| `GET /api/workflows/presets` リテラルパス優先 | TC-IT-WFH-027 | 結合 | 境界値 | Q-3 |
 | T1（CSRF）| CSRF ミドルウェア → POST workflows | TC-IT-WFH-028 | 結合 | 異常系 | Q-3 |
 | T3（不正 UUID パスインジェクション）| FastAPI UUID 型強制 → 422 | TC-IT-WFH-026 | 結合 | 異常系 | Q-3 |
-| A02（notify_channels マスキング — POST/PATCH 経路）| `StageResponse.notify_channels` が POST 201 / PATCH 200 レスポンスで masked になること（`detailed-design.md §確定A`）| TC-IT-WFH-029 | 結合 | 正常系 | Q-3 |
+| A02（notify_channels マスキング — POST 経路）| `StageResponse.notify_channels` が POST 201 レスポンスで masked になること（`detailed-design.md §確定A`）| TC-IT-WFH-029 (a) | 結合 | 正常系 | Q-3 |
+| REQ-WF-HTTP-004（notify_channels masked）/ R1-16 | `workflows_router` PATCH + `WorkflowIrreversibleError` | TC-IT-WFH-029 (b) / TC-IT-WFH-030 | 結合 | 異常系 | feature-spec.md §9 #23 |
 | MSG-WF-HTTP-001 | `workflow_not_found_handler` | TC-IT-WFH-018 / TC-UT-WFH-006 | 結合 / ユニット | 異常系 | Q-3 |
 | MSG-WF-HTTP-002 | `workflow_archived_handler(kind="update")` | TC-IT-WFH-020 / TC-UT-WFH-007 | 結合 / ユニット | 異常系 | Q-3 |
 | MSG-WF-HTTP-004 | `workflow_preset_not_found_handler` | TC-IT-WFH-013 / TC-UT-WFH-008 | 結合 / ユニット | 異常系 | Q-3 |
 | MSG-WF-HTTP-005 | `workflow_invariant_violation_handler`（前処理ルール）| TC-IT-WFH-014 / TC-UT-WFH-009 | 結合 / ユニット | 異常系 | Q-3 |
+| MSG-WF-HTTP-008 | `workflow_irreversible_handler` | TC-IT-WFH-029 (b) / TC-IT-WFH-030 / TC-UT-WFH-011 | 結合 / ユニット | 異常系 | feature-spec.md §9 #23 |
 | `StageCreate` スキーマ | `schemas/workflow.py` | TC-UT-WFH-001 | ユニット | 正常系 / 異常系 | Q-3 |
 | `TransitionCreate` スキーマ | `schemas/workflow.py` | TC-UT-WFH-002 | ユニット | 正常系 / 異常系 | Q-3 |
 | `WorkflowCreate` スキーマ | `schemas/workflow.py` | TC-UT-WFH-003 | ユニット | 正常系 / 異常系 | Q-3 |
@@ -78,13 +80,14 @@
 
 **マトリクス充足の証拠**:
 - REQ-WF-HTTP-001〜007 すべてに最低 1 件の正常系テストケース（TC-IT-WFH-001〜009）
-- REQ-WF-HTTP-001〜006 の主要な異常系（Room 不在 / Room archived / プリセット不明 / DAG 違反 / 排他バリデーション / Workflow 不在 / archived 操作 / UUID 注入）が各 TC-IT で網羅（001〜028）
-- MSG-WF-HTTP-001/002/004/005 の全件が `response.json()["error"]["code"]` / `"message"` の静的照合テストで確認（IT + UT 二重検証）（MSG-WF-HTTP-003 は設計変更により削除済み）
-- 親受入基準 #13〜21 のすべてが TC-IT-WFH-001〜009 で対応
+- REQ-WF-HTTP-001〜006 の主要な異常系（Room 不在 / Room archived / プリセット不明 / DAG 違反 / 排他バリデーション / Workflow 不在 / archived 操作 / notify_channels masked / UUID 注入）が各 TC-IT で網羅（001〜030）
+- MSG-WF-HTTP-001/002/004/005/008 の全件が `response.json()["error"]["code"]` / `"message"` の静的照合テストで確認（IT + UT 二重検証）（MSG-WF-HTTP-003 は設計変更により削除済み）
+- 親受入基準 #13〜21 / 23 のすべてが TC-IT-WFH-001〜030 で対応
 - T1（CSRF）/ T3（不正 UUID）脅威への対策が最低 1 件で有効性確認
 - T4（SSRF: notify_channels allow list）は domain 層責務のため `domain/test-design.md` 参照（TC-UT-WF-006a/b — 孤児ではない）
 - T5（static プリセット定数保護）は TC-IT-WFH-009（GET /api/workflows/presets が常に成功）で間接検証
-- A02（notify_channels masking — POST/PATCH 経路）は TC-IT-WFH-029 で物理検証（`detailed-design.md §確定A` 凍結の実装保証）
+- A02（notify_channels masking — POST 経路）は TC-IT-WFH-029 (a) で物理検証（`detailed-design.md §確定A` 凍結の実装保証）
+- R1-16（notify_channels masked → PATCH 409）は TC-IT-WFH-029 (b) / TC-IT-WFH-030 で物理検証
 - 孤児要件なし
 
 ## 外部 I/O 依存マップ
@@ -142,7 +145,9 @@
 | TC-IT-WFH-026 | FastAPI UUID パス検証 → `RequestValidationError` | — | (a) `GET /api/workflows/not-a-uuid` (b) `PATCH /api/workflows/not-a-uuid` (c) `DELETE /api/workflows/not-a-uuid` (d) `GET /api/workflows/not-a-uuid/stages` (e) `POST /api/rooms/not-a-uuid/workflows` (f) `GET /api/rooms/not-a-uuid/workflows` | (a)〜(f) すべて HTTP 422（500 ではないことを確認 — T3: UUID パスインジェクション防御）|
 | TC-IT-WFH-027 | `GET /api/workflows/presets` リテラルパス優先（ルーティング順序検証）| — | `GET /api/workflows/presets` を `GET /api/workflows/{id}` より先に登録されているか確認（TestClient 経由）| HTTP 200（404 / パスパラメータ解釈エラーではないこと）— 設計書 §確定E「ルーティング登録順序」の物理保証 |
 | TC-IT-WFH-028 | CSRF ミドルウェア → `POST /api/rooms/{room_id}/workflows` | Room 存在 | `Origin: http://evil.example.com` ヘッダ付きの `POST /api/rooms/{room_id}/workflows` | HTTP 403（T1: CSRF 保護 — http-api-foundation TC-IT-HAF-008 と同一パターン。workflows_router でも CSRF ミドルウェアが適用されることの物理保証）|
-| TC-IT-WFH-029 | A02 masking — `StageResponse.notify_channels` が POST 201 / PATCH 200 レスポンスで masked になること（`detailed-design.md §確定A` 物理保証）| Empire 存在 / Room 存在（archived=false）/ テスト用 Discord webhook URL として `tests/factories/workflow.py` の `DEFAULT_DISCORD_WEBHOOK`（`"https://discord.com/api/webhooks/123456789012345678/SyntheticToken_-abcXYZ"`）を使用 | (a) `notify_channels=["https://discord.com/api/webhooks/123456789012345678/SyntheticToken_-abcXYZ"]` を持つ `EXTERNAL_REVIEW` kind Stage を含む JSON で `POST /api/rooms/{room_id}/workflows` を送信。(b) 作成した Workflow に対して `PATCH /api/workflows/{id}` で名前変更（DAG 維持）を送信。 | (a) HTTP 201 レスポンスの当該 Stage `notify_channels` フィールドが `<REDACTED:DISCORD_WEBHOOK>` を含む文字列であること — raw URL のトークン部（`SyntheticToken_-abcXYZ` 等）がレスポンス JSON に現れないことを `assert "SyntheticToken_-abcXYZ" not in ...` で確認。(b) HTTP 200 レスポンスでも同様に masked 文字列（POST 直後の in-memory domain object と PATCH 後 DB 再取得の両経路で masking が保証されることを物理検証 — A02 Cryptographic Failures 防御）|
+| TC-IT-WFH-029 | A02 masking — `StageResponse.notify_channels` が POST 201 レスポンスで masked になること（`detailed-design.md §確定A` 物理保証）/ R1-16 — 永続化後の PATCH が 409 になること | Empire 存在 / Room 存在（archived=false）/ テスト用 Discord webhook URL として `tests/factories/workflow.py` の `DEFAULT_DISCORD_WEBHOOK`（`"https://discord.com/api/webhooks/123456789012345678/SyntheticToken_-abcXYZ"`）を使用 | (a) `notify_channels=["https://discord.com/api/webhooks/123456789012345678/SyntheticToken_-abcXYZ"]` を持つ `EXTERNAL_REVIEW` kind Stage を含む JSON で `POST /api/rooms/{room_id}/workflows` を送信。(b) 作成した Workflow に対して `PATCH /api/workflows/{id}` で名前変更を試みる。 | (a) HTTP 201 レスポンスの当該 Stage `notify_channels` フィールドが `<REDACTED:DISCORD_WEBHOOK>` を含む文字列であること — raw URL のトークン部（`SyntheticToken_-abcXYZ` 等）がレスポンス JSON に現れないことを `assert "SyntheticToken_-abcXYZ" not in ...` で確認。(b) HTTP 409, `{"error": {"code": "conflict", "message": "Workflow contains masked notify_channels and cannot be modified. Please recreate the workflow with new webhook URLs."}}` — R1-16 に基づく `WorkflowIrreversibleError` が発生し PATCH が拒否されること（MSG-WF-HTTP-008 確定文言と完全一致）|
+
+| TC-IT-WFH-030 | `workflows_router` → `WorkflowService.update` → `WorkflowIrreversibleError` → `workflow_irreversible_handler`（業務ルール R1-16 / MSG-WF-HTTP-008）| Empire 存在 / Room 存在 / `EXTERNAL_REVIEW` Stage を持つ Workflow が tempdb に保存済み（`SqliteWorkflowRepository.save()` 経由）— notify_channels は DB 永続化済みのため masked 状態（`<REDACTED:DISCORD_WEBHOOK>`）| `PATCH /api/workflows/{workflow_id}` `{"name": "更新試み"}` | HTTP 409, `{"error": {"code": "conflict", "message": "Workflow contains masked notify_channels and cannot be modified. Please recreate the workflow with new webhook URLs."}}` — MSG-WF-HTTP-008 確定文言と完全一致 / `WorkflowIrreversibleError` が `workflow_irreversible_handler` を経由して 409 に変換されること |
 
 ## ユニットテストケース
 
@@ -158,16 +163,18 @@
 | TC-UT-WFH-008 | `workflow_preset_not_found_handler`（`detailed-design.md §確定C`）| 異常系 | `WorkflowPresetNotFoundError(preset_name="unknown")` | HTTP 404, `{"error": {"code": "not_found", "message": "Workflow preset not found."}}` — MSG-WF-HTTP-004 確定文言と完全一致 |
 | TC-UT-WFH-009 | `workflow_invariant_violation_handler`（`detailed-design.md §確定C` 前処理ルール）| 異常系 | (a) `WorkflowInvariantViolation` で message=`"[FAIL] entry_stage_id が stages に存在しません。\nNext: 有効な stage_id を指定してください。"` (b) message=`"[FAIL] Stage 数が上限を超えています。"` （Next: なし）| (a) HTTP 422, `{"error": {"code": "validation_error", "message": "entry_stage_id が stages に存在しません。"}}` — `[FAIL]` プレフィックスと `\nNext:.*` が除去されていること / (b) HTTP 422, `{"error": {"code": "validation_error", "message": "Stage 数が上限を超えています。"}}` — strip 後に Next: が残らないこと |
 | TC-UT-WFH-010 | `WorkflowService.__init__`（3 引数構造 — `detailed-design.md §確定G`）| 正常系 | `workflow_repo=MagicMock()` / `room_repo=MagicMock()` / `session=MagicMock()` | インスタンス生成成功 / `_workflow_repo` / `_room_repo` / `_session` に各 mock が格納される（http-api-foundation の単一 repo 骨格から 3 引数構造への拡張を検証）|
+| TC-UT-WFH-011 | `workflow_irreversible_handler`（`detailed-design.md §確定C`）| 異常系 | `WorkflowIrreversibleError(workflow_id="test-id")` | HTTP 409, `{"error": {"code": "conflict", "message": "Workflow contains masked notify_channels and cannot be modified. Please recreate the workflow with new webhook URLs."}}` — MSG-WF-HTTP-008 確定文言と完全一致 |
 | TC-UT-WFH-020 | 依存方向（静的解析: `ast.walk()` 全ノード走査 — スコープ: `routers/` + `schemas/`）| 異常系 | `ast.walk(ast.parse(src))` で `interfaces/http/routers/workflows.py` + `interfaces/http/schemas/workflow.py` を全ノード（関数内・クラス内・メソッド内含む）走査する（`app.py` / `dependencies.py` / `error_handlers.py` は除外）| `bakufu.domain` / `bakufu.infrastructure` への import ノード（`ImportFrom` / `Import` の全出現、トップレベル限定でない）が存在しないことを `assert` で確認。**`tree.body` のみの走査では関数内遅延 import を見逃す。`ast.walk()` による全ノード走査が必須**（TC-UT-RM-HTTP-010 の同一 `ast.walk()` 走査方式に準拠。旧 `tree.body` パターンへの退行を禁止する）|
 
 ## カバレッジ基準
 
 | 対象 | 方針 |
 |---|---|
-| `interfaces/http/routers/workflows.py` | TC-IT-WFH-001〜029 で全 7 エンドポイントを網羅。branch coverage 90% 以上 |
+| `interfaces/http/routers/workflows.py` | TC-IT-WFH-001〜030 で全 7 エンドポイントを網羅。branch coverage 90% 以上 |
 | `interfaces/http/schemas/workflow.py` | TC-UT-WFH-001〜005 で全スキーマの全フィールド / 全 validation ルール（排他バリデーション・整合バリデーション含む）を検証 |
-| `interfaces/http/error_handlers.py`（workflow 追記分）| TC-IT-WFH-013/014/018/019/020/021/023 + TC-UT-WFH-006〜009 で全ハンドラ（`workflow_not_found_handler` / `workflow_archived_handler` / `workflow_preset_not_found_handler` / `workflow_invariant_violation_handler`）を網羅。TC-UT-WFH-007 で `kind="update"` を単独検証（`kind="assign"` は設計変更により削除済み）|
-| `application/services/workflow_service.py` | TC-IT-WFH-001〜009/029 の結合テストで全メソッド（create_for_room / find_by_room / find_by_id / update / archive / find_stages / get_presets）を起動。TC-UT-WFH-010 でインスタンス化・3 引数構造を確認 |
-| `application/exceptions/workflow_exceptions.py` | TC-IT-WFH-013/018/019/020/021/023/024/025 の結合テストで全例外クラス（`WorkflowNotFoundError` / `WorkflowArchivedError` / `WorkflowPresetNotFoundError`）が発火 → ハンドラを経由することを確認 |
-| A02 masking（POST/PATCH 経路）| TC-IT-WFH-029 で EXTERNAL_REVIEW Stage を含む POST/PATCH レスポンスの `notify_channels` が `<REDACTED:DISCORD_WEBHOOK>` masked であることを物理検証（`detailed-design.md §確定A`）|
-| 孤児要件なし | REQ-WF-HTTP-001〜007・MSG-WF-HTTP-001/002/004/005・受入基準 #13〜21 の全件がテストマトリクスに紐付けられている |
+| `interfaces/http/error_handlers.py`（workflow 追記分）| TC-IT-WFH-013/014/018/019/020/021/023/029/030 + TC-UT-WFH-006〜009/011 で全ハンドラ（`workflow_not_found_handler` / `workflow_archived_handler` / `workflow_irreversible_handler` / `workflow_preset_not_found_handler` / `workflow_invariant_violation_handler`）を網羅。TC-UT-WFH-007 で `kind="update"` を単独検証（`kind="assign"` は設計変更により削除済み）|
+| `application/services/workflow_service.py` | TC-IT-WFH-001〜009/029/030 の結合テストで全メソッド（create_for_room / find_by_room / find_by_id / update / archive / find_stages / get_presets）を起動。TC-UT-WFH-010 でインスタンス化・3 引数構造を確認 |
+| `application/exceptions/workflow_exceptions.py` | TC-IT-WFH-013/018/019/020/021/023/024/025/029/030 の結合テストで全例外クラス（`WorkflowNotFoundError` / `WorkflowArchivedError` / `WorkflowIrreversibleError` / `WorkflowPresetNotFoundError`）が発火 → ハンドラを経由することを確認 |
+| A02 masking（POST 経路）| TC-IT-WFH-029 (a) で EXTERNAL_REVIEW Stage を含む POST レスポンスの `notify_channels` が `<REDACTED:DISCORD_WEBHOOK>` masked であることを物理検証（`detailed-design.md §確定A`）|
+| R1-16（notify_channels masked → PATCH 409）| TC-IT-WFH-029 (b) / TC-IT-WFH-030 で `WorkflowIrreversibleError` → HTTP 409 の変換を物理検証（受入基準 #23 対応）|
+| 孤児要件なし | REQ-WF-HTTP-001〜007・MSG-WF-HTTP-001/002/004/005/008・受入基準 #13〜21 / 23 の全件がテストマトリクスに紐付けられている |

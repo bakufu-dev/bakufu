@@ -25,11 +25,16 @@ from bakufu.interfaces.http.error_handlers import (
     room_name_already_exists_handler,
     room_not_found_handler,
     validation_error_handler,
+    workflow_archived_handler,
+    workflow_invariant_violation_handler,
+    workflow_irreversible_handler,
     workflow_not_found_handler,
+    workflow_preset_not_found_handler,
 )
 from bakufu.interfaces.http.routers.empire import router as empire_router
 from bakufu.interfaces.http.routers.health import router as health_router
 from bakufu.interfaces.http.routers.rooms import empire_rooms_router, rooms_router
+from bakufu.interfaces.http.routers.workflows import room_workflows_router, workflows_router
 
 
 def _parse_allowed_origins() -> list[str]:
@@ -97,9 +102,18 @@ def create_app() -> FastAPI:
         RoomArchivedError,
         RoomNameAlreadyExistsError,
         RoomNotFoundError,
-        WorkflowNotFoundError,
     )
-    from bakufu.domain.exceptions import EmpireInvariantViolation, RoomInvariantViolation
+    from bakufu.application.exceptions.workflow_exceptions import (
+        WorkflowArchivedError,
+        WorkflowIrreversibleError,
+        WorkflowNotFoundError,
+        WorkflowPresetNotFoundError,
+    )
+    from bakufu.domain.exceptions import (
+        EmpireInvariantViolation,
+        RoomInvariantViolation,
+        WorkflowInvariantViolation,
+    )
 
     app.add_exception_handler(EmpireNotFoundError, empire_not_found_handler)
     app.add_exception_handler(EmpireAlreadyExistsError, empire_already_exists_handler)
@@ -110,6 +124,10 @@ def create_app() -> FastAPI:
     app.add_exception_handler(RoomNameAlreadyExistsError, room_name_already_exists_handler)
     app.add_exception_handler(RoomArchivedError, room_archived_handler)
     app.add_exception_handler(WorkflowNotFoundError, workflow_not_found_handler)
+    app.add_exception_handler(WorkflowArchivedError, workflow_archived_handler)
+    app.add_exception_handler(WorkflowIrreversibleError, workflow_irreversible_handler)
+    app.add_exception_handler(WorkflowPresetNotFoundError, workflow_preset_not_found_handler)
+    app.add_exception_handler(WorkflowInvariantViolation, workflow_invariant_violation_handler)
     app.add_exception_handler(AgentNotFoundError, agent_not_found_handler)
     app.add_exception_handler(RoomInvariantViolation, room_invariant_violation_handler)
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
@@ -121,6 +139,8 @@ def create_app() -> FastAPI:
     app.include_router(empire_router)
     app.include_router(empire_rooms_router)
     app.include_router(rooms_router)
+    app.include_router(room_workflows_router)
+    app.include_router(workflows_router)
 
     return app
 
