@@ -54,7 +54,7 @@ class TestUpdateWorkflowNameOnly:
             f"/api/workflows/{wf.id}",  # type: ignore[attr-defined]
             json={"name": "新フロー名"},
         )
-        assert len(resp.json()["stages"]) == len(original_stages)
+        assert len(resp.json()["stages"]) == len(original_stages)  # type: ignore[arg-type]
 
 
 class TestUpdateWorkflowDagReplace:

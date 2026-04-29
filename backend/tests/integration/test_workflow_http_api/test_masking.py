@@ -12,6 +12,7 @@ Issue: #58
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -74,7 +75,7 @@ class TestA02MaskingPost:
         """POST 201 レスポンスの EXTERNAL_REVIEW stage の notify_channels が REDACTED 文字列。"""
         resp = await self._post_workflow_with_external_review(wf_ctx)
         stage = resp.json()["stages"][0]  # type: ignore[union-attr]
-        assert len(stage["notify_channels"]) == 1
+        assert len(stage["notify_channels"]) == 1  # type: ignore[arg-type]
         assert "<REDACTED" in stage["notify_channels"][0]
 
 
@@ -85,7 +86,7 @@ class TestA02MaskingPatch:
     WorkflowIrreversibleError → HTTP 409 / MSG-WF-HTTP-008 で拒否される。
     """
 
-    async def _create_workflow_with_external_review(self, wf_ctx: WfTestCtx) -> dict:
+    async def _create_workflow_with_external_review(self, wf_ctx: WfTestCtx) -> dict[str, Any]:
         """EXTERNAL_REVIEW stage を含む workflow を POST で作成して JSON を返す。"""
         empire = await _create_empire(wf_ctx.client)
         placeholder = await _seed_workflow_direct(wf_ctx.session_factory)
