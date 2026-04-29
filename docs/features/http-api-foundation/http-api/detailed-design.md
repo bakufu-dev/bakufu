@@ -117,9 +117,29 @@ classDiagram
 
 親 `feature-spec.md §7 R1-3` の実装方針。`allow_origins` は `BAKUFU_ALLOWED_ORIGINS` 環境変数をカンマ区切りでパースする。未設定時は `["http://localhost:5173"]`。`allow_credentials=False`（MVP では Cookie セッション未使用）。
 
-### 確定 D: CSRF Origin 検証は `error_handlers.py` に Starlette middleware として実装する
+`Authorization` を `allow_headers` に含める理由: Phase 2 で Bearer Token 認証を追加する際に CORS 設定変更を不要にする事前配線。MVP クライアントは `Authorization` ヘッダを送信しないため、セキュリティリスクはない（CORS ヘッダ許可リストはブラウザの preflight 制御であり、攻撃者がサーバーに任意ヘッダを送ることを妨げる機能ではない）。
 
-親 `feature-spec.md §7 R1-4` の実装方針。`POST` / `PUT` / `PATCH` / `DELETE` メソッドのリクエストに対し、`Origin` ヘッダが存在しない場合または許可 Origin 一覧に含まれない場合は `403 Forbidden` を返す。`GET` / `OPTIONS` / `HEAD` は検証をスキップする。
+### 確定 D: CSRF Origin 検証は `error_handlers.py` に Starlette middleware として実装する。MVP（Cookie なし）では Origin が存在しない呼び出しを許可する
+
+親 `feature-spec.md §7 R1-4` の実装方針。
+
+**MVP の適用スコープ（Cookie セッションなし）**:
+
+| 呼び出し元 | Origin ヘッダ | MVP の動作 | 理由 |
+|---|---|---|---|
+| ブラウザ（`http://localhost:5173`） | `Origin: http://localhost:5173` | 許可（許可一覧に合致）| 正常なフロントエンドアクセス |
+| ブラウザ（不正サイト） | `Origin: http://evil.example.com` | **403 Forbidden** | CSRF 攻撃の防止 |
+| AI エージェント / curl / SDK | Origin ヘッダなし | **MVP では通過させる** | Cookie セッションがない環境では CSRF リスクが成立しない。ブラウザは自動で Cookie を送信するが、AI エージェントは Cookie を保持しないため攻撃経路にならない |
+
+**実装判定ロジック**（middleware の概念ロジック）:
+1. `GET` / `OPTIONS` / `HEAD` → スキップ（CSRF リスクなし）
+2. `POST` / `PUT` / `PATCH` / `DELETE` かつ `Origin` ヘッダが存在しない → **MVP では通過**（AI エージェント・curl 対応）
+3. `POST` / `PUT` / `PATCH` / `DELETE` かつ `Origin` ヘッダが存在する → 許可 Origin 一覧と照合し、不一致なら 403
+
+**Phase 2 への移行（Cookie セッション追加時）**:
+- 上記 2 の条件を「`Origin` ヘッダが存在しない → 403」に変更する
+- Cookie セッションが追加された時点で AI エージェントもセッション Cookie を保持する可能性が生じるため、Origin なしリクエストを拒否に切り替える
+- 本 middleware の判定ロジックを 1 行変更するだけで対応可能（`PHASE2_STRICT_CSRF=true` 環境変数で制御することも可）
 
 ### 確定 E: `get_session()` は `async with session_factory() as session: yield session` パターンを使用する
 
@@ -132,6 +152,20 @@ pyright strict 対応: 空クラスにならないよう `__init__` にデフォ
 ### 確定 G: `main.py` は `if __name__ == "__main__"` ガードを設ける
 
 `uvicorn.run()` を直接呼ぶ経路は `if __name__ == "__main__"` 内のみ。テストは `app` インスタンスを直接 import し、`httpx.AsyncClient(app=app)` で ASGI として起動する（uvicorn プロセスを立てない）。
+
+### 確定 H: `/docs` / `/openapi.json` の本番環境アクセス制御方針
+
+**MVP（loopback バインド前提）**: `/docs` / `/openapi.json` は loopback に限定されるため、外部から到達不能。追加の制御は不要。
+
+**外部公開時（reverse proxy 経由）**: reverse proxy（Caddy / Nginx）側で `/docs` / `/openapi.json` へのアクセスを以下のいずれかで制限する:
+
+| 方法 | 適用場面 |
+|---|---|
+| reverse proxy で `/docs` / `/openapi.json` パスをブロック | 本番公開環境（CEO 自身が API ドキュメントを必要としない場合）|
+| reverse proxy で Basic Auth を前置 | 開発チームが閲覧できる状態を維持したい場合 |
+| FastAPI の `openapi_url=None` で無効化 | 環境変数 `BAKUFU_DISABLE_DOCS=true` で FastAPI 初期化時に隠蔽する |
+
+bakufu の app.py は `BAKUFU_DISABLE_DOCS` 環境変数が `true` の場合、`FastAPI(openapi_url=None)` で Swagger UI / OpenAPI スキーマを無効化する配線を持つこと。これにより reverse proxy の設定に依存しない self-contained な制御が可能になる。
 
 ## 設計判断の補足
 

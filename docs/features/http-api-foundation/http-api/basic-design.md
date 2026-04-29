@@ -295,6 +295,23 @@ sequenceDiagram
 
 詳細な信頼境界は [`docs/design/threat-model.md`](../../../design/threat-model.md)。
 
+### OWASP Top 10 (2021) 対応表
+
+interfaces 層（HTTP API 最前線）として OWASP A01〜A10 の全項目を明示する。
+
+| # | カテゴリ | interfaces 層での該当 / N/A 理由 | 対策 |
+|---|---|---|---|
+| A01 | Broken Access Control | **MVP は認証不要のシングルユーザー前提**（loopback バインドで物理的に局所化）。`/docs` / `/openapi.json` は loopback 上のみ公開し、外部公開は reverse proxy 側でアクセス制御する（`detailed-design.md §確定 H` 参照）| loopback バインド。reverse proxy 経由の外部公開時は Basic Auth / OIDC を reverse proxy 側で終端（Phase 2）|
+| A02 | Cryptographic Failures | Cookie セッションは MVP 未使用のため Cookie 属性は対象外。TLS は reverse proxy で終端する | 既定 `127.0.0.1:8000` バインド。外部公開時は `BAKUFU_TRUST_PROXY=true` + reverse proxy + TLS 必須（`threat-model.md §A3`）|
+| A03 | Injection | HTTP Body は Pydantic で検証済み。SQL は SQLAlchemy パラメータバインドで injection を回避。shell を呼ばない | `RequestValidationError` → `validation_error` 変換（REQ-HAF-003）。SQLAlchemy は全クエリでバインド変数を強制 |
+| A04 | Insecure Design | 該当なし — interfaces 層は業務ロジックを持たない thin ファサード。不正な設計抽象はない | application 層への委譲 + error handler の単一責務設計 |
+| A05 | Security Misconfiguration | CORS `allow_headers` に `Authorization` を含む理由: Phase 2 Bearer Token 認証の事前配線（MVP では使用しない）。ワイルドカード `*` は不使用。`allow_credentials=False` | `BAKUFU_ALLOWED_ORIGINS` で許可 Origin を明示管理。`allow_credentials=False` を確定 C で凍結 |
+| A06 | Vulnerable / Outdated Components | FastAPI（最新版）: 2024-2025 時点での既知 CVE なし（https://security.snyk.io/package/pip/fastapi 確認済み）。uvicorn: 同確認済み | `pip-audit` + `osv-scanner` CI ジョブ（`dev-workflow` feature）で定期監査 |
+| A07 | Identification / Auth Failures | MVP はシングルユーザー + loopback バインドで認証を OS ユーザー権限に委譲。マルチユーザー RBAC は Phase 2（YAGNI） | `threat-model.md §A07` 参照。MVP では認証なしを**意図的に**採用し、外部公開時は reverse proxy 側で Basic Auth / OIDC を終端 |
+| A08 | Software / Data Integrity Failures | エラーレスポンスには業務データを含めない。DI 経由でのみ session / Repository を渡す（直接参照不可） | `msg` 確定文言（スタックトレース・内部変数名の非露出）。DI factory の単一配信経路 |
+| A09 | Security Logging / Monitoring Failures | **適用**: application 層（各 Service）が業務操作完了時に `audit_log` に記録する責務を持つ。interfaces 層（router）は `audit_log` を直接出力しない（責務分離、application 層の申し送り事項）| application/services/ の各 Service が CRUD 完了後に audit_log を記録（後続 Issue B〜G で実装）|
+| A10 | Server-Side Request Forgery | http-api-foundation は外部 URL を受け付ける機能を持たない。SSRF の攻撃面が存在しない | 該当なし（MVP では任意 URL fetch 機能を含めない。`threat-model.md §A10` 参照）|
+
 ## ER 図
 
 該当なし（http-api-foundation は DB テーブルを新規作成しない。persistence-foundation が管理するテーブルを session 経由で参照するのみ）。

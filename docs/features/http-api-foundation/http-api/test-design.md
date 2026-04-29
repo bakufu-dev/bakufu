@@ -17,6 +17,17 @@
 - システムテスト → 親 [`../system-test-design.md`](../system-test-design.md)
 - 受入テスト → [`docs/acceptance-tests/scenarios/`](../../../acceptance-tests/scenarios/)
 
+## テストケース ID 採番規則
+
+本 sub-feature のテスト ID 体系:
+
+| 番号帯 | 用途 |
+|---|---|
+| TC-IT-HAF-001〜009 | 結合テスト（HTTP リクエスト / DI / lifespan）|
+| TC-UT-HAF-001〜003 | ユニットテスト（M3 http-api-foundation 本 PR スコープ）|
+| TC-UT-HAF-004〜009 | 予約番号帯（後続 Issue B〜G が application/services/ にメソッドを追記する際に割り当て）|
+| TC-UT-HAF-010〜 | 静的解析系テスト専用帯（依存方向 / import 解析）|
+
 ## テストマトリクス
 
 | 要件ID | 実装アーティファクト | テストケースID | テストレベル | 種別 | 受入基準 |
@@ -25,14 +36,14 @@
 | REQ-HAF-002 | `interfaces/http/routers/health.py` | TC-IT-HAF-001 | 結合 | 正常系 | feature-spec.md §9 #1 |
 | REQ-HAF-003 | `interfaces/http/error_handlers.py` | TC-IT-HAF-002, TC-IT-HAF-003, TC-IT-HAF-004 | 結合 | 異常系 | feature-spec.md §9 #2, #3, #4 |
 | REQ-HAF-004 | `interfaces/http/dependencies.py` | TC-IT-HAF-006 | 結合 | 正常系 | feature-spec.md §9 #6 |
-| REQ-HAF-005 | `interfaces/http/schemas/common.py` | TC-UT-HAF-001, TC-UT-HAF-002 | ユニット | 正常系 / 異常系 | — |
-| REQ-HAF-006 | `application/services/*.py` | TC-UT-HAF-003 | ユニット | 正常系 | — |
+| REQ-HAF-005 | `interfaces/http/schemas/common.py` | TC-UT-HAF-001, TC-UT-HAF-002 | ユニット | 正常系 / 異常系 | Q-3 |
+| REQ-HAF-006 | `application/services/*.py` | TC-UT-HAF-003 | ユニット | 正常系 | Q-3 |
 | REQ-HAF-007 | `main.py` | TC-IT-HAF-007 | 結合 | 正常系 | feature-spec.md §9 #7 |
 | MSG-HAF-001 | `error_handlers.http_exception_handler` | TC-IT-HAF-002 | 結合 | 異常系 | Q-3 |
 | MSG-HAF-002 | `error_handlers.validation_exception_handler` | TC-IT-HAF-003 | 結合 | 異常系 | Q-3 |
 | MSG-HAF-003 | `error_handlers.generic_exception_handler` | TC-IT-HAF-004 | 結合 | 異常系 | Q-3 |
 | MSG-HAF-004 | `error_handlers.csrf_check_middleware` | TC-IT-HAF-008 | 結合 | 異常系 | Q-3 |
-| T2（CSRF） | CSRF Origin 検証ミドルウェア | TC-IT-HAF-008 | 結合 | 異常系 | — |
+| T2（CSRF） | CSRF Origin 検証ミドルウェア | TC-IT-HAF-008 | 結合 | 異常系 | feature-spec.md §9 #8 |
 | T3（スタックトレース非露出） | `error_handlers.generic_exception_handler` | TC-IT-HAF-004 | 結合 | 異常系 | Q-3 |
 | 依存方向（interfaces → application、domain 直参照禁止） | 全 `interfaces/http/` モジュール | TC-UT-HAF-010 | ユニット（静的解析） | 異常系 | Q-3 |
 | Q-1 | pyright / ruff | CI ジョブ | — | — | Q-1 |
@@ -63,7 +74,7 @@
 | TC-IT-HAF-004 | `error_handlers` → `app` | 実 SQLite tempdb | lifespan 起動済み、例外を raise するテスト用エンドポイントあり | GET リクエスト | HTTP 500, `{"error": {"code": "internal_error", "message": "An internal server error occurred."}}`, Body にスタックトレース含まず |
 | TC-IT-HAF-006 | `dependencies.get_session` → `app` | 実 SQLite tempdb | lifespan 起動済み | セッション確認エンドポイント呼び出し | `AsyncSession` が yield され、レスポンス後に close される（セッション ID をチェック）|
 | TC-IT-HAF-007 | `app.lifespan` → `app.state` | 実 SQLite tempdb | なし | `AsyncClient(lifespan=...)` で起動〜GET /health〜close | 起動時に `session_factory` が `app.state` に設定、GET /health が 200 を返す、close 後に engine が dispose される |
-| TC-IT-HAF-008 | CSRF ミドルウェア → `app` | 実 SQLite tempdb | lifespan 起動済み | Origin ヘッダなしで `POST /health`（またはテスト用 POST エンドポイント） | HTTP 403, `{"error": {"code": "forbidden", "message": "CSRF check failed: Origin not allowed."}}` |
+| TC-IT-HAF-008 | CSRF ミドルウェア → `app` | 実 SQLite tempdb | lifespan 起動済み | `Origin: http://evil.example.com` ヘッダ付きでテスト用 POST エンドポイントを呼ぶ | HTTP 403, `{"error": {"code": "forbidden", "message": "CSRF check failed: Origin not allowed."}}` |
 
 ## ユニットテストケース
 
@@ -72,7 +83,7 @@
 | TC-UT-HAF-001 | `ErrorResponse` モデル | 正常系 | `code="not_found"`, `message="Resource not found."` | `{"error": {"code": "not_found", "message": "Resource not found."}}` にシリアライズ |
 | TC-UT-HAF-002 | `ErrorResponse` モデル | 異常系（extra フィールド） | `code="x"`, `message="y"`, `unexpected_field="z"` | `ValidationError` を raise（`extra="forbid"` 確認）|
 | TC-UT-HAF-003 | `EmpireService.__init__` | 正常系 | `MockEmpireRepository()` | インスタンス生成成功、`_repo` に保持 |
-| TC-UT-HAF-010 | 依存方向（静的解析） | 異常系 | `interfaces/http/` 配下の全 `.py` の import 解析 | `domain` 層へのトップレベル直接 import が存在しない |
+| TC-UT-HAF-010 | 依存方向（静的解析: `ast` モジュール） | 異常系 | `ast.parse()` で `interfaces/http/` 配下の全 `.py` を解析し、トップレベル `import` / `from ... import` 文を抽出 | `bakufu.domain` / `bakufu.infrastructure` への直接 import が存在しないことを `assert` で確認する |
 
 ## カバレッジ基準
 
@@ -112,9 +123,7 @@ backend/tests/system/
 
 ## 未決課題・要起票 characterization task
 
-| # | タスク | 起票先 |
-|---|---|---|
-| TBD-1 | TC-UT-HAF-010（依存方向静的解析）の具体的な実装方法（`ast` モジュール / `importlib` / `pytest` プラグイン）は実装 PR 着手時に確定 | 実装 PR 内でコメント起票 |
+該当なし（TC-UT-HAF-010 の実装方法は `ast` モジュールで凍結済み）。
 
 ## 関連
 
