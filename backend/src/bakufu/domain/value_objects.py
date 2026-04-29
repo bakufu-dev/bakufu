@@ -31,6 +31,7 @@ from urllib.parse import urlparse
 from uuid import UUID
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     BeforeValidator,
     ConfigDict,
@@ -85,6 +86,12 @@ The Gate is independent of Task (it has its own lifecycle, Tx
 boundary, and supports multiple review rounds), so it carries its
 own UUID rather than inheriting the parent ``TaskId`` —
 external-review-gate detailed-design §確定 R1-A."""
+
+type InternalGateId = UUID
+"""InternalReviewGate aggregate identifier (UUIDv4).
+
+Parallel to :data:`GateId` for the internal (agent-to-agent) review
+Gate that gates ``INTERNAL_REVIEW`` Stage completion."""
 
 
 # ---------------------------------------------------------------------------
@@ -217,6 +224,153 @@ class AuditAction(StrEnum):
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
     CANCELLED = "CANCELLED"
+
+
+class GateDecision(StrEnum):
+    """InternalReviewGate overall decision per ``domain-model/value-objects.md``.
+
+    Three values matching the internal-review-gate state machine:
+
+    * ``PENDING`` — one or more required roles have not submitted a
+      verdict yet, or no REJECTED verdict has been received.
+    * ``ALL_APPROVED`` — every required GateRole has submitted an
+      APPROVED verdict and none has rejected.
+    * ``REJECTED`` — at least one verdict carries
+      :attr:`VerdictDecision.REJECTED` (most-pessimistic-wins rule).
+
+    Unlike :class:`ReviewDecision`, there is no ``CANCELLED`` value
+    because InternalReviewGate cancellation (Stage reassignment) is
+    handled at the Workflow / Task layer, not inside the Gate itself.
+    """
+
+    PENDING = "PENDING"
+    ALL_APPROVED = "ALL_APPROVED"
+    REJECTED = "REJECTED"
+
+
+class VerdictDecision(StrEnum):
+    """Per-role verdict submitted to an :class:`InternalReviewGate`.
+
+    Two values only — an agent either approves or rejects the
+    deliverable. Abstaining is not supported; the state machine
+    treats a missing verdict the same as "not yet submitted"
+    (``GateDecision.PENDING`` until all required roles vote).
+    """
+
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
+# ---------------------------------------------------------------------------
+# GateRole validated type alias
+# ---------------------------------------------------------------------------
+_GATE_ROLE_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
+_GATE_ROLE_MAX_LEN: int = 40
+
+
+def _validate_gate_role(value: str) -> str:
+    """Enforce the slug pattern for :data:`GateRole`.
+
+    Rules (all checked after NFC normalization):
+
+    * 1〜40 characters (code-point count).
+    * Lowercase ASCII letters, digits, and hyphens only.
+    * Must start with a lowercase letter (digit-initial slugs are
+      rejected to avoid confusion with numeric IDs).
+    * No consecutive hyphens (``--`` fragments look like long-options
+      and confuse downstream tools).
+    * No leading or trailing hyphens (covered by the regex anchor).
+    """
+    length = len(value)
+    if not (1 <= length <= _GATE_ROLE_MAX_LEN):
+        raise ValueError(
+            f"GateRole must be 1-{_GATE_ROLE_MAX_LEN} characters (got length={length})"
+        )
+    if not _GATE_ROLE_RE.fullmatch(value):
+        raise ValueError(
+            f"GateRole must match the slug pattern "
+            f"(lowercase letters/digits/hyphens, letter-initial, no consecutive hyphens); "
+            f"got {value!r}"
+        )
+    return value
+
+
+type GateRole = Annotated[str, AfterValidator(_validate_gate_role)]
+"""Validated slug identifier for a role in an :class:`InternalReviewGate`.
+
+A GateRole is a free-form string label that identifies which logical
+reviewer category an agent belongs to (e.g. ``"security"``,
+``"lead-dev"``, ``"qa-1"``). It is **not** the same as :class:`Role`
+(which is a fixed enum of agent capabilities) — GateRoles are
+defined per-Gate as part of the Workflow Stage configuration and may
+be arbitrary slugs chosen by the workflow author.
+
+Validation rules (enforced by :func:`_validate_gate_role`):
+
+* 1〜40 NFC-normalized characters.
+* Lowercase ASCII letters, digits, and hyphens only.
+* Must start with a lowercase letter.
+* No consecutive hyphens (``--``).
+* No trailing hyphen (covered by the regex anchor).
+"""
+
+
+# ---------------------------------------------------------------------------
+# Verdict VO (InternalReviewGate feature)
+# ---------------------------------------------------------------------------
+_VERDICT_COMMENT_MAX_CHARS: int = 5_000
+
+
+class Verdict(BaseModel):
+    """One agent's verdict submitted to an :class:`InternalReviewGate`.
+
+    Stored as a ``tuple[Verdict, ...]`` inside the aggregate; the
+    tuple is append-only (frozen aggregate rebuild pattern) and each
+    entry corresponds to exactly one :attr:`role` — duplicate roles
+    are rejected by ``aggregate_validators._validate_no_duplicate_roles``.
+
+    Fields:
+
+    * ``role`` — the :data:`GateRole` slug the submitting agent is
+      acting as.
+    * ``agent_id`` — the UUID of the submitting agent.
+    * ``decision`` — :class:`VerdictDecision` (APPROVED / REJECTED).
+    * ``comment`` — free-form NFC-normalized text, 0〜5000 chars;
+      **strip is not applied** (multi-line review comments whose
+      leading whitespace carries meaning must be preserved — same
+      precedent as ``AuditEntry.comment`` / ``Directive.text``).
+    * ``decided_at`` — UTC tz-aware moment the verdict was submitted.
+    """
+
+    model_config = ConfigDict(
+        frozen=True,
+        extra="forbid",
+        arbitrary_types_allowed=False,
+    )
+
+    role: GateRole
+    agent_id: AgentId
+    decision: VerdictDecision
+    comment: str = Field(default="", max_length=_VERDICT_COMMENT_MAX_CHARS)
+    decided_at: datetime
+
+    @field_validator("comment", mode="before")
+    @classmethod
+    def _normalize_comment(cls, value: object) -> object:
+        """NFC normalization only — strip is intentionally **not** applied."""
+        if isinstance(value, str):
+            return unicodedata.normalize("NFC", value)
+        return value
+
+    @field_validator("decided_at", mode="after")
+    @classmethod
+    def _require_tz_aware(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError(
+                "Verdict.decided_at must be a timezone-aware UTC datetime "
+                "(received a naive datetime)"
+            )
+        return value
 
 
 # ---------------------------------------------------------------------------
@@ -692,7 +846,10 @@ __all__ = [
     "Deliverable",
     "DirectiveId",
     "EmpireId",
+    "GateDecision",
     "GateId",
+    "GateRole",
+    "InternalGateId",
     "LLMErrorKind",
     "NormalizedAgentName",
     "NormalizedShortName",
@@ -711,6 +868,8 @@ __all__ = [
     "TaskStatus",
     "TransitionCondition",
     "TransitionId",
+    "Verdict",
+    "VerdictDecision",
     "WorkflowId",
     "mask_discord_webhook",
     "mask_discord_webhook_in",
