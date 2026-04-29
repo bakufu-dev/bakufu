@@ -476,24 +476,32 @@ class TestPersonaResponseMasking:
 # ---------------------------------------------------------------------------
 # TC-UT-AGH-009: 依存方向 静的解析 (interfaces → domain / infrastructure 直参照禁止)
 # ---------------------------------------------------------------------------
-class TestStaticDependencyAnalysis:
-    """TC-UT-AGH-009: interfaces/http/ 配下が bakufu.domain / bakufu.infrastructure を
-    モジュールトップレベルで直接 import していないこと。
+class TestStaticDependencyAnalysisAgent:
+    """TC-UT-AGH-009: routers/ + schemas/ が bakufu.domain / bakufu.infrastructure を
+    任意の深さで直接 import していないこと。
 
-    http-api-foundation TC-UT-HAF-010 と同一検証パターン。
+    ast.walk(tree) による全ノード走査 (PR #105 退行禁止ルール準拠)。
+    走査スコープ: interfaces/http/routers/ + interfaces/http/schemas/
+    （dependencies.py は DI 配線として遅延 import を許容するためスコープ外）
     """
 
-    def _interfaces_http_dir(self) -> Path:
-        """interfaces/http ソースディレクトリを取得する。"""
-        import bakufu.interfaces.http.app as _app_mod
+    def _interfaces_http_routers_dir(self) -> Path:
+        """interfaces/http/routers ソースディレクトリを取得する。"""
+        import bakufu.interfaces.http.routers.agents as _mod
 
-        return Path(_app_mod.__file__).parent  # type: ignore[arg-type]
+        return Path(_mod.__file__).parent  # type: ignore[arg-type]
 
-    def _collect_toplevel_imports(self, py_file: Path) -> list[tuple[str, int]]:
-        """トップレベルの import/from-import を [(module_name, lineno)] で返す。"""
+    def _interfaces_http_schemas_dir(self) -> Path:
+        """interfaces/http/schemas ソースディレクトリを取得する。"""
+        import bakufu.interfaces.http.schemas.agent as _mod
+
+        return Path(_mod.__file__).parent  # type: ignore[arg-type]
+
+    def _collect_all_imports(self, py_file: Path) -> list[tuple[str, int]]:
+        """ast.walk(tree) で全ノードを走査し import を [(module_name, lineno)] で返す。"""
         tree = ast.parse(py_file.read_text(encoding="utf-8"))
         results: list[tuple[str, int]] = []
-        for node in tree.body:
+        for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
                 module = node.module or ""
                 results.append((module, node.lineno))
@@ -502,27 +510,50 @@ class TestStaticDependencyAnalysis:
                     results.append((alias.name, node.lineno))
         return results
 
-    def test_no_toplevel_bakufu_domain_import(self) -> None:
-        """interfaces/http/ が bakufu.domain をモジュールトップレベルで import しないこと。"""
-        interfaces_dir = self._interfaces_http_dir()
+    def test_no_bakufu_domain_import_in_routers(self) -> None:
+        """routers/ が bakufu.domain を import しないこと（全ノード走査）。"""
+        routers_dir = self._interfaces_http_routers_dir()
         violations: list[str] = []
-        for py_file in sorted(interfaces_dir.rglob("*.py")):
-            for module_name, lineno in self._collect_toplevel_imports(py_file):
+        for py_file in sorted(routers_dir.rglob("*.py")):
+            for module_name, lineno in self._collect_all_imports(py_file):
                 if module_name.startswith("bakufu.domain"):
-                    violations.append(f"{py_file.name}:{lineno}: top-level import of {module_name}")
-        assert violations == [], (
-            "Direct bakufu.domain imports detected at module level:\n" + "\n".join(violations)
+                    violations.append(f"{py_file.name}:{lineno}: import of {module_name}")
+        assert violations == [], "Direct bakufu.domain imports detected in routers/:\n" + "\n".join(
+            violations
         )
 
-    def test_no_toplevel_bakufu_infrastructure_import(self) -> None:
-        """interfaces/http/ が bakufu.infrastructure をトップレベルで import しないこと。"""
-        interfaces_dir = self._interfaces_http_dir()
+    def test_no_bakufu_infrastructure_import_in_routers(self) -> None:
+        """routers/ が bakufu.infrastructure を import しないこと（全ノード走査）。"""
+        routers_dir = self._interfaces_http_routers_dir()
         violations: list[str] = []
-        for py_file in sorted(interfaces_dir.rglob("*.py")):
-            for module_name, lineno in self._collect_toplevel_imports(py_file):
+        for py_file in sorted(routers_dir.rglob("*.py")):
+            for module_name, lineno in self._collect_all_imports(py_file):
                 if module_name.startswith("bakufu.infrastructure"):
-                    violations.append(f"{py_file.name}:{lineno}: top-level import of {module_name}")
+                    violations.append(f"{py_file.name}:{lineno}: import of {module_name}")
         assert violations == [], (
-            "Direct bakufu.infrastructure imports detected at module level:\n"
-            + "\n".join(violations)
+            "Direct bakufu.infrastructure imports detected in routers/:\n" + "\n".join(violations)
+        )
+
+    def test_no_bakufu_domain_import_in_schemas(self) -> None:
+        """schemas/ が bakufu.domain を import しないこと（全ノード走査）。"""
+        schemas_dir = self._interfaces_http_schemas_dir()
+        violations: list[str] = []
+        for py_file in sorted(schemas_dir.rglob("*.py")):
+            for module_name, lineno in self._collect_all_imports(py_file):
+                if module_name.startswith("bakufu.domain"):
+                    violations.append(f"{py_file.name}:{lineno}: import of {module_name}")
+        assert violations == [], "Direct bakufu.domain imports detected in schemas/:\n" + "\n".join(
+            violations
+        )
+
+    def test_no_bakufu_infrastructure_import_in_schemas(self) -> None:
+        """schemas/ が bakufu.infrastructure を import しないこと（全ノード走査）。"""
+        schemas_dir = self._interfaces_http_schemas_dir()
+        violations: list[str] = []
+        for py_file in sorted(schemas_dir.rglob("*.py")):
+            for module_name, lineno in self._collect_all_imports(py_file):
+                if module_name.startswith("bakufu.infrastructure"):
+                    violations.append(f"{py_file.name}:{lineno}: import of {module_name}")
+        assert violations == [], (
+            "Direct bakufu.infrastructure imports detected in schemas/:\n" + "\n".join(violations)
         )
