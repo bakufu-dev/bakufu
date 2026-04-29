@@ -17,18 +17,13 @@ Issue: #65
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from uuid import uuid4
-
-import pytest
-from bakufu.domain.internal_review_gate.state_machine import compute_decision, _compute_decision
+from bakufu.domain.internal_review_gate.state_machine import (
+    _compute_decision,  # pyright: ignore[reportPrivateUsage]
+    compute_decision,
+)
 from bakufu.domain.value_objects import GateDecision, VerdictDecision
 
 from tests.factories.internal_review_gate import make_verdict
-
-
-def _make_verdict(role: str, decision: VerdictDecision) -> object:
-    return make_verdict(role=role, decision=decision)
 
 
 # ---------------------------------------------------------------------------

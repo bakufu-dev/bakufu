@@ -34,7 +34,6 @@ from pydantic import ValidationError
 from tests.factories.internal_review_gate import (
     make_all_approved_gate,
     make_gate,
-    make_verdict,
 )
 
 # Shared UTC timestamp helper.
@@ -200,10 +199,7 @@ class TestGateAlreadyDecided:
     """TC-UT-IRG-007: any submission to ALL_APPROVED/REJECTED Gate raises gate_already_decided."""
 
     def test_submit_to_all_approved_gate_raises(self) -> None:
-        gate = make_all_approved_gate()
-        # Gate is ALL_APPROVED; any new role submission must raise.
-        extra_role = "security"
-        # Build a gate with an extra required role so we don't get invalid_role first.
+        # Build a gate with required roles that include "reviewer" so we don't get invalid_role first.
         all_approved = make_all_approved_gate(required_gate_roles=frozenset({"reviewer", "ux"}))
         with pytest.raises(InternalReviewGateInvariantViolation) as exc_info:
             all_approved.submit_verdict(
