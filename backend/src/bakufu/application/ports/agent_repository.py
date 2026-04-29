@@ -78,5 +78,15 @@ class AgentRepository(Protocol):
         """
         ...
 
+    async def find_all_by_empire(self, empire_id: EmpireId) -> list[Agent]:
+        """Empire ``empire_id`` 内の全 Agent を返す（前提条件 P-1 / §確定 D）。
+
+        0 件の場合は空リストを返す。アーカイブ済み Agent も含む。
+        SQL: ``SELECT ... FROM agents WHERE empire_id = :empire_id ORDER BY name``
+        で全行を取得し、各行に対して provider / skill 子テーブルを JOIN して
+        Agent を復元する。
+        """
+        ...
+
 
 __all__ = ["AgentRepository"]

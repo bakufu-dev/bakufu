@@ -170,6 +170,22 @@ class SqliteAgentRepository:
             return None
         return await self.find_by_id(found_id)
 
+    async def find_all_by_empire(self, empire_id: EmpireId) -> list[Agent]:
+        """``empire_id`` 内の全 Agent を名前順で返す（前提条件 P-1 / §確定 D）。
+
+        全行を ``ORDER BY name`` で取得し、各行に対して :meth:`find_by_id` に委譲して
+        provider / skill 子テーブルを復元する。``_from_row`` 変換ロジックを単一情報源
+        に保つため、id を列挙して find_by_id を呼ぶ 2 段階アプローチを採用する。
+        """
+        id_stmt = select(AgentRow.id).where(AgentRow.empire_id == empire_id).order_by(AgentRow.name)
+        agent_ids = list((await self._session.execute(id_stmt)).scalars().all())
+        agents: list[Agent] = []
+        for agent_id in agent_ids:
+            agent = await self.find_by_id(agent_id)
+            if agent is not None:
+                agents.append(agent)
+        return agents
+
     # ---- private domain ↔ row converters (§確定 C) -------------------
     def _to_row(
         self,

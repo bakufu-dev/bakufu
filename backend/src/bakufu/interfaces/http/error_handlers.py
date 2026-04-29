@@ -207,12 +207,46 @@ async def workflow_invariant_violation_handler(request: Request, exc: Exception)
 
 
 async def agent_not_found_handler(request: Request, exc: Exception) -> JSONResponse:
-    """``AgentNotFoundError`` → HTTP 404 / not_found (MSG-RM-HTTP-004)。"""
-    from bakufu.application.exceptions.room_exceptions import AgentNotFoundError
+    """``AgentNotFoundError`` → HTTP 404 / not_found (MSG-AG-HTTP-001)。"""
+    from bakufu.application.exceptions.agent_exceptions import AgentNotFoundError
 
     if not isinstance(exc, AgentNotFoundError):
         raise TypeError(f"Expected AgentNotFoundError, got {type(exc).__name__}")
     return _error_response(NOT_FOUND, "Agent not found.", 404)
+
+
+async def agent_name_already_exists_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``AgentNameAlreadyExistsError`` → HTTP 409 / conflict (MSG-AG-HTTP-002)。"""
+    from bakufu.application.exceptions.agent_exceptions import AgentNameAlreadyExistsError
+
+    if not isinstance(exc, AgentNameAlreadyExistsError):
+        raise TypeError(f"Expected AgentNameAlreadyExistsError, got {type(exc).__name__}")
+    return _error_response(CONFLICT, "Agent with this name already exists in the Empire.", 409)
+
+
+async def agent_archived_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``AgentArchivedError`` → HTTP 409 / conflict (MSG-AG-HTTP-003)。"""
+    from bakufu.application.exceptions.agent_exceptions import AgentArchivedError
+
+    if not isinstance(exc, AgentArchivedError):
+        raise TypeError(f"Expected AgentArchivedError, got {type(exc).__name__}")
+    return _error_response(CONFLICT, "Agent is archived and cannot be modified.", 409)
+
+
+async def agent_invariant_violation_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``AgentInvariantViolation`` → HTTP 422 / validation_error (MSG-AG-HTTP-004)。
+
+    前処理ルール（empire / room / workflow と同一パターン）:
+    1. ``[FAIL] `` プレフィックスを除去
+    2. ``\\nNext:`` 以降を除去して domain 内部フォーマットを隠蔽する
+    """
+    from bakufu.domain.exceptions import AgentInvariantViolation
+
+    if not isinstance(exc, AgentInvariantViolation):
+        raise TypeError(f"Expected AgentInvariantViolation, got {type(exc).__name__}")
+    raw = str(exc)
+    cleaned = _FAIL_PREFIX_RE.sub("", raw).split("\nNext:")[0].strip()
+    return _error_response(VALIDATION_ERROR, cleaned, 422)
 
 
 async def room_invariant_violation_handler(request: Request, exc: Exception) -> JSONResponse:

@@ -28,6 +28,7 @@ from bakufu.application.services.workflow_service import WorkflowService
 # 未使用 import の警告抑制: 型チェック用途で再エクスポートしている。
 __all__ = [
     "AgentRepository",
+    "AgentServiceDep",
     "EmpireRepository",
     "ExternalReviewGateRepository",
     "RoomRepository",
@@ -125,16 +126,28 @@ async def get_workflow_service(session: SessionDep) -> WorkflowService:
 
 
 async def get_agent_service(session: SessionDep) -> AgentService:
-    """AgentService を DI 注入する。"""
+    """AgentService を DI 注入する（§確定 H: EmpireRepository + session を追加）。
+
+    Empire 存在確認のため EmpireRepository を直接受け取る。
+    循環依存を避けるため get_empire_service() への依存は持たない
+    （workflow_service.py §確定 H と同パターン）。
+    """
     # 遅延 import: interfaces → infrastructure の直接依存を避けるため
     # モジュールロード時の循環参照リスクを回避し、
     # 依存方向 interfaces → application → infrastructure を遵守する
     from bakufu.infrastructure.persistence.sqlite.repositories.agent_repository import (
         SqliteAgentRepository,
     )
+    from bakufu.infrastructure.persistence.sqlite.repositories.empire_repository import (
+        SqliteEmpireRepository,
+    )
 
-    repo = SqliteAgentRepository(session)
-    return AgentService(repo)
+    agent_repo = SqliteAgentRepository(session)
+    empire_repo = SqliteEmpireRepository(session)
+    return AgentService(agent_repo=agent_repo, empire_repo=empire_repo, session=session)
+
+
+AgentServiceDep = Annotated[AgentService, Depends(get_agent_service)]
 
 
 async def get_task_service(session: SessionDep) -> TaskService:
