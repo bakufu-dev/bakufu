@@ -1,9 +1,9 @@
-"""Empire Repository: Protocol surface + basic CRUD coverage.
+"""Empire Repository: プロトコルサーフェス + 基本 CRUD カバレッジ。
 
-TC-IT-EMR-001 / 002 / 003 / 004 / 005 / 010 / 018 — the entry-point
-behaviors every Aggregate Repository must satisfy. Split out from
-the original ``test_empire_repository.py`` per Norman's 500-line rule
-(see :mod:`...test_empire_repository.__init__`).
+TC-IT-EMR-001 / 002 / 003 / 004 / 005 / 010 / 018 — すべての Aggregate Repository
+が満たさねばならないエントリポイント動作。Norman の500行ルールに従い
+元の ``test_empire_repository.py`` から分割
+(参照: :mod:`...test_empire_repository.__init__`)。
 """
 
 from __future__ import annotations

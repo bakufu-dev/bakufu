@@ -1,13 +1,13 @@
-"""Directive Repository: find_by_room ORDER BY + Room scoping tests.
+"""Directive Repository: find_by_room ORDER BY + ルームスコーピングテスト。
 
-TC-UT-DRR-004 / 004b / 004c / 004d / 004e.
+TC-UT-DRR-004 / 004b / 004c / 004d / 004e。
 
-§確定 R1-D: find_by_room returns Directives newest-first with a tiebreaker
-on id DESC (BUG-EMR-001 規約 — ORDER BY created_at DESC alone is
-non-deterministic when multiple Directives share the same timestamp).
+§確定 R1-D: find_by_room は最新優先で Directive を返し、id DESC でタイブレーク
+(BUG-EMR-001 規約 — ORDER BY created_at DESC のみは複数の Directive が
+同じタイムスタンプを共有する場合、非決定的)。
 
-Per ``docs/features/directive-repository/test-design.md``.
-Issue #34 — M2 0006.
+``docs/features/directive-repository/test-design.md`` 準拠。
+Issue #34 — M2 0006。
 """
 
 from __future__ import annotations

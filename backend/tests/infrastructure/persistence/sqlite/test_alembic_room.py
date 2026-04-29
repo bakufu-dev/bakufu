@@ -44,7 +44,7 @@ pytestmark = pytest.mark.asyncio
 # ---------------------------------------------------------------------------
 @pytest_asyncio.fixture
 async def empty_engine(tmp_path: Path) -> AsyncIterator[AsyncEngine]:
-    """Bring up a fresh app engine without running any migrations."""
+    """マイグレーションを実行せずに新規 app エンジンを起動。"""
     url = f"sqlite+aiosqlite:///{tmp_path / 'bakufu.db'}"
     engine = engine_mod.create_engine(url)
     try:
@@ -54,7 +54,7 @@ async def empty_engine(tmp_path: Path) -> AsyncIterator[AsyncEngine]:
 
 
 def _alembic_config() -> Config:
-    """Resolve the bakufu Alembic config for ScriptDirectory inspection."""
+    """ScriptDirectory inspection 用に bakufu Alembic config を解決。"""
     backend_root = Path(__file__).resolve().parents[4]
     cfg = Config(str(backend_root / "alembic.ini"))
     cfg.set_main_option("script_location", str(backend_root / "alembic"))
@@ -65,30 +65,30 @@ def _alembic_config() -> Config:
 # TC-IT-RR-012: 5th revision creates rooms + room_members tables + index
 # ---------------------------------------------------------------------------
 class TestFifthRevisionApplied:
-    """TC-IT-RR-012: ``alembic upgrade head`` adds the Room schema."""
+    """TC-IT-RR-012: ``alembic upgrade head`` が Room スキーマを追加。"""
 
     async def test_two_room_tables_present_after_upgrade(
         self,
         empty_engine: AsyncEngine,
     ) -> None:
-        """rooms + room_members exist after upgrade head."""
+        """upgrade head 後に rooms + room_members が存在。"""
         await run_upgrade_head(empty_engine)
         async with empty_engine.connect() as conn:
             result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
             tables = {row[0] for row in result}
         assert {"rooms", "room_members"}.issubset(tables), (
-            f"[FAIL] rooms or room_members missing from schema after upgrade head.\n"
-            f"Tables found: {tables}"
+            f"[FAIL] upgrade head 後にスキーマから rooms または room_members が不足。\n"
+            f"見つかったテーブル: {tables}"
         )
 
     async def test_rooms_empire_id_name_index_present(
         self,
         empty_engine: AsyncEngine,
     ) -> None:
-        """``ix_rooms_empire_id_name`` composite index is created (§確定 R1-F).
+        """``ix_rooms_empire_id_name`` コンポジットインデックスが作成される (§確定 R1-F)。
 
-        The index left-prefix optimises ``WHERE empire_id = ?`` and
-        ``WHERE empire_id = ? AND name = ?`` for ``find_by_name``.
+        インデックスの左プリフィックスが ``WHERE empire_id = ?`` と
+        ``WHERE empire_id = ? AND name = ?`` を ``find_by_name`` 向けに最適化。
         """
         await run_upgrade_head(empty_engine)
         async with empty_engine.connect() as conn:
@@ -97,35 +97,35 @@ class TestFifthRevisionApplied:
             )
             index_names = {row[0] for row in result}
         assert "ix_rooms_empire_id_name" in index_names, (
-            f"[FAIL] ix_rooms_empire_id_name index missing on rooms table.\n"
-            f"Indexes found: {index_names}\n"
-            f"Next: ensure ``op.create_index('ix_rooms_empire_id_name', ...)`` "
-            f"is present in 0005_room_aggregate.py upgrade()."
+            f"[FAIL] ix_rooms_empire_id_name インデックスが rooms テーブルから不足。\n"
+            f"見つかったインデックス: {index_names}\n"
+            f"次：0005_room_aggregate.py upgrade() に ``op.create_index('ix_rooms_empire_id_name', ...)`` "
+            f"が存在することを確認。"
         )
 
     async def test_empire_room_refs_fk_closure_applied(
         self,
         empty_engine: AsyncEngine,
     ) -> None:
-        """BUG-EMR-001 FK closure: ``empire_room_refs.room_id → rooms.id``.
+        """BUG-EMR-001 FK closure: ``empire_room_refs.room_id → rooms.id``。
 
-        ``0005_room_aggregate.py`` adds the FK via ``batch_alter_table``
-        (SQLite does not support ALTER TABLE ... ADD CONSTRAINT). After
-        upgrade head, ``PRAGMA foreign_key_list('empire_room_refs')``
-        must list a reference to the ``rooms`` table.
+        ``0005_room_aggregate.py`` が ``batch_alter_table`` 経由で FK を追加
+        (SQLite は ALTER TABLE ... ADD CONSTRAINT をサポートしない)。upgrade head 後、
+        ``PRAGMA foreign_key_list('empire_room_refs')`` は
+        ``rooms`` テーブルへの参照をリストアップする必要がある。
         """
         await run_upgrade_head(empty_engine)
         async with empty_engine.connect() as conn:
             result = await conn.execute(text("PRAGMA foreign_key_list('empire_room_refs')"))
             fk_rows = list(result)
-        # PRAGMA foreign_key_list returns rows with columns:
+        # PRAGMA foreign_key_list はカラムを持つ行を返す:
         #   id, seq, table, from, to, on_update, on_delete, match
-        referenced_tables = {row[2] for row in fk_rows}  # col index 2 = 'table'
+        referenced_tables = {row[2] for row in fk_rows}  # カラムインデックス 2 = 'table'
         assert "rooms" in referenced_tables, (
-            f"[FAIL] empire_room_refs has no FK to rooms (BUG-EMR-001 not closed).\n"
-            f"FK references found: {referenced_tables}\n"
-            f"Next: ensure op.batch_alter_table('empire_room_refs') in 0005_room_aggregate.py "
-            f"adds the FK to rooms.id."
+            f"[FAIL] empire_room_refs は rooms への FK を持たない (BUG-EMR-001 が閉じられていない)。\n"
+            f"FK 参照が見つかりました: {referenced_tables}\n"
+            f"次：0005_room_aggregate.py で op.batch_alter_table('empire_room_refs') が"
+            f"rooms.id への FK を追加することを確認。"
         )
 
 
@@ -133,15 +133,15 @@ class TestFifthRevisionApplied:
 # TC-IT-RR-012 補強: upgrade / downgrade are idempotent
 # ---------------------------------------------------------------------------
 class TestUpgradeDowngradeIdempotent:
-    """upgrade head → downgrade base → upgrade head again all green."""
+    """upgrade head → downgrade base → upgrade head 再び全て成功。"""
 
     async def test_full_cycle_leaves_room_tables_present(
         self,
         empty_engine: AsyncEngine,
     ) -> None:
-        """upgrade head → downgrade base → upgrade head again."""
+        """upgrade head → downgrade base → upgrade head 再び。"""
         await run_upgrade_head(empty_engine)
-        from alembic import command  # local import to avoid global side effects
+        from alembic import command  # グローバルサイドエフェクトを回避するためのローカルインポート
 
         cfg = _alembic_config()
         url = str(empty_engine.url)
@@ -156,7 +156,7 @@ class TestUpgradeDowngradeIdempotent:
             result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
             tables = {row[0] for row in result}
         assert tables.isdisjoint({"rooms", "room_members"}), (
-            f"[FAIL] rooms/room_members still present after downgrade to base.\nTables: {tables}"
+            f"[FAIL] base への downgrade 後も rooms/room_members が存在。\nテーブル: {tables}"
         )
 
         await run_upgrade_head(empty_engine)
@@ -164,7 +164,7 @@ class TestUpgradeDowngradeIdempotent:
             result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
             tables = {row[0] for row in result}
         assert {"rooms", "room_members"}.issubset(tables), (
-            f"[FAIL] rooms/room_members missing after re-upgrade.\nTables: {tables}"
+            f"[FAIL] re-upgrade 後に rooms/room_members が不足。\nテーブル: {tables}"
         )
 
 
@@ -172,44 +172,44 @@ class TestUpgradeDowngradeIdempotent:
 # TC-IT-RR-012: revision chain is linear (no head fork)
 # ---------------------------------------------------------------------------
 class TestRevisionChainLinear:
-    """0001 → 0002 → 0003 → 0004 → 0005 single-head chain."""
+    """0001 → 0002 → 0003 → 0004 → 0005 単一-head チェーン。"""
 
     async def test_alembic_heads_returns_single_revision(self) -> None:
-        """``ScriptDirectory.get_heads()`` returns exactly one revision."""
+        """``ScriptDirectory.get_heads()`` が正確に 1 つの revision を返す。"""
         cfg = _alembic_config()
         script = ScriptDirectory.from_config(cfg)
         heads = script.get_heads()
         assert len(heads) == 1, (
-            f"Alembic head must be linear; got branched heads {heads}.\n"
-            f"Each Aggregate Repository PR appends a single revision."
+            f"Alembic head は線形である必要があります；分岐した heads {heads} を得た。\n"
+            f"各アグリゲートリポジトリ PR は単一 revision を追加します。"
         )
 
     async def test_0005_revision_has_correct_down_revision(self) -> None:
-        """``0005_room_aggregate.down_revision == "0004_agent_aggregate"``."""
+        """``0005_room_aggregate.down_revision == "0004_agent_aggregate"``。"""
         cfg = _alembic_config()
         script = ScriptDirectory.from_config(cfg)
         rev = script.get_revision("0005_room_aggregate")
         assert rev is not None
         assert rev.down_revision == "0004_agent_aggregate", (
-            f"[FAIL] 0005_room_aggregate.down_revision is {rev.down_revision!r}; "
-            f"expected '0004_agent_aggregate'."
+            f"[FAIL] 0005_room_aggregate.down_revision は {rev.down_revision!r} ；"
+            f"'0004_agent_aggregate' を期待。"
         )
 
     async def test_chain_walks_from_0005_back_to_base(self) -> None:
-        """Walking ``down_revision`` reaches base in 5 hops (no branching)."""
+        """``down_revision`` を走査すると 5 ホップで base に到達 (分岐なし)。"""
         cfg = _alembic_config()
         script = ScriptDirectory.from_config(cfg)
         chain: list[str] = []
         current_id: str | None = "0005_room_aggregate"
-        for _ in range(10):  # generous bound for safety
+        for _ in range(10):  # 安全性のための余裕のある境界
             if current_id is None:
                 break
             rev = script.get_revision(current_id)
-            assert rev is not None, f"Revision {current_id!r} not found"
+            assert rev is not None, f"Revision {current_id!r} が見つかりません"
             chain.append(rev.revision)
             down = rev.down_revision
             if isinstance(down, tuple | list):
-                pytest.fail(f"Revision {rev.revision!r} has multiple down_revisions {down}")
+                pytest.fail(f"Revision {rev.revision!r} は複数の down_revisions {down} を持つ")
             current_id = down  # pyright: ignore[reportAssignmentType]
 
         assert chain == [
@@ -218,4 +218,4 @@ class TestRevisionChainLinear:
             "0003_workflow_aggregate",
             "0002_empire_aggregate",
             "0001_init",
-        ], f"Unexpected revision chain: {chain}"
+        ], f"予期しない revision chain: {chain}"

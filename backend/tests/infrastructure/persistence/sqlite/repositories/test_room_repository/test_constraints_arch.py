@@ -1,27 +1,25 @@
-"""Room Repository: DB constraints + arch-test reference.
+"""Room Repository: DB制約 + アーキテクチャテスト参照。
 
-TC-IT-RR-009 / TC-IT-RR-013-arch — the **UNIQUE(room_id, agent_id, role)
-二重防衛** (§確定 R1-D) and the CI Layer 2 arch-test cross-reference.
+TC-IT-RR-009 / TC-IT-RR-013-arch — **UNIQUE(room_id, agent_id, role)
+二重防衛** (§確定 R1-D) と CI レイヤー2 アーキテクチャテスト相互参照。
 
-§確定 R1-D: duplicate (room_id, agent_id, role) triplets are forbidden
-by **two layers**:
+§確定 R1-D: 重複 (room_id, agent_id, role) トリプレットは **2つのレイヤー** で禁止:
 
-1. **Aggregate-level**: Room construction validates member uniqueness at
-   construction time.
-2. **DB-level**: explicit ``UniqueConstraint("room_id", "agent_id", "role",
-   name="uq_room_members_triplet")`` physically rejects the INSERT — the
-   final defense line for code paths that bypass the Aggregate (raw SQL,
-   future Repository implementations, dump/restore migrations, etc.).
+1. **Aggregate レベル**: Room 構築時にメンバー一意性を検証。
+2. **DB レベル**: 明示的 ``UniqueConstraint("room_id", "agent_id", "role",
+   name="uq_room_members_triplet")`` が INSERT を物理的に拒否 —
+   Aggregate をバイパスするコードパス（生 SQL、将来の Repository 実装、
+   ダンプ/リストア移行など）の最終防衛線。
 
-This test exercises **layer 2 in isolation** by writing raw SQL that
-sidesteps the Aggregate. A regression that drops the UniqueConstraint
-DDL would let the second INSERT succeed silently.
+このテストは Aggregate を迂回する生 SQL を書いて **レイヤー2を単独で** 実行。
+UniqueConstraint DDL をドロップするリグレッションは 2 番目の INSERT を
+サイレントに成功させてしまう。
 
-Also tests:
-* ``rooms.workflow_id FK RESTRICT``: DELETE a workflow while a room
-  references it must raise ``IntegrityError`` (§確定 R1-I).
-* ``room_members.room_id FK CASCADE``: DELETE a room cascades to
-  room_members rows (§確定 R1-C Room entity cascade).
+また以下もテスト:
+* ``rooms.workflow_id FK RESTRICT``: Workflow を削除するもルームがそれを
+  参照 → ``IntegrityError`` を発生させる必要 (§確定 R1-I)。
+* ``room_members.room_id FK CASCADE``: ルームを削除するとカスケードして
+  room_members 行に伝播 (§確定 R1-C Room エンティティカスケード)。
 """
 
 from __future__ import annotations
@@ -42,12 +40,11 @@ pytestmark = pytest.mark.asyncio
 # TC-IT-RR-009: UNIQUE(room_id, agent_id, role) 二重防衛 (§確定 R1-D)
 # ---------------------------------------------------------------------------
 class TestUniqueRoomMemberTripletDoubleDefense:
-    """TC-IT-RR-009: duplicate (room_id, agent_id, role) raises IntegrityError.
+    """TC-IT-RR-009: 重複 (room_id, agent_id, role) は IntegrityError を発生させる。
 
-    The Aggregate's member validation is the first layer; this test
-    bypasses it by writing raw SQL directly so the DB constraint is the
-    only thing standing between us and a silent duplicate. The first
-    INSERT must succeed; the second must raise ``IntegrityError``.
+    Aggregate のメンバー検証が第1層；このテストは生 SQL を直接書いて
+    バイパスするため DB制約が唯一つのサイレント重複を防ぐもの。
+    最初の INSERT は成功する必要；2番目は ``IntegrityError`` を発生させる必要。
     """
 
     async def test_duplicate_triplet_raises_integrity_error(
@@ -56,7 +53,7 @@ class TestUniqueRoomMemberTripletDoubleDefense:
         seeded_empire_id: UUID,
         seeded_workflow_id: UUID,
     ) -> None:
-        """TC-IT-RR-009: same (room_id, agent_id, role) inserted twice → IntegrityError."""
+        """TC-IT-RR-009: 同じ (room_id, agent_id, role) を2回 INSERT → IntegrityError。"""
         from datetime import UTC, datetime
 
         from sqlalchemy.exc import IntegrityError
@@ -66,7 +63,7 @@ class TestUniqueRoomMemberTripletDoubleDefense:
         empire_id = seeded_empire_id
         workflow_id = seeded_workflow_id
 
-        # Seed the rooms row first so room_members FK resolves.
+        # room_members FK が解決するよう、最初に rooms 行をシード。
         async with session_factory() as session, session.begin():
             await session.execute(
                 text(
@@ -89,7 +86,7 @@ class TestUniqueRoomMemberTripletDoubleDefense:
 
         joined_at = datetime.now(UTC).isoformat()
 
-        # First member INSERT — must succeed.
+        # 最初のメンバー INSERT — 成功する必要。
         async with session_factory() as session, session.begin():
             await session.execute(
                 text(
@@ -104,8 +101,8 @@ class TestUniqueRoomMemberTripletDoubleDefense:
                 },
             )
 
-        # Second INSERT with the same (room_id, agent_id, role) triplet —
-        # the uq_room_members_triplet constraint must reject it.
+        # 同じ (room_id, agent_id, role) トリプレットでの 2 番目 INSERT —
+        # uq_room_members_triplet 制約が拒否する必要。
         with pytest.raises(IntegrityError):
             async with session_factory() as session, session.begin():
                 await session.execute(
@@ -116,7 +113,7 @@ class TestUniqueRoomMemberTripletDoubleDefense:
                     {
                         "room_id": room_id.hex,
                         "agent_id": agent_id.hex,
-                        "role": "LEADER",  # same role → same triplet
+                        "role": "LEADER",  # 同じロール → 同じトリプレット
                         "joined_at": joined_at,
                     },
                 )
@@ -127,11 +124,11 @@ class TestUniqueRoomMemberTripletDoubleDefense:
         seeded_empire_id: UUID,
         seeded_workflow_id: UUID,
     ) -> None:
-        """Same (room_id, agent_id) with different roles must NOT raise.
+        """同じ (room_id, agent_id) で異なるロールは例外を発生させる必要なし。
 
-        Confirms the uniqueness is scoped to the **triplet** — different
-        roles on the same (room_id, agent_id) represent distinct membership
-        records (e.g. an agent who is both DEVELOPER and REVIEWER).
+        一意性は **トリプレット** にスコープされることを確認 —
+        同じ (room_id, agent_id) の異なるロールは異なるメンバーシップ
+        レコードを表す（例：DEVELOPER と REVIEWER の両方であるエージェント）。
         """
         from datetime import UTC, datetime
 
@@ -173,7 +170,7 @@ class TestUniqueRoomMemberTripletDoubleDefense:
                     },
                 )
 
-        # Both rows present; triplet uniqueness did not fire.
+        # 両方の行が存在; トリプレット一意性は発動しなかった。
         async with session_factory() as session:
             result = await session.execute(
                 text("SELECT COUNT(*) FROM room_members WHERE room_id = :room_id"),
@@ -187,15 +184,15 @@ class TestUniqueRoomMemberTripletDoubleDefense:
 # TC-IT-RR-009 補強: workflow_id FK RESTRICT (§確定 R1-I)
 # ---------------------------------------------------------------------------
 class TestWorkflowFkRestrict:
-    """``rooms.workflow_id`` FK RESTRICT prevents orphan Rooms on Workflow delete.
+    """``rooms.workflow_id`` FK RESTRICT は Workflow 削除時の孤立 Room を防ぐ。
 
-    §確定 R1-I: Workflow is a *reference* target for Room, not an owner.
-    Deleting a Workflow while Rooms still reference it is a hard failure
-    at the DB level — the application layer check alone would be
-    insufficient for raw-SQL paths.
+    §確定 R1-I: Workflow は Room の*参照*ターゲット、所有者ではない。
+    Workflow が削除される一方でルームがそれをまだ参照することは
+    DB レベルのハード失敗 — アプリケーションレイヤーのチェックのみでは
+    生 SQL パスに対して不十分。
 
-    Note: SQLite FK enforcement requires ``PRAGMA foreign_keys = ON``,
-    which the production engine enables at connect time.
+    注: SQLite FK の強制実行は ``PRAGMA foreign_keys = ON`` を要求し、
+    本番エンジンは接続時に有効化。
     """
 
     async def test_delete_referenced_workflow_raises_integrity_error(

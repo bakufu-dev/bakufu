@@ -1,16 +1,16 @@
-"""Task Repository: Protocol surface + basic CRUD + Lifecycle.
+"""Task Repository: Protocol サーフェス + 基本 CRUD + ライフサイクル。
 
 TC-UT-TR-001〜004/009 + TC-IT-TR-LIFECYCLE.
 
-REQ-TR-001 / REQ-TR-002 — 6-method Protocol (§確定 R1-A / §確定 R1-D) +
-CRUD (find_by_id / count / save / Tx boundary) + Lifecycle.
+REQ-TR-001 / REQ-TR-002 ── 6 メソッドの Protocol (§確定 R1-A / §確定 R1-D) +
+CRUD (find_by_id / count / save / Tx 境界) + ライフサイクル。
 
-save() child-table semantics (TC-UT-TR-005/005b/005c) live in
-``test_save_child_tables.py``.  count_by_status / count_by_room
-(TC-UT-TR-006/007) live in ``test_count_methods.py``.
+save() の child-table セマンティクス (TC-UT-TR-005/005b/005c) は
+``test_save_child_tables.py`` に置く。count_by_status / count_by_room
+(TC-UT-TR-006/007) は ``test_count_methods.py`` に置く。
 
-Per ``docs/features/task-repository/test-design.md``.
-Issue #35 — M2 0007.
+``docs/features/task-repository/test-design.md`` 準拠。
+Issue #35 — M2 0007。
 """
 
 from __future__ import annotations
@@ -40,13 +40,13 @@ pytestmark = pytest.mark.asyncio
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-TR-001: Protocol definition + 6-method surface (§確定 R1-A / §確定 R1-D)
+# TC-UT-TR-001: Protocol 定義 + 6 メソッドサーフェス (§確定 R1-A / §確定 R1-D)
 # ---------------------------------------------------------------------------
 class TestTaskRepositoryProtocol:
-    """TC-UT-TR-001: Protocol declares 6 async methods."""
+    """TC-UT-TR-001: Protocol が 6 つの async メソッドを宣言する。"""
 
     async def test_protocol_declares_six_async_methods(self) -> None:
-        """TC-UT-TR-001: TaskRepository has all 6 required methods."""
+        """TC-UT-TR-001: TaskRepository が必須 6 メソッドをすべて持つ。"""
         for method_name in (
             "find_by_id",
             "count",
@@ -61,12 +61,13 @@ class TestTaskRepositoryProtocol:
             )
 
     async def test_protocol_does_not_have_yagni_methods(self) -> None:
-        """TC-UT-TR-001: YAGNI methods (find_by_room, find_by_directive) absent.
+        """TC-UT-TR-001: YAGNI メソッド (find_by_room, find_by_directive) は不在。
 
-        §確定 R1-D YAGNI 拒否済み: find_by_room requires pagination spec
-        (未確定), find_by_directive has no callers. If these reappear, the
-        YAGNI decision in requirements-analysis §確定 R1-D was reversed
-        without updating the design doc first.
+        §確定 R1-D で YAGNI 拒否済み: find_by_room は
+        ページネーション仕様（未確定）が必要、find_by_directive は
+        呼び出し元なし。これらが再出現したら、requirements-analysis
+        §確定 R1-D の YAGNI 判断を設計ドキュメントを更新せず反転させた
+        ことになる。
         """
         for banned_method in ("find_by_room", "find_by_directive"):
             assert not hasattr(TaskRepository, banned_method), (
@@ -78,7 +79,7 @@ class TestTaskRepositoryProtocol:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-UT-TR-001: SqliteTaskRepository satisfies TaskRepository Protocol."""
+        """TC-UT-TR-001: SqliteTaskRepository が TaskRepository Protocol を満たす。"""
         async with session_factory() as session:
             repo: TaskRepository = SqliteTaskRepository(session)
             for method_name in (
@@ -95,7 +96,7 @@ class TestTaskRepositoryProtocol:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-UT-TR-001: duck-typing confirms all 6 methods present on impl."""
+        """TC-UT-TR-001: ダックタイピングで実装に 6 メソッドすべての存在を確認する。"""
         async with session_factory() as session:
             repo = SqliteTaskRepository(session)
             for method_name in (
@@ -115,14 +116,14 @@ class TestTaskRepositoryProtocol:
 # TC-UT-TR-002: find_by_id (REQ-TR-002)
 # ---------------------------------------------------------------------------
 class TestFindById:
-    """TC-UT-TR-002: find_by_id retrieves saved Tasks; None for unknown."""
+    """TC-UT-TR-002: find_by_id は保存済み Task を取得する。未知の id は None。"""
 
     async def test_find_by_id_returns_saved_task(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
-        """save(task) → find_by_id(task.id) returns the Task."""
+        """save(task) → find_by_id(task.id) が Task を返す。"""
         room_id, directive_id = seeded_task_context
         task = make_task(room_id=room_id, directive_id=directive_id)
         async with session_factory() as session, session.begin():
@@ -137,28 +138,28 @@ class TestFindById:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """find_by_id with unknown TaskId returns None."""
+        """未知 TaskId での find_by_id は None を返す。"""
         async with session_factory() as session:
             result = await SqliteTaskRepository(session).find_by_id(uuid4())  # type: ignore[arg-type]
         assert result is None
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-TR-003: save round-trip — all attributes (§確定 R1-H / §確定 R1-J)
+# TC-UT-TR-003: save ラウンドトリップ ── 全属性 (§確定 R1-H / §確定 R1-J)
 # ---------------------------------------------------------------------------
 class TestSaveRoundTrip:
-    """TC-UT-TR-003: save → find_by_id round-trips all Task attributes."""
+    """TC-UT-TR-003: save → find_by_id ですべての Task 属性がラウンドトリップする。"""
 
     async def test_save_find_by_id_round_trip_all_attributes(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
-        """All scalar + child attributes survive save → find_by_id round-trip.
+        """全スカラー + 子属性が save → find_by_id ラウンドトリップを生き残る。
 
-        §確定 R1-J: _from_rows reconstructs assigned_agent_ids (order_index order)
-        and deliverables (dict[StageId, Deliverable]). conversations are empty
-        because the Task domain model has no conversations attribute yet.
+        §確定 R1-J: _from_rows は assigned_agent_ids（order_index 順）と
+        deliverables (dict[StageId, Deliverable]) を再構成する。
+        Task ドメインモデルにまだ conversations 属性がないため conversations は空。
         """
         room_id, directive_id = seeded_task_context
         agent1_id = uuid4()
@@ -193,12 +194,12 @@ class TestSaveRoundTrip:
         assert restored.updated_at.tzinfo is not None, (
             "[FAIL] updated_at lost timezone info in round-trip."
         )
-        # §確定 R1-J: assigned_agent_ids preserved in order_index order
+        # §確定 R1-J: assigned_agent_ids は order_index 順で保持される
         assert restored.assigned_agent_ids == [agent1_id, agent2_id], (
             f"[FAIL] assigned_agent_ids order not preserved.\n"
             f"Expected: {[agent1_id, agent2_id]}\nGot: {restored.assigned_agent_ids}"
         )
-        # §確定 R1-J: deliverables dict keyed by stage_id
+        # §確定 R1-J: deliverables dict は stage_id をキーとする
         assert stage_id in restored.deliverables, (  # type: ignore[operator]
             f"[FAIL] deliverables dict missing stage_id={stage_id}"
         )
@@ -210,7 +211,7 @@ class TestSaveRoundTrip:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
-        """created_at / updated_at are UTC tz-aware after find_by_id."""
+        """find_by_id 後、created_at / updated_at が UTC tz-aware である。"""
         room_id, directive_id = seeded_task_context
         task = make_task(room_id=room_id, directive_id=directive_id)
         async with session_factory() as session, session.begin():
@@ -228,7 +229,7 @@ class TestSaveRoundTrip:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
-        """PENDING task with last_error=None round-trips as None."""
+        """last_error=None の PENDING task はラウンドトリップしても None のまま。"""
         room_id, directive_id = seeded_task_context
         task = make_task(room_id=room_id, directive_id=directive_id, last_error=None)
         async with session_factory() as session, session.begin():
@@ -245,7 +246,7 @@ class TestSaveRoundTrip:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
-        """Task with no assigned agents round-trips with empty list."""
+        """アサイン agent なしの Task は空リストでラウンドトリップする。"""
         room_id, directive_id = seeded_task_context
         task = make_task(room_id=room_id, directive_id=directive_id, assigned_agent_ids=[])
         async with session_factory() as session, session.begin():
@@ -262,7 +263,7 @@ class TestSaveRoundTrip:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
-        """Task with no deliverables round-trips with empty dict."""
+        """deliverable なしの Task は空 dict でラウンドトリップする。"""
         room_id, directive_id = seeded_task_context
         task = make_task(room_id=room_id, directive_id=directive_id, deliverables={})
         async with session_factory() as session, session.begin():
@@ -276,10 +277,10 @@ class TestSaveRoundTrip:
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-TR-004: count() SQL COUNT(*) (empire §確定 D 踏襲)
+# TC-UT-TR-004: count() の SQL COUNT(*) (empire §確定 D 踏襲)
 # ---------------------------------------------------------------------------
 class TestCountScalar:
-    """TC-UT-TR-004: count() issues SELECT COUNT(*) without full row load."""
+    """TC-UT-TR-004: count() は全行ロード無しに SELECT COUNT(*) を発行する。"""
 
     async def test_count_emits_select_count_not_full_load(
         self,
@@ -287,7 +288,7 @@ class TestCountScalar:
         app_engine: AsyncEngine,
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
-        """count() SQL log contains COUNT(*); full-row SELECT is absent."""
+        """count() の SQL ログに COUNT(*) が含まれ、全行 SELECT が含まれない。"""
         room_id, directive_id = seeded_task_context
         for _ in range(3):
             async with session_factory() as session, session.begin():
@@ -320,7 +321,7 @@ class TestCountScalar:
         assert count_stmts, (
             f"[FAIL] count() did not emit SELECT count(*) FROM tasks.\nCaptured: {captured}"
         )
-        # Full-row load path must NOT appear
+        # 全行ロード経路は出現してはならない
         full_load_stmts = [
             s
             for s in captured
@@ -333,17 +334,17 @@ class TestCountScalar:
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-TR-009: Tx boundary (empire §確定 B 踏襲)
+# TC-UT-TR-009: Tx 境界 (empire §確定 B 踏襲)
 # ---------------------------------------------------------------------------
 class TestTxBoundary:
-    """TC-UT-TR-009: Repository does not auto-commit; caller owns UoW boundary."""
+    """TC-UT-TR-009: Repository は自動 commit せず、UoW 境界は呼び出し側が所有する。"""
 
     async def test_save_within_begin_persists(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
-        """save inside async with session.begin() persists the row."""
+        """async with session.begin() 内の save は行を永続化する。"""
         room_id, directive_id = seeded_task_context
         task = make_task(room_id=room_id, directive_id=directive_id)
         async with session_factory() as session, session.begin():
@@ -358,14 +359,14 @@ class TestTxBoundary:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
-        """save without session.begin() leaves row absent after session close.
+        """session.begin() なしの save は session クローズ後に行が残らない。
 
-        Without begin(), SQLAlchemy async session auto-rolls back on exit.
+        begin() がないと SQLAlchemy async session は終了時に自動ロールバックする。
         """
         room_id, directive_id = seeded_task_context
         task = make_task(room_id=room_id, directive_id=directive_id)
         async with session_factory() as session:
-            # No session.begin() → auto-rollback on __aexit__
+            # session.begin() なし → __aexit__ で自動ロールバック
             await SqliteTaskRepository(session).save(task)
 
         async with session_factory() as session:
@@ -377,20 +378,20 @@ class TestTxBoundary:
 
 
 # ---------------------------------------------------------------------------
-# TC-IT-TR-LIFECYCLE: 6-method full lifecycle
+# TC-IT-TR-LIFECYCLE: 6 メソッドのフルライフサイクル
 # ---------------------------------------------------------------------------
 class TestLifecycleIntegration:
-    """TC-IT-TR-LIFECYCLE: 6-method full lifecycle integration."""
+    """TC-IT-TR-LIFECYCLE: 6 メソッドのフルライフサイクル統合。"""
 
     async def test_full_lifecycle_6_method(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_task_context: tuple[UUID, UUID],
     ) -> None:
-        """save x2 → count_by_status → find_blocked → count_by_room → count → re-save → verify."""
+        """save x2 → count_by_status → find_blocked → count_by_room → count → 再 save → 検証。"""
         room_id, directive_id = seeded_task_context
 
-        # Step 1: save a PENDING task and a BLOCKED task
+        # Step 1: PENDING タスクと BLOCKED タスクを save
         pending = make_task(room_id=room_id, directive_id=directive_id)
         blocked = make_blocked_task(
             room_id=room_id,
@@ -407,7 +408,7 @@ class TestLifecycleIntegration:
             blocked_count = await SqliteTaskRepository(session).count_by_status(TaskStatus.BLOCKED)
         assert blocked_count == 1
 
-        # Step 3: find_blocked returns the blocked task
+        # Step 3: find_blocked が blocked タスクを返す
         async with session_factory() as session:
             blocked_tasks = await SqliteTaskRepository(session).find_blocked()
         assert len(blocked_tasks) == 1
@@ -423,7 +424,7 @@ class TestLifecycleIntegration:
             total = await SqliteTaskRepository(session).count()
         assert total == 2
 
-        # Step 6: re-save blocked with updated status (DONE)
+        # Step 6: blocked を更新後 status (DONE) で再 save
         done = make_done_task(
             task_id=blocked.id,
             room_id=room_id,
@@ -432,7 +433,7 @@ class TestLifecycleIntegration:
         async with session_factory() as session, session.begin():
             await SqliteTaskRepository(session).save(done)
 
-        # Step 7: find_blocked returns [] now
+        # Step 7: find_blocked が [] を返すようになる
         async with session_factory() as session:
             blocked_after = await SqliteTaskRepository(session).find_blocked()
         assert blocked_after == []

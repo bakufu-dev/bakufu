@@ -1,9 +1,8 @@
-"""Empire Repository: DB constraints + arch-test template structure.
+"""Empire Repository: DB制約 + アーキテクチャテストテンプレート構造。
 
-TC-IT-EMR-013 / 014 / 017 — FK CASCADE, UNIQUE pair enforcement, and
-the CI three-layer-defense template the next 6 Repository PRs will
-extend. Split out from the original ``test_empire_repository.py`` per
-Norman's 500-line rule.
+TC-IT-EMR-013 / 014 / 017 — FK CASCADE、UNIQUE ペア強制実行、および
+次の 6 つの Repository PR が拡張する CI 3層防御テンプレート。
+Norman の500行ルールに従い元の ``test_empire_repository.py`` から分割。
 """
 
 from __future__ import annotations

@@ -1,14 +1,14 @@
-"""ExternalReviewGate Repository: find_pending_by_reviewer / find_by_task_id.
+"""ExternalReviewGate Repository: find_pending_by_reviewer / find_by_task_id。
 
-TC-UT-ERGR-006/006b/006c/006d/007/007b/007c — §確定 R1-D / §確定 R1-H ORDER BY.
+TC-UT-ERGR-006/006b/006c/006d/007/007b/007c — §確定 R1-D / §確定 R1-H ORDER BY。
 
-Tests ORDER BY determinism (BUG-EMR-001 準拠) for both query methods:
-* find_pending_by_reviewer: created_at DESC, id DESC tiebreaker
-* find_by_task_id: created_at ASC, id ASC (chronological review history)
+両クエリメソッドの ORDER BY 決定性をテスト (BUG-EMR-001 準拠):
+* find_pending_by_reviewer: created_at DESC, id DESC タイブレーカ
+* find_by_task_id: created_at ASC, id ASC (時系列レビュー履歴)
 
-Per ``docs/features/external-review-gate-repository/test-design.md``
-TC-UT-ERGR-006〜007c.
-Issue #36 — M2 0008.
+``docs/features/external-review-gate-repository/test-design.md``
+TC-UT-ERGR-006〜007c 準拠。
+Issue #36 — M2 0008。
 """
 
 from __future__ import annotations

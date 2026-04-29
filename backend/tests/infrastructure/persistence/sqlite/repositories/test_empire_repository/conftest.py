@@ -1,16 +1,16 @@
-"""Pytest fixtures for empire-repository integration tests.
+"""empire-repository 統合テスト用の Pytest フィクスチャ。
 
-Provides seed helpers to satisfy the ``empire_room_refs.room_id → rooms.id``
-FK constraint added by Alembic 0005_room_aggregate (BUG-EMR-001 FK closure).
+``empire_room_refs.room_id → rooms.id`` FK制約を満たすセッドヘルパーを提供
+(Alembic 0005_room_aggregate により追加、BUG-EMR-001 FK クロージャ)。
 
-Background: before Alembic 0005, ``empire_room_refs.room_id`` had **no** FK
-onto ``rooms.id`` (the rooms table didn't exist yet). After 0005 the FK is
-wired with ``ON DELETE CASCADE`` so any INSERT into ``empire_room_refs`` now
-requires a matching row in ``rooms``. Tests that call
-``SqliteEmpireRepository.save(empire)`` with a populated Empire, or that
-issue raw SQL into ``empire_room_refs``, must seed the ``rooms`` table first.
+背景: Alembic 0005 より前、``empire_room_refs.room_id`` は rooms.id への
+**FK を持たなかった** (rooms テーブルがまだ存在しなかった)。0005 の後、
+FK は ``ON DELETE CASCADE`` で配線されるため、empire_room_refs への任意の
+INSERT は rooms の一致する行を要求する。``SqliteEmpireRepository.save(empire)``
+を完全に充実した Empire で呼び出すテスト、または empire_room_refs に
+生 SQL を発行するテストは、最初に rooms テーブルをシードする必要。
 
-Usage::
+使用法::
 
     from tests.infrastructure.persistence.sqlite.repositories.\
         test_empire_repository.conftest import seed_rooms

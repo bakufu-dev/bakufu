@@ -1,9 +1,8 @@
-"""Empire Repository: save() semantics — delete-then-insert + Tx boundary.
+"""Empire Repository: save() の挙動 ── delete-then-insert + Tx 境界.
 
-TC-IT-EMR-006 / 007 / 011 / 012 + TC-UT-EMR-003 — the §確定 B
-contract that backs the ``save()`` flow plus round-trip equality.
-Split out from the original ``test_empire_repository.py`` per
-Norman's 500-line rule.
+TC-IT-EMR-006 / 007 / 011 / 012 + TC-UT-EMR-003 ── ``save()`` フローを
+裏付ける §確定 B 契約とラウンドトリップ等価性。
+Norman の 500 行ルールに従い、元の ``test_empire_repository.py`` から分割。
 """
 
 from __future__ import annotations
@@ -31,26 +30,26 @@ pytestmark = pytest.mark.asyncio
 
 
 class TestSaveDeleteThenInsert:
-    """TC-IT-EMR-006: ``save`` replaces side-table rows wholesale (§確定 B)."""
+    """TC-IT-EMR-006: ``save`` は side-table 行を一括置換する (§確定 B)。"""
 
     async def test_save_replaces_room_refs(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-EMR-006: 2 rooms → 1 room is reflected as 1 row in empire_room_refs."""
+        """TC-IT-EMR-006: 2 rooms → 1 room は empire_room_refs で 1 行として反映される。"""
         original = make_populated_empire(n_rooms=2, n_agents=3)
-        # Create the replacement room ref upfront so we can seed it before save.
+        # save 前に seed できるよう、置換用 room ref を先行生成する。
         replacement_room = make_room_ref(name="残った部屋")
 
-        # Alembic 0005 added empire_room_refs.room_id → rooms.id FK (BUG-EMR-001
-        # closure). Seed all room_ids that will ever appear in empire_room_refs.
+        # Alembic 0005 で empire_room_refs.room_id → rooms.id FK が追加された
+        # (BUG-EMR-001 閉鎖)。empire_room_refs に登場し得る全 room_id を seed する。
         all_room_ids = [r.room_id for r in original.rooms] + [replacement_room.room_id]
         await seed_rooms(session_factory, original.id, all_room_ids)
 
         async with session_factory() as session, session.begin():
             await SqliteEmpireRepository(session).save(original)
 
-        # Build a new Empire with the same id but only 1 room.
+        # 同じ id で 1 room だけの新しい Empire を構築する。
         replacement = make_empire(
             empire_id=original.id,
             name=original.name,
@@ -60,7 +59,7 @@ class TestSaveDeleteThenInsert:
         async with session_factory() as session, session.begin():
             await SqliteEmpireRepository(session).save(replacement)
 
-        # Side tables must show the new state, not the merged old + new.
+        # side テーブルは古い + 新しいの merge ではなく新状態を反映せねばならない。
         async with session_factory() as session:
             room_rows = list(
                 (
@@ -74,28 +73,27 @@ class TestSaveDeleteThenInsert:
 
 
 class TestRoundTripStructuralEquality:
-    """TC-IT-EMR-007 + TC-UT-EMR-003: save → find_by_id round-trip preserves equality.
+    """TC-IT-EMR-007 + TC-UT-EMR-003: save → find_by_id ラウンドトリップで等価性が保たれる。
 
-    BUG-EMR-001 closure: :meth:`SqliteEmpireRepository.find_by_id` now
-    issues ``ORDER BY room_id`` / ``ORDER BY agent_id`` per
-    ``basic-design.md`` L127-128 and ``detailed-design.md`` §クラス設計.
-    The hydrated lists are deterministic, so the previous set-based
-    workaround is removed and replaced with the contracted list-order
-    comparison.
+    BUG-EMR-001 閉鎖: :meth:`SqliteEmpireRepository.find_by_id` は
+    ``basic-design.md`` L127-128 と ``detailed-design.md`` §クラス設計 に従い、
+    ``ORDER BY room_id`` / ``ORDER BY agent_id`` を発行する。
+    ハイドレートされたリストは決定的になるため、以前の set ベースの
+    ワークアラウンドは外し、契約に沿ったリスト順比較に置き換えた。
 
-    Test contract (ORDER BY 物理保証): the Repository's
-    ``ORDER BY room_id`` / ``ORDER BY agent_id`` design contract is
-    asserted by sorting the input Empire's collections by the same
-    key and demanding list equality. Failing this assertion means
-    the SQL contract regressed (either the ``ORDER BY`` was dropped
-    or the column changed).
+    テスト契約 (ORDER BY 物理保証): Repository の
+    ``ORDER BY room_id`` / ``ORDER BY agent_id`` 設計契約を、入力 Empire の
+    コレクションを同じキーでソートしてリスト等価を要求する形でアサートする。
+    本アサートが失敗すれば SQL 契約のリグレッション (``ORDER BY`` が
+    落ちた、もしくはカラムが変わった) を意味する。
     """
 
     async def test_populated_empire_round_trip(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-EMR-007: round-trip preserves Empire identity + membership in ORDER BY order."""
+        """TC-IT-EMR-007: ラウンドトリップが Empire アイデンティティと
+        メンバーシップを ORDER BY 順で保持する。"""
         empire = make_populated_empire(n_rooms=2, n_agents=3)
         await seed_rooms(session_factory, empire.id, [r.room_id for r in empire.rooms])
         async with session_factory() as session, session.begin():
@@ -106,10 +104,9 @@ class TestRoundTripStructuralEquality:
         assert restored is not None
         assert restored.id == empire.id
         assert restored.name == empire.name
-        # ORDER BY room_id / agent_id 物理保証: restored side-table
-        # lists are deterministic, so list-order equality is the
-        # contract. The expected lists are sorted by the same key
-        # the Repository used in its ``ORDER BY``.
+        # ORDER BY room_id / agent_id 物理保証: 復元される side-table
+        # リストは決定的なので、リスト順等価が契約。期待リストは
+        # Repository の ``ORDER BY`` と同じキーでソートしておく。
         assert restored.rooms == sorted(empire.rooms, key=lambda r: r.room_id)
         assert restored.agents == sorted(empire.agents, key=lambda a: a.agent_id)
 
@@ -117,22 +114,22 @@ class TestRoundTripStructuralEquality:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-EMR-007: round-trip an Empire with zero rooms / agents."""
-        empire = make_empire()  # rooms=[] agents=[] by default
+        """TC-IT-EMR-007: rooms / agents 空の Empire をラウンドトリップする。"""
+        empire = make_empire()  # デフォルトで rooms=[] agents=[]
         async with session_factory() as session, session.begin():
             await SqliteEmpireRepository(session).save(empire)
 
         async with session_factory() as session:
             restored = await SqliteEmpireRepository(session).find_by_id(empire.id)
         assert restored is not None
-        # Empty case: no list-order ambiguity, full ``==`` is fine.
+        # 空ケース: リスト順の曖昧さは無いので完全な ``==`` で良い。
         assert restored == empire
 
     async def test_to_row_then_from_row_round_trip(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-UT-EMR-003: ``_to_row`` → save + find_by_id (≡ ``_from_row``) preserves equality."""
+        """TC-UT-EMR-003: ``_to_row`` → save + find_by_id (≡ ``_from_row``) で等価性が保たれる。"""
         empire = make_populated_empire(n_rooms=2, n_agents=3)
         await seed_rooms(session_factory, empire.id, [r.room_id for r in empire.rooms])
         async with session_factory() as session, session.begin():
@@ -143,9 +140,8 @@ class TestRoundTripStructuralEquality:
         assert restored is not None
         assert restored.id == empire.id
         assert restored.name == empire.name
-        # Same ORDER BY-aware list comparison as
-        # test_populated_empire_round_trip — see class docstring for
-        # the BUG-EMR-001 closure rationale.
+        # test_populated_empire_round_trip と同じ ORDER BY 認識のリスト比較 ──
+        # BUG-EMR-001 閉鎖の根拠はクラス docstring を参照。
         assert restored.rooms == sorted(empire.rooms, key=lambda r: r.room_id)
         assert restored.agents == sorted(empire.agents, key=lambda a: a.agent_id)
 
@@ -154,22 +150,21 @@ class TestRoundTripStructuralEquality:
 # 確定 B: delete-then-insert 5 段階順序 + Tx 境界
 # ---------------------------------------------------------------------------
 class TestSaveSqlOrder:
-    """TC-IT-EMR-011: ``save`` issues SQL in the §確定 B 5-step order.
+    """TC-IT-EMR-011: ``save`` は §確定 B の 5 ステップ順で SQL を発行する。
 
-    We attach a ``before_cursor_execute`` listener on the **sync**
-    engine so we observe the actual SQL strings the dialect emits. The
-    listener appends each statement to a captured list; we then assert
-    the prefix sequence matches the design's 5 steps. The dispatcher /
-    ORM may issue extra SAVEPOINT / BEGIN statements which we filter
-    out — the contract is on the *DML* prefix.
+    **sync** エンジンに ``before_cursor_execute`` リスナを付け、方言が
+    実際に発行する SQL 文字列を観察する。リスナは各文をキャプチャ用リストに
+    append し、プレフィックス列が設計の 5 ステップに一致することをアサートする。
+    ディスパッチャ / ORM は追加で SAVEPOINT / BEGIN を発行し得るので
+    フィルタする ── 契約は *DML* のプレフィックスに対する。
     """
 
     async def test_save_emits_upsert_then_delete_insert_pairs(
         self,
         session_factory: async_sessionmaker[AsyncSession],
-        app_engine: object,  # AsyncEngine; typed loosely so listener API works
+        app_engine: object,  # AsyncEngine; リスナ API のため緩く型付け
     ) -> None:
-        """TC-IT-EMR-011: empires UPSERT → empire_room_refs DEL+INS → empire_agent_refs DEL+INS."""
+        """TC-IT-EMR-011: empires UPSERT → empire_room_refs DEL+INS → empire_agent_refs DEL+INS。"""
         from sqlalchemy import event
 
         captured: list[str] = []
@@ -194,8 +189,8 @@ class TestSaveSqlOrder:
         finally:
             event.remove(sync_engine, "before_cursor_execute", _on_execute)
 
-        # Filter to the 5 DML statements we care about (BEGIN /
-        # SAVEPOINT / RELEASE / COMMIT noise removed).
+        # 注目したい 5 件の DML 文に絞る (BEGIN /
+        # SAVEPOINT / RELEASE / COMMIT のノイズを除去)。
         dml = [
             s
             for s in captured
@@ -206,7 +201,7 @@ class TestSaveSqlOrder:
         ]
         # Step 1 (UPSERT empires) → Step 2 (DELETE empire_room_refs) →
         # Step 3 (INSERT empire_room_refs) → Step 4 (DELETE
-        # empire_agent_refs) → Step 5 (INSERT empire_agent_refs).
+        # empire_agent_refs) → Step 5 (INSERT empire_agent_refs)。
         assert len(dml) >= 5
         assert dml[0].upper().startswith("INSERT INTO EMPIRES")
         assert dml[1].upper().startswith("DELETE FROM EMPIRE_ROOM_REFS")
@@ -216,13 +211,14 @@ class TestSaveSqlOrder:
 
 
 class TestTxBoundaryRespectedByRepository:
-    """TC-IT-EMR-012: Repository never calls commit / rollback (§確定 B)."""
+    """TC-IT-EMR-012: Repository は commit / rollback を呼ばない (§確定 B)。"""
 
     async def test_commit_path_persists_via_outer_block(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-EMR-012 (commit): outer ``async with session.begin()`` commits the save."""
+        """TC-IT-EMR-012 (commit): 外側の ``async with session.begin()``
+        で save がコミットされる。"""
         empire = make_empire()
         async with session_factory() as session, session.begin():
             await SqliteEmpireRepository(session).save(empire)
@@ -235,10 +231,10 @@ class TestTxBoundaryRespectedByRepository:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-EMR-012 (rollback): an exception inside ``begin()`` rolls back the save."""
+        """TC-IT-EMR-012 (rollback): ``begin()`` 内の例外で save がロールバックされる。"""
 
         class _BoomError(Exception):
-            """Synthetic exception used to drive the rollback path."""
+            """ロールバック経路を駆動するための合成例外。"""
 
         empire = make_empire()
         with pytest.raises(_BoomError):
@@ -248,5 +244,5 @@ class TestTxBoundaryRespectedByRepository:
 
         async with session_factory() as session:
             fetched = await SqliteEmpireRepository(session).find_by_id(empire.id)
-        # Rollback must have been atomic — no row survives.
+        # ロールバックはアトミックでなければならない ── 行は残らない。
         assert fetched is None

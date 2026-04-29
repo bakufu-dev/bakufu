@@ -1,14 +1,14 @@
-"""ExternalReviewGate Repository: count_by_decision SQL guarantee.
+"""ExternalReviewGate Repository: count_by_decision SQL 保証。
 
-TC-UT-ERGR-008 — §確定 R1-D count_by_decision.
+TC-UT-ERGR-008 — §確定 R1-D count_by_decision。
 
-Verifies:
-* count_by_decision(PENDING) returns correct count.
-* SQL log contains WHERE decision = filter (not a full-table-scan aggregate).
-* All decision values (PENDING / APPROVED / REJECTED / CANCELLED) isolated.
+検証:
+* count_by_decision(PENDING) は正しいカウントを返す。
+* SQL ログは WHERE decision = フィルタを含む (フルテーブルスキャン集計ではない)。
+* すべての decision 値 (PENDING / APPROVED / REJECTED / CANCELLED) が隔離。
 
-Per ``docs/features/external-review-gate-repository/test-design.md`` TC-UT-ERGR-008.
-Issue #36 — M2 0008.
+``docs/features/external-review-gate-repository/test-design.md`` TC-UT-ERGR-008 準拠。
+Issue #36 — M2 0008。
 """
 
 from __future__ import annotations
