@@ -34,3 +34,9 @@ def test_http_boundary_does_not_expose_public_top_level_functions() -> None:
     }
 
     assert violations == {}
+
+
+def test_security_masking_does_not_expose_public_top_level_functions() -> None:
+    """TC-STATIC-ERG-HTTP-004: masking ゲートウェイも class/classmethod に閉じる。"""
+    path = BACKEND_ROOT / "src/bakufu/infrastructure/security/masking.py"
+    assert _public_top_level_functions(path) == []

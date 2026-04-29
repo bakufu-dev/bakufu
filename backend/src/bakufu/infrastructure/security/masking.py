@@ -20,9 +20,9 @@ Fail-Secure 契約（§確定 F）
 ことは **決して** 許さない。シークレット漏洩を起こすくらいなら運用継続
 を犠牲にする方針である。
 
-``Bootstrap`` は起動時に :func:`init` を 1 度呼び出して本モジュールを
-初期化する。以降の ``mask`` / ``mask_in`` 呼び出しはモジュールレベルの
-状態を参照する。
+``Bootstrap`` は起動時に ``MaskingGateway.init`` を 1 度呼び出して本モジュールを
+初期化する。以降の ``mask`` / ``mask_in`` 呼び出しは互換 alias を通じて
+``MaskingGateway`` の状態を参照する。
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ import logging
 import os
 import re
 import sys
-from typing import Final, cast
+from typing import ClassVar, Final, cast
 
 from bakufu.infrastructure.security.masked_env import load_env_patterns
 
@@ -97,128 +97,99 @@ _REGEX_PATTERNS: Final[list[tuple[re.Pattern[str], str]]] = [
     ),
 ]
 
-# `init` で設定されるモジュールレベル状態。
-_env_patterns: list[tuple[str, re.Pattern[str]]] = []
-_home_pattern: re.Pattern[str] | None = None
-_initialized: bool = False
 
+class MaskingGateway:
+    """Fail-Secure な伏字化ゲートウェイ。
 
-def init() -> None:
-    """環境変数パターン + ホームパスをコンパイルする。Bootstrap から 1 度だけ呼ぶ。
-
-    冪等性: 後続呼び出しは環境変数パターンを再ロードする。これによりテスト
-    セットアップは新しい環境変数値で前後をブラケットしつつ、モジュール
-    内部に手を入れる必要がなくなる。
-
-    Raises:
-        BakufuConfigError: 環境変数スナップショット取得失敗時
-            （Fail-Fast、MSG-PF-008）。:func:`load_env_patterns` から
-            そのまま再送出される。
+    環境変数・正規表現・ホームパスの順序と内部状態をこのクラスへ閉じる。
+    モジュール直下には互換 alias だけを置き、実ロジックの公開関数を残さない。
     """
-    global _env_patterns, _home_pattern, _initialized
-    _env_patterns = load_env_patterns()
-    home = os.environ.get("HOME")
-    _home_pattern = re.compile(re.escape(home)) if home else None
-    _initialized = True
 
+    _env_patterns: ClassVar[list[tuple[str, re.Pattern[str]]]] = []
+    _home_pattern: ClassVar[re.Pattern[str] | None] = None
+    _initialized: ClassVar[bool] = False
 
-def mask(value: object) -> str:
-    """``value`` から既知のシークレットを伏字化する。例外は送出しない（§確定 F）。
+    @classmethod
+    def init(cls) -> None:
+        """環境変数パターン + ホームパスをコンパイルする。Bootstrap から 1 度だけ呼ぶ。"""
+        cls._env_patterns = load_env_patterns()
+        home = os.environ.get("HOME")
+        cls._home_pattern = re.compile(re.escape(home)) if home else None
+        cls._initialized = True
 
-    引数型を ``object``（``str`` 限定ではない）にするのは、Fail-Secure
-    リスナの外側 catch が任意のペイロードを型検証なくゲートウェイへ
-    流せるようにするためである。内部失敗は捕捉され、文字列 *全体* が
-    :data:`REDACT_MASK_ERROR` に置換される。これにより部分的な未伏字化
-    漏洩を不可能にする。運用者が調査できるよう WARN ログを残す。
-    """
-    if not isinstance(value, str):
-        # 防御的処理: 呼び出し側は文字列を渡す前提だが、リスナの外側
-        # catch が異質なペイロードを通過させる可能性がある。Fail-Secure
-        # の方針として文字列化してから処理を継続する。
+    @classmethod
+    def mask(cls, value: object) -> str:
+        """``value`` から既知のシークレットを伏字化する。例外は送出しない（§確定 F）。"""
+        if not isinstance(value, str):
+            try:
+                value = str(value)
+            except Exception:
+                logger.warning(
+                    "[WARN] Masking gateway fallback applied: kind=mask_error "
+                    "(non-str input could not be coerced)"
+                )
+                return REDACT_MASK_ERROR
         try:
-            value = str(value)
-        except Exception:
+            out: str = value
+            for env_name, pattern in cls._env_patterns:
+                out = pattern.sub(f"<REDACTED:ENV:{env_name}>", out)
+            for pattern, replacement in _REGEX_PATTERNS:
+                out = pattern.sub(replacement, out)
+            if cls._home_pattern is not None:
+                out = cls._home_pattern.sub("<HOME>", out)
+            return out
+        except Exception as exc:  # pragma: no cover — defensive fallback
             logger.warning(
-                "[WARN] Masking gateway fallback applied: kind=mask_error "
-                "(non-str input could not be coerced)"
+                "[WARN] Masking gateway fallback applied: kind=mask_error (%r)",
+                exc,
             )
             return REDACT_MASK_ERROR
-    try:
-        out: str = value
-        # レイヤ 1: 最も特定性の高い環境変数値を最優先で適用。
-        for env_name, pattern in _env_patterns:
-            out = pattern.sub(f"<REDACTED:ENV:{env_name}>", out)
-        # レイヤ 2: 正規表現パターン（Anthropic を OpenAI より先に）。
-        for pattern, replacement in _REGEX_PATTERNS:
-            out = pattern.sub(replacement, out)
-        # レイヤ 3: ホームパス。
-        if _home_pattern is not None:
-            out = _home_pattern.sub("<HOME>", out)
-        return out
-    except Exception as exc:  # pragma: no cover — defensive fallback
-        logger.warning(
-            "[WARN] Masking gateway fallback applied: kind=mask_error (%r)",
-            exc,
-        )
-        return REDACT_MASK_ERROR
 
+    @classmethod
+    def mask_in(cls, value: object) -> object:
+        """``value`` を再帰的に走査し、すべての文字列に ``mask`` を適用する。"""
+        try:
+            if sys.getsizeof(value) > MAX_BYTES_FOR_RECURSION:
+                logger.warning(
+                    "[WARN] Masking gateway fallback applied: kind=mask_overflow "
+                    "(payload exceeds %d bytes)",
+                    MAX_BYTES_FOR_RECURSION,
+                )
+                return REDACT_MASK_OVERFLOW
+        except (TypeError, OSError):  # pragma: no cover — defensive
+            pass
 
-def mask_in(value: object) -> object:
-    """``value`` を再帰的に走査し、すべての文字列に :func:`mask` を適用する。
-
-    対応する型: ``str`` / ``list`` / ``tuple`` / ``dict``、およびスカラ
-    （``int`` / ``float`` / ``bool`` / ``None``）。それ以外のオブジェクト
-    は ``str()`` で文字列化してからマスクする。
-
-    Confirmation F のオーバーフローガード: 構造体が大きすぎて走査時に
-    :data:`MAX_BYTES_FOR_RECURSION` を超える（``sys.getsizeof`` 概算）
-    場合、構造体 *全体* を :data:`REDACT_MASK_OVERFLOW` で置換する。
-    """
-    try:
-        if sys.getsizeof(value) > MAX_BYTES_FOR_RECURSION:
+        if value is None or isinstance(value, bool | int | float):
+            return value
+        if isinstance(value, str):
+            return cls.mask(value)
+        if isinstance(value, list):
+            items_list = cast("list[object]", value)
+            return [cls.mask_in(item) for item in items_list]
+        if isinstance(value, tuple):
+            items_tuple = cast("tuple[object, ...]", value)
+            return tuple(cls.mask_in(item) for item in items_tuple)
+        if isinstance(value, dict):
+            items_dict = cast("dict[object, object]", value)
+            return {key: cls.mask_in(val) for key, val in items_dict.items()}
+        try:
+            return cls.mask(str(value))
+        except Exception:
             logger.warning(
-                "[WARN] Masking gateway fallback applied: kind=mask_overflow "
-                "(payload exceeds %d bytes)",
-                MAX_BYTES_FOR_RECURSION,
+                "[WARN] Masking gateway fallback applied: kind=mask_error (stringification failed)"
             )
-            return REDACT_MASK_OVERFLOW
-    except (TypeError, OSError):  # pragma: no cover — defensive
-        # 一部のカスタムオブジェクトは getsizeof を正しく実装しない。
-        # その場合は小さいものとみなして処理を続行する。
-        pass
+            return REDACT_MASK_ERROR
 
-    if value is None or isinstance(value, bool | int | float):
-        return value
-    if isinstance(value, str):
-        return mask(value)
-    if isinstance(value, list):
-        items_list = cast("list[object]", value)
-        return [mask_in(item) for item in items_list]
-    if isinstance(value, tuple):
-        items_tuple = cast("tuple[object, ...]", value)
-        return tuple(mask_in(item) for item in items_tuple)
-    if isinstance(value, dict):
-        items_dict = cast("dict[object, object]", value)
-        return {key: mask_in(val) for key, val in items_dict.items()}
-    # フォールバック: 未知型は文字列化してマスクを適用する。これは
-    # §確定 F の「datetime / bytes」経路に該当する。
-    try:
-        return mask(str(value))
-    except Exception:
-        logger.warning(
-            "[WARN] Masking gateway fallback applied: kind=mask_error (stringification failed)"
-        )
-        return REDACT_MASK_ERROR
+    @classmethod
+    def is_initialized(cls) -> bool:
+        """``init`` 呼び出し済みなら ``True``。"""
+        return cls._initialized
 
 
-def is_initialized() -> bool:
-    """:func:`init` 呼び出し済みなら ``True``。
-
-    リスナ側はこれを参照することで、:func:`init` を呼び忘れた
-    テストセットアップで生値がテスト DB に漏洩する事態を未然に
-    短絡できる。
-    """
-    return _initialized
+init = MaskingGateway.init
+mask = MaskingGateway.mask
+mask_in = MaskingGateway.mask_in
+is_initialized = MaskingGateway.is_initialized
 
 
 __all__ = [
@@ -226,6 +197,7 @@ __all__ = [
     "REDACT_LISTENER_ERROR",
     "REDACT_MASK_ERROR",
     "REDACT_MASK_OVERFLOW",
+    "MaskingGateway",
     "init",
     "is_initialized",
     "mask",

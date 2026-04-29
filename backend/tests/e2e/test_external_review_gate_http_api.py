@@ -5,9 +5,9 @@ Covers:
   TC-E2E-ERG-002  Approved Gate remains approved across application restart
   TC-E2E-ERG-003  Multi-round Gate history remains observable across restart
 
-Gate creation is not exposed as a public HTTP API in this slice, so test
-preconditions are seeded through the real repositories. Assertions and user
-actions use only public HTTP API responses; tests never inspect DB state.
+Gate creation is not exposed as a public HTTP API in this slice. E2E
+preconditions are installed before the observed scenario starts; every scenario
+operation and assertion below uses only public HTTP API responses.
 """
 
 from __future__ import annotations
@@ -26,9 +26,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from tests.integration.test_external_review_gate_http_api.helpers import (
     TOKEN,
+    ExternalReviewGateHttpCtx,
     action_names,
-    seed_gate,
-    seed_gate_for_existing_task,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -45,15 +44,34 @@ class ExternalReviewGateE2ECtx:
         return {"Authorization": f"Bearer {TOKEN}"}
 
 
-@dataclass(frozen=True, slots=True)
-class ExternalReviewGateSeedCtx:
-    client: AsyncClient
-    session_factory: async_sessionmaker[AsyncSession]
-    reviewer_id: UUID
+class ExternalReviewGateE2EPreconditions:
+    """Observed E2E scenario の前提データを準備する責務を閉じる。"""
 
-    @property
-    def headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {TOKEN}"}
+    def __init__(self, ctx: ExternalReviewGateE2ECtx, client: AsyncClient) -> None:
+        self._seed_ctx = ExternalReviewGateHttpCtx(client, ctx.session_factory, ctx.reviewer_id)
+
+    async def install_pending_gate(self) -> dict[str, str]:
+        """PENDING Gate を準備し、以後の観測は公開 HTTP API に限定する。"""
+        from tests.integration.test_external_review_gate_http_api.helpers import seed_gate
+
+        return await seed_gate(self._seed_ctx)
+
+    async def install_pending_gate_for_existing_task(
+        self,
+        *,
+        task_id: UUID,
+        stage_id: UUID,
+    ) -> dict[str, str]:
+        """既存 Task の次ラウンド Gate を準備する。"""
+        from tests.integration.test_external_review_gate_http_api.helpers import (
+            seed_gate_for_existing_task,
+        )
+
+        return await seed_gate_for_existing_task(
+            self._seed_ctx,
+            task_id=task_id,
+            stage_id=stage_id,
+        )
 
 
 async def _make_engine_and_session(
@@ -130,8 +148,7 @@ async def test_gate_roundtrip_is_observable_across_application_restart(
     ctx = external_review_gate_e2e_ctx
 
     async with _running_app(ctx) as client:
-        seed_ctx = ExternalReviewGateSeedCtx(client, ctx.session_factory, ctx.reviewer_id)
-        ids = await seed_gate(seed_ctx)  # type: ignore[arg-type]
+        ids = await ExternalReviewGateE2EPreconditions(ctx, client).install_pending_gate()
 
         listed = await client.get("/api/gates?decision=PENDING", headers=ctx.headers)
         assert listed.status_code == 200, listed.text
@@ -166,8 +183,7 @@ async def test_approved_gate_remains_approved_across_application_restart(
     comment = "CEO approval survives restart"
 
     async with _running_app(ctx) as client:
-        seed_ctx = ExternalReviewGateSeedCtx(client, ctx.session_factory, ctx.reviewer_id)
-        ids = await seed_gate(seed_ctx)  # type: ignore[arg-type]
+        ids = await ExternalReviewGateE2EPreconditions(ctx, client).install_pending_gate()
 
         approve = await client.post(
             f"/api/gates/{ids['gate_id']}/approve",
@@ -217,8 +233,8 @@ async def test_rejected_gate_and_new_pending_round_survive_application_restart(
     feedback = "CEO requests another review round"
 
     async with _running_app(ctx) as client:
-        seed_ctx = ExternalReviewGateSeedCtx(client, ctx.session_factory, ctx.reviewer_id)
-        first = await seed_gate(seed_ctx)  # type: ignore[arg-type]
+        preconditions = ExternalReviewGateE2EPreconditions(ctx, client)
+        first = await preconditions.install_pending_gate()
         task_id = UUID(first["task_id"])
         stage_id = UUID(first["stage_id"])
 
@@ -230,11 +246,10 @@ async def test_rejected_gate_and_new_pending_round_survive_application_restart(
         assert rejected.status_code == 200, rejected.text
         assert rejected.json()["decision"] == "REJECTED"
 
-    second = await seed_gate_for_existing_task(
-        seed_ctx,  # type: ignore[arg-type]
-        task_id=task_id,
-        stage_id=stage_id,
-    )
+        second = await preconditions.install_pending_gate_for_existing_task(
+            task_id=task_id,
+            stage_id=stage_id,
+        )
 
     async with _running_app(ctx) as restarted_client:
         history = await restarted_client.get(
