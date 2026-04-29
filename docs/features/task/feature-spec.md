@@ -1,8 +1,8 @@
 # 業務仕様書（feature-spec）— Task
 
 > feature: `task`（業務概念単位）
-> sub-features: [`domain/`](domain/) | [`repository/`](repository/) | http-api（将来）| ui（将来）
-> 関連 Issue: [#37 feat(task): Task Aggregate Root (M1)](https://github.com/bakufu-dev/bakufu/issues/37) / [#35 feat(task-repository): Task SQLite Repository (M2)](https://github.com/bakufu-dev/bakufu/issues/35)
+> sub-features: [`domain/`](domain/) | [`repository/`](repository/) | [`http-api/`](http-api/) | ui（将来）
+> 関連 Issue: [#37 feat(task): Task Aggregate Root (M1)](https://github.com/bakufu-dev/bakufu/issues/37) / [#35 feat(task-repository): Task SQLite Repository (M2)](https://github.com/bakufu-dev/bakufu/issues/35) / [#60 feat(task-http-api): Directive + Task lifecycle HTTP API (M3)](https://github.com/bakufu-dev/bakufu/issues/60)
 > 凍結済み設計: [`docs/design/domain-model/aggregates.md`](../../design/domain-model/aggregates.md) §Task / [`docs/design/domain-model/value-objects.md`](../../design/domain-model/value-objects.md) §列挙型一覧（TaskStatus / LLMErrorKind） / [`docs/design/domain-model/storage.md`](../../design/domain-model/storage.md) §Deliverable / §Attachment / §シークレットマスキング適用先
 
 ## 本書の役割
@@ -34,7 +34,7 @@ Task の業務的なライフサイクルは複数の実装レイヤーを跨ぐ
 |---|---|---|
 | domain | [`domain/`](domain/) | Task の状態遷移（TaskStatus 6 種 / 13 遷移の state machine）・不変条件・Deliverable / Attachment VO・BLOCKED 隔離経路を Aggregate 内で保証 |
 | repository | [`repository/`](repository/) | Task の状態を再起動跨ぎで保持（永続化）、`last_error` / `body_markdown` の secret マスキングを担保 |
-| http-api | (将来) | UI / 外部クライアントから Task を操作・取得する経路 |
+| http-api | [`http-api/`](http-api/) | UI / 外部クライアントから Task を操作・取得する経路（Issue #60）|
 | ui | (将来) | CEO が Task 進行状況を確認し、External Review Gate を操作する画面 |
 
 本書はこれら全レイヤーを貫く **業務概念単位の凍結文書** であり、各 sub-feature は本書を引用して実装契約を凍結する。
@@ -114,18 +114,24 @@ bakufu システム全体ペルソナは [`docs/analysis/personas.md`](../../ana
 | UC-TS-006 | CEO / 運用担当 | BLOCKED Task を復旧できる（block / unblock_retry） | 必須 | domain |
 | UC-TS-007 | CEO | 任意のタイミングで Task を中止できる（PENDING / IN_PROGRESS / AWAITING / BLOCKED → CANCELLED） | 必須 | domain |
 | UC-TS-008 | CEO | 設計した Task の状態がアプリ再起動を跨いで保持される（永続化を意識しない） | 必須 | repository |
+| UC-TS-009 | CEO | HTTP API 経由で Task を取得できる（GET /api/tasks/{task_id} → 200 TaskResponse）| 必須 | http-api |
+| UC-TS-010 | CEO | HTTP API 経由で Room 内の Task 一覧を取得できる（GET /api/rooms/{room_id}/tasks → 200 TaskListResponse）| 必須 | http-api |
+| UC-TS-011 | CEO | HTTP API 経由で Task に Agent を割り当てられる（POST /api/tasks/{task_id}/assign → 200 TaskResponse）| 必須 | http-api |
+| UC-TS-012 | CEO | HTTP API 経由で Task をキャンセルできる（PATCH /api/tasks/{task_id}/cancel → 200 TaskResponse）| 必須 | http-api |
+| UC-TS-013 | 運用担当 | HTTP API 経由で BLOCKED Task を復旧できる（PATCH /api/tasks/{task_id}/unblock → 200 TaskResponse）| 必須 | http-api |
+| UC-TS-014 | CEO | HTTP API 経由で Stage の成果物を commit できる（POST /api/tasks/{task_id}/deliverables/{stage_id} → 200 TaskResponse）| 必須 | http-api |
+| UC-TS-015 | CEO | terminal 状態（DONE / CANCELLED）の Task への操作は 409 で拒否される | 必須 | http-api |
 
 ## 6. スコープ
 
 ### In Scope
 
-- Task 業務概念全体で観察可能な業務ふるまい（UC-TS-001〜008）
+- Task 業務概念全体で観察可能な業務ふるまい（UC-TS-001〜015）
 - ふるまいの呼び出し失敗時に観察される拒否シグナル（業務ルール違反）
 - 業務概念単位の E2E 検証戦略 → [`system-test-design.md`](system-test-design.md)
 
 ### Out of Scope（参照）
 
-- Task の HTTP API → 将来の `task/http-api/` sub-feature
 - Task の進行 UI → 将来の `task/ui/` sub-feature
 - External Review Gate の業務ふるまい → `feature/external-review-gate`（別 Aggregate）
 - Dispatcher の Stage 自動実行 → `feature/dispatcher`
@@ -238,8 +244,14 @@ CEO directive 由来の `last_error` / Agent 成果物の `body_markdown` に we
 | 14 | 業務ルール違反のエラーメッセージには次に取るべき行動の案内（Next: ...）が含まれる | UC-TS-001〜007 | TC-UT-TS-046〜052（[`domain/test-design.md`](domain/test-design.md)） |
 | 16 | Task の状態がアプリ再起動跨ぎで永続化される（status / deliverables / assigned_agent_ids / last_error が再起動後に構造的等価で復元） | UC-TS-008 | TC-E2E-TS-001（[`system-test-design.md`](system-test-design.md)） |
 | 17 | `tasks.last_error` / `deliverables.body_markdown` に Discord webhook token / GitHub PAT 等の secret を含む値を保存すると、DB には `<REDACTED:*>` でマスキングされた値が格納される（raw secret が DB に残らない） | UC-TS-008 | TC-IT-TR-020-masking-*（[`repository/test-design.md`](repository/test-design.md)） |
+| 18 | HTTP API 経由で Task を取得すると `TaskResponse` が返され、`last_error` / `body_markdown` フィールドは `<REDACTED:*>` 形式でマスキングされた値が返される（HTTP レスポンスでの defense-in-depth マスキング、業務ルール R1-12 準拠）| UC-TS-009 | TC-E2E-TS-003（[`system-test-design.md`](system-test-design.md)）|
+| 19 | HTTP API 経由で Task に Agent を割り当てると status=IN_PROGRESS になり、terminal 状態（DONE/CANCELLED）からの割り当ては 409 で拒否される | UC-TS-011, UC-TS-015 | TC-E2E-TS-003 |
+| 20 | HTTP API 経由で Task をキャンセルすると status=CANCELLED になり、既に terminal の Task へのキャンセルは 409 で拒否される | UC-TS-012, UC-TS-015 | TC-E2E-TS-003 |
+| 21 | HTTP API 経由で BLOCKED Task を復旧すると status=IN_PROGRESS になり last_error=null になる。BLOCKED 以外の Task への復旧操作は 409 で拒否される | UC-TS-013, UC-TS-015 | TC-E2E-TS-003 |
+| 22 | HTTP API 経由で成果物を commit すると `deliverables[stage_id]` が更新された `TaskResponse` が返される | UC-TS-014 | TC-E2E-TS-003 |
+| 23 | 存在しない Task ID への操作は 404 で拒否される | UC-TS-009〜014 | TC-E2E-TS-003 |
 
-E2E（受入基準 16）は [`system-test-design.md`](system-test-design.md) で詳細凍結。受入基準 1〜14 は domain sub-feature の IT / UT で検証（[`domain/test-design.md`](domain/test-design.md)）。受入基準 17 は repository sub-feature の IT で検証。
+E2E（受入基準 16）は [`system-test-design.md`](system-test-design.md) で詳細凍結。受入基準 1〜14 は domain sub-feature の IT / UT で検証（[`domain/test-design.md`](domain/test-design.md)）。受入基準 17 は repository sub-feature の IT で検証。受入基準 18〜23 は http-api sub-feature の TC-E2E-TS-003 で検証（[`system-test-design.md`](system-test-design.md)）。
 
 ## 10. 開発者品質基準（CI 担保、業務要求ではない）
 
