@@ -78,6 +78,31 @@ def _build_test_router() -> APIRouter:
 
 
 @pytest_asyncio.fixture
+async def empire_app_client(tmp_path: Path) -> AsyncClient:  # type: ignore[override]
+    """httpx.AsyncClient wired to the FastAPI app with empire routes + real SQLite tempdb.
+
+    Unlike ``app_client``, no test-only routes are added (empire router is
+    already registered via ``create_app()``).  ORM tables are created via
+    ``create_all_tables`` so CRUD operations hit a real SQLite DB.
+    """
+    from bakufu.interfaces.http.app import create_app
+    from tests.factories.db import create_all_tables, make_test_engine, make_test_session_factory
+
+    app = create_app()
+    engine = make_test_engine(tmp_path / "test.db")
+    await create_all_tables(engine)
+    session_factory = make_test_session_factory(engine)
+    app.state.engine = engine
+    app.state.session_factory = session_factory
+
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client  # type: ignore[misc]
+
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture
 async def app_client(tmp_path: Path) -> AsyncClient:  # type: ignore[override]
     """httpx.AsyncClient wired to the FastAPI app with test routes and real SQLite tempdb.
 

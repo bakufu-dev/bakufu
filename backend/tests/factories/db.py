@@ -30,4 +30,18 @@ def make_test_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSe
     return make_session_factory(engine)
 
 
-__all__ = ["make_test_engine", "make_test_session_factory"]
+async def create_all_tables(engine: AsyncEngine) -> None:
+    """Create all ORM-mapped tables in the test database.
+
+    Imports ``bakufu.infrastructure.persistence.sqlite.tables`` to ensure
+    every ORM model is registered with ``Base.metadata`` before ``create_all``
+    executes.  Production code must NOT import this function.
+    """
+    import bakufu.infrastructure.persistence.sqlite.tables  # noqa: F401 — side-effect import
+    from bakufu.infrastructure.persistence.sqlite.base import Base
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
+__all__ = ["create_all_tables", "make_test_engine", "make_test_session_factory"]
