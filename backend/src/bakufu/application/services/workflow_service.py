@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID, uuid4
 
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bakufu.application.exceptions.room_exceptions import RoomArchivedError, RoomNotFoundError
@@ -73,10 +74,13 @@ class WorkflowService:
                 raise RoomArchivedError(str(room_id))
             await self._workflow_repo.save(workflow)
             empire_id = await self._room_repo.find_empire_id_by_room_id(room_id)
+            if empire_id is None:
+                # pragma: no cover — room 存在確認済みのため通常到達しないが Fail Fast
+                raise RuntimeError(f"empire_id not found for existing room {room_id!r}")
             state = room.model_dump()
             state["workflow_id"] = str(workflow.id)
             updated_room = Room.model_validate(state)
-            await self._room_repo.save(updated_room, empire_id)  # type: ignore[arg-type]
+            await self._room_repo.save(updated_room, empire_id)
         return workflow
 
     async def find_by_room(self, room_id: RoomId) -> Workflow | None:
@@ -106,8 +110,6 @@ class WorkflowService:
         autobegin 競合を避けるため、read も含めて単一の ``async with session.begin():``
         ブロック内で完結させる (room_service.py BUG-EM-001 凍結と同様)。
         """
-        from pydantic import ValidationError
-
         async with self._session.begin():
             try:
                 workflow = await self._workflow_repo.find_by_id(workflow_id)
