@@ -44,12 +44,22 @@
 
 ## 外部 I/O 依存マップ
 
-| 外部 I/O | 用途 | raw fixture | factory | テスト戦略 |
-|---|---|---|---|---|
-| SQLite tempfile DB | Gate 永続化 / 再取得 | 該当なし | `tests/factories/external_review_gate.py` | 実 DB + TestClient |
-| FastAPI app | ルーティング / error handler | 該当なし | `create_app` fixture | httpx / TestClient |
-| Clock | decided_at / viewed_at | 該当なし | monkeypatch 可能な service clock | UTC datetime の存在と順序を検証 |
-| 外部 API | 該当なし | — | — | Mock 不要 |
+| 外部 I/O | 用途 | raw fixture | schema | factory | characterization 状態 | テスト戦略 |
+|---|---|---|---|---|---|---|
+| SQLite tempfile DB | Gate 永続化 / 再取得 | 不要（内部 DB。結合は実接続） | 不要 | `tests/factories/db.py`, `tests/factories/external_review_gate.py` | 対象外 | 実 DB + TestClient。DB 直接 assert は seed / fixture 準備に限定し、検証は API ラウンドトリップで行う |
+| FastAPI app | ルーティング / error handler | 不要（プロセス内 ASGI） | 不要 | `create_app` fixture | 対象外 | httpx ASGITransport / TestClient で公開 API から呼ぶ |
+| Clock | decided_at / viewed_at | 不要（外部サービスではない） | 不要 | monkeypatch 可能な service clock / fixed datetime factory | 対象外 | UTC aware datetime の存在、単調な順序、audit action との対応を検証 |
+| 外部 API | 該当なし | 不要 | 不要 | 不要 | 対象外 | Mock 不要 |
+
+**判定**: Issue #61 の対象は HTTP API + SQLite + 時刻だけで、外部 API / SaaS / ファイル入力は無い。したがって characterization raw/schema の新規起票は不要だ。DB は外部 I/O だが、結合テストでは実接続し、unit では repository / clock だけを factory 由来の値で置換する。
+
+## モック方針
+
+| テストレベル | モック対象 | 禁止事項 | 根拠 |
+|---|---|---|---|
+| 結合 | 外部 API なし。Clock のみ固定可 | Repository / Service / Domain をモックしない。DB 直接 assert を主検証にしない | API クライアント契約を検証する層だからだ |
+| ユニット | Repository port、Clock、request factory | `mock.return_value` のインライン dict 禁止。raw fixture 直読禁止 | factory 由来の Gate / VO で分岐を潰す |
+| system / acceptance | モックなし | sub-feature 側に system case を置かない | 親 `system-test-design.md` / `docs/acceptance-tests/scenarios/` の責務 |
 
 ## 結合テストケース
 
@@ -65,6 +75,9 @@
 | TC-IT-ERG-HTTP-008 | reviewer 不一致拒否 | なし | Gate reviewer=A | B が GET / approve / reject / cancel | 403、MSG-ERG-HTTP-002 |
 | TC-IT-ERG-HTTP-009 | validation | なし | なし | 不正 UUID / `decision=APPROVED` / 空 feedback | 422、MSG-ERG-HTTP-004 |
 | TC-IT-ERG-HTTP-010 | response masking | なし | snapshot / feedback / audit comment に webhook URL を含む Gate | GET detail | 200、raw secret は含まず `<REDACTED:*>` を含む |
+| TC-IT-ERG-HTTP-011 | HTTP API flow smoke | なし | PENDING Gate、reviewer A | 一覧 → 詳細閲覧 → approve → 詳細再取得 | 6 API のうち一覧 / 詳細 / approve がユーザー観測可能な一連の経路として成立し、audit に VIEWED と APPROVED が見える |
+| TC-IT-ERG-HTTP-012 | reject API flow smoke | なし | PENDING Gate、reviewer A | 詳細閲覧 → reject with feedback → Task 履歴取得 | feedback と REJECTED が履歴 API から観測できる |
+| TC-IT-ERG-HTTP-013 | cancel API flow smoke | なし | PENDING Gate、reviewer A | cancel with reason → 一覧取得 | CANCELLED 後の Gate は PENDING 一覧から消え、Task 履歴に残る |
 
 ## ユニットテストケース
 
@@ -76,7 +89,21 @@
 | TC-UT-ERG-HTTP-004 | authorization guard | 異常系 | reviewer 不一致 | `ExternalReviewGateAuthorizationError` |
 | TC-UT-ERG-HTTP-005 | reject request validation | 異常系 | `feedback_text=""` | Pydantic validation error |
 | TC-UT-ERG-HTTP-006 | conflict mapper | 異常系 | `decision_already_decided` violation | `ExternalReviewGateDecisionConflictError` |
+| TC-UT-ERG-HTTP-007 | list_by_task reviewer filter | セキュリティ | fake repo + A/B 混在 Gate | A の Gate だけ返る |
+| TC-UT-ERG-HTTP-008 | cancel request validation | 境界値 | `reason` 10000 / 10001 文字 | 10000 は受理、10001 は validation error |
 | TC-UT-ERG-HTTP-011 | error handlers | 異常系 | 各 application exception | MSG-ERG-HTTP-001〜003 の文言一致 |
+
+## E2E 受入基準との接続
+
+| 親受入基準 | 本 sub-feature での検証 | 親 system / acceptance での検証 |
+|---|---|---|
+| #3 承認 | TC-IT-ERG-HTTP-004 / 011 で HTTP approve 契約を検証 | CEO が公開 API 経由で approve し、APPROVED と audit を観測する |
+| #4 差し戻し / 取消 | TC-IT-ERG-HTTP-005 / 006 / 012 / 013 | CEO が reject / cancel 後、履歴と PENDING 一覧の変化を観測する |
+| #5 既決 Gate 再判断拒否 | TC-IT-ERG-HTTP-007 | 既決 Gate に再送して、ユーザーが競合メッセージを観測する |
+| #6 閲覧監査 | TC-IT-ERG-HTTP-003 / 011 / 012 | 詳細閲覧後に VIEWED audit が API レスポンスで観測できる |
+| #10 feedback 境界 | TC-IT-ERG-HTTP-005 / 009, TC-UT-ERG-HTTP-005 / 008 | 1〜10000 文字は受理、空 reject と 10001 文字は拒否 |
+| #14 再起動跨ぎ永続化 | TC-IT-ERG-HTTP-001〜006 は API ラウンドトリップ、親 `TC-E2E-ERG-001〜003` は repository 再起動 | 親 system-test-design が担当 |
+| #15 secret masking | TC-IT-ERG-HTTP-010 | repository IT と合わせて DB 保存値 / HTTP 応答値の両方を確認 |
 
 ## カバレッジ基準
 
@@ -84,6 +111,7 @@
 - MSG-ERG-HTTP-001〜004 の各文言が静的文字列で照合されている。
 - 親受入基準 #3〜6 / #10 / #14 / #15 が既存 domain / repository テストまたは本 sub-feature 結合テストで検証されている。
 - T1〜T4 の各脅威に対する対策が最低 1 件のテストケースで有効性確認されている。
+- API 6 本すべてが単発ケースとユーザー観測可能な API flow smoke のどちらかで最低 1 回通る。
 - 行カバレッジ目標: `external_review_gate_service.py` / `external_review_gates.py` / `schemas/external_review_gate.py` / `external_review_gate_exceptions.py` 合計 90% 以上。
 
 ## 人間が動作確認できるタイミング
@@ -110,11 +138,11 @@ backend/tests/
         └── test_service.py
 ```
 
-## 未決課題・要起票 characterization task
+## 未決課題
 
 | # | タスク | 起票先 |
 |---|---|---|
-| 該当なし | 未決課題なし。Issue #61 の実装 PR 内で上記テストを作成する | — |
+| 該当なし | 未決課題なし。Issue #61 の実装 PR 内で上記テストを作成する。characterization task は対象外 | — |
 
 ## 関連
 
