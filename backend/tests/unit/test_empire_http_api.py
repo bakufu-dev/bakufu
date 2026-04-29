@@ -363,13 +363,23 @@ class TestEmpireServiceCreate:
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-EM-HTTP-010: interfaces/http/ 依存方向静的解析 (同 TC-UT-HAF-010)
+# TC-UT-EM-HTTP-010: interfaces/http/routers/ + schemas/ 依存方向静的解析
 # ---------------------------------------------------------------------------
 class TestStaticDependencyAnalysisEmpire:
-    """TC-UT-EM-HTTP-010: empire 実装ファイル含む interfaces/http/ 依存方向確認.
+    """TC-UT-EM-HTTP-010: routers/ と schemas/ の依存方向を ast.walk() で全検査.
 
-    empire.py / schemas/empire.py が bakufu.domain / bakufu.infrastructure を
-    トップレベルで直接 import していないことを ast.parse() で確認する。
+    旧実装 (_collect_toplevel_imports) は tree.body のみ走査していたため、
+    関数内遅延 import（例: ``_to_empire_response`` 内の
+    ``from bakufu.domain.empire import Empire``）を見逃す盲点があった。
+    ヘルスバーグ指摘 (PR #95 却下理由) を受け ast.walk() へ拡張し、
+    トップレベル・関数内・クラス内を含む全 import 文を検査する。
+
+    スコープを ``routers/`` と ``schemas/`` に絞る理由:
+    * ``app.py``        : lifespan・handler 登録のため infra/domain deferred import が設計上正当
+    * ``dependencies.py``: DI Factory が infra を deferred import する設計（コメントで明示）
+    * ``error_handlers.py``: domain 例外を isinstance チェックするため domain deferred import が正当
+    上記ファイルは「例外許可ファイル」であり、routers / schemas は例外なく
+    bakufu.domain / bakufu.infrastructure への import が禁止される。
     """
 
     def _interfaces_http_dir(self) -> Path:
@@ -377,10 +387,16 @@ class TestStaticDependencyAnalysisEmpire:
 
         return Path(_app_mod.__file__).parent  # type: ignore[arg-type]
 
-    def _collect_toplevel_imports(self, py_file: Path) -> list[tuple[str, int]]:
+    def _collect_all_imports(self, py_file: Path) -> list[tuple[str, int]]:
+        """ast.walk() でファイル内の全 import 文（関数内遅延 import 含む）を収集する。
+
+        旧 ``_collect_toplevel_imports`` は ``tree.body`` のみを走査していたが、
+        本メソッドは ``ast.walk(tree)`` で AST 全ノードを走査するため、
+        関数本体・クラス本体・ネストされたスコープ内の import も捕捉できる。
+        """
         tree = ast.parse(py_file.read_text(encoding="utf-8"))
         results: list[tuple[str, int]] = []
-        for node in tree.body:
+        for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
                 module = node.module or ""
                 results.append((module, node.lineno))
@@ -389,32 +405,46 @@ class TestStaticDependencyAnalysisEmpire:
                     results.append((alias.name, node.lineno))
         return results
 
-    def test_empire_router_has_no_toplevel_domain_import(self) -> None:
-        """routers/empire.py must not top-level import bakufu.domain."""
+    def test_empire_router_has_no_domain_import(self) -> None:
+        """routers/ と schemas/ は bakufu.domain を一切 import してはならない（遅延含む）.
+
+        ast.walk() で関数内遅延 import も検出する。旧 BUG-EM-002 相当の違反
+        （例: router 関数内 ``from bakufu.domain.empire import Empire``）が
+        再混入した場合にこのテストが失敗する。
+        """
         interfaces_dir = self._interfaces_http_dir()
         violations: list[str] = []
-        for py_file in sorted(interfaces_dir.rglob("*.py")):
-            for module_name, lineno in self._collect_toplevel_imports(py_file):
-                if module_name.startswith("bakufu.domain"):
-                    violations.append(
-                        f"{py_file.name}:{lineno}: top-level import of {module_name}"
-                    )
+        scan_dirs = [interfaces_dir / "routers", interfaces_dir / "schemas"]
+        for scan_dir in scan_dirs:
+            for py_file in sorted(scan_dir.rglob("*.py")):
+                for module_name, lineno in self._collect_all_imports(py_file):
+                    if module_name.startswith("bakufu.domain"):
+                        violations.append(
+                            f"{py_file.name}:{lineno}: import of {module_name}"
+                        )
         assert violations == [], (
-            "Direct bakufu.domain imports detected at module level:\n"
+            "bakufu.domain imports detected in routers/ or schemas/ (including deferred):\n"
             + "\n".join(violations)
         )
 
-    def test_empire_router_has_no_toplevel_infrastructure_import(self) -> None:
-        """routers/empire.py must not top-level import bakufu.infrastructure."""
+    def test_empire_router_has_no_infrastructure_import(self) -> None:
+        """routers/ と schemas/ は bakufu.infrastructure を一切 import してはならない（遅延含む）.
+
+        ast.walk() で関数内遅延 import も検出する。
+        ``dependencies.py`` は DI Factory として infra deferred import が設計上正当なため
+        スコープ対象外 (routers/ と schemas/ のみ検査)。
+        """
         interfaces_dir = self._interfaces_http_dir()
         violations: list[str] = []
-        for py_file in sorted(interfaces_dir.rglob("*.py")):
-            for module_name, lineno in self._collect_toplevel_imports(py_file):
-                if module_name.startswith("bakufu.infrastructure"):
-                    violations.append(
-                        f"{py_file.name}:{lineno}: top-level import of {module_name}"
-                    )
+        scan_dirs = [interfaces_dir / "routers", interfaces_dir / "schemas"]
+        for scan_dir in scan_dirs:
+            for py_file in sorted(scan_dir.rglob("*.py")):
+                for module_name, lineno in self._collect_all_imports(py_file):
+                    if module_name.startswith("bakufu.infrastructure"):
+                        violations.append(
+                            f"{py_file.name}:{lineno}: import of {module_name}"
+                        )
         assert violations == [], (
-            "Direct bakufu.infrastructure imports detected at module level:\n"
+            "bakufu.infrastructure imports detected in routers/ or schemas/ (including deferred):\n"
             + "\n".join(violations)
         )
