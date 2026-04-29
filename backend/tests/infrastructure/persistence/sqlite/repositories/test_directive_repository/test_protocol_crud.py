@@ -1,12 +1,12 @@
-"""Directive Repository: Protocol surface + basic CRUD + Lifecycle coverage.
+"""Directive Repository: Protocol サーフェス + 基本 CRUD + ライフサイクルカバレッジ。
 
 TC-UT-DRR-001〜009 + TC-IT-DRR-LIFECYCLE.
 
-REQ-DRR-001 / REQ-DRR-002 — 4-method Protocol surface (§確定 R1-A) +
-basic CRUD (find_by_id / count / save / Tx boundary) + Lifecycle.
+REQ-DRR-001 / REQ-DRR-002 ── 4 メソッドの Protocol サーフェス (§確定 R1-A) +
+基本 CRUD (find_by_id / count / save / Tx 境界) + ライフサイクル。
 
-Per ``docs/features/directive-repository/test-design.md``.
-Issue #34 — M2 0006.
+``docs/features/directive-repository/test-design.md`` 準拠。
+Issue #34 — M2 0006。
 """
 
 from __future__ import annotations
@@ -31,25 +31,25 @@ pytestmark = pytest.mark.asyncio
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-DRR-001: Protocol definition + 4-method surface (§確定 R1-A)
+# TC-UT-DRR-001: Protocol 定義 + 4 メソッドサーフェス (§確定 R1-A)
 # ---------------------------------------------------------------------------
 class TestDirectiveRepositoryProtocol:
-    """TC-UT-DRR-001: Protocol declares 4 async methods (§確定 R1-A)."""
+    """TC-UT-DRR-001: Protocol が 4 つの async メソッドを宣言する (§確定 R1-A)。"""
 
     async def test_protocol_declares_four_async_methods(self) -> None:
-        """TC-UT-DRR-001: DirectiveRepository has find_by_id/count/save/find_by_room."""
+        """TC-UT-DRR-001: DirectiveRepository が find_by_id/count/save/find_by_room を持つ。"""
         assert hasattr(DirectiveRepository, "find_by_id")
         assert hasattr(DirectiveRepository, "count")
         assert hasattr(DirectiveRepository, "save")
         assert hasattr(DirectiveRepository, "find_by_room")
 
     async def test_protocol_does_not_have_find_by_task_id(self) -> None:
-        """TC-UT-DRR-001: find_by_task_id is NOT part of the Protocol (YAGNI).
+        """TC-UT-DRR-001: find_by_task_id は Protocol に含まれない（YAGNI）。
 
-        §確定 R1-D 後続申し送り: find_by_task_id is deferred to the
-        task-repository PR (method + INDEX + FK closure simultaneously).
-        If it reappears here, the YAGNI decision in detailed-design.md
-        was reversed without updating the design doc first.
+        §確定 R1-D 後続申し送り: find_by_task_id は task-repository PR
+        （メソッド + INDEX + FK のクロージャを同時に行う）に先送り。
+        ここに再出現したら、detailed-design.md の YAGNI 判断を
+        設計ドキュメントを更新せずに反転させたことになる。
         """
         assert not hasattr(DirectiveRepository, "find_by_task_id"), (
             "[FAIL] DirectiveRepository.find_by_task_id must not exist (YAGNI).\n"
@@ -61,11 +61,10 @@ class TestDirectiveRepositoryProtocol:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-UT-DRR-001: SqliteDirectiveRepository satisfies DirectiveRepository.
+        """TC-UT-DRR-001: SqliteDirectiveRepository が DirectiveRepository を満たす。
 
-        The variable annotation acts as a static-type assertion; pyright
-        strict will reject the assignment if any of the 4 Protocol
-        methods is missing or has a wrong signature.
+        変数アノテーションが静的型アサーションとして機能する。pyright strict は、
+        Protocol の 4 メソッドのいずれかが欠落または誤シグネチャの場合、代入を拒否する。
         """
         async with session_factory() as session:
             repo: DirectiveRepository = SqliteDirectiveRepository(session)
@@ -78,7 +77,7 @@ class TestDirectiveRepositoryProtocol:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-UT-DRR-001: duck-typing confirms all 4 methods present on the impl."""
+        """TC-UT-DRR-001: ダックタイピングで実装に 4 メソッドすべてが存在することを確認する。"""
         async with session_factory() as session:
             repo = SqliteDirectiveRepository(session)
             for method_name in ("find_by_id", "count", "save", "find_by_room"):
@@ -92,14 +91,14 @@ class TestDirectiveRepositoryProtocol:
 # TC-UT-DRR-002: find_by_id (REQ-DRR-002, 受入基準 3)
 # ---------------------------------------------------------------------------
 class TestFindById:
-    """TC-UT-DRR-002: find_by_id retrieves saved Directives; None for unknown."""
+    """TC-UT-DRR-002: find_by_id は保存済み Directive を取得する。未知の id は None。"""
 
     async def test_find_by_id_returns_saved_directive(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """find_by_id(directive.id) returns the saved Directive."""
+        """find_by_id(directive.id) が保存済み Directive を返す。"""
         directive = make_directive(target_room_id=seeded_room_id)
         async with session_factory() as session, session.begin():
             await SqliteDirectiveRepository(session).save(directive)
@@ -115,26 +114,26 @@ class TestFindById:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """find_by_id(uuid4()) returns None without raising."""
+        """find_by_id(uuid4()) は例外を投げず None を返す。"""
         async with session_factory() as session:
             fetched = await SqliteDirectiveRepository(session).find_by_id(uuid4())
         assert fetched is None
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-DRR-003: save round-trip equality (REQ-DRR-002, 受入基準 4, §確定 R1-G)
+# TC-UT-DRR-003: save ラウンドトリップ等価性 (REQ-DRR-002, 受入基準 4, §確定 R1-G)
 # ---------------------------------------------------------------------------
 class TestSaveRoundTrip:
-    """TC-UT-DRR-003: save → find_by_id round-trip preserves all attributes."""
+    """TC-UT-DRR-003: save → find_by_id ラウンドトリップで全属性が保たれる。"""
 
     async def test_save_find_by_id_round_trip_all_attributes(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """All attributes (id/text/target_room_id/created_at/task_id) survive round-trip.
+        """全属性 (id/text/target_room_id/created_at/task_id) がラウンドトリップで保たれる。
 
-        §確定 R1-G: created_at must remain UTC tz-aware after SQLite storage.
+        §確定 R1-G: created_at は SQLite ストア後も UTC tz-aware を維持しなければならない。
         """
         directive = make_directive(target_room_id=seeded_room_id)
         async with session_factory() as session, session.begin():
@@ -154,7 +153,7 @@ class TestSaveRoundTrip:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """§確定 R1-G: created_at survives round-trip as UTC tz-aware datetime."""
+        """§確定 R1-G: created_at がラウンドトリップで UTC tz-aware datetime のまま残る。"""
         directive = make_directive(target_room_id=seeded_room_id)
         async with session_factory() as session, session.begin():
             await SqliteDirectiveRepository(session).save(directive)
@@ -173,7 +172,7 @@ class TestSaveRoundTrip:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """§確定 R1-G: task_id=None round-trips correctly."""
+        """§確定 R1-G: task_id=None が正しくラウンドトリップする。"""
         directive = make_directive(target_room_id=seeded_room_id, task_id=None)
         async with session_factory() as session, session.begin():
             await SqliteDirectiveRepository(session).save(directive)
@@ -186,10 +185,10 @@ class TestSaveRoundTrip:
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-DRR-006: count() SQL COUNT(*) contract (受入基準 8, §確定 R1-A D補強)
+# TC-UT-DRR-006: count() の SQL COUNT(*) 契約 (受入基準 8, §確定 R1-A D 補強)
 # ---------------------------------------------------------------------------
 class TestCountIssuesScalarCount:
-    """TC-UT-DRR-006: count() issues SELECT COUNT(*), not a full row scan."""
+    """TC-UT-DRR-006: count() は SELECT COUNT(*) を発行し、行を全件スキャンしない。"""
 
     async def test_count_emits_select_count_not_full_load(
         self,
@@ -197,10 +196,10 @@ class TestCountIssuesScalarCount:
         app_engine: AsyncEngine,
         seeded_room_id: UUID,
     ) -> None:
-        """SQL log shows SELECT count(*) FROM directives for count().
+        """SQL ログが count() に対し SELECT count(*) FROM directives を示す。
 
-        empire-repository §確定 D 補強 contract: count() must never
-        stream full Directive rows back to Python.
+        empire-repository §確定 D 補強の契約: count() は Directive 行を Python へ
+        全件ストリームしてはならない。
         """
         for _ in range(2):
             directive = make_directive(target_room_id=seeded_room_id)
@@ -238,17 +237,17 @@ class TestCountIssuesScalarCount:
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-DRR-007: save UPSERT update semantics (受入基準 4)
+# TC-UT-DRR-007: save の UPSERT 更新セマンティクス (受入基準 4)
 # ---------------------------------------------------------------------------
 class TestSaveUpsertSemantics:
-    """TC-UT-DRR-007: re-save with same id updates the row (UPSERT)."""
+    """TC-UT-DRR-007: 同一 id での再 save は行を更新する（UPSERT）。"""
 
     async def test_resave_updates_text(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """Same directive.id with changed text → latest text returned."""
+        """同じ directive.id で text を変更 → 最新の text が返る。"""
         original = make_directive(target_room_id=seeded_room_id, text="初期テキスト")
         async with session_factory() as session, session.begin():
             await SqliteDirectiveRepository(session).save(original)
@@ -271,7 +270,7 @@ class TestSaveUpsertSemantics:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """UPSERT ensures count stays 1 after multiple saves of same id."""
+        """UPSERT により、同じ id を複数回 save しても件数は 1 のまま。"""
         directive = make_directive(target_room_id=seeded_room_id)
         for _ in range(3):
             async with session_factory() as session, session.begin():
@@ -283,20 +282,20 @@ class TestSaveUpsertSemantics:
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-DRR-008: save after link_task — task_id update (§確定 R1-G)
+# TC-UT-DRR-008: link_task 後の save ── task_id 更新 (§確定 R1-G)
 # ---------------------------------------------------------------------------
 class TestSaveAfterLinkTask:
-    """TC-UT-DRR-008: link_task → re-save updates task_id column."""
+    """TC-UT-DRR-008: link_task → 再 save で task_id カラムが更新される。"""
 
     async def test_link_task_and_resave_updates_task_id(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """directive.link_task(task_id) → save → find_by_id returns updated task_id.
+        """directive.link_task(task_id) → save → find_by_id が更新後 task_id を返す。
 
-        BUG-DRR-001 closure (0007): directives.task_id → tasks.id RESTRICT FK
-        is now active. A real tasks row must exist before setting directive.task_id.
+        BUG-DRR-001 クロージャ (0007): directives.task_id → tasks.id RESTRICT FK が
+        有効。directive.task_id を設定する前に実 tasks 行が存在しなければならない。
         """
         from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
             SqliteTaskRepository,
@@ -308,7 +307,7 @@ class TestSaveAfterLinkTask:
         async with session_factory() as session, session.begin():
             await SqliteDirectiveRepository(session).save(original)
 
-        # BUG-DRR-001 closure: save a real Task referencing this Directive first.
+        # BUG-DRR-001 クロージャ: 先にこの Directive を参照する実 Task を save する。
         real_task = make_task(room_id=seeded_room_id, directive_id=original.id)
         async with session_factory() as session, session.begin():
             await SqliteTaskRepository(session).save(real_task)
@@ -330,17 +329,17 @@ class TestSaveAfterLinkTask:
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-DRR-009: Tx boundary (§確定 R1-B, empire §確定 B 踏襲)
+# TC-UT-DRR-009: Tx 境界 (§確定 R1-B, empire §確定 B 踏襲)
 # ---------------------------------------------------------------------------
 class TestTxBoundary:
-    """TC-UT-DRR-009: Repository does not auto-commit; caller owns UoW boundary."""
+    """TC-UT-DRR-009: Repository は自動 commit せず、UoW 境界は呼び出し側が所有する。"""
 
     async def test_save_within_begin_persists(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """save inside async with session.begin() persists the row."""
+        """async with session.begin() 内の save は行を永続化する。"""
         directive = make_directive(target_room_id=seeded_room_id)
         async with session_factory() as session, session.begin():
             await SqliteDirectiveRepository(session).save(directive)
@@ -354,17 +353,17 @@ class TestTxBoundary:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """save without session.begin() leaves row absent after session close.
+        """session.begin() なしの save は session クローズ後に行が残らない。
 
-        Without begin(), SQLAlchemy async session defaults to autobegin
-        but does NOT auto-commit on session exit. The implicit transaction
-        rolls back when the session context manager exits without commit.
+        begin() なしの場合、SQLAlchemy async session はデフォルトで autobegin するが、
+        session 終了時に自動 commit はしない。暗黙トランザクションは、commit せず
+        session コンテキストマネージャを抜けた時点でロールバックされる。
         """
         directive = make_directive(target_room_id=seeded_room_id)
         async with session_factory() as session:
-            # No session.begin() → auto-rollback on __aexit__
+            # session.begin() なし → __aexit__ で自動ロールバック
             await SqliteDirectiveRepository(session).save(directive)
-            # Do NOT commit
+            # commit しない
 
         async with session_factory() as session:
             fetched = await SqliteDirectiveRepository(session).find_by_id(directive.id)
@@ -375,22 +374,23 @@ class TestTxBoundary:
 
 
 # ---------------------------------------------------------------------------
-# TC-IT-DRR-LIFECYCLE: 4-method full lifecycle (§確定 R1-F + R1-G)
+# TC-IT-DRR-LIFECYCLE: 4 メソッドのフルライフサイクル (§確定 R1-F + R1-G)
 # ---------------------------------------------------------------------------
 class TestLifecycleIntegration:
-    """TC-IT-DRR-LIFECYCLE: save → find_by_room → save(update) → count → find_by_id."""
+    """TC-IT-DRR-LIFECYCLE: save → find_by_room → save(更新) → count → find_by_id。"""
 
     async def test_full_lifecycle_4_method(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """4-method full lifecycle: save x3 → find_by_room → link_task+resave → count → find_by_id.
+        """4 メソッドのフルライフサイクル: save x3 → find_by_room →
+        link_task+resave → count → find_by_id。
 
-        Validates §確定 R1-F (save 1引数) and §確定 R1-G (task_id update)
-        in a real end-to-end sequence without any mocking.
+        §確定 R1-F (save 1 引数) と §確定 R1-G (task_id 更新) を、
+        モックなしのリアルな end-to-end シーケンスで検証する。
         """
-        # Step 1: save 3 directives
+        # Step 1: 3 件の directive を save
         now = datetime.now(UTC)
         d1 = make_directive(
             target_room_id=seeded_room_id,
@@ -399,7 +399,7 @@ class TestLifecycleIntegration:
         )
         import asyncio
 
-        await asyncio.sleep(0)  # yield to ensure ordering
+        await asyncio.sleep(0)  # 順序保証のため yield
         d2 = make_directive(
             target_room_id=seeded_room_id,
             text="ディレクティブ2",
@@ -417,14 +417,14 @@ class TestLifecycleIntegration:
             await repo.save(d2)
             await repo.save(d3)
 
-        # Step 2: find_by_room returns 3 directives
+        # Step 2: find_by_room が 3 件の directive を返す
         async with session_factory() as session:
             results = await SqliteDirectiveRepository(session).find_by_room(seeded_room_id)
         assert len(results) == 3
 
-        # Step 3: link_task → re-save
-        # BUG-DRR-001 closure (0007): directives.task_id → tasks.id RESTRICT FK.
-        # Must save a real Task referencing d1 before setting directive.task_id.
+        # Step 3: link_task → 再 save
+        # BUG-DRR-001 クロージャ (0007): directives.task_id → tasks.id RESTRICT FK。
+        # directive.task_id を設定する前に d1 を参照する実 Task を save しなければならない。
         from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
             SqliteTaskRepository,
         )
@@ -440,18 +440,18 @@ class TestLifecycleIntegration:
         async with session_factory() as session, session.begin():
             await SqliteDirectiveRepository(session).save(d1_updated)
 
-        # Step 4: count → 3 (re-save is UPSERT, not INSERT)
+        # Step 4: count → 3（再 save は UPSERT であり INSERT ではない）
         async with session_factory() as session:
             count = await SqliteDirectiveRepository(session).count()
         assert count == 3
 
-        # Step 5: find_by_id(d2.id) → d2 attributes
+        # Step 5: find_by_id(d2.id) → d2 の属性
         async with session_factory() as session:
             via_id = await SqliteDirectiveRepository(session).find_by_id(d2.id)
         assert via_id is not None
         assert via_id.text == d2.text
 
-        # Step 6: d1_updated has task_id set
+        # Step 6: d1_updated に task_id が設定されている
         async with session_factory() as session:
             d1_restored = await SqliteDirectiveRepository(session).find_by_id(d1.id)
         assert d1_restored is not None
@@ -462,15 +462,14 @@ class TestLifecycleIntegration:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """§確定 R1-F: save(directive) reads FK from directive.target_room_id.
+        """§確定 R1-F: save(directive) は directive.target_room_id から FK を読み取る。
 
-        The 1-argument save pattern: Directive carries target_room_id
-        as its own attribute, so the Repository reads it directly.
-        Saving should succeed without an extra empire_id argument.
+        1 引数 save パターン: Directive は target_room_id を自身の属性として持つため、
+        Repository はそれを直接読み取る。追加の empire_id 引数なしで save が成功するべき。
         """
         directive = make_directive(target_room_id=seeded_room_id)
         async with session_factory() as session, session.begin():
-            # No second argument needed — §確定 R1-F standard pattern
+            # 第二引数不要 ── §確定 R1-F の標準パターン
             await SqliteDirectiveRepository(session).save(directive)
 
         async with session_factory() as session:

@@ -1,57 +1,46 @@
-"""ExternalReviewGate Aggregate Root (REQ-GT-001〜007).
+"""ExternalReviewGate Aggregate Root（REQ-GT-001〜007）。
 
-Implements ``docs/features/external-review-gate/`` as the M1 7th and
-final sibling. The aggregate follows the same shape established by
-empire / workflow / agent / room / directive / task but is **scoped
-much tighter**: 4 methods x 4 decision states = 16-cell dispatch
-table with **7 ✓ transitions + 9 ✗ cells**. The narrow surface lines
-up with the Gate's job — bind a single human review round to a
-single Stage outcome, then freeze.
+``docs/features/external-review-gate/`` を M1 の 7 番目かつ最後の兄弟として実装する。
+この Aggregate は empire / workflow / agent / room / directive / task で確立された
+形を踏襲するが、**スコープがより絞り込まれている**: 4 メソッド × 4 decision 状態 =
+16 セルのディスパッチ表で **7 ✓ 遷移 + 9 ✗ セル**。狭い表面は Gate の役割と一致する
+— 単一の人間レビュー ラウンドを単一の Stage 結果に結び付け、その後固定する。
 
-Two structural elements unique to the Gate's lifecycle:
+Gate のライフサイクル特有の構造要素は 2 つ:
 
-* a **decision-table state machine** in
-  :mod:`bakufu.domain.external_review_gate.state_machine`, locked by
-  ``Final[Mapping]`` + :class:`types.MappingProxyType` per §確定 B; and
-* **four dedicated behavior methods** whose names map 1:1 to the
-  action names in the state-machine table per §確定 A (the same
-  Steve R2 凍結 pattern that task #42 §確定 A-2 introduced).
+* :mod:`bakufu.domain.external_review_gate.state_machine` 内の **decision-table
+  state machine**。§確定 B により ``Final[Mapping]`` + :class:`types.MappingProxyType`
+  でロックされる。
+* §確定 A により state-machine テーブルのアクション名と 1:1 対応する **4 つの専用
+  ビヘイビア メソッド**（task #42 §確定 A-2 が導入した Steve R2 凍結パターン）。
 
-Design contracts (do not break without re-running design review):
+設計コントラクト（再設計レビュー無しに破壊しないこと）:
 
-* **Pre-validate rebuild (§確定 E)** — every behavior calls
-  :meth:`_rebuild_with_state` which goes through ``model_dump`` /
-  ``swap`` / ``model_validate``. ``model_copy(update=...)`` is
-  intentionally avoided.
-* **State-machine bypass Fail-Fast (§確定 A)** — illegal
-  ``(decision, action)`` pairs raise
-  :class:`ExternalReviewGateInvariantViolation` with
-  ``kind='decision_already_decided'`` so MSG-GT-001 lands with the
-  "Next:" hint already populated (the Gate is single-decision by
-  design).
-* **Snapshot immutable (§確定 D)** — :meth:`_rebuild_with_state`
-  does **not** accept a ``deliverable_snapshot`` argument; every
-  rebuild path inherits the construction-time snapshot byte-for-byte.
-  The structural absence is the strongest possible guarantee against
-  accidental mutation.
-* **Audit-trail append-only (§確定 C)** — every behavior appends
-  exactly one new :class:`AuditEntry` at the end of the list.
-  :meth:`_rebuild_with_state` runs
-  :func:`_validate_audit_trail_append_only` against the previous
-  trail before reconstructing, so a misbehaving rebuild path
-  surfaces ``audit_trail_append_only`` (MSG-GT-005) before the new
-  instance is constructed.
-* **Webhook auto-mask (§確定 H)** —
-  :class:`ExternalReviewGateInvariantViolation` applies
-  ``mask_discord_webhook`` / ``mask_discord_webhook_in`` to
-  ``message`` / ``detail`` at construction time so a webhook URL
-  embedded in ``feedback_text`` cannot leak through the exception
-  stream.
-* **Aggregate boundary (§確定 J)** — the Gate does **not** import
-  Task / Workflow / Stage methods. ``GateService.approve()`` →
-  ``task.approve_review(...)`` (and the symmetric REJECTED /
-  CANCELLED legs) is dispatched by the application layer, keeping
-  the Gate ignorant of Task internals.
+* **Pre-validate rebuild（§確定 E）** — 全ビヘイビアは :meth:`_rebuild_with_state`
+  を呼び、``model_dump`` / ``swap`` / ``model_validate`` を経由する。
+  ``model_copy(update=...)`` は意図的に避ける。
+* **State-machine bypass Fail-Fast（§確定 A）** — 不正な ``(decision, action)`` 対は
+  :class:`ExternalReviewGateInvariantViolation` を ``kind='decision_already_decided'``
+  で送出するため、MSG-GT-001 が「Next:」ヒント込みで投入される（Gate は設計上
+  単一決定）。
+* **Snapshot immutable（§確定 D）** — :meth:`_rebuild_with_state` は
+  ``deliverable_snapshot`` 引数を **受け取らない**。再構築のあらゆる経路は構築時の
+  スナップショットをバイト単位で継承する。構造的な不在こそが偶発的な変異に対する
+  最強の保証である。
+* **Audit-trail append-only（§確定 C）** — 全ビヘイビアは末尾に厳密に 1 つの新しい
+  :class:`AuditEntry` を追記する。:meth:`_rebuild_with_state` は再構築前に
+  :func:`_validate_audit_trail_append_only` を旧 trail に対して実行するため、
+  rebuild 経路が誤動作した場合は新インスタンス構築の *前* に
+  ``audit_trail_append_only``（MSG-GT-005）が表面化する。
+* **Webhook auto-mask（§確定 H）** —
+  :class:`ExternalReviewGateInvariantViolation` は構築時に ``mask_discord_webhook`` /
+  ``mask_discord_webhook_in`` を ``message`` / ``detail`` に適用するため、
+  ``feedback_text`` に埋め込まれた webhook URL が例外ストリームから漏洩することは
+  ない。
+* **Aggregate boundary（§確定 J）** — Gate は Task / Workflow / Stage のメソッドを
+  **import しない**。``GateService.approve()`` → ``task.approve_review(...)``
+  （および対称な REJECTED / CANCELLED 経路）はアプリケーション層がディスパッチし、
+  Gate は Task の内部に対して無知のままとなる。
 """
 
 from __future__ import annotations
@@ -93,18 +82,17 @@ from bakufu.domain.value_objects import (
 
 
 class ExternalReviewGate(BaseModel):
-    """One human-review checkpoint binding a Task's Stage to a Decision.
+    """Task の Stage を Decision に結び付ける 1 つの人間レビュー チェックポイント。
 
-    A Gate is created in PENDING by ``GateService.create()`` (after
-    Task.request_external_review fires), accumulates audit views via
-    :meth:`record_view`, and terminates exactly once via
-    :meth:`approve` / :meth:`reject` / :meth:`cancel`. The terminal
-    states still permit :meth:`record_view` (audit reads of decided
-    Gates are legitimate and tracked, §確定 G "誰がいつ何度見たか").
+    Gate は ``GateService.create()``（Task.request_external_review が発火した後）に
+    よって PENDING で生成され、:meth:`record_view` で監査ビューを蓄積し、
+    :meth:`approve` / :meth:`reject` / :meth:`cancel` のいずれか 1 つで終端する。
+    終端状態でも :meth:`record_view` は許可される（決定済み Gate に対する監査読取は
+    正当でありトラックする、§確定 G「誰がいつ何度見たか」）。
 
-    Out-of-aggregate concerns (Task / Stage / Owner reference
-    integrity, snapshot inline-copy persistence, Gate-to-Task
-    dispatch) live in ``GateService`` per §確定 J.
+    Aggregate 外の関心事（Task / Stage / Owner 参照整合性、スナップショットの
+    インライン コピー永続化、Gate-to-Task ディスパッチ）は §確定 J により
+    ``GateService`` に置く。
     """
 
     model_config = ConfigDict(
@@ -124,7 +112,7 @@ class ExternalReviewGate(BaseModel):
     created_at: datetime
     decided_at: datetime | None = None
 
-    # ---- pre-validation -------------------------------------------------
+    # ---- 事前検証 -------------------------------------------------------
     @field_validator("created_at", mode="after")
     @classmethod
     def _require_created_at_tz_aware(cls, value: datetime) -> datetime:
@@ -150,14 +138,13 @@ class ExternalReviewGate(BaseModel):
     @field_validator("feedback_text", mode="before")
     @classmethod
     def _normalize_feedback_text(cls, value: object) -> object:
-        """NFC-only normalization (§確定 F).
+        """NFC のみの正規化（§確定 F）。
 
-        ``strip`` is intentionally **not** applied — CEO-authored
-        review comments may include indented quoting / multi-paragraph
-        bodies whose leading whitespace carries meaning, the same
-        precedent set by ``Persona.prompt_body`` /
+        ``strip`` は意図的に **適用しない** — CEO が書くレビュー コメントには
+        インデント引用や複数段落の本文が含まれる場合があり、その先頭空白に
+        意味を持たせている。``Persona.prompt_body`` /
         ``PromptKit.prefix_markdown`` / ``Directive.text`` /
-        ``Task.last_error``.
+        ``Task.last_error`` と同じ先例。
         """
         if isinstance(value, str):
             return unicodedata.normalize("NFC", value)
@@ -165,24 +152,21 @@ class ExternalReviewGate(BaseModel):
 
     @model_validator(mode="after")
     def _check_invariants(self) -> Self:
-        """Run the structural invariants (§確定 J kinds 2 + 4).
+        """構造的不変条件を実行する（§確定 J kinds 2 + 4）。
 
-        ``decision_already_decided`` is enforced by the state-machine
-        ``lookup`` path (raises before this validator runs);
-        ``snapshot_immutable`` is enforced structurally by
-        :meth:`_rebuild_with_state` not accepting a snapshot argument;
-        ``audit_trail_append_only`` is enforced by
-        :meth:`_rebuild_with_state` running the validator against the
-        previous trail before constructing the new instance. What
-        stays on the after-validator is the pair of single-instance
-        invariants that hydration paths (Repository round-trip) must
-        also satisfy.
+        ``decision_already_decided`` は state-machine ``lookup`` 経路で強制される
+        （このバリデータより前に送出される）。``snapshot_immutable`` は
+        :meth:`_rebuild_with_state` が snapshot 引数を受理しないことで構造的に
+        強制される。``audit_trail_append_only`` は :meth:`_rebuild_with_state`
+        が新インスタンス構築前に旧 trail に対してバリデータを走らせて強制する。
+        after-validator に残るのは、水和経路（リポジトリ往復）も満たさなければならない
+        単一インスタンス不変条件のペア。
         """
         _validate_decided_at_consistency(self.decision, self.decided_at)
         _validate_feedback_text_range(self.feedback_text)
         return self
 
-    # ---- behaviors (Tell, Don't Ask) ------------------------------------
+    # ---- 振る舞い（Tell, Don't Ask） -----------------------------------
     def approve(
         self,
         by_owner_id: OwnerId,
@@ -190,12 +174,11 @@ class ExternalReviewGate(BaseModel):
         *,
         decided_at: datetime,
     ) -> ExternalReviewGate:
-        """PENDING → APPROVED, attach ``feedback_text`` + audit entry (REQ-GT-002).
+        """PENDING → APPROVED、``feedback_text`` と監査エントリを追加（REQ-GT-002）。
 
-        ``by_owner_id`` records the human who approved. The
-        ``decided_at`` argument is taken explicitly (per §設計判断補足
-        "なぜ decided_at を引数で受け取るか") so the aggregate stays
-        time-pure and tests don't need ``freezegun``.
+        ``by_owner_id`` は承認した人間を記録する。``decided_at`` 引数は明示的に取る
+        （§設計判断補足「なぜ decided_at を引数で受け取るか」）ので Aggregate は
+        time-pure に保たれ、テストは ``freezegun`` を必要としない。
         """
         next_decision = self._lookup_or_raise("approve")
         return self._rebuild_with_state(
@@ -215,11 +198,10 @@ class ExternalReviewGate(BaseModel):
         *,
         decided_at: datetime,
     ) -> ExternalReviewGate:
-        """PENDING → REJECTED, attach ``feedback_text`` + audit entry (REQ-GT-003).
+        """PENDING → REJECTED、``feedback_text`` と監査エントリを追加（REQ-GT-003）。
 
-        Same shape as :meth:`approve` — the only differences are the
-        target ``decision`` (REJECTED) and the audit row's
-        :class:`AuditAction` discriminator.
+        :meth:`approve` と同形 — 違いは目的の ``decision``（REJECTED）と監査行の
+        :class:`AuditAction` 識別子のみ。
         """
         next_decision = self._lookup_or_raise("reject")
         return self._rebuild_with_state(
@@ -239,12 +221,11 @@ class ExternalReviewGate(BaseModel):
         *,
         decided_at: datetime,
     ) -> ExternalReviewGate:
-        """PENDING → CANCELLED, attach ``feedback_text`` + audit entry (REQ-GT-004).
+        """PENDING → CANCELLED、``feedback_text`` と監査エントリを追加（REQ-GT-004）。
 
-        ``reason`` lands in both ``feedback_text`` (so the
-        application layer can surface why the Gate was withdrawn)
-        and the audit entry's ``comment`` (so the audit trail
-        records the reasoning).
+        ``reason`` は ``feedback_text``（アプリケーション層が Gate 取り下げ理由を
+        表面化できるよう）と監査エントリの ``comment``（監査証跡が理由を記録できる
+        よう）の両方に格納する。
         """
         next_decision = self._lookup_or_raise("cancel")
         return self._rebuild_with_state(
@@ -263,19 +244,17 @@ class ExternalReviewGate(BaseModel):
         *,
         viewed_at: datetime,
     ) -> ExternalReviewGate:
-        """Append a VIEWED audit entry; permitted in **every** decision state (REQ-GT-005, §確定 G).
+        """VIEWED 監査エントリを追記。**全** decision 状態で許可（REQ-GT-005、§確定 G）。
 
-        ``decision`` / ``decided_at`` / ``feedback_text`` are
-        deliberately *not* updated — record_view is purely an audit
-        operation. Idempotency is **not** offered (§確定 G "冪等性
-        なし"): two calls with the same ``(by_owner_id, viewed_at)``
-        produce two distinct entries because the audit requirement is
-        "誰がいつ何度見たか" — collapsing duplicates would discard
-        the very signal the audit trail is supposed to preserve.
+        ``decision`` / ``decided_at`` / ``feedback_text`` は意図的に *更新しない* —
+        record_view は純粋な監査操作。冪等性は **提供しない**（§確定 G「冪等性なし」）:
+        同じ ``(by_owner_id, viewed_at)`` での 2 回の呼び出しは別個のエントリを 2 つ
+        生成する。監査要件が「誰がいつ何度見たか」だからであり、重複を畳み込むと監査
+        証跡が保持すべきシグナルそのものを破棄してしまう。
         """
-        # State-machine lookup confirms the action is legal from the
-        # current decision; the result is the same value (self-loop)
-        # but the call documents the contract.
+        # State-machine ルックアップにより現在の decision からアクションが正当である
+        # ことを確認する。結果は同じ値（self-loop）だが、呼び出し自体がコントラクトを
+        # 文書化する。
         self._lookup_or_raise("record_view")
         return self._rebuild_with_state(
             new_audit_action=AuditAction.VIEWED,
@@ -284,15 +263,14 @@ class ExternalReviewGate(BaseModel):
             new_audit_at=viewed_at,
         )
 
-    # ---- internal -------------------------------------------------------
+    # ---- 内部実装 -------------------------------------------------------
     def _lookup_or_raise(self, action: GateAction) -> ReviewDecision:
-        """State-machine lookup, translating ``KeyError`` into MSG-GT-001.
+        """State-machine ルックアップ。``KeyError`` を MSG-GT-001 に翻訳する。
 
-        Returns the ``next_decision`` for the (current_decision,
-        action) pair. The four PENDING-only actions (``approve`` /
-        ``reject`` / ``cancel``) raise here when the Gate has already
-        been decided — the lookup table simply has no row for
-        ``(APPROVED, 'approve')`` etc.
+        (current_decision, action) ペアの ``next_decision`` を返す。PENDING 限定の
+        4 つのアクション（``approve`` / ``reject`` / ``cancel``）は Gate が既に決定
+        済みの場合ここで送出する — ルックアップ表に ``(APPROVED, 'approve')`` 等の
+        行が単に存在しないため。
         """
         try:
             return lookup(self.decision, action)
@@ -326,28 +304,24 @@ class ExternalReviewGate(BaseModel):
         feedback_text: str | None = None,
         decided_at: datetime | None = None,
     ) -> ExternalReviewGate:
-        """Pre-validate rebuild for behavior outputs (§確定 E).
+        """ビヘイビア出力のための pre-validate rebuild（§確定 E）。
 
-        The rebuild path is the **only** legal way to mutate the
-        Gate's audit_trail / decision / feedback_text / decided_at
-        fields. ``deliverable_snapshot`` is intentionally absent
-        from the keyword-only argument list so no rebuild path can
-        replace it (§確定 D).
+        rebuild 経路は Gate の audit_trail / decision / feedback_text / decided_at
+        フィールドを変異させる **唯一の** 合法経路である。``deliverable_snapshot``
+        はキーワード専用引数リストから意図的に除外されているため、いかなる rebuild
+        経路もこれを置き換えられない（§確定 D）。
 
-        Step order:
+        ステップ順:
 
-        1. Build the new :class:`AuditEntry` — every behavior
-           appends exactly one entry, so the constructor lives here
-           rather than at every call site.
-        2. Compose ``new_audit_trail = self.audit_trail + [new]`` and
-           validate it against the previous trail
-           (:func:`_validate_audit_trail_append_only`). Failure
-           here surfaces *before* a potentially-broken instance is
-           constructed — Fail-Fast on programming bugs that
-           accidentally drop or reorder existing entries.
-        3. ``model_dump`` the current state, swap in the supplied
-           field deltas, and re-construct via ``model_validate`` so
-           ``_check_invariants`` re-fires.
+        1. 新しい :class:`AuditEntry` を構築する — 全ビヘイビアは厳密に 1 エントリを
+           追記するため、コンストラクタ呼出は各呼び出し箇所ではなくここに置く。
+        2. ``new_audit_trail = self.audit_trail + [new]`` を作り、旧 trail に対して
+           （:func:`_validate_audit_trail_append_only`）検証する。ここでの失敗は
+           壊れている可能性のあるインスタンスが構築される *前* に表面化する —
+           既存エントリを誤って落とす / 並べ替えるプログラミング バグに対する
+           Fail-Fast。
+        3. 現在状態を ``model_dump`` し、与えられたフィールド差分をスワップ し、
+           ``model_validate`` で再構築する。これにより ``_check_invariants`` が再発火する。
         """
         new_entry = AuditEntry(
             id=uuid4(),
@@ -367,18 +341,16 @@ class ExternalReviewGate(BaseModel):
         if decided_at is not None:
             state["decided_at"] = decided_at
         state["audit_trail"] = [entry.model_dump() for entry in new_audit_trail]
-        # ``deliverable_snapshot`` carries through ``model_dump`` /
-        # ``model_validate`` byte-for-byte: the snapshot pinned at
-        # construction time is what the rebuilt Gate sees too
-        # (§確定 D §不変条件).
+        # ``deliverable_snapshot`` は ``model_dump`` / ``model_validate`` を
+        # バイト単位で通過する: 構築時に固定したスナップショットが再構築された
+        # Gate にもそのまま継承される（§確定 D §不変条件）。
         rebuilt = ExternalReviewGate.model_validate(state)
-        # §確定 D 3 重防衛 safety net: the keyword-only signature above
-        # is the *structural* guarantee (no rebuild path can pass a new
-        # snapshot), but Steve R-S1 requires the validator be **active**
-        # so a future refactor that breaks the structural guarantee is
-        # caught here too. With the structural guarantee in place this
-        # call is a no-op on the happy path and Fail-Fast otherwise —
-        # exactly what a defense-in-depth safety net should be.
+        # §確定 D 3 重防衛 セーフティ ネット: 上記のキーワード専用シグネチャが
+        # *構造的* 保証（rebuild 経路は新スナップショットを渡せない）であるが、
+        # Steve R-S1 はバリデータを **アクティブ** に保つことを要求するため、構造的
+        # 保証を破る将来のリファクタもここで捕捉される。構造的保証が機能している
+        # 限り、この呼び出しはハッピーパスでは no-op、それ以外では Fail-Fast —
+        # 多層防御セーフティ ネットの理想的な振る舞い。
         _validate_snapshot_immutable(self.deliverable_snapshot, rebuilt.deliverable_snapshot)
         return rebuilt
 

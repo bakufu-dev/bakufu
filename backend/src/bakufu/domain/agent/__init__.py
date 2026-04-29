@@ -1,23 +1,22 @@
-"""Agent Aggregate Root package.
+"""Agent Aggregate Root パッケージ。
 
-Implements ``REQ-AG-001``〜``REQ-AG-006`` per ``docs/features/agent``.
-Split into four sibling modules along the design's responsibility lines so
-each file stays under the 500-line readability budget and the file-level
-boundary mirrors the design's twin-defense pattern (Stage's self-check vs
-the aggregate's collection check):
+``docs/features/agent`` に従って ``REQ-AG-001``〜``REQ-AG-006`` を実装する。
+設計の責務境界に沿って 4 つの兄弟モジュールに分割し、各ファイルが 500 行の
+可読性予算を下回るようにし、ファイル レベル境界が設計の twin-defense パターン
+（Stage の自己チェック vs Aggregate のコレクション チェック）を踏襲する:
 
 * :mod:`bakufu.domain.agent.value_objects` — :class:`Persona` /
-  :class:`ProviderConfig` / :class:`SkillRef` Pydantic VOs with self-checks.
-* :mod:`bakufu.domain.agent.path_validators` — H1〜H10 path traversal
-  defense for ``SkillRef.path`` (Confirmation H), each rule a pure function.
-* :mod:`bakufu.domain.agent.aggregate_validators` — five module-level
-  invariant helpers covering provider capacity / uniqueness / default count
-  and skill capacity / uniqueness.
-* :mod:`bakufu.domain.agent.agent` — :class:`Agent` Aggregate Root that
-  dispatches over the helpers in deterministic order.
+  :class:`ProviderConfig` / :class:`SkillRef` の Pydantic VO（自己チェック付き）。
+* :mod:`bakufu.domain.agent.path_validators` — ``SkillRef.path`` の H1〜H10
+  パス トラバーサル防御（Confirmation H）。各ルールは純粋関数。
+* :mod:`bakufu.domain.agent.aggregate_validators` — provider 容量 / 一意性 /
+  default 個数、および skill 容量 / 一意性を網羅するモジュール レベルの不変
+  条件ヘルパ 5 つ。
+* :mod:`bakufu.domain.agent.agent` — ヘルパを決定的順序でディスパッチする
+  :class:`Agent` Aggregate Root。
 
-This ``__init__`` re-exports the public surface plus the underscore-prefixed
-helpers tests need to invoke directly.
+この ``__init__`` はパブリック表面に加え、テストが直接呼ぶ必要のある
+アンダースコア プレフィックス ヘルパも再 export する。
 """
 
 from __future__ import annotations

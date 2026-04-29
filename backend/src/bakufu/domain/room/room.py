@@ -1,35 +1,33 @@
-"""Room Aggregate Root (REQ-RM-001〜006).
+"""Room Aggregate Root（REQ-RM-001〜006）。
 
-Implements per ``docs/features/room``. The aggregate dispatches over four
-helpers in :mod:`bakufu.domain.room.aggregate_validators` and composes
-:class:`AgentMembership` + :class:`PromptKit` VOs from
-:mod:`bakufu.domain.room.value_objects`.
+``docs/features/room`` に従って実装する。Aggregate は
+:mod:`bakufu.domain.room.aggregate_validators` の 4 つのヘルパへディスパッチし、
+:mod:`bakufu.domain.room.value_objects` から :class:`AgentMembership` と
+:class:`PromptKit` の VO を組み合わせる。
 
-Design contracts:
+設計コントラクト:
 
-* **Pre-validate rebuild (Confirmation A)** — ``add_member`` /
-  ``remove_member`` / ``update_prompt_kit`` / ``archive`` all go through
-  :meth:`Room._rebuild_with` (``model_dump → swap → model_validate``).
-* **NFC pipeline (Confirmation B)** — ``Room.name`` and ``Room.description``
-  reuse the empire / workflow / agent ``nfc_strip`` helper. Length judgement
-  happens in the aggregate validators so the resulting
-  :class:`RoomInvariantViolation` carries ``kind='name_range'`` /
-  ``'description_too_long'`` with MSG-RM-001 / 002 wording.
-* **archive idempotency (Confirmation D)** — ``archive()`` always returns a
-  *new* instance. Idempotency means "result state matches", not "object
-  identity". Pydantic v2 frozen + ``model_validate`` rebuild guarantees
-  this; the docstring documents the contract so callers do not rely on
-  ``is`` comparisons.
-* **archived terminal (Confirmation E)** — ``add_member`` / ``remove_member``
-  / ``update_prompt_kit`` Fail Fast on archived Rooms with
-  ``kind='room_archived'`` (MSG-RM-006). ``archive()`` itself is idempotent
-  and bypasses this check.
-* **`(agent_id, role)` pair uniqueness (Confirmation F)** — same agent can
-  hold multiple roles; the validator uses the pair as the key.
-* **Application-layer responsibilities** — Workflow existence, Agent
-  existence, leader-required-by-Workflow, and Empire-scoped name uniqueness
-  live in ``RoomService`` / ``EmpireService``. The aggregate trusts only
-  what it can observe locally.
+* **Pre-validate rebuild（Confirmation A）** — ``add_member`` /
+  ``remove_member`` / ``update_prompt_kit`` / ``archive`` はすべて
+  :meth:`Room._rebuild_with`（``model_dump → swap → model_validate``）を経由する。
+* **NFC パイプライン（Confirmation B）** — ``Room.name`` と ``Room.description`` は
+  empire / workflow / agent の ``nfc_strip`` ヘルパを再利用する。長さ判定は
+  Aggregate バリデータで行うため、結果の :class:`RoomInvariantViolation` は
+  MSG-RM-001 / 002 の文言で ``kind='name_range'`` / ``'description_too_long'``
+  を持つ。
+* **archive 冪等性（Confirmation D）** — ``archive()`` は常に *新* インスタンスを
+  返す。冪等性とは「結果状態が一致する」ことであり「オブジェクト同一性」ではない。
+  Pydantic v2 frozen + ``model_validate`` 再構築がこれを保証する。docstring が
+  コントラクトを文書化するため、呼び元は ``is`` 比較に依存しない。
+* **archived 終端（Confirmation E）** — ``add_member`` / ``remove_member`` /
+  ``update_prompt_kit`` は archived な Room に対して ``kind='room_archived'``
+  （MSG-RM-006）で Fail Fast する。``archive()`` 自体は冪等でこのチェックをバイパス
+  する。
+* **`(agent_id, role)` 対の一意性（Confirmation F）** — 同じエージェントが複数の
+  ロールを持てる。バリデータは対をキーとして使う。
+* **アプリケーション層の責務** — Workflow 存在、Agent 存在、Workflow 要求の leader、
+  Empire スコープ名一意性は ``RoomService`` / ``EmpireService`` に置く。Aggregate
+  はローカルに観測できる範囲のみを信頼する。
 """
 
 from __future__ import annotations
@@ -61,12 +59,12 @@ from bakufu.domain.value_objects import (
 
 
 class Room(BaseModel):
-    """Editable composition space within an :class:`Empire` (REQ-RM-001).
+    """:class:`Empire` 内の編集可能な構成スペース（REQ-RM-001）。
 
-    Composes a :class:`PromptKit` preamble and ``list[AgentMembership]`` over
-    a fixed :class:`WorkflowId`. The aggregate enforces structural invariants
-    only — Workflow existence and leader-required-by-Workflow checks belong
-    to the application layer because they require external knowledge.
+    固定の :class:`WorkflowId` 上で :class:`PromptKit` プリアンブルと
+    ``list[AgentMembership]`` を構成する。Aggregate は構造的不変条件のみを強制する
+    — Workflow 存在および Workflow 要求 leader チェックは外部知識を要するため
+    アプリケーション層の責務。
     """
 
     model_config = ConfigDict(
@@ -83,20 +81,20 @@ class Room(BaseModel):
     prompt_kit: PromptKit = PromptKit()
     archived: bool = False
 
-    # ---- pre-validation -------------------------------------------------
+    # ---- 事前検証 -------------------------------------------------------
     @field_validator("name", "description", mode="before")
     @classmethod
     def _normalize_short_text(cls, value: object) -> object:
-        # NFC + strip pipeline shared with empire / workflow / agent (Confirmation B).
+        # empire / workflow / agent と共有する NFC + strip パイプライン
+        # （Confirmation B）。
         return nfc_strip(value)
 
     @model_validator(mode="after")
     def _check_invariants(self) -> Self:
-        """Dispatch over the aggregate-level helpers in deterministic order.
+        """Aggregate レベル ヘルパを決定的順序でディスパッチする。
 
-        Order: name range → description length → member uniqueness → member
-        capacity. Earlier failures hide later ones so error messages stay
-        focused on the root cause.
+        順序: name range → description length → member 一意性 → member 容量。
+        先行する失敗が後続を隠すため、エラー メッセージは根本原因に集中する。
         """
         _validate_name_range(self.name)
         _validate_description_length(self.description)
@@ -104,34 +102,35 @@ class Room(BaseModel):
         _validate_member_capacity(self.members)
         return self
 
-    # ---- behaviors (Tell, Don't Ask) ------------------------------------
+    # ---- 振る舞い（Tell, Don't Ask） -----------------------------------
     def add_member(self, membership: AgentMembership) -> Room:
-        """Append ``membership`` to ``members``; aggregate validation catches duplicates.
+        """``membership`` を ``members`` に追加。重複は Aggregate 検証で捕捉される。
 
-        Fail Fast on archived Rooms (Confirmation E). The
-        ``(agent_id, role)`` pair-uniqueness check fires inside
-        :meth:`_check_invariants` after the rebuild.
+        archived な Room には Fail Fast（Confirmation E）。
+        ``(agent_id, role)`` 対の一意性チェックは rebuild 後の
+        :meth:`_check_invariants` 内部で発火する。
 
         Raises:
-            RoomInvariantViolation: ``kind='room_archived'`` (MSG-RM-006) if
-                the Room is already archived; ``kind='member_duplicate'``
-                (MSG-RM-003) if the pair already exists; ``kind='capacity_exceeded'``
-                (MSG-RM-004) if adding pushes the count over :data:`MAX_MEMBERS`.
+            RoomInvariantViolation: 既にアーカイブ済みの場合
+                ``kind='room_archived'``（MSG-RM-006）。対が既存の場合
+                ``kind='member_duplicate'``（MSG-RM-003）。追加で件数が
+                :data:`MAX_MEMBERS` を超える場合 ``kind='capacity_exceeded'``
+                （MSG-RM-004）。
         """
         self._reject_if_archived()
         return self._rebuild_with(members=[*self.members, membership])
 
     def remove_member(self, agent_id: AgentId, role: Role) -> Room:
-        """Drop the membership matching ``(agent_id, role)``.
+        """``(agent_id, role)`` に一致するメンバーシップを削除する。
 
-        Fail Fast on archived Rooms (Confirmation E) and on missing pair
-        (MSG-RM-005) — the caller cannot blindly retry a remove without
-        observing the current member list.
+        archived な Room には Fail Fast（Confirmation E）。対が見つからない場合も
+        Fail Fast（MSG-RM-005） — 呼び元は現在のメンバ リストを観測せずに削除を盲目
+        的に再試行できない。
 
         Raises:
-            RoomInvariantViolation: ``kind='room_archived'`` (MSG-RM-006);
-                ``kind='member_not_found'`` (MSG-RM-005) when no membership
-                matches the pair.
+            RoomInvariantViolation: ``kind='room_archived'``（MSG-RM-006）。対に
+                一致するメンバーシップが無い場合 ``kind='member_not_found'``
+                （MSG-RM-005）。
         """
         self._reject_if_archived()
         if not any(m.agent_id == agent_id and m.role == role for m in self.members):
@@ -150,36 +149,35 @@ class Room(BaseModel):
         )
 
     def update_prompt_kit(self, prompt_kit: PromptKit) -> Room:
-        """Replace ``prompt_kit`` with ``prompt_kit``.
+        """``prompt_kit`` を新しい ``prompt_kit`` に置き換える。
 
-        Fail Fast on archived Rooms (Confirmation E). PromptKit length
-        violations surface as :class:`pydantic.ValidationError` at VO
-        construction time (Confirmation I two-stage catch), so by the time
-        this method is invoked the VO is already valid.
+        archived な Room には Fail Fast（Confirmation E）。PromptKit の長さ違反は
+        VO 構築時に :class:`pydantic.ValidationError` として表面化するため
+        （Confirmation I の 2 段階キャッチ）、本メソッドが呼ばれる時点では VO は
+        既に valid。
 
         Raises:
-            RoomInvariantViolation: ``kind='room_archived'`` (MSG-RM-006).
+            RoomInvariantViolation: ``kind='room_archived'``（MSG-RM-006）。
         """
         self._reject_if_archived()
         return self._rebuild_with(prompt_kit=prompt_kit)
 
     def archive(self) -> Room:
-        """Return a new :class:`Room` with ``archived=True`` (Confirmation D).
+        """``archived=True`` を持つ新しい :class:`Room` を返す（Confirmation D）。
 
-        Idempotent: calling on an already-archived Room yields a fresh Room
-        that is **structurally equal** to the input but has a different
-        ``id()``. Callers must not rely on object identity — always reassign
-        the returned value (``room = room.archive()``). Same contract Norman
-        approved for the agent / empire ``archive()`` behaviors.
+        冪等: 既にアーカイブ済みの Room に対して呼んでも、入力と **構造的に等しく**、
+        ``id()`` のみ異なる新規 Room を生成する。呼び元はオブジェクト同一性に依存
+        してはならず、常に返値を代入し直すこと（``room = room.archive()``）。Norman
+        が agent / empire の ``archive()`` 振る舞いで承認したのと同じコントラクト。
         """
         return self._rebuild_with_state({"archived": True})
 
-    # ---- internal -------------------------------------------------------
+    # ---- 内部実装 -------------------------------------------------------
     def _reject_if_archived(self) -> None:
-        """Raise ``room_archived`` (MSG-RM-006) when the Room is terminal.
+        """Room が終端状態のとき ``room_archived``（MSG-RM-006）を送出する。
 
-        Confirmation E: archived Rooms reject all mutating behaviors except
-        :meth:`archive` itself, which stays idempotent for retry tolerance.
+        Confirmation E: archived な Room は :meth:`archive` 自身を除く全ての変異
+        振る舞いを拒否する。``archive`` は再試行耐性のため冪等のまま保たれる。
         """
         if self.archived:
             raise RoomInvariantViolation(
@@ -198,7 +196,7 @@ class Room(BaseModel):
         members: list[AgentMembership] | None = None,
         prompt_kit: PromptKit | None = None,
     ) -> Room:
-        """Re-construct via ``model_validate`` so ``_check_invariants`` re-fires."""
+        """``model_validate`` で再構築し ``_check_invariants`` を再発火させる。"""
         state = self.model_dump()
         if members is not None:
             state["members"] = [m.model_dump() for m in members]
@@ -207,7 +205,7 @@ class Room(BaseModel):
         return Room.model_validate(state)
 
     def _rebuild_with_state(self, updates: dict[str, Any]) -> Room:
-        """Pre-validate rebuild for scalar attribute updates (e.g. ``archived``)."""
+        """スカラ属性更新（例 ``archived``）のための pre-validate rebuild。"""
         state = self.model_dump()
         state.update(updates)
         return Room.model_validate(state)

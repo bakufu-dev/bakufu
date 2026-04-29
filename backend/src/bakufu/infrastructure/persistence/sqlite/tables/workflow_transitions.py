@@ -1,23 +1,20 @@
-"""``workflow_transitions`` table — Workflow ↔ Transition child rows.
+"""``workflow_transitions`` テーブル — Workflow ↔ Transition 子行。
 
-Stores :class:`bakufu.domain.workflow.entities.Transition` values as a
-side table of the Workflow Aggregate. ``from_stage_id`` /
-``to_stage_id`` are **intentionally not** foreign keys (§確定 J in
-``docs/features/workflow-repository/detailed-design.md``); the
-Aggregate-level ``_validate_transition_refs`` already enforces that
-both ends live inside the Workflow's ``stages`` collection at
-construction time.
+:class:`bakufu.domain.workflow.entities.Transition` の値を Workflow Aggregate の
+関連テーブルとして保存する。``from_stage_id`` / ``to_stage_id`` は **意図的に**
+外部キーには **しない**（``docs/features/workflow-repository/detailed-design.md``
+§確定 J）。Aggregate レベルの ``_validate_transition_refs`` が、構築時に両端が
+Workflow の ``stages`` コレクション内に存在することを既に強制する。
 
-Cascade: deleting a Workflow row purges its transition rows
-(``ON DELETE CASCADE``). The ``UNIQUE(workflow_id, transition_id)``
-constraint mirrors
-:func:`bakufu.domain.workflow.dag_validators._validate_transition_id_unique`
-at the row level.
+カスケード: Workflow 行の削除はその transition 行を消去する（``ON DELETE CASCADE``）。
+``UNIQUE(workflow_id, transition_id)`` 制約は
+:func:`bakufu.domain.workflow.dag_validators._validate_transition_id_unique` を行
+レベルでミラーする。
 
-No ``Masked*`` TypeDecorator on any column — neither the source /
-target stage IDs nor the enum-string ``condition`` / human label fall
-into the Schneier 申し送り #6 secret categories. Registered with the
-CI three-layer defense's no-mask contract.
+どのカラムにも ``Masked*`` TypeDecorator は付けない — ソース／ターゲットの stage
+ID も、enum 文字列の ``condition`` も、人間可読ラベルも Schneier 申し送り #6 の
+シークレット カテゴリには該当しない。CI 3 層防御のノー マスク コントラクトに
+登録される。
 """
 
 from __future__ import annotations
@@ -31,7 +28,7 @@ from bakufu.infrastructure.persistence.sqlite.base import Base, UUIDStr
 
 
 class WorkflowTransitionRow(Base):
-    """ORM mapping for the ``workflow_transitions`` table."""
+    """``workflow_transitions`` テーブルの ORM マッピング。"""
 
     __tablename__ = "workflow_transitions"
 

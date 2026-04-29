@@ -1,27 +1,27 @@
-"""Room Repository: §確定 R1-J — MaskedText wiring on rooms.prompt_kit_prefix_markdown.
+"""Room Repository: §確定 R1-J ── rooms.prompt_kit_prefix_markdown への MaskedText 配線.
 
-**Schneier 申し送り #3 实適用の物理保証 (Room 適用)**. This module is the core
-masking test file for PR #33 — the MaskedText TypeDecorator on
-``rooms.prompt_kit_prefix_markdown`` is exercised end-to-end against a real
-SQLite DB, against 7 secret-bearing prompt-prefix shapes:
+**Schneier 申し送り #3 実適用の物理保証 (Room 適用)**.
+本モジュールは PR #33 の masking テスト中核 ──
+``rooms.prompt_kit_prefix_markdown`` 上の MaskedText TypeDecorator を
+実 SQLite DB に対して端から端まで動かし、secret を含む 7 種類の
+prompt prefix 形に対して検証する:
 
-1. **discord** — Discord Bot Token in webhook URL context →
-   ``<REDACTED:DISCORD_TOKEN>`` (primary case from test instruction,
-   §確定 R1-J 不可逆性).
-2. **anthropic** — ``ANTHROPIC_API_KEY=sk-ant-api03-XXX...`` →
-   ``<REDACTED:ANTHROPIC_KEY>``.
-3. **github** — ``ghp_XXX...`` → ``<REDACTED:GITHUB_PAT>``.
-4. **bearer** — ``Authorization: Bearer XXX`` → ``<REDACTED:BEARER>``.
-5. **no-secret** — plain prefix → unchanged (passthrough).
-6. **roundtrip** — §確定 R1-J §不可逆性: ``find_by_id`` returns the masked
-   form (raw token unrecoverable from DB).
-7. **multiple** — 3+ secret types in one prefix → all redacted.
+1. **discord** ── webhook URL 文脈中の Discord Bot Token →
+   ``<REDACTED:DISCORD_TOKEN>`` (テスト指示の主要ケース、§確定 R1-J 不可逆性)。
+2. **anthropic** ── ``ANTHROPIC_API_KEY=sk-ant-api03-XXX...`` →
+   ``<REDACTED:ANTHROPIC_KEY>``。
+3. **github** ── ``ghp_XXX...`` → ``<REDACTED:GITHUB_PAT>``。
+4. **bearer** ── ``Authorization: Bearer XXX`` → ``<REDACTED:BEARER>``。
+5. **no-secret** ── 平文 prefix → 変更なし (passthrough)。
+6. **roundtrip** ── §確定 R1-J §不可逆性: ``find_by_id`` は masking 済み形を
+   返す (生トークンは DB から復元不能)。
+7. **multiple** ── 1 つの prefix に 3 種以上の secret → 全て redact される。
 
-Each verification reads ``rooms.prompt_kit_prefix_markdown`` via **raw SQL
-SELECT** so we observe the literal bytes that hit the disk (bypassing
-``MaskedText.process_result_value`` on the read side).
+各検証は ``rooms.prompt_kit_prefix_markdown`` を **raw SQL SELECT** で
+読む ── ディスクに書き込まれた実バイトを観察するため (読み取り側で
+``MaskedText.process_result_value`` を迂回)。
 
-Per ``docs/features/room-repository/test-design.md`` TC-IT-RR-008-masking-*.
+``docs/features/room-repository/test-design.md`` TC-IT-RR-008-masking-* 準拠。
 """
 
 from __future__ import annotations
@@ -44,26 +44,25 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.asyncio
 
 
-# Real-shape (synthetic) secret tokens. Pattern lengths must match
-# the masking gateway's regex (masking.py _REGEX_PATTERNS) so the
-# token is actually redacted.
+# 実形 (合成) の secret トークン。パターン長は masking ゲートウェイの正規表現
+# (masking.py _REGEX_PATTERNS) に一致させなければ redact されない。
 
-# Discord Bot Token — matches [MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{27,}
-# Used in a webhook URL context per test instruction.
-# Constructed via concatenation (same pattern as _ANTHROPIC_TOKEN) to prevent
-# GitHub push-protection false positives on a clearly synthetic test fixture.
+# Discord Bot Token ── [MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{27,} に一致。
+# テスト指示に従い webhook URL 文脈で使用。
+# 明らかに合成テストフィクスチャに対する GitHub push-protection の誤検知を
+# 避けるため、_ANTHROPIC_TOKEN と同じく連結で構築する。
 _DISCORD_TOKEN = "MTk4NjIyNDgz" + "NDcxOTI1MjQ4.ClFDg_." + "A" * 27
 
-# Anthropic API key — matches sk-ant-(?:api03-)?[A-Za-z0-9_\-]{40,}
+# Anthropic API キー ── sk-ant-(?:api03-)?[A-Za-z0-9_\-]{40,} に一致。
 _ANTHROPIC_TOKEN = "sk-ant-api03-" + "A" * 60
 
-# GitHub PAT — matches (?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}
+# GitHub PAT ── (?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,} に一致。
 _GITHUB_TOKEN = "ghp_" + "X" * 40
 
-# Bearer token — matches Authorization: Bearer <token>
+# Bearer トークン ── Authorization: Bearer <token> に一致。
 _BEARER_TOKEN = "eyJhbGciOi.tokenpart.signature"
 
-# Redaction sentinels (masking.py _REGEX_PATTERNS).
+# redaction sentinel (masking.py _REGEX_PATTERNS)。
 _DISCORD_SENTINEL = "<REDACTED:DISCORD_TOKEN>"
 _ANTHROPIC_SENTINEL = "<REDACTED:ANTHROPIC_KEY>"
 _GITHUB_SENTINEL = "<REDACTED:GITHUB_PAT>"
@@ -74,11 +73,11 @@ async def _read_persisted_prefix(
     session_factory: async_sessionmaker[AsyncSession],
     room_id: UUID,
 ) -> str:
-    """Raw-SQL SELECT to fetch ``rooms.prompt_kit_prefix_markdown`` literal bytes.
+    """``rooms.prompt_kit_prefix_markdown`` の実バイトを raw-SQL SELECT で取得する。
 
-    Bypasses ``MaskedText.process_result_value`` so we observe the value
-    that is physically stored on disk. Uses ``.hex`` for the UUID parameter
-    to match ``UUIDStr`` TypeDecorator storage format.
+    ``MaskedText.process_result_value`` を迂回して、ディスクに物理的に
+    保存された値を観察する。``UUIDStr`` TypeDecorator の保存形式と
+    合わせるため、UUID パラメータは ``.hex`` を使う。
     """
     async with session_factory() as session:
         stmt = text("SELECT prompt_kit_prefix_markdown FROM rooms WHERE id = :id")
@@ -94,7 +93,7 @@ def _make_room_with_prefix(
     *,
     workflow_id: UUID,
 ) -> Room:
-    """Build a Room whose PromptKit carries ``prefix_markdown``."""
+    """``prefix_markdown`` を持つ PromptKit を備えた Room を構築する。"""
     return make_room(
         workflow_id=workflow_id,
         prompt_kit=make_prompt_kit(prefix_markdown=prefix_markdown),
@@ -105,14 +104,14 @@ def _make_room_with_prefix(
 # TC-IT-RR-008-masking-discord (primary case, §確定 R1-J)
 # ---------------------------------------------------------------------------
 class TestDiscordTokenMasked:
-    """TC-IT-RR-008-masking-discord: Discord Bot Token in webhook URL redacted.
+    """TC-IT-RR-008-masking-discord: webhook URL 中の Discord Bot Token が redact される。
 
-    This is the **primary case** from the test instruction:
+    テスト指示の **主要ケース**:
     ``prompt_kit_prefix_markdownにDiscord webhook URLを渡した時DB上で
     <REDACTED:DISCORD_TOKEN>になること(不可逆性確認)``.
 
-    A prompt-kit prefix that contains a Discord Bot Token embedded in a
-    webhook URL must be masked before it hits SQLite disk.
+    webhook URL に埋め込まれた Discord Bot Token を含む prompt kit prefix は、
+    SQLite ディスクに到達する前に masking されねばならない。
     """
 
     async def test_discord_token_in_webhook_url_redacted(
@@ -121,7 +120,7 @@ class TestDiscordTokenMasked:
         seeded_empire_id: UUID,
         seeded_workflow_id: UUID,
     ) -> None:
-        """Raw-SQL SELECT shows ``<REDACTED:DISCORD_TOKEN>``; raw token absent."""
+        """Raw-SQL SELECT が ``<REDACTED:DISCORD_TOKEN>`` を返し、生トークンは残らない。"""
         prefix = (
             f"通知先: https://discord.com/api/webhooks/123456789012345678/{_DISCORD_TOKEN}\n"
             f"このURLを使ってワークフロー完了を通知する。"
@@ -147,7 +146,7 @@ class TestDiscordTokenMasked:
 # TC-IT-RR-008-masking-anthropic
 # ---------------------------------------------------------------------------
 class TestAnthropicKeyMasked:
-    """TC-IT-RR-008-masking-anthropic: Anthropic API key redacted on save."""
+    """TC-IT-RR-008-masking-anthropic: save 時に Anthropic API キーが redact される。"""
 
     async def test_anthropic_key_redacted_in_persisted_prefix(
         self,
@@ -155,7 +154,7 @@ class TestAnthropicKeyMasked:
         seeded_empire_id: UUID,
         seeded_workflow_id: UUID,
     ) -> None:
-        """Raw-SQL SELECT shows ``<REDACTED:ANTHROPIC_KEY>``; raw token absent."""
+        """Raw-SQL SELECT が ``<REDACTED:ANTHROPIC_KEY>`` を返し、生トークンは残らない。"""
         prefix = f"ANTHROPIC_API_KEY={_ANTHROPIC_TOKEN} を使ってClaude APIを呼ぶこと。"
         room = _make_room_with_prefix(prefix, workflow_id=seeded_workflow_id)
         async with session_factory() as session, session.begin():
@@ -177,7 +176,7 @@ class TestAnthropicKeyMasked:
 # TC-IT-RR-008-masking-github
 # ---------------------------------------------------------------------------
 class TestGitHubPatMasked:
-    """TC-IT-RR-008-masking-github: GitHub PAT redacted on save."""
+    """TC-IT-RR-008-masking-github: save 時に GitHub PAT が redact される。"""
 
     async def test_github_pat_redacted_in_persisted_prefix(
         self,
@@ -185,7 +184,7 @@ class TestGitHubPatMasked:
         seeded_empire_id: UUID,
         seeded_workflow_id: UUID,
     ) -> None:
-        """Raw-SQL SELECT shows ``<REDACTED:GITHUB_PAT>``; raw PAT absent."""
+        """Raw-SQL SELECT が ``<REDACTED:GITHUB_PAT>`` を返し、生 PAT は残らない。"""
         prefix = f"git push には {_GITHUB_TOKEN} を使うこと。"
         room = _make_room_with_prefix(prefix, workflow_id=seeded_workflow_id)
         async with session_factory() as session, session.begin():
@@ -207,7 +206,7 @@ class TestGitHubPatMasked:
 # TC-IT-RR-008-masking-bearer
 # ---------------------------------------------------------------------------
 class TestBearerTokenMasked:
-    """TC-IT-RR-008-masking-bearer: Authorization: Bearer XXX redacted."""
+    """TC-IT-RR-008-masking-bearer: Authorization: Bearer XXX が redact される。"""
 
     async def test_bearer_token_redacted_in_persisted_prefix(
         self,
@@ -215,7 +214,7 @@ class TestBearerTokenMasked:
         seeded_empire_id: UUID,
         seeded_workflow_id: UUID,
     ) -> None:
-        """Raw-SQL SELECT shows ``<REDACTED:BEARER>``; raw token absent."""
+        """Raw-SQL SELECT が ``<REDACTED:BEARER>`` を返し、生トークンは残らない。"""
         prefix = f"APIコール時は ``Authorization: Bearer {_BEARER_TOKEN}`` を使うこと。"
         room = _make_room_with_prefix(prefix, workflow_id=seeded_workflow_id)
         async with session_factory() as session, session.begin():
@@ -237,7 +236,7 @@ class TestBearerTokenMasked:
 # TC-IT-RR-008-masking-no-secret (passthrough)
 # ---------------------------------------------------------------------------
 class TestNoSecretPassthrough:
-    """TC-IT-RR-008-masking-no-secret: plain prefix is stored unchanged."""
+    """TC-IT-RR-008-masking-no-secret: 平文 prefix は変更なしで保存される。"""
 
     async def test_plain_prefix_is_passthrough(
         self,
@@ -245,11 +244,10 @@ class TestNoSecretPassthrough:
         seeded_empire_id: UUID,
         seeded_workflow_id: UUID,
     ) -> None:
-        """A prefix with no Schneier-#6 secrets is persisted byte-identical.
+        """Schneier #6 secret を含まない prefix はバイト等価で保存される。
 
-        Confirms masking is **scoped** — only known secret patterns
-        get redacted; the masking gateway is not over-aggressive on
-        plain text.
+        masking が **適用範囲限定** であることを確認 ── 既知の secret
+        パターンのみ redact され、平文に対して過敏に反応しない。
         """
         plain = (
             "あなたはコードレビューを担当する開発者です。"
@@ -271,16 +269,15 @@ class TestNoSecretPassthrough:
 # TC-IT-RR-008-masking-roundtrip (§確定 R1-J §不可逆性)
 # ---------------------------------------------------------------------------
 class TestRoundTripIsIrreversible:
-    """TC-IT-RR-008-masking-roundtrip: §確定 R1-J §不可逆性 — find_by_id returns masked.
+    """TC-IT-RR-008-masking-roundtrip: §確定 R1-J §不可逆性 ── find_by_id は masking 形を返す。
 
-    Once a Discord Bot Token is masked at save time, the raw token is
-    **physically unrecoverable** from the DB. ``find_by_id`` must
-    therefore return a Room whose ``prompt_kit.prefix_markdown`` carries
-    the redaction sentinel rather than the original token.
+    save 時に一度 Discord Bot Token が masking されると、生トークンは
+    DB から **物理的に復元不能** となる。``find_by_id`` は
+    ``prompt_kit.prefix_markdown`` に元トークンではなく redaction sentinel
+    を含む Room を返さねばならない。
 
-    This is the primary irreversibility test specifically requested in
-    the task instruction: "Discord webhook URLを渡した時DB上でになること
-    (不可逆性確認)".
+    タスク指示に明示要求された主要 irreversibility テスト:
+    「Discord webhook URLを渡した時DB上でになること(不可逆性確認)」。
     """
 
     async def test_find_by_id_returns_masked_prefix_markdown(
@@ -289,7 +286,7 @@ class TestRoundTripIsIrreversible:
         seeded_empire_id: UUID,
         seeded_workflow_id: UUID,
     ) -> None:
-        """Save raw Discord webhook URL → find_by_id → prefix == masked form."""
+        """生 Discord webhook URL を保存 → find_by_id → prefix が masking 形。"""
         raw_prefix = f"Notify via https://discord.com/api/webhooks/12345/{_DISCORD_TOKEN}"
         room = _make_room_with_prefix(raw_prefix, workflow_id=seeded_workflow_id)
         async with session_factory() as session, session.begin():
@@ -307,7 +304,7 @@ class TestRoundTripIsIrreversible:
             f"[FAIL] §確定 R1-J §不可逆性 violated: raw Discord token recovered after "
             f"round-trip.\nRestored: {restored.prompt_kit.prefix_markdown!r}"
         )
-        # The round-tripped Room must NOT equal the original (masking changed the value).
+        # ラウンドトリップ済み Room は元と等価であってはならない (masking が値を変更している)。
         assert restored != room, (
             "[FAIL] round-trip equality should not hold for masked prompts; "
             "if this passes, masking might be a no-op."
@@ -318,7 +315,7 @@ class TestRoundTripIsIrreversible:
 # TC-IT-RR-008-masking-multiple
 # ---------------------------------------------------------------------------
 class TestMultipleSecretsAllRedacted:
-    """TC-IT-RR-008-masking-multiple: 3+ secret types in one prefix all redacted."""
+    """TC-IT-RR-008-masking-multiple: 1 つの prefix に 3 種以上の secret → 全て redact。"""
 
     async def test_multiple_secrets_all_redacted_in_one_pass(
         self,
@@ -326,11 +323,11 @@ class TestMultipleSecretsAllRedacted:
         seeded_empire_id: UUID,
         seeded_workflow_id: UUID,
     ) -> None:
-        """A prefix with discord + anthropic + github all gets fully redacted.
+        """discord + anthropic + github を含む prefix は全て完全に redact される。
 
-        Confirms masking is **comprehensive** — applying one redaction
-        does not short-circuit the others. The gateway iterates all
-        regex patterns; this test pins that behaviour.
+        masking が **網羅的** であることを確認 ── 1 つの redaction が
+        他を短絡しない。ゲートウェイは全正規表現パターンを反復する ──
+        本テストでその挙動を固定する。
         """
         prefix = (
             f"複数シークレットを含むプレフィックス:\n"
@@ -344,7 +341,7 @@ class TestMultipleSecretsAllRedacted:
 
         persisted = await _read_persisted_prefix(session_factory, room.id)
 
-        # All 3 sentinels present.
+        # 3 つの sentinel が全て存在する。
         assert _DISCORD_SENTINEL in persisted, (
             f"[FAIL] Discord sentinel missing in multi-secret prefix. Persisted: {persisted!r}"
         )
@@ -354,7 +351,7 @@ class TestMultipleSecretsAllRedacted:
         assert _GITHUB_SENTINEL in persisted, (
             f"[FAIL] GitHub sentinel missing in multi-secret prefix. Persisted: {persisted!r}"
         )
-        # All 3 raw tokens absent.
+        # 3 つの生トークンは全て消えている。
         assert _DISCORD_TOKEN not in persisted, (
             f"[FAIL] Discord token survived multi-secret masking. Persisted: {persisted!r}"
         )

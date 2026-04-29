@@ -1,20 +1,20 @@
-"""SQLite persistence layer (async via :mod:`sqlalchemy.ext.asyncio`).
+"""SQLite 永続化レイヤ（:mod:`sqlalchemy.ext.asyncio` による非同期実装）。
 
-The package boundary mirrors the design's responsibility split
-(see ``docs/features/persistence-foundation/detailed-design/``):
+パッケージ境界は設計上の責務分割に対応する
+（``docs/features/persistence-foundation/detailed-design/`` 参照）:
 
 * :mod:`bakufu.infrastructure.persistence.sqlite.engine` —
-  ``AsyncEngine`` factory with PRAGMA enforcement + dual-connection
-  separation (application vs. migration).
+  PRAGMA を強制し、デュアル接続（アプリケーション用 vs マイグレーション用）
+  を分離する ``AsyncEngine`` ファクトリ。
 * :mod:`bakufu.infrastructure.persistence.sqlite.session` —
-  ``async_sessionmaker`` factory (Unit-of-Work boundary).
-* :mod:`bakufu.infrastructure.persistence.sqlite.base` — declarative
-  base + UUID / UTC-aware datetime / JSON :class:`TypeDecorator` types.
+  ``async_sessionmaker`` ファクトリ（Unit-of-Work 境界）。
+* :mod:`bakufu.infrastructure.persistence.sqlite.base` — Declarative
+  ベース + UUID / UTC-aware datetime / JSON の :class:`TypeDecorator` 型群。
 * :mod:`bakufu.infrastructure.persistence.sqlite.tables` —
-  cross-cutting tables (``audit_log`` / ``bakufu_pid_registry`` /
-  ``domain_event_outbox``) with their masking listeners.
+  横断的なテーブル群（``audit_log`` / ``bakufu_pid_registry`` /
+  ``domain_event_outbox``）とそのマスキングリスナ。
 * :mod:`bakufu.infrastructure.persistence.sqlite.outbox` —
-  Outbox dispatcher + handler registry skeleton.
+  Outbox dispatcher とハンドラレジストリのスケルトン。
 * :mod:`bakufu.infrastructure.persistence.sqlite.pid_gc` —
-  Bootstrap-stage 4 orphan-process garbage collection.
+  Bootstrap stage 4 の孤児プロセスガーベジコレクション。
 """

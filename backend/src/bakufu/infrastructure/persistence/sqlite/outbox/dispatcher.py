@@ -1,20 +1,19 @@
-"""Outbox dispatcher (skeleton, §確定 K).
+"""Outbox ディスパッチャ（スケルトン、§確定 K）。
 
-The dispatcher is intentionally **skeleton-only** in this PR per
-Schneier 中等 3: handlers ship in subsequent
-``feature/{event-kind}-handler`` PRs. What this module *does*
-provide is:
+このディスパッチャは Schneier 中等 3 の方針により、本 PR では意図的に
+**スケルトンのみ** とする。実ハンドラは後続の ``feature/{event-kind}-handler``
+PR で導入される。本モジュールが *提供する* のは:
 
-* The polling loop structure (1-second tick, batch of 50, 5-minute
-  DISPATCHING-recovery, 5-attempt dead-letter cap).
-* The Confirmation K Fail Loud warnings — Bootstrap startup
-  diagnostic + per-cycle empty-registry WARN + 100-row backlog WARN.
-* A clean ``stop()`` path so Bootstrap LIFO cleanup can cancel the
-  background task.
+* ポーリング ループ構造（1 秒間隔、バッチ 50、5 分の DISPATCHING リカバリ、
+  5 回試行のデッドレター上限）。
+* Confirmation K Fail Loud 警告 — Bootstrap 起動時診断 + サイクル毎の
+  empty-registry WARN + 100 行バックログ WARN。
+* Bootstrap LIFO クリーンアップがバックグラウンドタスクをキャンセルできるよう
+  クリーンな ``stop()`` 経路。
 
-The actual SELECT / UPDATE SQL lands when handlers exist; here we keep
-the surface minimal so subsequent PRs only need to fill in the body
-of :meth:`_dispatch_one`.
+実 SELECT / UPDATE SQL はハンドラが存在するようになった時点で投入する。ここでは
+表面を最小限に保ち、後続 PR で :meth:`_dispatch_one` の本体を埋めるだけで済む
+ようにする。
 """
 
 from __future__ import annotations
@@ -31,7 +30,7 @@ from bakufu.infrastructure.persistence.sqlite.tables.outbox import OutboxRow
 
 logger = logging.getLogger(__name__)
 
-# Confirmation K — see ``outbox.md``.
+# Confirmation K — ``outbox.md`` を参照。
 DEFAULT_BATCH_SIZE: Final = 50
 DEFAULT_POLL_INTERVAL_SECONDS: Final = 1.0
 DEFAULT_DISPATCHING_RECOVERY_MINUTES: Final = 5
@@ -40,11 +39,11 @@ BACKLOG_WARN_THRESHOLD: Final = 100
 
 
 class OutboxDispatcher:
-    """Background dispatcher for ``domain_event_outbox`` rows.
+    """``domain_event_outbox`` 行のためのバックグラウンド ディスパッチャ。
 
-    Bootstrap stage 6 instantiates one of these and schedules
-    :meth:`run` as an asyncio task. Bootstrap LIFO cleanup
-    (Confirmation J) calls :meth:`stop` to break the loop on shutdown.
+    Bootstrap stage 6 がインスタンスを生成し :meth:`run` を asyncio タスクと
+    してスケジュールする。Bootstrap LIFO クリーンアップ（Confirmation J）は
+    シャットダウン時にループを抜けるため :meth:`stop` を呼ぶ。
     """
 
     def __init__(
@@ -62,34 +61,32 @@ class OutboxDispatcher:
         self._dispatching_recovery_minutes = dispatching_recovery_minutes
         self._max_attempts = max_attempts
         self._stop_event = asyncio.Event()
-        # Track whether we have already warned about an empty handler
-        # registry encountering pending rows; avoid spamming the log on
-        # every poll cycle (Confirmation K row 2).
+        # 空のハンドラ レジストリが pending 行を見つけたことを既に警告済みかどうか
+        # を追跡する。ポーリング サイクル毎にログが溢れるのを避ける（Confirmation K
+        # 行 2）。
         self._empty_registry_warned: bool = False
-        # Backlog WARN throttling. ``None`` means "never warned yet";
-        # the first triggering cycle warns immediately and stamps a
-        # real ``loop.time()`` value. The previous default of ``0.0``
-        # (BUG-PF-003) collided with the OS-monotonic clock at process
-        # start: ``loop.time() - 0.0`` was always huge, but on a fresh
-        # process re-entering the loop after restart the clock could
-        # roll under 300s and silently swallow the first 5 minutes of
-        # warnings.
+        # バックログ WARN のスロットリング。``None`` は「まだ警告していない」を意味し、
+        # 初回トリガで即座に警告して実際の ``loop.time()`` 値を記録する。以前の
+        # デフォルト ``0.0``（BUG-PF-003）は OS モノトニック クロックとプロセス開始時
+        # に衝突していた: ``loop.time() - 0.0`` は常に巨大値だが、再起動後にループへ
+        # 再入したばかりの新規プロセスではクロックが 300s を下回り、最初の 5 分間の
+        # 警告がサイレントに飲み込まれることがあった。
         self._backlog_last_warn_monotonic: float | None = None
 
     async def run(self) -> None:
-        """Polling loop. Call from ``asyncio.create_task`` in Bootstrap.
+        """ポーリング ループ。Bootstrap から ``asyncio.create_task`` で呼ぶ。
 
-        The loop is intentionally simple — no row processing yet
-        because no handlers are registered. Each tick still runs the
-        empty-registry / backlog Fail Loud checks so operators see
-        the same telemetry once handlers land.
+        ハンドラがまだ登録されていないため、ループは意図的に単純である — 行処理は
+        まだ行わない。それでも各 tick で empty-registry / backlog の Fail Loud
+        チェックは走るため、ハンドラが投入された後も同じテレメトリをオペレータが
+        確認できる。
         """
         while not self._stop_event.is_set():
             try:
                 await self._poll_once()
             except Exception:  # pragma: no cover — defensive
-                # The dispatcher must never die in the body of a poll.
-                # Log and continue; the next cycle retries.
+                # ディスパッチャはポーリング本体で死んではならない。ログを残し
+                # 継続する。次のサイクルでリトライされる。
                 logger.exception(
                     "[ERROR] Outbox dispatcher poll cycle raised; continuing to next cycle"
                 )
@@ -102,16 +99,15 @@ class OutboxDispatcher:
                 continue
 
     async def stop(self) -> None:
-        """Signal the polling loop to exit at the next iteration."""
+        """次のイテレーションで終了するようポーリング ループへシグナルを送る。"""
         self._stop_event.set()
 
     async def _poll_once(self) -> None:
-        """Single polling cycle: count pending rows + emit WARNs.
+        """単一のポーリング サイクル: pending 行をカウントし WARN を発火する。
 
-        Subsequent PRs extend this to actually process the batch via
-        :meth:`_dispatch_one`. This skeleton just exposes the count
-        so Confirmation K's startup / per-cycle / backlog warnings
-        fire on real data.
+        後続 PR ではここに :meth:`_dispatch_one` 経由のバッチ処理を追加する。
+        現スケルトンではカウントを露出するだけで、Confirmation K の起動 / サイクル毎
+        / バックログ警告が実データに対して発火するようにしている。
         """
         async with self._session_factory() as session:
             stmt = select(OutboxRow).where(OutboxRow.status == "PENDING")
@@ -121,7 +117,7 @@ class OutboxDispatcher:
         pending_count = len(pending)
         registry_size = handler_registry.size()
 
-        # Confirmation K row 2: empty registry + pending rows.
+        # Confirmation K 行 2: registry が空かつ pending 行がある場合。
         if pending_count > 0 and registry_size == 0:
             if not self._empty_registry_warned:
                 logger.warning(
@@ -130,11 +126,11 @@ class OutboxDispatcher:
                 )
                 self._empty_registry_warned = True
         else:
-            # Once a handler appears or the queue clears, allow the
-            # WARN to re-fire if the situation regresses.
+            # ハンドラが現れるかキューが解消したら、状況が悪化した際の WARN 再発火を
+            # 許可する。
             self._empty_registry_warned = False
 
-        # Confirmation K row 3: backlog threshold (>100 rows).
+        # Confirmation K 行 3: バックログ閾値（>100 行）。
         if pending_count > BACKLOG_WARN_THRESHOLD:
             now = asyncio.get_running_loop().time()
             five_minutes_seconds = 300.0

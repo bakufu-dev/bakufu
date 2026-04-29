@@ -1,16 +1,16 @@
-"""Pytest fixtures for empire-repository integration tests.
+"""empire-repository 統合テスト用の Pytest フィクスチャ。
 
-Provides seed helpers to satisfy the ``empire_room_refs.room_id → rooms.id``
-FK constraint added by Alembic 0005_room_aggregate (BUG-EMR-001 FK closure).
+``empire_room_refs.room_id → rooms.id`` FK制約を満たすセッドヘルパーを提供
+(Alembic 0005_room_aggregate により追加、BUG-EMR-001 FK クロージャ)。
 
-Background: before Alembic 0005, ``empire_room_refs.room_id`` had **no** FK
-onto ``rooms.id`` (the rooms table didn't exist yet). After 0005 the FK is
-wired with ``ON DELETE CASCADE`` so any INSERT into ``empire_room_refs`` now
-requires a matching row in ``rooms``. Tests that call
-``SqliteEmpireRepository.save(empire)`` with a populated Empire, or that
-issue raw SQL into ``empire_room_refs``, must seed the ``rooms`` table first.
+背景: Alembic 0005 より前、``empire_room_refs.room_id`` は rooms.id への
+**FK を持たなかった** (rooms テーブルがまだ存在しなかった)。0005 の後、
+FK は ``ON DELETE CASCADE`` で配線されるため、empire_room_refs への任意の
+INSERT は rooms の一致する行を要求する。``SqliteEmpireRepository.save(empire)``
+を完全に充実した Empire で呼び出すテスト、または empire_room_refs に
+生 SQL を発行するテストは、最初に rooms テーブルをシードする必要。
 
-Usage::
+使用法::
 
     from tests.infrastructure.persistence.sqlite.repositories.\
         test_empire_repository.conftest import seed_rooms
@@ -39,35 +39,35 @@ async def seed_rooms(
     *,
     workflow_id: UUID | None = None,
 ) -> UUID:
-    """Seed ``workflows`` + ``rooms`` rows to satisfy ``empire_room_refs`` FK.
+    """``empire_room_refs`` FK を満たすため ``workflows`` + ``rooms`` 行をシードする。
 
-    ``empire_room_refs.room_id → rooms.id`` FK (ON DELETE CASCADE) was added
-    in Alembic 0005 as BUG-EMR-001 FK closure. This helper inserts the
-    minimal prerequisite rows so tests that populate an Empire's ``rooms``
-    list can call ``SqliteEmpireRepository.save()`` without hitting
-    ``FOREIGN KEY constraint failed``.
+    ``empire_room_refs.room_id → rooms.id`` FK (ON DELETE CASCADE) は
+    Alembic 0005 で BUG-EMR-001 FK クロージャとして追加。
+    このヘルパーは最小限の前提条件行を挿入し、Empire の ``rooms`` リストを
+    設定するテストが ``FOREIGN KEY constraint failed`` を発生させずに
+    ``SqliteEmpireRepository.save()`` を呼び出せるようにする。
 
-    Steps:
-    1. Ensure the Empire row exists (``INSERT OR IGNORE`` — idempotent so
-       the caller can seed before or after the first ``save()``).
-    2. Seed one ``workflows`` row that the rooms can reference via FK.
-    3. Seed one ``rooms`` row per ``room_id`` with ``empire_id`` and
-       ``workflow_id`` as foreign keys.
+    ステップ:
+    1. Empire 行が存在することを確認する (``INSERT OR IGNORE`` ——
+       呼び出し元が最初の ``save()`` の前後どちらでシードできるよう冪等)。
+    2. rooms が FK 経由で参照できる ``workflows`` 行をシードする。
+    3. ``empire_id`` と ``workflow_id`` を外部キーとして、
+       ``room_id`` ごとに 1 つの ``rooms`` 行をシードする。
 
-    Returns the ``workflow_id`` that was used (generated fresh if not passed).
+    使用した ``workflow_id`` を返す (渡されない場合は新規生成)。
     """
     wf_id = workflow_id if workflow_id is not None else uuid4()
 
     async with session_factory() as session, session.begin():
-        # Step 1: ensure the empire row exists so rooms.empire_id FK resolves.
-        # INSERT OR IGNORE is safe even after SqliteEmpireRepository.save()
-        # has already created the empire row via UPSERT.
+        # ステップ 1: rooms.empire_id FK が解決するよう Empire 行が存在することを確認。
+        # INSERT OR IGNORE は SqliteEmpireRepository.save() が既に UPSERT 経由で
+        # Empire 行を作成していても安全。
         await session.execute(
             text("INSERT OR IGNORE INTO empires (id, name) VALUES (:id, :name)"),
             {"id": empire_id.hex, "name": "seed-empire"},
         )
 
-        # Step 2: seed a minimal workflow row so rooms.workflow_id FK resolves.
+        # ステップ 2: rooms.workflow_id FK が解決するよう最小限の workflow 行をシード。
         await session.execute(
             text(
                 "INSERT INTO workflows (id, name, entry_stage_id) "
@@ -80,7 +80,7 @@ async def seed_rooms(
             },
         )
 
-        # Step 3: seed one rooms row per room_id.
+        # ステップ 3: room_id ごとに 1 つの rooms 行をシード。
         for room_id in room_ids:
             await session.execute(
                 text(

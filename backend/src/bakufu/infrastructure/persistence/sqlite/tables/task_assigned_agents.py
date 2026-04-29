@@ -1,19 +1,17 @@
-"""``task_assigned_agents`` table — AgentId list for Task Aggregate.
+"""``task_assigned_agents`` テーブル — Task Aggregate 用 AgentId リスト。
 
-Each row represents one assigned agent for a given Task. The list order is
-preserved via ``order_index`` (0-indexed, matching the Aggregate's
-``assigned_agent_ids: list[AgentId]`` position).
+各行は与えられた Task に対するアサイン エージェント 1 件を表す。リスト順は
+``order_index``（0 始まり、Aggregate の ``assigned_agent_ids: list[AgentId]`` 位置
+と一致）で保存される。
 
-``agent_id`` intentionally has **no FK** onto ``agents.id`` — this is a
-permanent Aggregate boundary design decision (§設計決定 TR-001). Adding a FK
-would risk CASCADE deletion of assigned-agent rows when an Agent is archived,
-corrupting IN_PROGRESS Tasks. The room-repository ``room_members.agent_id``
-establishes the same precedent.
+``agent_id`` は ``agents.id`` への FK を意図的に **持たない** — 恒久的な Aggregate
+境界の設計決定（§設計決定 TR-001）。FK を加えると Agent アーカイブ時にアサイン
+エージェント行が CASCADE 削除され、IN_PROGRESS Task を破壊するリスクがある。
+room-repository の ``room_members.agent_id`` が同じ先例を確立している。
 
-UNIQUE(task_id, agent_id) prevents duplicate assignment of the same Agent to
-one Task, mirroring the Aggregate-level
-``_validate_assigned_agents_unique`` invariant at the database level for
-defense-in-depth.
+UNIQUE(task_id, agent_id) は同じ Agent を 1 つの Task に重複アサインすることを
+防ぎ、Aggregate レベルの ``_validate_assigned_agents_unique`` 不変条件をデータ
+ベース レベルでもミラーする多層防御。
 """
 
 from __future__ import annotations
@@ -27,7 +25,7 @@ from bakufu.infrastructure.persistence.sqlite.base import Base, UUIDStr
 
 
 class TaskAssignedAgentRow(Base):
-    """ORM mapping for the ``task_assigned_agents`` table."""
+    """``task_assigned_agents`` テーブルの ORM マッピング。"""
 
     __tablename__ = "task_assigned_agents"
 
@@ -37,15 +35,15 @@ class TaskAssignedAgentRow(Base):
         primary_key=True,
         nullable=False,
     )
-    # agent_id: intentionally NO FK onto agents.id.
-    # Aggregate boundary: agent deletion must not cascade-delete assigned-agent
-    # rows (§設計決定 TR-001, room_members.agent_id 前例同方針).
+    # agent_id: agents.id への FK は意図的に持たない。
+    # Aggregate 境界: Agent 削除をアサイン エージェント行に CASCADE 伝播させては
+    # ならない（§設計決定 TR-001、room_members.agent_id 先例と同方針）。
     agent_id: Mapped[UUID] = mapped_column(UUIDStr, primary_key=True, nullable=False)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False)
 
     __table_args__ = (
-        # Defense-in-Depth: explicit UNIQUE mirrors Aggregate invariant
-        # _validate_assigned_agents_unique at the DB level.
+        # 多層防御: 明示的な UNIQUE が Aggregate 不変条件
+        # _validate_assigned_agents_unique を DB レベルでミラーする。
         UniqueConstraint("task_id", "agent_id", name="uq_task_assigned_agents"),
     )
 

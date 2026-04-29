@@ -1,1 +1,1 @@
-"""Application layer exceptions."""
+"""Application 層の例外。"""

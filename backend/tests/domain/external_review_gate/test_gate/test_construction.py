@@ -1,8 +1,8 @@
 """ExternalReviewGate construction tests (TC-UT-GT-001 / 002 / 012).
 
 Per ``docs/features/external-review-gate/test-design.md`` §Gate 構築.
-Covers construction defaults, the 4 ``ReviewDecision`` rehydration
-cases, frozen + structural equality, and ``extra='forbid'``.
+構築デフォルト値、4つの ReviewDecision 再構成ケース、frozen + 構造
+的等価性、extra='forbid' をカバーする。
 """
 
 from __future__ import annotations
@@ -26,13 +26,14 @@ from tests.factories.external_review_gate import (
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-GT-001: default-valued construction
+# TC-UT-GT-001: デフォルト値での構築
 # ---------------------------------------------------------------------------
 class TestGateDefaults:
-    """TC-UT-GT-001: factory default Gate is structurally PENDING + empty."""
+    """TC-UT-GT-001: ファクトリーデフォルト Gate は構造的に PENDING + 空."""
 
     def test_default_gate_is_pending_with_empty_state(self) -> None:
-        """Defaults: decision=PENDING, audit_trail=[], feedback_text='', decided_at=None."""
+        """デフォルト値: decision=PENDING, audit_trail=[],
+        feedback_text='', decided_at=None."""
         gate = make_gate()
         assert gate.decision == ReviewDecision.PENDING
         assert gate.audit_trail == []
@@ -40,21 +41,20 @@ class TestGateDefaults:
         assert gate.decided_at is None
 
     def test_factory_marks_instance_synthetic(self) -> None:
-        """Factory output is registered in :func:`is_synthetic`."""
+        """ファクトリー出力は is_synthetic() に登録される."""
         gate = make_gate()
         assert is_synthetic(gate)
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-GT-002: rehydration into all 4 ReviewDecision values
+# TC-UT-GT-002: 4つの ReviewDecision 値全てへの再構成
 # ---------------------------------------------------------------------------
 class TestRehydrateAllDecisions:
-    """TC-UT-GT-002: each of the 4 ReviewDecision values constructs cleanly.
+    """TC-UT-GT-002: 4つの ReviewDecision 値それぞれが正常に構築される.
 
-    Repository hydration must be able to land any persisted decision.
-    Terminal states (APPROVED / REJECTED / CANCELLED) need a non-None
-    ``decided_at`` per the consistency invariant; PENDING needs
-    ``decided_at is None``.
+    リポジトリ再構成は永続化された判定値を全て復元できなければならない。
+    終了状態（APPROVED / REJECTED / CANCELLED）は一貫性不変量に従い
+    non-None decided_at が必要。PENDING は decided_at is None が必要。
     """
 
     def test_pending_constructs(self) -> None:
@@ -77,20 +77,20 @@ class TestRehydrateAllDecisions:
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-GT-012: frozen + structural equality + hashable
+# TC-UT-GT-012: frozen + 構造的等価性 + ハッシュ可能
 # ---------------------------------------------------------------------------
 class TestFrozenStructuralEquality:
-    """TC-UT-GT-012: same-attribute Gates are ``==``."""
+    """TC-UT-GT-012: 同じ属性を持つ Gate は ``==`` である."""
 
     def test_same_attributes_compare_equal(self) -> None:
-        """Two Gate instances with identical attrs are ``==``."""
+        """同じ属性を持つ 2 つの Gate インスタンスは ``==`` である."""
         common_id = uuid4()
         common_task = uuid4()
         common_stage = uuid4()
         common_reviewer = uuid4()
         ts = datetime(9999, 1, 1, 0, 0, 0, tzinfo=UTC)
-        # Reuse the same Deliverable so both Gates share an identical
-        # snapshot — equality requires snapshot equality.
+        # 同じ Deliverable を再利用して、両 Gate が同じスナップショットを共有
+        # 　等価性はスナップショットの等価性が必須
         from tests.factories.task import make_deliverable
 
         snapshot = make_deliverable()
@@ -114,13 +114,14 @@ class TestFrozenStructuralEquality:
 
 
 # ---------------------------------------------------------------------------
-# extra='forbid' rejects unknown fields
+# extra='forbid' は未知フィールドを拒否
 # ---------------------------------------------------------------------------
 class TestExtraForbid:
-    """An unknown field at construction time is rejected."""
+    """構築時の未知フィールドは拒否される."""
 
     def test_unknown_field_rejected_via_model_validate(self) -> None:
-        """``ExternalReviewGate.model_validate({..., 'unknown': 'x'})`` raises."""
+        """ExternalReviewGate.model_validate({..., 'unknown': 'x'})
+        は例外を発生させる."""
         from tests.factories.task import make_deliverable
 
         now = datetime.now(UTC)
@@ -139,10 +140,10 @@ class TestExtraForbid:
 
 
 # ---------------------------------------------------------------------------
-# Frozen instance — direct attribute assignment rejected
+# Frozen インスタンス — 直接属性割り当ては拒否
 # ---------------------------------------------------------------------------
 class TestFrozenInstance:
-    """``gate.<attr> = value`` raises on a frozen Pydantic model."""
+    """Frozen Pydantic モデルの gate.<attr> = value は例外を発生させる."""
 
     def test_decision_assignment_rejected(self) -> None:
         gate = make_gate()
@@ -155,7 +156,7 @@ class TestFrozenInstance:
             gate.audit_trail = []  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_deliverable_snapshot_assignment_rejected(self) -> None:
-        """The §確定 D snapshot frozen layer (one of the triple-defense)."""
+        """§確定 D スナップショット frozen レイヤー（三重防御の一部）."""
         from tests.factories.task import make_deliverable
 
         gate = make_gate()
@@ -164,38 +165,37 @@ class TestFrozenInstance:
 
 
 # ---------------------------------------------------------------------------
-# Type errors land as pydantic.ValidationError (§確定 I)
+# 型エラーは pydantic.ValidationError として発生（§確定 I）
 # ---------------------------------------------------------------------------
 class TestTypeErrorsRaisePydanticValidationError:
-    """Type-shaped failures use ``pydantic.ValidationError`` (no kind concept).
+    """型関連の失敗は pydantic.ValidationError を使用（kind 概念なし）.
 
-    The §確定 I contract: structural / field-type errors are pure
-    Pydantic validation errors; only the 5
-    ``ExternalReviewGateInvariantViolation`` kinds are issued by the
-    aggregate's invariants.
+    §確定 I 契約: 構造的/フィールド型エラーは純粋な Pydantic
+    検証エラー。5つの ExternalReviewGateInvariantViolation
+    の種別のみがアグリゲートの不変量によって発行される。
     """
 
     def test_naive_created_at_rejected(self) -> None:
-        """``created_at`` without a timezone must be rejected."""
+        """タイムゾーンなし created_at は拒否される."""
         naive = datetime.now()
         with pytest.raises(ValidationError):
             make_gate(created_at=naive)
 
     def test_naive_decided_at_rejected(self) -> None:
-        """``decided_at`` without a timezone must be rejected when set."""
+        """タイムゾーンなし decided_at は設定時に拒否される."""
         naive = datetime.now()
         with pytest.raises(ValidationError):
             make_gate(decision=ReviewDecision.APPROVED, decided_at=naive)
 
 
 # ---------------------------------------------------------------------------
-# feedback_text NFC normalization (§確定 F)
+# feedback_text NFC 正規化（§確定 F）
 # ---------------------------------------------------------------------------
 class TestFeedbackTextNormalization:
-    """``feedback_text`` is NFC-normalized but **not** stripped."""
+    """feedback_text は NFC 正規化されるが、ストリップは行われない."""
 
     def test_leading_whitespace_preserved(self) -> None:
-        """CEO indent style survives normalization (no strip)."""
+        """CEO インデント スタイルは正規化で保持される（ストリップなし）."""
         raw = "> 引用文\n  続き行\n"
         gate = make_gate(feedback_text=raw)
         assert gate.feedback_text == unicodedata.normalize("NFC", raw)

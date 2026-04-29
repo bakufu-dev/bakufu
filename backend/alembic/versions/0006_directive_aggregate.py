@@ -1,25 +1,24 @@
-"""Directive Aggregate table: directives.
+"""Directive Aggregate テーブル: directives。
 
-Adds the table that backs :class:`SqliteDirectiveRepository`:
+:class:`SqliteDirectiveRepository` を支えるテーブルを追加する:
 
-* ``directives`` (id PK + text MaskedText NOT NULL + target_room_id FK CASCADE
-  onto rooms.id + created_at DateTime NOT NULL + task_id nullable CHAR(32)
-  with NO FK at this level — see §BUG-DRR-001 申し送り below).
-* ``INDEX(target_room_id, created_at)`` composite index for Room-scoped
-  ``find_by_room`` queries.
+* ``directives``（id PK + text MaskedText NOT NULL + target_room_id は rooms.id
+  への FK CASCADE + created_at DateTime NOT NULL + task_id は nullable CHAR(32)
+  でこの段階では FK を付けない — 下記 §BUG-DRR-001 申し送り 参照）。
+* Room スコープの ``find_by_room`` クエリ用の
+  ``INDEX(target_room_id, created_at)`` 複合インデックス。
 
 §BUG-DRR-001 FK申し送り:
-``directives.task_id`` is declared as a nullable CHAR(32) at this revision.
-The ``tasks.id`` FK will be closed in the task-repository PR via
-``op.batch_alter_table('directives', recreate='always')`` (same pattern as
-BUG-EMR-001 closure in 0005_room_aggregate, empire-repository PR #33).
+``directives.task_id`` は本 revision では nullable CHAR(32) として宣言する。
+``tasks.id`` への FK は task-repository PR で
+``op.batch_alter_table('directives', recreate='always')`` 経由でクローズする
+（0005_room_aggregate での BUG-EMR-001 クローズと同パターン、empire-repository PR #33）。
 
-ON DELETE RESTRICT is recommended for the deferred FK: a Directive is the
-audit trail of an instruction; Task deletion should be blocked if a
-Directive still references it.
+延期する FK には ON DELETE RESTRICT を推奨する: Directive は指示の監査証跡であり、
+Directive がまだ参照している Task の削除はブロックすべきである。
 
-Per ``docs/features/directive-repository/detailed-design.md`` §確定 R1-B
-and §確定 R1-C.
+``docs/features/directive-repository/detailed-design.md`` §確定 R1-B
+および §確定 R1-C に従う。
 
 Revision ID: 0006_directive_aggregate
 Revises: 0005_room_aggregate
@@ -40,12 +39,12 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # directives table: flat 5-column aggregate (no child tables).
+    # directives テーブル: 5 カラムのフラットな Aggregate（子テーブルなし）。
     op.create_table(
         "directives",
         sa.Column("id", sa.CHAR(32), primary_key=True, nullable=False),
-        # MaskedText TypeDecorator serializes as TEXT in SQLite. The Python-side
-        # decorator does the masking gate (base.py MaskedText). §確定 R1-E.
+        # MaskedText TypeDecorator は SQLite では TEXT として直列化される。
+        # マスキングゲートは Python 側のデコレータで行う（base.py の MaskedText）。§確定 R1-E。
         sa.Column("text", sa.Text(), nullable=False),
         sa.Column(
             "target_room_id",
@@ -53,18 +52,18 @@ def upgrade() -> None:
             sa.ForeignKey("rooms.id", ondelete="CASCADE"),
             nullable=False,
         ),
-        # created_at uses Text storage (UTCDateTime TypeDecorator stores
-        # ISO-8601 string). Always UTC-aware at the Python layer.
+        # created_at は Text 形式で保存する（UTCDateTime TypeDecorator が
+        # ISO-8601 文字列を格納する）。Python 側では常に UTC-aware。
         sa.Column("created_at", sa.Text(), nullable=False),
-        # task_id: nullable CHAR(32) with NO FK at this level — see §BUG-DRR-001.
-        # The FK closure (fk_directives_task_id → tasks.id RESTRICT) is deferred
-        # to the task-repository PR.
+        # task_id: このレベルでは FK 無しの nullable CHAR(32) — §BUG-DRR-001 を参照。
+        # FK クロージャ（fk_directives_task_id → tasks.id RESTRICT）は
+        # task-repository PR に延期される。
         sa.Column("task_id", sa.CHAR(32), nullable=True),
     )
 
-    # §確定 R1-D: composite index for Room-scoped find_by_room query.
-    # Left-prefix covers ``WHERE target_room_id = ?`` and
-    # ``WHERE target_room_id = ? ORDER BY created_at DESC``.
+    # §確定 R1-D: Room スコープの find_by_room クエリ用の複合インデックス。
+    # 左プレフィックスが ``WHERE target_room_id = ?`` と
+    # ``WHERE target_room_id = ? ORDER BY created_at DESC`` をカバーする。
     op.create_index(
         "ix_directives_target_room_id_created_at",
         "directives",
@@ -74,6 +73,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Reverse order: index first, then table.
+    # 逆順: まずインデックス、次にテーブル。
     op.drop_index("ix_directives_target_room_id_created_at", table_name="directives")
     op.drop_table("directives")

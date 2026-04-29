@@ -1,18 +1,17 @@
-"""``empire_agent_refs`` table — Empire ↔ Agent relationship rows.
+"""``empire_agent_refs`` テーブル — Empire ↔ Agent 関係行。
 
-Stores :class:`bakufu.domain.value_objects.AgentRef` values. As with
-``empire_room_refs``, ``agent_id`` is intentionally not a foreign key
-onto ``agents.id`` because the ``agents`` table arrives in
-``feature/agent-repository`` (separate PR); that PR adds the FK via
-``op.create_foreign_key(...)``.
+:class:`bakufu.domain.value_objects.AgentRef` の値を保存する。``empire_room_refs``
+と同様、``agent_id`` は ``agents.id`` への外部キーを意図的に持たない。``agents``
+テーブルは ``feature/agent-repository``（別 PR）で投入されるため。その PR が
+``op.create_foreign_key(...)`` で FK を追加する。
 
-Cascade: deleting an Empire row purges its agent refs.
-``UNIQUE(empire_id, agent_id)`` mirrors the aggregate-level
-duplicate-agent invariant.
+カスケード: Empire 行を削除するとその agent 参照も一緒に削除される。
+``UNIQUE(empire_id, agent_id)`` は Aggregate レベルの重複エージェント不変条件を
+ミラーする。
 
-No ``Masked*`` TypeDecorator: ``role`` is an enum string and ``name``
-is bounded to 40 chars; neither is a secret-bearing column per
-storage.md §逆引き表.
+``Masked*`` TypeDecorator は付けない: ``role`` は enum 文字列、``name`` は 40 文字
+で境界づけられる。どちらも storage.md §逆引き表 のシークレット保持カラムには
+該当しない。
 """
 
 from __future__ import annotations
@@ -26,7 +25,7 @@ from bakufu.infrastructure.persistence.sqlite.base import Base, UUIDStr
 
 
 class EmpireAgentRefRow(Base):
-    """ORM mapping for the ``empire_agent_refs`` table."""
+    """``empire_agent_refs`` テーブルの ORM マッピング。"""
 
     __tablename__ = "empire_agent_refs"
 

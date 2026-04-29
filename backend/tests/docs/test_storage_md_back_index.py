@@ -1,13 +1,12 @@
-"""storage.md §逆引き表 contract test (TC-DOC-EMR-001).
+"""storage.md §逆引き表 の契約テスト (TC-DOC-EMR-001)。
 
-Per ``docs/features/empire-repository/test-design.md``. The reverse-
-lookup table is the design source of truth for "which DB column is
-masked, which one is explicitly declared no-mask"; the CI three-layer
-defense (grep guard + arch test + this doc test) makes the lookup
-table physically authoritative.
+``docs/features/empire-repository/test-design.md`` に従う。逆引き表は
+「どの DB カラムをマスクするか・どれを明示的にノーマスク宣言するか」の
+設計上の真実源であり、CI の三層防御 (grep ガード + アーキテクチャテスト +
+本ドキュメントテスト) によって本表を物理的に権威づけする。
 
-Future Repository PRs append rows for their Aggregate's tables; the
-shape of the assertion stays identical.
+今後の Repository PR では各 Aggregate のテーブルに対応する行を追加していくが、
+アサーションの形は同一に保たれる。
 """
 
 from __future__ import annotations
@@ -22,7 +21,7 @@ _STORAGE_MD = _REPO_ROOT / "docs" / "design" / "domain-model" / "storage.md"
 
 @pytest.fixture(scope="module")
 def storage_md_text() -> str:
-    """Read storage.md once per module (the file is small)."""
+    """モジュールごとに 1 回だけ storage.md を読み込む(ファイルは小さい)。"""
     assert _STORAGE_MD.is_file(), (
         f"storage.md missing at {_STORAGE_MD}; the §逆引き表 lives there per "
         f"docs/design/domain-model/storage.md."
@@ -31,21 +30,20 @@ def storage_md_text() -> str:
 
 
 class TestBackIndexHasEmpireRow:
-    """TC-DOC-EMR-001: §逆引き表 includes the Empire 'masking 対象なし' entry."""
+    """TC-DOC-EMR-001: §逆引き表 に Empire の「masking 対象なし」エントリが含まれることを検証。"""
 
     def test_empire_row_present(self, storage_md_text: str) -> None:
-        """TC-DOC-EMR-001: at least one Empire row is registered as no-mask.
+        """TC-DOC-EMR-001: 少なくとも 1 件の Empire 行がノーマスクとして登録されている。
 
-        We check for the substring rather than the exact bullet so the
-        assertion survives cosmetic edits (table ordering, alternative
-        phrasing). The presence is the contract; the precise format
-        belongs to the design review.
+        体裁の変更(表の並び順や言い回しの差し替え)にアサーションが耐えられるよう、
+        箇条書きの厳密一致ではなく部分文字列で検査する。存在することが契約であり、
+        厳密なフォーマットは設計レビューの管轄である。
         """
         assert "Empire" in storage_md_text, (
             "storage.md must mention Empire so the §逆引き表 can register "
             "the 'masking 対象なし' entry per empire-repository §確定 E."
         )
-        # Either Japanese phrasing variant freezes the no-mask intent.
+        # いずれかの日本語表現がノーマスクの意図を凍結する
         no_mask_phrasing_present = any(
             phrase in storage_md_text
             for phrase in (
@@ -62,14 +60,13 @@ class TestBackIndexHasEmpireRow:
         )
 
     def test_empire_table_row_co_locates_no_mask_phrase(self, storage_md_text: str) -> None:
-        """TC-DOC-EMR-001: §逆引き表 row contains both 'Empire' and 'masking 対象なし'.
+        """TC-DOC-EMR-001: §逆引き表 の行に 'Empire' と 'masking 対象なし' が同居することを検証。
 
-        The reverse-lookup table renders Empire as a single Markdown
-        table row that lists the three Empire tables alongside the
-        explicit "masking 対象なし" declaration. We assert that **at
-        least one line** in storage.md carries both substrings — that
-        is the operator-readable contract: scrolling to the Empire row
-        reveals the no-mask declaration without further navigation.
+        逆引き表では Empire を Markdown テーブルの 1 行として表現し、3 つの Empire
+        テーブルと明示的な「masking 対象なし」宣言を併記する。storage.md の中に
+        **少なくとも 1 行**が両方の部分文字列を含んでいることをアサートする ——
+        運用者が読みやすさを担保する契約であり、Empire 行までスクロールすれば
+        追加のナビゲーションなしにノーマスク宣言を読み取れる。
         """
         co_located_lines = [
             line
@@ -87,23 +84,22 @@ class TestBackIndexHasEmpireRow:
 
 
 class TestBackIndexHasWorkflowRows:
-    """TC-DOC-WFR-001: §逆引き表 includes the Workflow partial-mask + no-mask entries.
+    """TC-DOC-WFR-001: §逆引き表 に Workflow の partial-mask + no-mask エントリが含まれる。
 
-    The Workflow PR (#41) introduces the *partial-mask* template
-    alongside the empire-repo no-mask template: ``workflow_stages.notify_channels_json``
-    is the **only** masked column on the Workflow surface, and
-    ``workflows`` / ``workflow_transitions`` / the rest of
-    ``workflow_stages`` are explicitly registered as no-mask. We
-    assert both halves of that contract live on operator-readable
-    lines in ``storage.md``.
+    Workflow PR (#41) は empire-repo のノーマスクテンプレートに加えて
+    *partial-mask* テンプレートを導入する: ``workflow_stages.notify_channels_json``
+    が Workflow 表面で**唯一**マスクされるカラムであり、``workflows`` /
+    ``workflow_transitions`` および ``workflow_stages`` の残りのカラムは
+    明示的にノーマスクとして登録される。本契約の両側が ``storage.md``
+    の運用者可読な行として記載されていることをアサートする。
     """
 
     def test_workflow_stages_notify_channels_row_present(self, storage_md_text: str) -> None:
-        """TC-DOC-WFR-001a: §逆引き表 declares ``MaskedJSONEncoded`` on the notify column.
+        """TC-DOC-WFR-001a: §逆引き表 が notify カラムに ``MaskedJSONEncoded`` を宣言する。
 
-        The line must co-locate ``workflow_stages.notify_channels_json``
-        and ``MaskedJSONEncoded`` so an operator scrolling to the
-        Workflow row sees the redaction policy directly.
+        運用者が Workflow 行までスクロールすればマスキングポリシーを直接読み取れるよう、
+        ``workflow_stages.notify_channels_json`` と ``MaskedJSONEncoded`` が
+        同一行に併記されていなければならない。
         """
         co_located_lines = [
             line
@@ -118,11 +114,11 @@ class TestBackIndexHasWorkflowRows:
         )
 
     def test_workflow_no_mask_row_present(self, storage_md_text: str) -> None:
-        """TC-DOC-WFR-001b: §逆引き表 declares the Workflow remaining columns no-mask.
+        """TC-DOC-WFR-001b: §逆引き表 が Workflow の残りのカラムをノーマスクとして宣言する。
 
-        The contract phrase is "masking 対象なし" co-located with
-        ``Workflow`` (so the partial-mask Aggregate's *non*-masked
-        columns are still operator-readable from the Workflow row).
+        契約フレーズは ``Workflow`` と同一行に併記された「masking 対象なし」である
+        (これにより partial-mask Aggregate の*非*マスクカラムも Workflow 行から
+        直接読み取れる)。
         """
         co_located_lines = [
             line
@@ -139,23 +135,21 @@ class TestBackIndexHasWorkflowRows:
 
 
 class TestBackIndexHasAgentRows:
-    """TC-DOC-AGR-001: §逆引き表 includes the Agent partial-mask + no-mask entries.
+    """TC-DOC-AGR-001: §逆引き表 に Agent の partial-mask + no-mask エントリが含まれる。
 
-    The Agent Repository PR (#45) is the second partial-mask
-    Aggregate (after Workflow): ``agents.prompt_body`` is the
-    **only** masked column on the Agent surface, with
-    ``agent_providers`` / ``agent_skills`` and the rest of
-    ``agents`` registered as no-mask. **Schneier 申し送り #3 实適用
-    クローズ** is documented through this line.
+    Agent Repository PR (#45) は (Workflow に続く) 2 番目の partial-mask
+    Aggregate である: ``agents.prompt_body`` が Agent 表面で**唯一**
+    マスクされるカラムであり、``agent_providers`` / ``agent_skills`` および
+    ``agents`` の残りのカラムはノーマスクとして登録される。本行を通じて
+    **Schneier 申し送り #3 实適用クローズ**が文書化される。
     """
 
     def test_agents_prompt_body_row_present(self, storage_md_text: str) -> None:
-        """§逆引き表 declares ``MaskedText`` on ``agents.prompt_body``.
+        """§逆引き表 が ``agents.prompt_body`` に ``MaskedText`` を宣言する。
 
-        The line must co-locate ``Persona.prompt_body`` (or
-        ``agents.prompt_body``) and ``MaskedText`` so an operator
-        scrolling to the Agent row sees the redaction policy
-        directly.
+        運用者が Agent 行までスクロールすればマスキングポリシーを直接読み取れるよう、
+        ``Persona.prompt_body`` (または ``agents.prompt_body``) と ``MaskedText``
+        が同一行に併記されていなければならない。
         """
         co_located_lines = [
             line
@@ -174,11 +168,11 @@ class TestBackIndexHasAgentRows:
         )
 
     def test_agent_no_mask_row_present(self, storage_md_text: str) -> None:
-        """§逆引き表 declares the Agent remaining columns no-mask.
+        """§逆引き表 が Agent の残りのカラムをノーマスクとして宣言する。
 
-        agent_providers / agent_skills and other agents columns are
-        registered as "masking 対象なし" so the partial-mask intent
-        is visible from the Agent row directly.
+        agent_providers / agent_skills およびその他の agents カラムは
+        「masking 対象なし」として登録され、partial-mask の意図が Agent 行から
+        直接読み取れるようになっている。
         """
         co_located_lines = [
             line
@@ -195,18 +189,18 @@ class TestBackIndexHasAgentRows:
 
 
 class TestBackIndexHasDirectiveRows:
-    """TC-DOC-DRR-001: §逆引き表 includes Directive partial-mask + no-mask entries.
+    """TC-DOC-DRR-001: §逆引き表 に Directive の partial-mask + no-mask エントリが含まれる。
 
-    Directive Repository PR (#34): ``directives.text`` is the **only**
-    masked column (directive §確定 G 実適用), with the remaining columns
-    (id / target_room_id / created_at / task_id) registered as no-mask.
+    Directive Repository PR (#34): ``directives.text`` が**唯一**マスクされる
+    カラムであり (directive §確定 G 実適用)、残りのカラム
+    (id / target_room_id / created_at / task_id) はノーマスクとして登録される。
     """
 
     def test_directives_text_masked_text_row_present(self, storage_md_text: str) -> None:
-        """TC-DOC-DRR-001a: §逆引き表 declares MaskedText on directives.text.
+        """TC-DOC-DRR-001a: §逆引き表 が directives.text に MaskedText を宣言する。
 
-        The line must co-locate ``directives.text`` (or ``Directive.text``)
-        and ``MaskedText`` so an operator sees the redaction policy directly.
+        運用者がマスキングポリシーを直接読み取れるよう、``directives.text``
+        (または ``Directive.text``) と ``MaskedText`` が同一行に併記されていなければならない。
         """
         co_located_lines = [
             line
@@ -220,10 +214,10 @@ class TestBackIndexHasDirectiveRows:
         )
 
     def test_directive_no_mask_row_present(self, storage_md_text: str) -> None:
-        """TC-DOC-DRR-001b: §逆引き表 declares Directive remaining columns no-mask.
+        """TC-DOC-DRR-001b: §逆引き表 が Directive の残りのカラムをノーマスクとして宣言する。
 
-        id / target_room_id / created_at / task_id carry no secret semantics
-        and are registered as 'masking 対象なし' so over-masking is prevented.
+        id / target_room_id / created_at / task_id は秘匿セマンティクスを持たず、
+        過剰マスキングを防止するため「masking 対象なし」として登録される。
         """
         co_located_lines = [
             line
@@ -238,22 +232,22 @@ class TestBackIndexHasDirectiveRows:
 
 
 class TestBackIndexHasTaskRows:
-    """TC-DOC-TR-001: §逆引き表 includes Task partial-mask + no-mask entries.
+    """TC-DOC-TR-001: §逆引き表 に Task の partial-mask + no-mask エントリが含まれる。
 
-    Task Repository PR (#35) is the third partial-mask Aggregate:
+    Task Repository PR (#35) は 3 番目の partial-mask Aggregate である:
     * ``tasks.last_error`` — MaskedText (Task §確定 G 実適用)
     * ``deliverables.body_markdown`` — MaskedText
     * ``conversation_messages.body_markdown`` — MaskedText
-    The remaining Task-aggregate columns (task_assigned_agents / conversations /
+    残りの Task Aggregate のカラム (task_assigned_agents / conversations /
     conversation_messages の body_markdown 以外 / deliverables の body_markdown
-    以外 / deliverable_attachments) are registered as 'masking 対象なし'.
+    以外 / deliverable_attachments) は「masking 対象なし」として登録される。
     """
 
     def test_tasks_last_error_masked_text_row_present(self, storage_md_text: str) -> None:
-        """TC-DOC-TR-001a: §逆引き表 declares MaskedText on tasks.last_error.
+        """TC-DOC-TR-001a: §逆引き表 が tasks.last_error に MaskedText を宣言する。
 
-        The line must co-locate ``tasks`` and ``MaskedText`` so an operator
-        scrolling to the Task row sees the redaction policy directly.
+        運用者が Task 行までスクロールすればマスキングポリシーを直接読み取れるよう、
+        ``tasks`` と ``MaskedText`` が同一行に併記されていなければならない。
         """
         co_located_lines = [
             line
@@ -269,15 +263,16 @@ class TestBackIndexHasTaskRows:
     def test_conversation_messages_bug_tr_002_frozen_row_present(
         self, storage_md_text: str
     ) -> None:
-        """TC-DOC-TR-001b: §逆引き表 declares §BUG-TR-002 凍結 for conversation_messages.
+        """TC-DOC-TR-001b: §逆引き表 が conversation_messages について §BUG-TR-002 凍結 を宣言する。
 
-        conversation_messages.body_markdown masking is deferred to
-        feature/conversation-repository (§BUG-TR-002 凍結). The storage.md
-        §逆引き表 must document this frozen state so future PR reviewers can
-        identify the pending masking requirement without opening the issue.
+        conversation_messages.body_markdown のマスキングは
+        feature/conversation-repository に延期されている (§BUG-TR-002 凍結)。
+        storage.md §逆引き表 はこの凍結状態を文書化していなければならず、
+        これにより今後の PR レビュアーは Issue を開かずに保留中のマスキング
+        要求を特定できる。
 
-        The line must co-locate ``conversation_messages`` (or ``Conversation``)
-        and ``BUG-TR-002`` so the frozen state is operator-readable directly.
+        凍結状態が直接運用者可読となるよう、``conversation_messages``
+        (または ``Conversation``) と ``BUG-TR-002`` が同一行に併記されていなければならない。
         """
         co_located_lines = [
             line
@@ -293,9 +288,9 @@ class TestBackIndexHasTaskRows:
         )
 
     def test_deliverables_body_markdown_masked_text_row_present(self, storage_md_text: str) -> None:
-        """TC-DOC-TR-001c: §逆引き表 declares MaskedText on deliverables.body_markdown.
+        """TC-DOC-TR-001c: §逆引き表 が deliverables.body_markdown に MaskedText を宣言する。
 
-        The line must co-locate ``deliverables`` and ``MaskedText``.
+        ``deliverables`` と ``MaskedText`` が同一行に併記されていなければならない。
         """
         co_located_lines = [
             line
@@ -309,10 +304,10 @@ class TestBackIndexHasTaskRows:
         )
 
     def test_task_no_mask_row_present(self, storage_md_text: str) -> None:
-        """TC-DOC-TR-001d: §逆引き表 declares Task remaining columns no-mask.
+        """TC-DOC-TR-001d: §逆引き表 が Task の残りのカラムをノーマスクとして宣言する。
 
         task_assigned_agents / conversations / conversation_messages 除 body_markdown /
-        deliverables 除 body_markdown / deliverable_attachments は 'masking 対象なし'
+        deliverables 除 body_markdown / deliverable_attachments は「masking 対象なし」
         として登録されており、過剰マスキングを防止する。
         """
         co_located_lines = [

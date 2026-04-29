@@ -1,22 +1,21 @@
-"""Workflow Aggregate tables: workflows + workflow_stages + workflow_transitions.
+"""Workflow Aggregate テーブル群: workflows + workflow_stages + workflow_transitions。
 
-Adds the three tables that back :class:`SqliteWorkflowRepository`:
+:class:`SqliteWorkflowRepository` を支える 3 つのテーブルを追加する:
 
-* ``workflows`` (id PK + name + entry_stage_id, **no FK** on entry_stage_id
-  per ``docs/features/workflow-repository/detailed-design.md`` §確定 J).
-* ``workflow_stages`` (FK CASCADE on workflow_id, UNIQUE pair) — the
-  ``notify_channels_json`` column carries Discord webhook URLs and is
-  declared with the :class:`MaskedJSONEncoded` TypeDecorator at the ORM
-  level (Alembic stores it as ``TEXT`` here; the masking gate lives on
-  the Python side).
-* ``workflow_transitions`` (FK CASCADE on workflow_id, UNIQUE pair).
+* ``workflows``（id PK + name + entry_stage_id。entry_stage_id には
+  ``docs/features/workflow-repository/detailed-design.md`` §確定 J に従い
+  **FK を付けない**）。
+* ``workflow_stages``（workflow_id に FK CASCADE、組で UNIQUE）—
+  ``notify_channels_json`` カラムは Discord の Webhook URL を保持し、ORM 層では
+  :class:`MaskedJSONEncoded` TypeDecorator として宣言される（Alembic 側では
+  ``TEXT`` として保存し、マスキングゲートは Python 側に置く）。
+* ``workflow_transitions``（workflow_id に FK CASCADE、組で UNIQUE）。
 
-Per ``docs/features/empire-repository/detailed-design.md`` §確定 F, each
-subsequent ``feature/{aggregate}-repository`` PR appends its own
-revision (``0004_agent_aggregate``, …) on top of this one so the
-Alembic chain stays linear; this revision pins ``down_revision =
-"0002_empire_aggregate"`` strictly so the chain check enforces a single
-head.
+``docs/features/empire-repository/detailed-design.md`` §確定 F に従い、後続の
+``feature/{aggregate}-repository`` PR は本 revision の上にそれぞれの revision
+（``0004_agent_aggregate``、…）を積み重ね、Alembic チェーンを線形に保つ。本 revision は
+``down_revision = "0002_empire_aggregate"`` を厳密に固定し、チェーン検査が単一 head
+を強制するようにする。
 
 Revision ID: 0003_workflow_aggregate
 Revises: 0002_empire_aggregate
@@ -41,9 +40,8 @@ def upgrade() -> None:
         "workflows",
         sa.Column("id", sa.CHAR(32), primary_key=True, nullable=False),
         sa.Column("name", sa.String(80), nullable=False),
-        # entry_stage_id intentionally has NO FK constraint — see
-        # detailed-design §確定 J. The Aggregate invariant
-        # ``_validate_entry_in_stages`` guards reference integrity.
+        # entry_stage_id には意図的に FK 制約を付けない — detailed-design §確定 J 参照。
+        # 参照整合性は Aggregate 不変条件 ``_validate_entry_in_stages`` で守る。
         sa.Column("entry_stage_id", sa.CHAR(32), nullable=False),
     )
 
@@ -66,9 +64,9 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("''"),
         ),
-        # JSONEncoded / MaskedJSONEncoded TypeDecorators serialize as
-        # TEXT in SQLite. The Python-side decorator does the masking
-        # gate (see infrastructure/persistence/sqlite/base.py).
+        # JSONEncoded / MaskedJSONEncoded TypeDecorator は SQLite では TEXT として
+        # 直列化される。マスキングゲートは Python 側のデコレータで行う
+        # （infrastructure/persistence/sqlite/base.py 参照）。
         sa.Column("completion_policy_json", sa.Text(), nullable=False),
         sa.Column(
             "notify_channels_json",
@@ -93,9 +91,9 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("transition_id", sa.CHAR(32), primary_key=True, nullable=False),
-        # from_stage_id / to_stage_id intentionally have NO FK
-        # constraint — same circular-reference rationale as
-        # workflows.entry_stage_id (detailed-design §確定 J).
+        # from_stage_id / to_stage_id には意図的に FK 制約を付けない —
+        # workflows.entry_stage_id と同じ循環参照回避の理由による
+        # （detailed-design §確定 J）。
         sa.Column("from_stage_id", sa.CHAR(32), nullable=False),
         sa.Column("to_stage_id", sa.CHAR(32), nullable=False),
         sa.Column("condition", sa.String(32), nullable=False),
@@ -114,8 +112,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Drop child tables first so the FK CASCADE doesn't trigger work
-    # against an already-deleted parent.
+    # 削除済みの親に対して FK CASCADE が発火しないよう、子テーブルから先に削除する。
     op.drop_table("workflow_transitions")
     op.drop_table("workflow_stages")
     op.drop_table("workflows")

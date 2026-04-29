@@ -1,31 +1,29 @@
-"""Directive Repository: §確定 G 実適用 — MaskedText wiring on directives.text.
+"""Directive Repository: §確定 G 実適用 ── directives.text への MaskedText 配線。
 
-TC-IT-DRR-010-masking-* (7 paths).
+TC-IT-DRR-010-masking-* (7 経路)。
 
-**directive §確定 G 実適用の物理保証**: This module is the core masking
-test file for PR #34 — the MaskedText TypeDecorator on ``directives.text``
-is exercised end-to-end against a real SQLite DB, against 7 secret-bearing
-directive text shapes:
+**directive §確定 G 実適用の物理保証**: 本モジュールは PR #34 のマスキング核となるテストファイル。
+``directives.text`` の MaskedText TypeDecorator が、実際の SQLite DB に対して
+secret を含む 7 種類の directive text 形状でエンドツーエンドに動作することを検証する:
 
-1. **discord** — Discord Bot Token in webhook URL context →
-   ``<REDACTED:DISCORD_TOKEN>`` (primary irreversibility case).
+1. **discord** — webhook URL 文脈の Discord Bot Token →
+   ``<REDACTED:DISCORD_TOKEN>``（主要な不可逆性ケース）。
 2. **anthropic** — ``ANTHROPIC_API_KEY=sk-ant-api03-XXX...`` →
-   ``<REDACTED:ANTHROPIC_KEY>``.
-3. **github** — ``ghp_XXX...`` → ``<REDACTED:GITHUB_PAT>``.
-4. **bearer** — ``Authorization: Bearer XXX`` → ``<REDACTED:BEARER>``.
-5. **no-secret** — plain text → unchanged (passthrough).
-6. **roundtrip** — §確定 G §不可逆性: find_by_id returns masked form
-   (raw token unrecoverable from DB).
-7. **multiple** — 3 secret types in one directive text → all redacted.
+   ``<REDACTED:ANTHROPIC_KEY>``。
+3. **github** — ``ghp_XXX...`` → ``<REDACTED:GITHUB_PAT>``。
+4. **bearer** — ``Authorization: Bearer XXX`` → ``<REDACTED:BEARER>``。
+5. **no-secret** — 平文 → 変更されない（passthrough）。
+6. **roundtrip** — §確定 G §不可逆性: find_by_id はマスク済み形式を返す
+   （生トークンは DB から復元不能）。
+7. **multiple** — 1 つの directive text 内の 3 種の secret すべてが redact される。
 
-Each verification reads ``directives.text`` via **raw SQL SELECT** so we
-observe the literal bytes that hit the disk (bypassing
-``MaskedText.process_result_value`` on the read side).
+各検証は **raw SQL SELECT** で ``directives.text`` を読み取り、ディスクに到達した
+literal バイトを観測する（読み出し側で ``MaskedText.process_result_value`` を迂回）。
 
-Room-repo ``test_masking_prompt_kit.py`` pattern inherited 100%.
+Room-repo ``test_masking_prompt_kit.py`` のパターンを 100% 踏襲。
 
-Per ``docs/features/directive-repository/test-design.md`` TC-IT-DRR-010-*.
-Issue #34 — M2 0006.
+``docs/features/directive-repository/test-design.md`` TC-IT-DRR-010-* 準拠。
+Issue #34 — M2 0006。
 """
 
 from __future__ import annotations
@@ -47,23 +45,23 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.asyncio
 
 
-# Real-shape (synthetic) secret tokens. Pattern lengths must match
-# the masking gateway's regex (masking.py _REGEX_PATTERNS).
+# 実形（合成）secret トークン。パターン長は masking gateway の正規表現
+# (masking.py _REGEX_PATTERNS) に一致させる必要がある。
 
-# Discord Bot Token — matches [MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{27,}
-# Constructed via concatenation to prevent GitHub push-protection false positives.
+# Discord Bot Token ── [MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{27,} に一致。
+# GitHub push-protection の false positive を避けるため連結で構築。
 _DISCORD_TOKEN = "MTk4NjIyNDgz" + "NDcxOTI1MjQ4.ClFDg_." + "A" * 27
 
-# Anthropic API key — matches sk-ant-(?:api03-)?[A-Za-z0-9_\-]{40,}
+# Anthropic API key ── sk-ant-(?:api03-)?[A-Za-z0-9_\-]{40,} に一致。
 _ANTHROPIC_TOKEN = "sk-ant-api03-" + "A" * 60
 
-# GitHub PAT — matches (?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}
+# GitHub PAT ── (?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,} に一致。
 _GITHUB_TOKEN = "ghp_" + "X" * 40
 
-# Bearer token — matches Authorization: Bearer <token>
+# Bearer token ── Authorization: Bearer <token> に一致。
 _BEARER_TOKEN = "eyJhbGciOi.tokenpart.signature"
 
-# Redaction sentinels
+# Redaction センチネル
 _DISCORD_SENTINEL = "<REDACTED:DISCORD_TOKEN>"
 _ANTHROPIC_SENTINEL = "<REDACTED:ANTHROPIC_KEY>"
 _GITHUB_SENTINEL = "<REDACTED:GITHUB_PAT>"
@@ -74,11 +72,10 @@ async def _read_persisted_text(
     session_factory: async_sessionmaker[AsyncSession],
     directive_id: UUID,
 ) -> str:
-    """Raw-SQL SELECT to fetch ``directives.text`` literal bytes from disk.
+    """Raw-SQL SELECT で ``directives.text`` の literal バイトをディスクから取得する。
 
-    Bypasses ``MaskedText.process_result_value`` so we observe the value
-    physically stored in SQLite. Uses ``.hex`` for the UUID parameter
-    to match ``UUIDStr`` TypeDecorator storage format.
+    ``MaskedText.process_result_value`` を迂回して SQLite に物理的に保存されている値を観測する。
+    UUID パラメータは ``UUIDStr`` TypeDecorator のストレージ形式に合わせて ``.hex`` を用いる。
     """
     async with session_factory() as session:
         stmt = text("SELECT text FROM directives WHERE id = :id")
@@ -90,17 +87,17 @@ async def _read_persisted_text(
 
 
 # ---------------------------------------------------------------------------
-# TC-IT-DRR-010-masking-discord (primary case, directive §確定 G 不可逆性)
+# TC-IT-DRR-010-masking-discord (主要ケース、directive §確定 G 不可逆性)
 # ---------------------------------------------------------------------------
 class TestDiscordTokenMasked:
-    """TC-IT-DRR-010-masking-discord: Discord Bot Token in directive text redacted."""
+    """TC-IT-DRR-010-masking-discord: directive text 中の Discord Bot Token が redact される。"""
 
     async def test_discord_token_in_webhook_url_redacted(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """Raw-SQL SELECT shows <REDACTED:DISCORD_TOKEN>; raw token absent from disk."""
+        """Raw-SQL SELECT が <REDACTED:DISCORD_TOKEN> を返し、生トークンがディスク上に残らない。"""
         directive_text = (
             f"配信先: https://discord.com/api/webhooks/123456789012345678/{_DISCORD_TOKEN}\n"
             f"通知プレフィックス: CEO 指令"
@@ -126,14 +123,14 @@ class TestDiscordTokenMasked:
 # TC-IT-DRR-010-masking-anthropic
 # ---------------------------------------------------------------------------
 class TestAnthropicKeyMasked:
-    """TC-IT-DRR-010-masking-anthropic: Anthropic API key redacted on save."""
+    """TC-IT-DRR-010-masking-anthropic: save 時に Anthropic API key が redact される。"""
 
     async def test_anthropic_key_redacted(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """Raw-SQL SELECT shows <REDACTED:ANTHROPIC_KEY>; raw key absent."""
+        """Raw-SQL SELECT が <REDACTED:ANTHROPIC_KEY> を返し、生 key が含まれない。"""
         directive_text = f"ANTHROPIC_API_KEY={_ANTHROPIC_TOKEN} を使ってClaude APIを呼ぶこと"
         directive = make_directive(target_room_id=seeded_room_id, text=directive_text)
         async with session_factory() as session, session.begin():
@@ -153,14 +150,14 @@ class TestAnthropicKeyMasked:
 # TC-IT-DRR-010-masking-github
 # ---------------------------------------------------------------------------
 class TestGitHubPatMasked:
-    """TC-IT-DRR-010-masking-github: GitHub PAT redacted on save."""
+    """TC-IT-DRR-010-masking-github: save 時に GitHub PAT が redact される。"""
 
     async def test_github_pat_redacted(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """Raw-SQL SELECT shows <REDACTED:GITHUB_PAT>; raw PAT absent."""
+        """Raw-SQL SELECT が <REDACTED:GITHUB_PAT> を返し、生 PAT が含まれない。"""
         directive_text = f"git push には {_GITHUB_TOKEN} を使うこと"
         directive = make_directive(target_room_id=seeded_room_id, text=directive_text)
         async with session_factory() as session, session.begin():
@@ -181,14 +178,14 @@ class TestGitHubPatMasked:
 # TC-IT-DRR-010-masking-bearer
 # ---------------------------------------------------------------------------
 class TestBearerTokenMasked:
-    """TC-IT-DRR-010-masking-bearer: Authorization: Bearer XXX redacted."""
+    """TC-IT-DRR-010-masking-bearer: Authorization: Bearer XXX が redact される。"""
 
     async def test_bearer_token_redacted(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """Raw-SQL SELECT shows <REDACTED:BEARER>; raw Bearer token absent."""
+        """Raw-SQL SELECT が <REDACTED:BEARER> を返し、生 Bearer トークンが含まれない。"""
         directive_text = f"APIコール時は Authorization: Bearer {_BEARER_TOKEN} を使うこと"
         directive = make_directive(target_room_id=seeded_room_id, text=directive_text)
         async with session_factory() as session, session.begin():
@@ -208,17 +205,17 @@ class TestBearerTokenMasked:
 # TC-IT-DRR-010-masking-no-secret (passthrough)
 # ---------------------------------------------------------------------------
 class TestNoSecretPassthrough:
-    """TC-IT-DRR-010-masking-no-secret: plain directive text is stored unchanged."""
+    """TC-IT-DRR-010-masking-no-secret: 平文 directive text は変更されずに保存される。"""
 
     async def test_plain_text_is_passthrough(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """A directive text with no secrets is persisted byte-identical.
+        """secret を含まない directive text はバイト等価で永続化される。
 
-        Confirms masking is scoped — only known secret patterns get
-        redacted; the gateway is not over-aggressive on plain text.
+        マスキングが限定的であること（既知の secret パターンのみ redact、
+        gateway は平文に過剰反応しない）を確認する。
         """
         plain_text = "チームAにタスクXを割り当て、Vモデル設計工程に入ること。"
         directive = make_directive(target_room_id=seeded_room_id, text=plain_text)
@@ -237,11 +234,11 @@ class TestNoSecretPassthrough:
 # TC-IT-DRR-010-masking-roundtrip (directive §確定 G §不可逆性)
 # ---------------------------------------------------------------------------
 class TestRoundTripIsIrreversible:
-    """TC-IT-DRR-010-masking-roundtrip: §確定 G §不可逆性 — find_by_id returns masked.
+    """TC-IT-DRR-010-masking-roundtrip: §確定 G §不可逆性 ── find_by_id はマスク済みを返す。
 
-    Once a Discord Bot Token is masked at save time, the raw token is
-    physically unrecoverable from DB. find_by_id must return a Directive
-    whose text carries the redaction sentinel rather than the original token.
+    一度 Discord Bot Token が save 時にマスクされたら、生トークンは DB から
+    物理的に復元不能。find_by_id は redaction sentinel を持つ Directive を返さねばならず、
+    元のトークンを返してはならない。
     """
 
     async def test_find_by_id_returns_masked_text(
@@ -249,7 +246,7 @@ class TestRoundTripIsIrreversible:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """Save raw Discord webhook URL → find_by_id → text == masked form."""
+        """生の Discord webhook URL を save → find_by_id → text == マスク済み形式。"""
         raw_text = f"配信先: https://discord.com/api/webhooks/12345/{_DISCORD_TOKEN}"
         directive = make_directive(target_room_id=seeded_room_id, text=raw_text)
         async with session_factory() as session, session.begin():
@@ -266,7 +263,7 @@ class TestRoundTripIsIrreversible:
             f"[FAIL] directive §確定 G §不可逆性 violated: raw Discord token recovered after "
             f"round-trip.\nRestored text: {restored.text!r}"
         )
-        # Round-tripped Directive must NOT equal the original (masking changed it)
+        # ラウンドトリップした Directive は元と等価ではない（マスキングで変わるため）
         assert restored != directive, (
             "[FAIL] round-trip equality should not hold for masked directive text; "
             "masking might be a no-op."
@@ -277,14 +274,15 @@ class TestRoundTripIsIrreversible:
 # TC-IT-DRR-010-masking-multiple
 # ---------------------------------------------------------------------------
 class TestMultipleSecretsAllRedacted:
-    """TC-IT-DRR-010-masking-multiple: 3+ secret types in one directive all redacted."""
+    """TC-IT-DRR-010-masking-multiple: 1 directive 内の
+    3 種以上の secret すべてが redact される。"""
 
     async def test_multiple_secrets_all_redacted_in_one_pass(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_room_id: UUID,
     ) -> None:
-        """Discord + Anthropic + GitHub all redacted in a single directive text."""
+        """1 つの directive text 中の Discord + Anthropic + GitHub すべてが redact される。"""
         directive_text = (
             f"複数シークレットを含む指令:\n"
             f"  Discord: https://discord.com/api/webhooks/123/{_DISCORD_TOKEN}\n"
@@ -297,7 +295,7 @@ class TestMultipleSecretsAllRedacted:
 
         persisted = await _read_persisted_text(session_factory, directive.id)
 
-        # All 3 sentinels present
+        # 3 種の sentinel すべてが含まれる
         assert _DISCORD_SENTINEL in persisted, (
             f"[FAIL] Discord sentinel missing in multi-secret directive. Persisted: {persisted!r}"
         )
@@ -307,7 +305,7 @@ class TestMultipleSecretsAllRedacted:
         assert _GITHUB_SENTINEL in persisted, (
             f"[FAIL] GitHub sentinel missing in multi-secret directive. Persisted: {persisted!r}"
         )
-        # All 3 raw tokens absent
+        # 3 種の生トークンはいずれも含まれない
         assert _DISCORD_TOKEN not in persisted, (
             f"[FAIL] Discord token survived multi-secret masking. Persisted: {persisted!r}"
         )

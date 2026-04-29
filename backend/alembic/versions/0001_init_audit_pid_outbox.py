@@ -1,9 +1,9 @@
-"""Initial revision: audit_log + bakufu_pid_registry + domain_event_outbox.
+"""初期 revision: audit_log + bakufu_pid_registry + domain_event_outbox。
 
-Creates the three cross-cutting tables shared across every Aggregate,
-the polling-optimized index on the Outbox, and the two SQLite triggers
-that enforce ``audit_log`` immutability at the database layer
-(Confirmation C — see ``docs/features/persistence-foundation/detailed-design/triggers.md``).
+すべての Aggregate にまたがる横断的な 3 テーブル、Outbox 上のポーリング最適化用
+インデックス、および ``audit_log`` の不変性をデータベース層で強制する 2 種類の
+SQLite トリガーを作成する
+（確定 C — ``docs/features/persistence-foundation/detailed-design/triggers.md`` 参照）。
 
 Revision ID: 0001_init
 Revises:
@@ -71,7 +71,7 @@ def upgrade() -> None:
         ["status", "next_attempt_at"],
     )
 
-    # Trigger 1: forbid DELETE on audit_log (append-only).
+    # トリガー 1: audit_log への DELETE を禁止する（追記専用）。
     op.execute(
         "CREATE TRIGGER audit_log_no_delete "
         "BEFORE DELETE ON audit_log "
@@ -80,7 +80,7 @@ def upgrade() -> None:
         "END"
     )
 
-    # Trigger 2: forbid UPDATE once `result` has been set.
+    # トリガー 2: `result` が設定済みの行に対する UPDATE を禁止する。
     op.execute(
         "CREATE TRIGGER audit_log_update_restricted "
         "BEFORE UPDATE ON audit_log "

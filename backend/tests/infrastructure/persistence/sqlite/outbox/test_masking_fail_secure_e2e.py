@@ -1,26 +1,26 @@
-"""Fail-Secure E2E injection tests
-(TC-UT-PF-006-C complement, Confirmation F, Norman 前回 △ 宿題).
+"""Fail-Secure E2E インジェクションテスト
+（TC-UT-PF-006-C 補完, 確定 F, Norman 前回 △ 宿題）。
 
-Confirmation F freezes that **listener-equivalent failures must never
-let raw bytes hit the disk**. Earlier ``test_masking.py`` covers the
-sentinel constants (``REDACT_MASK_ERROR`` / ``REDACTED_MASK_OVERFLOW``
-/ ``REDACT_LISTENER_ERROR``) at the gateway layer, but the Fail-Secure
-E2E loop — *gateway raises → DB SELECT shows sentinel* — was missing.
-This file adds the three injection patterns Norman flagged:
+確定 F は「**リスナー相当の失敗が生バイトをディスクに到達させてはならない**」
+ことを凍結している。先行する ``test_masking.py`` はゲートウェイ層で
+sentinel 定数（``REDACT_MASK_ERROR`` / ``REDACTED_MASK_OVERFLOW``
+/ ``REDACT_LISTENER_ERROR``）を検証するが、Fail-Secure E2E ループ
+（*ゲートウェイが raise → DB SELECT が sentinel を返す*）は欠けていた。
+本ファイルは Norman が指摘した 3 つのインジェクションパターンを補う:
 
-1. :func:`mask_in` raises while encoding ``payload_json`` →
-   ``MaskedJSONEncoded.process_bind_param`` catches the exception and
-   writes ``json.dumps(REDACT_LISTENER_ERROR)`` instead. Subsequent
-   SELECT returns the sentinel string.
-2. :func:`mask` raises while encoding ``last_error`` →
-   ``MaskedText.process_bind_param`` writes ``REDACT_LISTENER_ERROR``
-   instead. SELECT returns the sentinel.
-3. Same path for ``audit_log.error_text`` → confirms the gateway is
-   wired across all three secret-bearing tables.
+1. :func:`mask_in` が ``payload_json`` のエンコード中に raise →
+   ``MaskedJSONEncoded.process_bind_param`` が例外を捕捉し、
+   代わりに ``json.dumps(REDACT_LISTENER_ERROR)`` を書き込む。
+   後続の SELECT は sentinel 文字列を返す。
+2. :func:`mask` が ``last_error`` のエンコード中に raise →
+   ``MaskedText.process_bind_param`` が代わりに ``REDACT_LISTENER_ERROR``
+   を書き込む。SELECT は sentinel を返す。
+3. ``audit_log.error_text`` でも同経路 → ゲートウェイが秘密を持つ
+   3 テーブルすべてに配線されていることを確認する。
 
-The injection is at the **gateway** (`mask` / `mask_in`) so the test
-is independent of which TypeDecorator does the wiring; if Linus ever
-swaps the masker implementation, the contract still holds.
+インジェクションは**ゲートウェイ**（`mask` / `mask_in`）で行うため、
+このテストは TypeDecorator の配線実装に依存しない。Linus がマスク
+実装を差し替えても契約は維持される。
 """
 
 from __future__ import annotations
@@ -43,12 +43,12 @@ pytestmark = pytest.mark.asyncio
 
 
 def _force_mask_in_to_raise(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Make :func:`mask_in` raise when the TypeDecorator calls it.
+    """TypeDecorator が :func:`mask_in` を呼んだとき raise させる。
 
-    We patch the symbol the TypeDecorator imported (the
-    ``base`` module's local ``mask_in`` binding), not the masking
-    module's, because Python ``from X import Y`` captures the
-    reference at import time.
+    パッチ対象は TypeDecorator がインポートしたシンボル
+    （``base`` モジュール内のローカル ``mask_in`` バインディング）であり、
+    masking モジュール側ではない。Python の ``from X import Y`` は
+    インポート時に参照を捕捉するためである。
     """
     from bakufu.infrastructure.persistence.sqlite import base as base_mod
 
@@ -60,7 +60,7 @@ def _force_mask_in_to_raise(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _force_mask_to_raise(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Make :func:`mask` raise when the TypeDecorator calls it."""
+    """TypeDecorator が :func:`mask` を呼んだとき raise させる。"""
     from bakufu.infrastructure.persistence.sqlite import base as base_mod
 
     def _explode(_value: object) -> str:
@@ -71,12 +71,12 @@ def _force_mask_to_raise(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class TestMaskInFailureRedactsPayloadJson:
-    """Pattern 1: ``mask_in`` raise → ``payload_json`` becomes the sentinel.
+    """パターン 1: ``mask_in`` が raise → ``payload_json`` が sentinel になる。
 
-    The raw secret in ``payload_json`` must NEVER reach the disk —
-    the TypeDecorator catches the exception and writes
-    ``json.dumps(REDACT_LISTENER_ERROR)`` so a SELECT returns
-    ``REDACT_LISTENER_ERROR`` (a string, not the original dict).
+    ``payload_json`` の生秘密は決してディスクに到達してはならない —
+    TypeDecorator が例外を捕捉し ``json.dumps(REDACT_LISTENER_ERROR)``
+    を書き込むため、SELECT は ``REDACT_LISTENER_ERROR``（元の dict ではなく
+    文字列）を返す。
     """
 
     async def test_payload_json_replaced_with_listener_error_sentinel(
@@ -84,11 +84,11 @@ class TestMaskInFailureRedactsPayloadJson:
         session_factory: async_sessionmaker[AsyncSession],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Fail-Secure E2E: secret payload never lands on disk if mask_in raises."""
+        """Fail-Secure E2E: mask_in が raise しても秘密 payload はディスクに到達しない。"""
         _force_mask_in_to_raise(monkeypatch)
 
-        # The raw payload contains a sk-ant- key; if the Fail-Secure
-        # path is broken, the SELECT below would return that key.
+        # 生 payload に sk-ant- キーが含まれる。Fail-Secure 経路が壊れていれば
+        # 下の SELECT がそのキーを返してしまう。
         row = make_outbox_row(
             payload_json={"key": "sk-ant-api03-" + "A" * 60},
             last_error=None,
@@ -101,21 +101,21 @@ class TestMaskInFailureRedactsPayloadJson:
             stmt = select(OutboxRow).where(OutboxRow.event_id == row.event_id)
             fetched = (await session.execute(stmt)).scalar_one()
 
-        # SELECT must return the sentinel; the original secret must
-        # never appear anywhere in the loaded value.
+        # SELECT は sentinel を返さなければならず、元の秘密は
+        # ロード値のどこにも現れてはならない。
         assert fetched.payload_json == REDACT_LISTENER_ERROR
         assert "sk-ant-" not in str(fetched.payload_json)
 
 
 class TestMaskFailureRedactsLastError:
-    """Pattern 2: ``mask`` raise → ``last_error`` becomes the sentinel."""
+    """パターン 2: ``mask`` が raise → ``last_error`` が sentinel になる。"""
 
     async def test_last_error_replaced_with_listener_error_sentinel(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Fail-Secure E2E: last_error secret never lands on disk if mask raises."""
+        """Fail-Secure E2E: mask が raise しても last_error の秘密はディスクに到達しない。"""
         _force_mask_to_raise(monkeypatch)
 
         row = make_outbox_row(
@@ -136,10 +136,10 @@ class TestMaskFailureRedactsLastError:
 
 
 class TestMaskFailureRedactsAuditLogErrorText:
-    """Pattern 3: ``mask`` raise on ``audit_log.error_text`` → sentinel.
+    """パターン 3: ``audit_log.error_text`` で ``mask`` が raise → sentinel。
 
-    Same gateway, different table. Confirms the TypeDecorator wiring
-    is consistent across all three secret-bearing tables.
+    ゲートウェイは同じ、テーブルは別。TypeDecorator の配線が
+    秘密を持つ 3 テーブル間で一貫していることを確認する。
     """
 
     async def test_audit_log_error_text_replaced_with_sentinel(
@@ -147,7 +147,7 @@ class TestMaskFailureRedactsAuditLogErrorText:
         session_factory: async_sessionmaker[AsyncSession],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Fail-Secure E2E: audit_log error_text secret never lands on disk."""
+        """Fail-Secure E2E: audit_log の error_text の秘密はディスクに到達しない。"""
         _force_mask_to_raise(monkeypatch)
 
         row = make_audit_log_row(
@@ -163,8 +163,7 @@ class TestMaskFailureRedactsAuditLogErrorText:
             stmt = select(AuditLogRow).where(AuditLogRow.id == row.id)
             fetched = (await session.execute(stmt)).scalar_one()
 
-        # ``args_json`` is dict-typed, ``error_text`` is the str column
-        # we drove the failure through.
+        # ``args_json`` は dict 型、``error_text`` は失敗を駆動した str 列。
         loaded_error = fetched.error_text
         assert loaded_error == REDACT_LISTENER_ERROR
         assert loaded_error is not None

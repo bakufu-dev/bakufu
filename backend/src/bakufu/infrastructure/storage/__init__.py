@@ -1,5 +1,6 @@
-"""File-system storage roots managed by bakufu.
+"""bakufu が管理するファイルシステム ストレージのルート群。
 
-Currently only the attachments root lives here; future PRs add log
-file rotation / on-disk archive directories under the same package.
+現時点では添付ファイル用ルートのみを保持する。将来の PR では
+ログファイルローテーションやオンディスクのアーカイブディレクトリも
+同じパッケージ配下に追加する予定。
 """

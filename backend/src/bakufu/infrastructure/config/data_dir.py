@@ -1,24 +1,24 @@
-"""``BAKUFU_DATA_DIR`` resolution with absolute-path enforcement.
+"""``BAKUFU_DATA_DIR`` の解決と絶対パスの強制。
 
-The data directory is the ground truth for every persistent artefact
-bakufu manages: SQLite DB file, WAL / SHM, structured logs,
-``attachments/`` storage, and ``bakufu_pid_registry`` related files.
+データディレクトリは bakufu が管理するすべての永続成果物の真の出所
+（ground truth）である: SQLite DB ファイル、WAL / SHM、構造化ログ、
+``attachments/`` ストレージ、``bakufu_pid_registry`` 関連ファイル。
 
-Resolution policy
------------------
-1. If ``BAKUFU_DATA_DIR`` is set in the environment, use that.
-   - Reject relative paths, NUL bytes, and ``..`` segments — these
-     are the classic path-traversal vectors and the M1 ``SkillRef``
-     defense pattern (H1〜H10) is reapplied at this layer.
-2. If unset, default to the OS-conventional location:
+解決ポリシー
+-----------
+1. 環境変数 ``BAKUFU_DATA_DIR`` が設定されていればそれを使用する。
+   - 相対パス、NUL バイト、``..`` セグメントは拒否する。これらは
+     代表的なパストラバーサル攻撃ベクタであり、M1 ``SkillRef`` の
+     防御パターン（H1〜H10）を本層でも再適用する。
+2. 未設定の場合は OS の慣習的な配置に従う:
    - Linux/macOS: ``${XDG_DATA_HOME:-$HOME/.local/share}/bakufu``
    - Windows: ``%LOCALAPPDATA%\\bakufu``
-3. Resolve symlinks (``Path.resolve``) so downstream code never has
-   to second-guess what the absolute path means.
+3. シンボリックリンクは ``Path.resolve`` で解決し、下流コードが絶対
+   パスの意味を再確認しなくて済むようにする。
 
-The resolved path is cached at module level so subsequent ``resolve()``
-calls are O(1) — every Bootstrap stage can ask the resolver without
-worrying about repeating the I/O.
+解決済みパスはモジュールレベルでキャッシュされるため、以降の
+``resolve()`` 呼び出しは O(1) となる。各 Bootstrap Stage は I/O 反復を
+気にせず resolver を呼び出せる。
 """
 
 from __future__ import annotations
@@ -35,16 +35,16 @@ _resolved: Path | None = None
 
 
 def resolve() -> Path:
-    """Return the absolute, symlink-resolved data directory.
+    """シンボリックリンク解決済みの絶対データディレクトリを返す。
 
-    Cached: first call validates the environment / OS default, all
-    subsequent calls return the same :class:`Path`. Use :func:`reset`
-    in test setups to force a re-resolve.
+    キャッシュ動作: 初回呼び出しで環境変数 / OS デフォルトを検証し、
+    以降の呼び出しは同じ :class:`Path` を返す。テストセットアップで
+    再解決を強制する場合は :func:`reset` を使用する。
 
     Raises:
-        BakufuConfigError: ``msg_id='MSG-PF-001'`` for invalid env
-            values (relative path, NUL byte, ``..`` segment, or
-            unreadable HOME). Bootstrap exits non-zero.
+        BakufuConfigError: ``msg_id='MSG-PF-001'``。環境変数値が不正
+            （相対パス、NUL バイト、``..`` セグメント、HOME が読めない）
+            の場合。Bootstrap は非ゼロ終了する。
     """
     global _resolved
     if _resolved is not None:
@@ -53,20 +53,21 @@ def resolve() -> Path:
     raw = os.environ.get(ENV_VAR_NAME)
     path = _default_for_os() if raw is None or raw == "" else _validate_absolute(raw)
 
-    # Resolve symlinks once so callers get a canonical path. ``strict=False``
-    # because the directory may not exist yet — Bootstrap creates it later.
+    # シンボリックリンクを一度だけ解決し、呼び出し側に正規化済みパスを
+    # 返す。Bootstrap が後段でディレクトリを作成するため、この時点では
+    # 未存在でも構わないので ``strict=False``。
     _resolved = path.resolve(strict=False)
     return _resolved
 
 
 def reset() -> None:
-    """Clear the singleton cache. Test-only helper."""
+    """シングルトンキャッシュをクリアする。テスト用ヘルパ。"""
     global _resolved
     _resolved = None
 
 
 def _validate_absolute(value: str) -> Path:
-    """Reject relative paths, NUL bytes, and traversal sequences."""
+    """相対パス、NUL バイト、トラバーサル列を拒否する。"""
     home_safe_value = value.replace(str(Path("~").expanduser()), "<HOME>", 1)
     if "\x00" in value:
         raise BakufuConfigError(
@@ -94,7 +95,7 @@ def _validate_absolute(value: str) -> Path:
 
 
 def _default_for_os() -> Path:
-    """OS-conventional default location for ``BAKUFU_DATA_DIR``."""
+    """``BAKUFU_DATA_DIR`` の OS 別デフォルト配置。"""
     if platform.system() == "Windows":
         local_app_data = os.environ.get("LOCALAPPDATA")
         if not local_app_data:
@@ -107,8 +108,8 @@ def _default_for_os() -> Path:
             )
         return Path(local_app_data) / "bakufu"
 
-    # POSIX path: respect XDG_DATA_HOME if present, otherwise
-    # `$HOME/.local/share`.
+    # POSIX 系: XDG_DATA_HOME があれば優先、なければ
+    # ``$HOME/.local/share`` を採用する。
     xdg = os.environ.get("XDG_DATA_HOME")
     if xdg:
         return Path(xdg) / "bakufu"

@@ -1,7 +1,7 @@
-"""Add ``archived`` column to ``empires`` table (確定 I).
+"""``empires`` テーブルに ``archived`` カラムを追加（確定 I）。
 
-Adds the logical-delete flag required by UC-EM-010 / REQ-EM-HTTP-005
-(``DELETE /api/empires/{id}`` → soft-delete).
+UC-EM-010 / REQ-EM-HTTP-005（``DELETE /api/empires/{id}`` → 論理削除）が要求する
+論理削除フラグを追加する。
 
 Revision ID: 0009_empire_archived
 Revises: 0008_external_review_gate_aggregate
@@ -34,8 +34,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # SQLite does not support ALTER TABLE ... DROP COLUMN directly via Alembic
-    # without batch mode — use batch_alter_table as specified in 確定 I.
-    # See: https://alembic.sqlalchemy.org/en/latest/batch.html
+    # SQLite は Alembic の通常モードでは ALTER TABLE ... DROP COLUMN を直接
+    # サポートしない — 確定 I で指定された通り batch_alter_table を使う。
+    # 参照: https://alembic.sqlalchemy.org/en/latest/batch.html
     with op.batch_alter_table("empires") as batch_op:
         batch_op.drop_column("archived")

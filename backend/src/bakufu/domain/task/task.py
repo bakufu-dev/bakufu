@@ -1,44 +1,37 @@
-"""Task Aggregate Root (REQ-TS-001〜009).
+"""Task Aggregate Root（REQ-TS-001〜009）。
 
-Implements ``docs/features/task/`` as the M1 6th sibling. The aggregate
-follows the same shape established by empire / workflow / agent / room /
-directive but adds two structural elements unique to the lifecycle-driven
-nature of a Task:
+``docs/features/task/`` を M1 の 6 番目の兄弟として実装する。Aggregate は
+empire / workflow / agent / room / directive で確立された形を踏襲するが、Task の
+ライフサイクル駆動的性質に固有の構造要素を 2 つ追加する:
 
-* a **decision-table state machine** in
-  :mod:`bakufu.domain.task.state_machine`, locked by
-  ``Final[Mapping]`` + :class:`types.MappingProxyType` per §確定 B; and
-* **ten dedicated behavior methods** whose names map 1:1 to the action
-  names in the state-machine table per §確定 A-2 (Steve R2 凍結) — no
-  internal dispatch, no ``advance(..., gate_decision=...)`` argument
-  shape. ``method x current_status -> action`` is statically determined
-  by the method definition itself.
+* :mod:`bakufu.domain.task.state_machine` 内の **decision-table state machine**。
+  §確定 B により ``Final[Mapping]`` + :class:`types.MappingProxyType` でロックされる。
+* §確定 A-2（Steve R2 凍結）により state-machine テーブルのアクション名と 1:1 対応
+  する **10 個の専用ビヘイビア メソッド** — 内部ディスパッチ無し、
+  ``advance(..., gate_decision=...)`` の引数形も無し。
+  ``method x current_status -> action`` はメソッド定義そのものによって静的に決定される。
 
-Design contracts (do not break without re-running design review):
+設計コントラクト（再設計レビュー無しに破壊しないこと）:
 
-* **Pre-validate rebuild (§確定 A)** — every behavior calls
-  :meth:`_rebuild_with_state` which goes through ``model_dump`` /
-  ``swap`` / ``model_validate``. ``model_copy(update=...)`` is
-  intentionally avoided: Pydantic v2 defaults that path to
-  ``validate=False`` and would silently bypass the model validator.
-* **Terminal Fail-Fast (§確定 R1-B)** — DONE / CANCELLED Tasks are
-  immutable. Every method enters through :meth:`_assert_not_terminal`
-  before touching the state machine.
-* **State-machine bypass Fail-Fast (§確定 R1-A)** — illegal
-  ``(status, action)`` pairs raise
-  ``TaskInvariantViolation(kind='state_transition_invalid')`` with
-  the legal-action set attached in ``detail`` so MSG-TS-002 lands
-  with the "next action" hint already populated.
-* **Webhook auto-mask (§確定 I)** — :class:`TaskInvariantViolation`
-  applies ``mask_discord_webhook`` /
-  ``mask_discord_webhook_in`` to ``message`` / ``detail`` at
-  construction time, so even if ``last_error`` carries a Discord
-  webhook URL the exception stream stays redacted.
-* **Aggregate boundary (§確定 K)** — the Task does **not** import
-  ``ReviewDecision`` (Gate VO) or any other Aggregate's value
-  object. ``approve_review`` / ``reject_review`` are dispatched by
-  the application layer (``GateService``) on Gate APPROVED /
-  REJECTED, keeping the Task ignorant of Gate internals.
+* **Pre-validate rebuild（§確定 A）** — 全ビヘイビアは :meth:`_rebuild_with_state`
+  を呼び、``model_dump`` / ``swap`` / ``model_validate`` を経由する。
+  ``model_copy(update=...)`` は意図的に避ける: Pydantic v2 はその経路を
+  ``validate=False`` にデフォルトし、モデル バリデータをサイレントにバイパスして
+  しまう。
+* **Terminal Fail-Fast（§確定 R1-B）** — DONE / CANCELLED の Task は不変。全メソッド
+  は state machine に触れる前に :meth:`_assert_not_terminal` を通る。
+* **State-machine bypass Fail-Fast（§確定 R1-A）** — 不正な ``(status, action)`` 対は
+  ``TaskInvariantViolation(kind='state_transition_invalid')`` を送出し、合法アクション
+  集合を ``detail`` に添付する。これにより MSG-TS-002 が「next action」ヒント込みで
+  投入される。
+* **Webhook auto-mask（§確定 I）** — :class:`TaskInvariantViolation` は構築時に
+  ``mask_discord_webhook`` / ``mask_discord_webhook_in`` を ``message`` / ``detail``
+  に適用するため、``last_error`` に Discord webhook URL が含まれていても例外
+  ストリームは伏字化された状態を保つ。
+* **Aggregate boundary（§確定 K）** — Task は ``ReviewDecision``（Gate VO）や他の
+  Aggregate の Value Object を **import しない**。``approve_review`` / ``reject_review``
+  は Gate APPROVED / REJECTED 時にアプリケーション層（``GateService``）が
+  ディスパッチし、Task は Gate の内部に対して無知のままとなる。
 """
 
 from __future__ import annotations
@@ -81,18 +74,16 @@ from bakufu.domain.value_objects import (
 
 
 class Task(BaseModel):
-    """Lifecycle-aware unit of work delegated to one or more Agents.
+    """1 体以上の Agent に委譲されるライフサイクル対応の作業単位。
 
-    A Task is created by ``DirectiveService.issue()`` (PENDING with
-    no assigned agents), advances through a Workflow's Stages while
-    accumulating per-Stage :class:`Deliverable` snapshots, and
-    eventually terminates as DONE or CANCELLED. The lifecycle is
-    driven by ten behavior methods whose names match the state
-    machine action names exactly — there is no implicit dispatch.
+    Task は ``DirectiveService.issue()`` によって生成される（PENDING、agent
+    アサイン無し）。Workflow の Stage を進みながら Stage ごとの :class:`Deliverable`
+    スナップショットを蓄積し、最終的に DONE または CANCELLED で終端する。
+    ライフサイクルは 10 個のビヘイビア メソッドで駆動され、それらの名前は state
+    machine のアクション名と完全に一致する — 暗黙ディスパッチは存在しない。
 
-    Out-of-aggregate concerns (Workflow / Room / Agent reference
-    integrity, ``current_stage_id`` lookup, Gate decision bridging)
-    live in ``TaskService`` per §確定 K.
+    Aggregate 外の関心事（Workflow / Room / Agent 参照整合性、``current_stage_id``
+    ルックアップ、Gate 判定ブリッジ）は §確定 K により ``TaskService`` に置く。
     """
 
     model_config = ConfigDict(
@@ -112,11 +103,11 @@ class Task(BaseModel):
     updated_at: datetime
     last_error: str | None = None
 
-    # ---- pre-validation -------------------------------------------------
+    # ---- 事前検証 -------------------------------------------------------
     @field_validator("created_at", "updated_at", mode="after")
     @classmethod
     def _require_tz_aware(cls, value: datetime) -> datetime:
-        """Reject naive datetimes at the aggregate boundary (§確定 H)."""
+        """Aggregate 境界で naive datetime を拒否する（§確定 H）。"""
         if value.tzinfo is None:
             raise ValueError(
                 "Task timestamps must be timezone-aware UTC datetimes (received a naive datetime)"
@@ -126,12 +117,11 @@ class Task(BaseModel):
     @field_validator("last_error", mode="before")
     @classmethod
     def _normalize_last_error(cls, value: object) -> object:
-        """Apply NFC normalization without ``strip`` (§確定 C).
+        """``strip`` 無しで NFC 正規化を適用する（§確定 C）。
 
-        LLM stack traces rely on leading whitespace for indentation;
-        the precedent set by ``Persona.prompt_body`` /
-        ``PromptKit.prefix_markdown`` / ``Directive.text`` (NFC-only,
-        no strip) carries forward to ``Task.last_error``.
+        LLM のスタック トレースはインデントのために先頭空白に依存する。
+        ``Persona.prompt_body`` / ``PromptKit.prefix_markdown`` / ``Directive.text``
+        が確立した先例（NFC のみ、strip 無し）を ``Task.last_error`` でも踏襲する。
         """
         if isinstance(value, str):
             return unicodedata.normalize("NFC", value)
@@ -139,28 +129,25 @@ class Task(BaseModel):
 
     @model_validator(mode="after")
     def _check_invariants(self) -> Self:
-        """Run the structural invariants (§確定 J kinds 3〜7).
+        """構造的不変条件を実行する（§確定 J kinds 3〜7）。
 
-        Validator ordering — BUG-TSK-001 fix:
+        バリデータ順序 — BUG-TSK-001 修正:
 
-        ``_validate_blocked_has_last_error`` runs **before**
-        ``_validate_last_error_consistency`` so that the BLOCKED-side
-        violation surfaces with the more specific
-        ``blocked_requires_last_error`` (MSG-TS-006) — the
-        "block() requires non-empty last_error" Next-action hint test
-        designers and operators expect when ``Task.block()`` rejects
-        ``last_error=''`` / ``last_error=None``. Pydantic's
-        ``model_validator(mode='after')`` short-circuits on the first
-        raise, so this ordering is the lever.
+        ``_validate_blocked_has_last_error`` を ``_validate_last_error_consistency``
+        より **先** に実行することで、BLOCKED 側の違反がより具体的な
+        ``blocked_requires_last_error``（MSG-TS-006）として表面化する — テスト
+        設計者およびオペレータが ``Task.block()`` が ``last_error=''`` /
+        ``last_error=None`` を拒否したときに期待する「block() は非空の last_error
+        を要求する」Next-action ヒント。Pydantic の ``model_validator(mode='after')``
+        は最初の raise で短絡するため、この順序がレバーとなる。
 
-        ``_validate_last_error_consistency`` is retained to catch the
-        **opposite** mismatch — ``status != BLOCKED`` paired with a
-        non-None ``last_error`` (e.g. a corrupted Repository row where
-        ``status=DONE`` still carries leftover error text). Its 1〜2
-        positive paths (BLOCKED+None / BLOCKED+'') are now preempted by
-        the BLOCKED helper above, but the validator's own test cases
-        in ``test_invariants.py::TestLastErrorConsistency`` still pin
-        the in-isolation contract.
+        ``_validate_last_error_consistency`` は **逆向き** の不整合
+        — ``status != BLOCKED`` かつ non-None ``last_error``（例えば ``status=DONE``
+        にエラー テキストが残ったままの破損リポジトリ行）を捕捉するために残す。
+        正例の 1〜2 パス（BLOCKED+None / BLOCKED+''）は上記 BLOCKED ヘルパで先行
+        遮断されるが、バリデータ自身のテストケース
+        ``test_invariants.py::TestLastErrorConsistency`` は依然として独立した
+        コントラクトを固定する。
         """
         _validate_assigned_agents_unique(self.assigned_agent_ids)
         _validate_assigned_agents_capacity(self.assigned_agent_ids)
@@ -169,13 +156,12 @@ class Task(BaseModel):
         _validate_timestamp_order(self.created_at, self.updated_at)
         return self
 
-    # ---- behaviors (Tell, Don't Ask) ------------------------------------
+    # ---- 振る舞い（Tell, Don't Ask） -----------------------------------
     def assign(self, agent_ids: list[AgentId], *, updated_at: datetime) -> Task:
-        """PENDING → IN_PROGRESS, attach ``agent_ids`` (REQ-TS-002).
+        """PENDING → IN_PROGRESS、``agent_ids`` を紐付ける（REQ-TS-002）。
 
-        The list is taken verbatim — uniqueness / capacity checks
-        live in the model validator so a Repository hydration path
-        hits the same gate as this method.
+        リストはそのまま受理する — 一意性／容量チェックはモデル バリデータに
+        あるため、リポジトリ水和経路でもこのメソッドと同じゲートを通る。
         """
         next_status = self._lookup_or_raise("assign")
         return self._rebuild_with_state(
@@ -194,16 +180,15 @@ class Task(BaseModel):
         *,
         updated_at: datetime,
     ) -> Task:
-        """IN_PROGRESS self-loop, ``deliverables[stage_id] = deliverable`` (REQ-TS-003).
+        """IN_PROGRESS 自己ループ、``deliverables[stage_id] = deliverable``（REQ-TS-003）。
 
-        ``by_agent_id`` is accepted for API symmetry with ``TaskService``
-        but is **not** validated against ``assigned_agent_ids`` here —
-        per §確定 G that membership check is the application layer's
-        job; the aggregate proves only that ``stage_id`` is structurally
-        a valid ``StageId`` and that the state machine permits the
-        action.
+        ``by_agent_id`` は ``TaskService`` との API 対称性のために受け取るが、ここでは
+        ``assigned_agent_ids`` に対する検証は **行わない** — §確定 G に従い、その
+        メンバシップ検査はアプリケーション層の責務。Aggregate は ``stage_id`` が
+        構造的に有効な ``StageId`` であること、および state machine がアクションを
+        許可することのみを保証する。
         """
-        del by_agent_id  # checked by TaskService.commit_deliverable, not here.
+        del by_agent_id  # ここではなく TaskService.commit_deliverable がチェックする。
         next_status = self._lookup_or_raise("commit_deliverable")
         new_deliverables = {**self.deliverables, stage_id: deliverable}
         return self._rebuild_with_state(
@@ -215,7 +200,7 @@ class Task(BaseModel):
         )
 
     def request_external_review(self, *, updated_at: datetime) -> Task:
-        """IN_PROGRESS → AWAITING_EXTERNAL_REVIEW (REQ-TS-004)."""
+        """IN_PROGRESS → AWAITING_EXTERNAL_REVIEW（REQ-TS-004）。"""
         next_status = self._lookup_or_raise("request_external_review")
         return self._rebuild_with_state(
             {
@@ -232,14 +217,13 @@ class Task(BaseModel):
         *,
         updated_at: datetime,
     ) -> Task:
-        """AWAITING_EXTERNAL_REVIEW → IN_PROGRESS (Gate APPROVED, REQ-TS-005a).
+        """AWAITING_EXTERNAL_REVIEW → IN_PROGRESS（Gate APPROVED、REQ-TS-005a）。
 
-        ``transition_id`` / ``by_owner_id`` are positional metadata
-        the application layer passes through for audit purposes; the
-        aggregate stores neither (audit_log is GateService's job).
-        ``next_stage_id`` is the Stage the Workflow says to advance
-        to — verifying it lives inside the Workflow's stages is the
-        application layer's job (§確定 K).
+        ``transition_id`` / ``by_owner_id`` は監査目的でアプリケーション層が
+        受け渡す位置メタデータ。Aggregate はどちらも保存しない（audit_log は
+        GateService の責務）。``next_stage_id`` は Workflow が進めるよう指示する
+        Stage — それが Workflow の stages 内に存在するかの検証はアプリケーション層
+        の責務（§確定 K）。
         """
         del transition_id, by_owner_id
         next_status = self._lookup_or_raise("approve_review")
@@ -259,13 +243,12 @@ class Task(BaseModel):
         *,
         updated_at: datetime,
     ) -> Task:
-        """AWAITING_EXTERNAL_REVIEW → IN_PROGRESS (Gate REJECTED, REQ-TS-005b).
+        """AWAITING_EXTERNAL_REVIEW → IN_PROGRESS（Gate REJECTED、REQ-TS-005b）。
 
-        Same shape as :meth:`approve_review`; ``next_stage_id`` is the
-        rollback / revision Stage rather than the forward one. Keeping
-        the methods separate (instead of a single ``advance(...,
-        gate_decision=...)``) is the §確定 A-2 凍結 — Tell-Don't-Ask
-        and Aggregate-boundary preservation.
+        :meth:`approve_review` と同形。``next_stage_id`` は前進ではなくロールバック
+        / リビジョン用の Stage となる。メソッドを分けたまま（単一の
+        ``advance(..., gate_decision=...)`` にしない）は §確定 A-2 凍結 —
+        Tell-Don't-Ask と Aggregate 境界保存のため。
         """
         del transition_id, by_owner_id
         next_status = self._lookup_or_raise("reject_review")
@@ -285,12 +268,11 @@ class Task(BaseModel):
         *,
         updated_at: datetime,
     ) -> Task:
-        """IN_PROGRESS self-loop, advance ``current_stage_id`` (REQ-TS-005c).
+        """IN_PROGRESS 自己ループ、``current_stage_id`` を進める（REQ-TS-005c）。
 
-        Used for Stage-to-Stage progression that does **not** go
-        through an EXTERNAL_REVIEW Gate (e.g. a WORK Stage feeding
-        the next WORK Stage). Status stays IN_PROGRESS; only the
-        ``current_stage_id`` moves.
+        EXTERNAL_REVIEW Gate を **通らない** Stage 間の進行（例: WORK Stage が次の
+        WORK Stage に流れる）に用いる。Status は IN_PROGRESS のまま、
+        ``current_stage_id`` のみが移動する。
         """
         del transition_id, by_owner_id
         next_status = self._lookup_or_raise("advance_to_next")
@@ -309,13 +291,11 @@ class Task(BaseModel):
         *,
         updated_at: datetime,
     ) -> Task:
-        """IN_PROGRESS → DONE (terminal, REQ-TS-005d).
+        """IN_PROGRESS → DONE（終端、REQ-TS-005d）。
 
-        ``current_stage_id`` is intentionally unchanged: the Task
-        terminates *at* its current Stage, and downstream consumers
-        can read the last Stage from this attribute. Verifying that
-        the current Stage is genuinely a sink is GateService /
-        TaskService's job (§確定 K).
+        ``current_stage_id`` は意図的に変更しない: Task は現在の Stage で終端し、
+        ダウンストリームの利用側はこの属性から最後の Stage を読める。現在の Stage
+        が本当に sink であるかの検証は GateService / TaskService の責務（§確定 K）。
         """
         del transition_id, by_owner_id
         next_status = self._lookup_or_raise("complete")
@@ -333,14 +313,13 @@ class Task(BaseModel):
         *,
         updated_at: datetime,
     ) -> Task:
-        """{PENDING / IN_PROGRESS / AWAITING_EXTERNAL_REVIEW / BLOCKED} → CANCELLED (REQ-TS-006).
+        """{PENDING / IN_PROGRESS / AWAITING_EXTERNAL_REVIEW / BLOCKED} → CANCELLED（REQ-TS-006）。
 
-        ``reason`` is application-layer audit metadata; the
-        aggregate does **not** persist it (§設計判断補足 §"なぜ
-        cancel reason を Aggregate 属性として持たないか"). The cancel
-        path also resets ``last_error`` to ``None`` so the
-        ``status != BLOCKED ⇔ last_error is None`` consistency
-        invariant holds for the new instance.
+        ``reason`` はアプリケーション層の監査メタデータ。Aggregate はこれを
+        **永続化しない**（§設計判断補足 §「なぜ cancel reason を Aggregate 属性
+        として持たないか」）。cancel 経路は ``last_error`` も ``None`` にリセット
+        するため、``status != BLOCKED ⇔ last_error is None`` の一貫性不変条件が
+        新インスタンスでも成立する。
         """
         del by_owner_id, reason
         next_status = self._lookup_or_raise("cancel")
@@ -359,30 +338,28 @@ class Task(BaseModel):
         *,
         updated_at: datetime,
     ) -> Task:
-        """IN_PROGRESS → BLOCKED, attach ``last_error`` (REQ-TS-007).
+        """IN_PROGRESS → BLOCKED、``last_error`` を紐付ける（REQ-TS-007）。
 
-        ``reason`` is an application-layer audit annotation
-        (recorded by ``TaskService`` before the ``audit_log`` write);
-        only ``last_error`` reaches the aggregate. The model
-        validator runs ``_validate_blocked_has_last_error`` against
-        the NFC-normalized form so an empty / whitespace-only
-        ``last_error`` is rejected at construction time.
+        ``reason`` はアプリケーション層の監査注記（``TaskService`` が
+        ``audit_log`` 書込前に記録する）。Aggregate に届くのは ``last_error`` のみ。
+        モデル バリデータが NFC 正規化済みの形に対して
+        ``_validate_blocked_has_last_error`` を実行するため、空 ／ 空白のみの
+        ``last_error`` は構築時に拒否される。
         """
-        del reason  # recorded by TaskService.block, not stored on Task.
+        del reason  # Task には保存せず TaskService.block が記録する。
         next_status = self._lookup_or_raise("block")
         return self._rebuild_with_state(
             {
                 "status": next_status,
-                # The field validator on ``last_error`` re-applies NFC
-                # normalization on rebuild, so passing the raw value
-                # through is fine.
+                # ``last_error`` のフィールド バリデータが rebuild 時に NFC 正規化を
+                # 再適用するため、生の値をそのまま渡してよい。
                 "last_error": last_error,
                 "updated_at": updated_at,
             }
         )
 
     def unblock_retry(self, *, updated_at: datetime) -> Task:
-        """BLOCKED → IN_PROGRESS, clear ``last_error`` (REQ-TS-008, §確定 D)."""
+        """BLOCKED → IN_PROGRESS、``last_error`` をクリアする（REQ-TS-008、§確定 D）。"""
         next_status = self._lookup_or_raise("unblock_retry")
         return self._rebuild_with_state(
             {
@@ -392,16 +369,15 @@ class Task(BaseModel):
             }
         )
 
-    # ---- internal -------------------------------------------------------
+    # ---- 内部実装 -------------------------------------------------------
     def _assert_not_terminal(self) -> None:
-        """Reject behaviors invoked on DONE / CANCELLED Tasks (MSG-TS-001).
+        """DONE / CANCELLED の Task で呼ばれた振る舞いを拒否する（MSG-TS-001）。
 
-        Centralised here so all ten methods share the same Fail-Fast
-        path; future readers can search for "terminal_violation" and
-        find a single implementation. The terminal check runs *before*
-        the state-machine lookup so a callable on a DONE Task gets
-        the more specific ``MSG-TS-001`` message rather than the
-        generic ``state_transition_invalid``.
+        ここに集約することで、10 メソッド全てが同じ Fail-Fast 経路を共有する。
+        将来の読者は「terminal_violation」を検索すれば単一の実装を見つけられる。
+        terminal チェックは state-machine ルックアップの *前* に走るため、DONE Task
+        への呼び出しは汎用の ``state_transition_invalid`` ではなくより具体的な
+        ``MSG-TS-001`` メッセージを得る。
         """
         if self.status not in (TaskStatus.DONE, TaskStatus.CANCELLED):
             return
@@ -420,15 +396,13 @@ class Task(BaseModel):
         )
 
     def _lookup_or_raise(self, action: TaskAction) -> TaskStatus:
-        """Combine terminal check + state-machine lookup for behaviors.
+        """振る舞い向けに terminal チェック + state-machine ルックアップを束ねる。
 
-        Returns the ``next_status`` decided by the state machine. Any
-        of the three failure paths
-        (``terminal_violation`` / ``state_transition_invalid``)
-        raises a :class:`TaskInvariantViolation` before
-        :meth:`_rebuild_with_state` runs, so the original Task is
-        guaranteed to be untouched on failure (pre-validate
-        contract).
+        state machine が決定した ``next_status`` を返す。3 つの失敗経路のいずれか
+        （``terminal_violation`` / ``state_transition_invalid``）が
+        :meth:`_rebuild_with_state` の実行前に :class:`TaskInvariantViolation` を
+        送出するため、失敗時に元の Task が変更されないことが保証される
+        （pre-validate コントラクト）。
         """
         self._assert_not_terminal()
         try:
@@ -453,14 +427,13 @@ class Task(BaseModel):
             ) from exc
 
     def _rebuild_with_state(self, updates: dict[str, Any]) -> Task:
-        """Pre-validate rebuild for behavior outputs (§確定 A).
+        """振る舞い出力のための pre-validate rebuild（§確定 A）。
 
-        Same pattern as the M1 5 兄弟 (Empire / Workflow / Agent /
-        Room / Directive). ``model_dump`` produces the canonical
-        Python-mode payload, the dict swap applies the behavior's
-        delta, and ``model_validate`` re-runs every field validator
-        + the post-validator so structural invariants fire
-        regardless of how the new state was reached.
+        M1 の 5 兄弟（Empire / Workflow / Agent / Room / Directive）と同じパターン。
+        ``model_dump`` が正準 Python モード ペイロードを生成し、dict swap が振る舞い
+        の差分を適用し、``model_validate`` が全フィールド バリデータと post-validator
+        を再実行するため、新状態がどのように到達されたかに関わらず構造的不変条件
+        が発火する。
         """
         state = self.model_dump()
         state.update(updates)

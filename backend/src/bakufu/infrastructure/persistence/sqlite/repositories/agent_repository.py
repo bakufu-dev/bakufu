@@ -1,40 +1,35 @@
-"""SQLite adapter for :class:`bakufu.application.ports.AgentRepository`.
+""":class:`bakufu.application.ports.AgentRepository` の SQLite アダプタ。
 
-Implements the §確定 B "delete-then-insert" save flow over three
-tables (``agents`` / ``agent_providers`` / ``agent_skills``):
+§確定 B の "delete-then-insert" 保存フローを 3 つのテーブル
+（``agents`` / ``agent_providers`` / ``agent_skills``）に対して実装する:
 
-1. ``agents`` UPSERT (id-conflict → name + role + persona +
-   archived update; ``prompt_body`` binds through
-   :class:`MaskedText` so any embedded API key / OAuth token /
-   GitHub PAT is redacted *before* it hits SQLite — Schneier 申し送り
-   #3 实適用, applied to the Agent path here).
+1. ``agents`` UPSERT（id 衝突時に name + role + persona + archived を更新。
+   ``prompt_body`` は :class:`MaskedText` 経由でバインドされるため、埋め込まれた
+   API キー / OAuth トークン / GitHub PAT は SQLite に到達する *前* に伏字化される —
+   Schneier 申し送り #3 を Agent 経路にも適用）。
 2. ``agent_providers`` DELETE WHERE agent_id = ?
-3. ``agent_providers`` bulk INSERT (one row per ProviderConfig).
+3. ``agent_providers`` 一括 INSERT（ProviderConfig ごとに 1 行）。
 4. ``agent_skills`` DELETE WHERE agent_id = ?
-5. ``agent_skills`` bulk INSERT (one row per SkillRef).
+5. ``agent_skills`` 一括 INSERT（SkillRef ごとに 1 行）。
 
-The repository **never** calls ``session.commit()`` /
-``session.rollback()``: the caller-side service runs
-``async with session.begin():`` so the five steps above stay in one
-transaction (§確定 B Tx 境界の責務分離).
+リポジトリは ``session.commit()`` / ``session.rollback()`` を **決して** 呼ばない。
+呼び元のサービスが ``async with session.begin():`` を実行することで上記 5 ステップ
+を 1 トランザクションに収める（§確定 B Tx 境界の責務分離）。
 
-``_to_row`` / ``_from_row`` are kept as private methods on the class
-so both directions live next to each other and tests don't accidentally
-acquire a public conversion API to depend on (§確定 C).
+``_to_row`` / ``_from_row`` はクラスのプライベートメソッドのまま保持し、双方向の
+変換が隣接して存在するようにする。これにより、テストが公開された変換 API を誤って
+取得して依存することを避ける（§確定 C）。
 
-Two Agent-specific contracts widen the empire / workflow repository
-template:
+empire / workflow リポジトリ テンプレートを Agent 固有に拡張する 2 つのコントラクト:
 
-* **§確定 F — :meth:`find_by_name`**: an extra Protocol method that
-  scopes the lookup with ``WHERE empire_id = :empire_id AND name =
-  :name LIMIT 1``. The implementation deliberately delegates to
-  :meth:`find_by_id` once the AgentId is known so the
-  ``_from_row`` conversion logic stays single-sourced.
-* **§確定 H — masked ``prompt_body`` is irreversible**: hydration
-  via :meth:`find_by_id` returns a Persona whose ``prompt_body`` is
-  the masked form (e.g. ``<REDACTED:ANTHROPIC_KEY>``). Detecting and
-  refusing to dispatch a masked prompt is the application-layer's
-  job, frozen as a follow-up under ``feature/llm-adapter``.
+* **§確定 F — :meth:`find_by_name`**: ``WHERE empire_id = :empire_id AND name =
+  :name LIMIT 1`` でルックアップをスコープする追加の Protocol メソッド。実装は意図的に
+  AgentId が判明し次第 :meth:`find_by_id` に委譲する — ``_from_row`` の変換ロジックを
+  単一情報源に保つため。
+* **§確定 H — 伏字化された ``prompt_body`` は不可逆**: :meth:`find_by_id` 経由の水和は、
+  ``prompt_body`` が伏字化された形（例 ``<REDACTED:ANTHROPIC_KEY>``）の Persona を返す。
+  伏字化されたプロンプトのディスパッチ拒否はアプリケーション層の責務であり、
+  ``feature/llm-adapter`` のフォローアップとして凍結されている。
 """
 
 from __future__ import annotations
@@ -62,31 +57,28 @@ from bakufu.infrastructure.persistence.sqlite.tables.agents import AgentRow
 
 
 class SqliteAgentRepository:
-    """SQLite implementation of :class:`AgentRepository`."""
+    """:class:`AgentRepository` の SQLite 実装。"""
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
     async def find_by_id(self, agent_id: AgentId) -> Agent | None:
-        """SELECT agent + side tables, hydrate via :meth:`_from_row`.
+        """agent と関連テーブルを SELECT し、:meth:`_from_row` で水和する。
 
-        Returns ``None`` when the agents row is absent. Side-table
-        SELECTs use ``ORDER BY provider_kind`` /
-        ``ORDER BY skill_id`` so the hydrated lists are deterministic
-        — empire-repository BUG-EMR-001 froze this contract; we apply
-        it from PR #1 here.
+        agents 行が存在しない場合は ``None`` を返す。関連テーブルの SELECT は
+        ``ORDER BY provider_kind`` / ``ORDER BY skill_id`` を使い、水和されたリスト
+        が決定的になるようにする — empire-repository BUG-EMR-001 が凍結したコントラクト
+        を本 PR の最初から適用する。
         """
         agent_stmt = select(AgentRow).where(AgentRow.id == agent_id)
         agent_row = (await self._session.execute(agent_stmt)).scalar_one_or_none()
         if agent_row is None:
             return None
 
-        # ORDER BY makes find_by_id deterministic. Without it SQLite
-        # returns rows in internal-scan order, which would break
-        # ``Agent == Agent`` round-trip equality (the Aggregate
-        # compares list-by-list). See basic-design + workflow-repo
-        # §BUG-EMR-001 — this PR adopts the resolved contract from
-        # day one.
+        # ORDER BY を付与することで find_by_id を決定的にする。これがないと SQLite は
+        # 内部スキャン順で行を返し、``Agent == Agent`` の往復等価性が壊れる
+        # （Aggregate はリスト同士で比較する）。basic-design および workflow-repo
+        # §BUG-EMR-001 を参照 — 本 PR では当初から決定の済んだコントラクトを採用する。
         provider_stmt = (
             select(AgentProviderRow)
             .where(AgentProviderRow.agent_id == agent_id)
@@ -104,32 +96,29 @@ class SqliteAgentRepository:
         return self._from_row(agent_row, provider_rows, skill_rows)
 
     async def count(self) -> int:
-        """``SELECT COUNT(*) FROM agents``.
+        """``SELECT COUNT(*) FROM agents``。
 
-        Implementation detail: SQLAlchemy's ``func.count()`` issues a
-        proper ``SELECT COUNT(*)`` so SQLite returns one scalar row
-        instead of streaming every PK back to Python. This is the
-        empire-repository §確定 D 補強 contract continued — Agent
-        provider / skill rows can hold hundreds of records once the
-        preset library lands, so the pattern matters.
+        実装詳細: SQLAlchemy の ``func.count()`` は適切な ``SELECT COUNT(*)`` を
+        発行するため、SQLite は全 PK を Python にストリームせずスカラー 1 行だけ返す。
+        これは empire-repository §確定 D 補強コントラクトの継続である — Agent の
+        provider / skill 行はプリセット ライブラリが入ると数百件を保持し得るため、
+        このパターンが効いてくる。
         """
         stmt = select(func.count()).select_from(AgentRow)
         return (await self._session.execute(stmt)).scalar_one()
 
     async def save(self, agent: Agent) -> None:
-        """Persist ``agent`` via the §確定 B five-step delete-then-insert.
+        """§確定 B の 5 ステップ delete-then-insert で ``agent`` を永続化する。
 
-        The caller is responsible for the surrounding
-        ``async with session.begin():`` block; failures inside any
-        step propagate untouched so the Unit-of-Work boundary in the
-        application service can rollback cleanly.
+        外側の ``async with session.begin():`` ブロックは呼び元の責任。各ステップ
+        内部の失敗はそのまま伝播するため、アプリケーション サービスの Unit-of-Work
+        境界はクリーンにロールバックできる。
         """
         agent_row, provider_rows, skill_rows = self._to_row(agent)
 
-        # Step 1: agents UPSERT (id PK, ON CONFLICT update name +
-        # role + Persona fields + archived). ``prompt_body`` binds
-        # through MaskedText so the masked form lands in the DB even
-        # on update.
+        # Step 1: agents UPSERT（id PK、ON CONFLICT で name + role + Persona フィールド
+        # + archived を更新）。``prompt_body`` は MaskedText 経由でバインドされるため、
+        # 更新時にも伏字化された形で DB に到達する。
         upsert_stmt = sqlite_insert(AgentRow).values(agent_row)
         upsert_stmt = upsert_stmt.on_conflict_do_update(
             index_elements=["id"],
@@ -145,33 +134,31 @@ class SqliteAgentRepository:
         )
         await self._session.execute(upsert_stmt)
 
-        # Step 2: agent_providers DELETE.
+        # Step 2: agent_providers DELETE。
         await self._session.execute(
             delete(AgentProviderRow).where(AgentProviderRow.agent_id == agent.id)
         )
 
-        # Step 3: agent_providers bulk INSERT (skip when no
-        # providers — though the Agent invariant requires at least
-        # one provider, the defensive empty-skip keeps behavior
-        # consistent with the empire / workflow templates).
+        # Step 3: agent_providers 一括 INSERT（providers が無い場合はスキップ —
+        # Agent 不変条件は最低 1 つの provider を要求するが、空チェックは empire /
+        # workflow テンプレートとの動作整合のために残す）。
         if provider_rows:
             await self._session.execute(insert(AgentProviderRow), provider_rows)
 
-        # Step 4: agent_skills DELETE.
+        # Step 4: agent_skills DELETE。
         await self._session.execute(delete(AgentSkillRow).where(AgentSkillRow.agent_id == agent.id))
 
-        # Step 5: agent_skills bulk INSERT (skill set may legitimately
-        # be empty — Agent allows zero skills).
+        # Step 5: agent_skills 一括 INSERT（skill 集合は正当に空となり得る —
+        # Agent はゼロ skill を許容する）。
         if skill_rows:
             await self._session.execute(insert(AgentSkillRow), skill_rows)
 
     async def find_by_name(self, empire_id: EmpireId, name: str) -> Agent | None:
-        """Hydrate the Agent named ``name`` inside ``empire_id`` (§確定 F).
+        """``empire_id`` 内の ``name`` という Agent を水和する（§確定 F）。
 
-        Two-stage flow: a lightweight ``SELECT id ... LIMIT 1`` to
-        locate the AgentId, then delegation to :meth:`find_by_id` so
-        the side-table SELECTs + ``_from_row`` conversion stay
-        single-sourced (§設計判断補足 "find_by_id 経由で復元する根拠").
+        2 段階フロー: 軽量な ``SELECT id ... LIMIT 1`` で AgentId を特定し、その後
+        :meth:`find_by_id` に委譲することで関連テーブルの SELECT と ``_from_row``
+        変換を単一情報源に保つ（§設計判断補足「find_by_id 経由で復元する根拠」）。
         """
         id_stmt = (
             select(AgentRow.id)
@@ -188,12 +175,11 @@ class SqliteAgentRepository:
         self,
         agent: Agent,
     ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
-        """Split ``agent`` into ``(agent_row, provider_rows, skill_rows)``.
+        """``agent`` を ``(agent_row, provider_rows, skill_rows)`` に分割する。
 
-        SQLAlchemy ``Row`` objects are intentionally avoided here so
-        the domain layer never gains an accidental dependency on the
-        SQLAlchemy type hierarchy. Each returned ``dict`` matches the
-        ``mapped_column`` names of the corresponding table verbatim.
+        ここでは SQLAlchemy の ``Row`` オブジェクトを意図的に使わない。これによって
+        ドメイン層が SQLAlchemy の型階層に偶発的に依存することを防ぐ。返却される
+        各 ``dict`` のキーは対応するテーブルの ``mapped_column`` 名と完全一致する。
         """
         agent_row: dict[str, Any] = {
             "id": agent.id,
@@ -202,9 +188,9 @@ class SqliteAgentRepository:
             "role": agent.role.value,
             "display_name": agent.persona.display_name,
             "archetype": agent.persona.archetype,
-            # MaskedText.process_bind_param will redact secrets from
-            # this string before json.dumps / VARCHAR storage —
-            # Schneier 申し送り #3 实適用.
+            # MaskedText.process_bind_param は json.dumps / VARCHAR ストレージに
+            # 到達する前にこの文字列からシークレットを伏字化する —
+            # Schneier 申し送り #3。
             "prompt_body": agent.persona.prompt_body,
             "archived": agent.archived,
         }
@@ -234,19 +220,17 @@ class SqliteAgentRepository:
         provider_rows: list[AgentProviderRow],
         skill_rows: list[AgentSkillRow],
     ) -> Agent:
-        """Hydrate an :class:`Agent` Aggregate Root from its three rows.
+        """3 つの行から :class:`Agent` Aggregate Root を水和する。
 
-        ``Agent.model_validate`` re-runs the post-validator so
-        Repository-side hydration goes through the same invariant
-        checks that ``AgentService.hire()`` does at construction
-        time. The contract (§確定 C) is "Repository hydration produces
-        a valid Agent or raises".
+        ``Agent.model_validate`` は post-validator を再実行するため、リポジトリ側
+        の水和も ``AgentService.hire()`` が構築時に走らせるのと同じ不変条件チェック
+        を通る。コントラクト（§確定 C）は「リポジトリ水和は妥当な Agent を生成するか
+        例外を送出する」。
 
-        §確定 H §不可逆性: ``persona.prompt_body`` carries the
-        already-masked text from disk. ``Persona`` accepts any string
-        within the length cap so the masked form constructs cleanly,
-        but the resulting Agent should not be dispatched to an LLM
-        without ``feature/llm-adapter``'s masked-prompt guard.
+        §確定 H §不可逆性: ``persona.prompt_body`` はディスクから既に伏字化された
+        テキストを保持する。``Persona`` は長さ上限内の任意の文字列を受理するため
+        伏字化された形でも構築は通るが、生成された Agent は ``feature/llm-adapter``
+        の masked-prompt ガード無しに LLM へディスパッチすべきではない。
         """
         persona = Persona(
             display_name=agent_row.display_name,

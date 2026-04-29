@@ -1,17 +1,16 @@
-"""Shared test helpers for the Task state-machine test split.
+"""Task ステートマシンテスト分割のための共有ヘルパ.
 
-The original ``test_state_machine.py`` weighed 633 lines; per Norman
-R-N1 it was split into three sibling files
-(``test_state_machine_table.py`` /
-``test_state_terminal_and_invalid.py`` / ``test_state_lifecycle.py``).
-The 5 module-level helpers below are referenced by 2-3 of those files
-each, so extracting them here keeps all three under the 500-line rule
-without duplicating ~80 lines of fixture machinery.
+元の test_state_machine.py は 633 行。Norman R-N1 に従い 3 つの
+兄弟ファイル（test_state_machine_table.py /
+test_state_terminal_and_invalid.py / test_state_lifecycle.py）に分割。
+以下の 5 つのモジュールレベルヘルパは各 2～3 ファイルから参照。
+ここで抽出してすべて 500 行ルール以下に保持。~80 行の fixture
+機構を複製しない。
 
-Underscore prefix (``_helpers.py``) marks the module as
-package-private; pytest discovery does not match files without a
-``test_`` prefix, so the helpers stay out of the collected test set
-on their own.
+アンダースコア プレフィックス（_helpers.py）はモジュールを
+パッケージプライベートに指定。pytest discovery は test_ プレフィックス
+がないファイルを照合しないため、ヘルパは自動的に収集テスト セットから
+外れる。
 """
 
 from __future__ import annotations
@@ -47,21 +46,22 @@ ALL_ACTIONS: list[TaskAction] = [
     "cancel",
 ]
 
-# All 6 status values — sanity bound for the 60-cell matrix.
+# 全 6 つの status 値 — 60 セル行列のサニティ範囲。
 ALL_STATUSES: list[TaskStatus] = list(TaskStatus)
 
 
 def next_ts(task: Task) -> datetime:
-    """Return a strictly-later UTC timestamp for ``updated_at``."""
+    """updated_at 用に厳密に未来の UTC タイムスタンプを返す."""
     return task.updated_at + timedelta(seconds=1)
 
 
 def invoke_action(task: Task, action: TaskAction, *, agent_id: UUID | None = None) -> Task:
-    """Dispatch ``action`` on ``task`` with throwaway-but-valid arguments.
+    """使い捨ての妥当な引数で task に action をディスパッチ.
 
-    Centralises the per-action signature so the parametrized
-    "every illegal cell raises" test can call any of the 10 methods
-    uniformly without repeating method-specific argument shapes.
+    アクションごとのシグネチャを集約。parametrize された
+    「全ての違法セルが例外を発火」テストが 10 メソッドを
+    均一に呼び出せるようにする。メソッド固有の引数形状を
+    繰り返さない。
     """
     ts = next_ts(task)
     if action == "assign":
@@ -87,12 +87,12 @@ def invoke_action(task: Task, action: TaskAction, *, agent_id: UUID | None = Non
         return task.block("synthetic reason", "synthetic last_error", updated_at=ts)
     if action == "unblock_retry":
         return task.unblock_retry(updated_at=ts)
-    # cancel
+    # cancel 経路
     return task.cancel(uuid4(), "synthetic cancel reason", updated_at=ts)
 
 
 def make_task_in_status(status: TaskStatus) -> Task:
-    """Build a Task in the given status using the appropriate factory."""
+    """指定状態の Task を対応するファクトリで構築."""
     if status == TaskStatus.PENDING:
         return make_task()
     if status == TaskStatus.IN_PROGRESS:

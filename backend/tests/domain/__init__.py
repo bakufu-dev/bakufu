@@ -1,1 +1,1 @@
-"""Unit and integration tests for the bakufu domain layer aggregates."""
+"""bakufu ドメイン層集約に対する単体および統合テスト。"""

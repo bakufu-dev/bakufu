@@ -1,10 +1,10 @@
-"""Bootstrap end-to-end sequence integration tests
-(TC-IT-PF-012 / 031 / 032 / 036 / 037).
+"""Bootstrap end-to-end sequence 統合テスト
+(TC-IT-PF-012 / 031 / 032 / 036 / 037)。
 
-Confirmation G + Schneier 中等 4 物理保証 — full eight-stage cold start
-runs against real SQLite + real Alembic + real masking gateway. The
-listener (stage 8) is left as ``None`` so we don't drag in the FastAPI
-HTTP surface that lives in a future PR.
+Confirmation G + Schneier 中等 4 物理保証 — 8 ステージ冷起動が
+実際の SQLite + 実際の Alembic + 実際のマスキングゲートウェイに対して
+実行される。リスナー (ステージ 8) は ``None`` のままにする（別 PR で予定されている
+FastAPI HTTP surface を引き込まないため）。
 """
 
 from __future__ import annotations
@@ -26,36 +26,36 @@ def _bakufu_data_dir(  # pyright: ignore[reportUnusedFunction]
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> Path:
-    """Point BAKUFU_DATA_DIR at a fresh tmp_path subdirectory."""
+    """BAKUFU_DATA_DIR を新規の tmp_path サブディレクトリに指す。"""
     monkeypatch.setenv("BAKUFU_DATA_DIR", str(tmp_path))
     return tmp_path
 
 
 class TestBootstrapHappyPath:
-    """TC-IT-PF-012 / 036: Bootstrap.run() walks 0→8 with real Alembic."""
+    """TC-IT-PF-012 / 036: Bootstrap.run() が 0→8 を実際の Alembic で実行。"""
 
     async def test_full_run_creates_db_with_schema(
         self,
         _bakufu_data_dir: Path,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """TC-IT-PF-012 / 036: end-to-end Bootstrap.run() succeeds."""
+        """TC-IT-PF-012 / 036: end-to-end Bootstrap.run() が成功。"""
         boot = Bootstrap(migration_runner=run_upgrade_head)
         with caplog.at_level(logging.INFO):
             await boot.run()
         try:
-            # Stage logs trace the documented 0→8 ordering.
+            # ステージログが文書化された 0→8 順序をトレースする。
             info_messages = [r.getMessage() for r in caplog.records if r.levelname == "INFO"]
             for stage in range(1, 8):
                 assert any(f"Bootstrap stage {stage}/8" in m for m in info_messages), (
-                    f"missing stage {stage} INFO log"
+                    f"ステージ {stage} の INFO ログが不足"
                 )
 
-            # The DB file + schema exist after Bootstrap returns.
+            # Bootstrap が戻った後、DB ファイル + スキーマが存在する。
             db_path = _bakufu_data_dir / "bakufu.db"
             assert db_path.exists()
 
-            # And the attachments directory was prepared in stage 5.
+            # ステージ 5 で attachments ディレクトリが準備された。
             attachments_dir = _bakufu_data_dir / "attachments"
             assert attachments_dir.is_dir()
         finally:
@@ -64,13 +64,13 @@ class TestBootstrapHappyPath:
 
 
 class TestStageFailFast:
-    """TC-IT-PF-031: a stage 1 failure stops the cascade."""
+    """TC-IT-PF-031: ステージ 1 の失敗がカスケードを停止。"""
 
     async def test_relative_data_dir_fails_at_stage_1(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """TC-IT-PF-031: BAKUFU_DATA_DIR=./relative aborts at stage 1."""
+        """TC-IT-PF-031: BAKUFU_DATA_DIR=./relative がステージ 1 で中止。"""
         monkeypatch.setenv("BAKUFU_DATA_DIR", "./relative-path")
         boot = Bootstrap(migration_runner=run_upgrade_head)
         with pytest.raises(BakufuConfigError) as excinfo:
@@ -81,10 +81,10 @@ class TestStageFailFast:
         self,
         _bakufu_data_dir: Path,
     ) -> None:
-        """TC-IT-PF-031: stage 3 raises ``BakufuMigrationError`` when Alembic fails."""
+        """TC-IT-PF-031: ステージ 3 が Alembic 失敗時に ``BakufuMigrationError`` を raise。"""
 
         async def _exploding_migration(_engine: object) -> str:
-            msg = "intentional migration explosion"
+            msg = "意図的なマイグレーション爆発"
             raise RuntimeError(msg)
 
         boot = Bootstrap(migration_runner=_exploding_migration)
@@ -95,7 +95,7 @@ class TestStageFailFast:
 
 
 class TestStage4NonFatal:
-    """TC-IT-PF-032: stage 4 (pid_gc) failure does not abort startup."""
+    """TC-IT-PF-032: ステージ 4 (pid_gc) 失敗が起動を中止しない。"""
 
     async def test_pid_gc_failure_is_logged_and_bootstrap_continues(
         self,
@@ -103,10 +103,10 @@ class TestStage4NonFatal:
         monkeypatch: pytest.MonkeyPatch,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """TC-IT-PF-032: pid_gc raise → WARN, but stages 5-8 still run."""
+        """TC-IT-PF-032: pid_gc raise → WARN だが、ステージ 5-8 はまだ実行。"""
 
         async def _explode(_factory: object) -> dict[str, int]:
-            msg = "pid_gc collapsed"
+            msg = "pid_gc 崩壊"
             raise RuntimeError(msg)
 
         from bakufu.infrastructure.persistence.sqlite import pid_gc
@@ -127,14 +127,14 @@ class TestStage4NonFatal:
 
 
 class TestEmptyHandlerRegistryWarn:
-    """TC-IT-PF-008-A: stage 6 logs WARN when handler_registry is empty."""
+    """TC-IT-PF-008-A: ステージ 6 は handler_registry が空のとき WARN をログ。"""
 
     async def test_empty_registry_warn_at_startup(
         self,
         _bakufu_data_dir: Path,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """TC-IT-PF-008-A: 'No event handlers registered' WARN appears."""
+        """TC-IT-PF-008-A: 'No event handlers registered' WARN が出現。"""
         boot = Bootstrap(migration_runner=run_upgrade_head)
         with caplog.at_level(logging.WARNING):
             await boot.run()
@@ -147,18 +147,18 @@ class TestEmptyHandlerRegistryWarn:
 
 
 class TestUmaskAtStage0:
-    """TC-IT-PF-001-A / TC-UT-PF-001-A: stage 0 sets umask 0o077 (POSIX)."""
+    """TC-IT-PF-001-A / TC-UT-PF-001-A: ステージ 0 が umask 0o077 を設定 (POSIX)。"""
 
     async def test_umask_applied_at_stage_0(
         self,
         _bakufu_data_dir: Path,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """TC-UT-PF-001-A: stage 0 INFO log mentions ``umask set to 0o077``."""
+        """TC-UT-PF-001-A: ステージ 0 INFO ログが ``umask set to 0o077`` に言及。"""
         import platform
 
         if platform.system() == "Windows":
-            pytest.skip("os.umask is a no-op on Windows")
+            pytest.skip("os.umask は Windows では no-op")
         boot = Bootstrap(migration_runner=run_upgrade_head)
         with caplog.at_level(logging.INFO):
             await boot.run()
@@ -173,18 +173,18 @@ class TestUmaskAtStage0:
         self,
         _bakufu_data_dir: Path,
     ) -> None:
-        """TC-IT-PF-001-A: DB file written under umask 0o077 has 0o600 mode."""
+        """TC-IT-PF-001-A: umask 0o077 の下で書き込まれた DB ファイルは 0o600 モード。"""
         import platform
 
         if platform.system() == "Windows":
-            pytest.skip("POSIX-only file mode bits")
+            pytest.skip("POSIX 限定ファイルモードビット")
         boot = Bootstrap(migration_runner=run_upgrade_head)
         await boot.run()
         try:
             db_path = _bakufu_data_dir / "bakufu.db"
             mode = db_path.stat().st_mode & 0o777
-            # 0o600 is the strict goal; 0o644 here would mean umask was not
-            # applied. Allow exact 0o600 only.
+            # 0o600 が厳密な目標； ここで 0o644 は umask が
+            # 適用されていないことを意味する。0o600 のみを許可。
             assert mode == 0o600
         finally:
             if boot.app_engine is not None:
@@ -192,13 +192,13 @@ class TestUmaskAtStage0:
 
 
 class TestFullDbContractAfterBootstrap:
-    """TC-IT-PF-036: the post-Bootstrap DB matches the documented contract."""
+    """TC-IT-PF-036: Bootstrap 後の DB が文書化されたコントラクトと一致。"""
 
     async def test_three_tables_and_two_triggers_present(
         self,
         _bakufu_data_dir: Path,
     ) -> None:
-        """TC-IT-PF-036: tables + triggers + index visible via raw SQL."""
+        """TC-IT-PF-036: テーブル + トリガー + インデックスが生 SQL で可視。"""
         boot = Bootstrap(migration_runner=run_upgrade_head)
         await boot.run()
 

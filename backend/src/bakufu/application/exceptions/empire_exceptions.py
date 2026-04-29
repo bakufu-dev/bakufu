@@ -1,24 +1,23 @@
-"""Empire application-layer exceptions (確定 F).
+"""Empire アプリケーション層の例外（確定 F）。
 
-These are application-level exceptions, independent of domain-layer
-``EmpireInvariantViolation``. The interfaces layer's exception handlers
-catch these and convert them to HTTP responses.
+これらは、ドメイン層の ``EmpireInvariantViolation`` とは独立したアプリケーション層
+レベルの例外である。interfaces 層の例外ハンドラがこれらを捕捉し、HTTP レスポンス
+へ変換する。
 
-* :class:`EmpireNotFoundError` — target Empire not found (404)
-* :class:`EmpireAlreadyExistsError` — Empire already exists (409, R1-5)
-* :class:`EmpireArchivedError` — update attempted on archived Empire (409, R1-8)
+* :class:`EmpireNotFoundError` — 対象の Empire が存在しない（404）
+* :class:`EmpireAlreadyExistsError` — Empire が既に存在する（409, R1-5）
+* :class:`EmpireArchivedError` — アーカイブ済み Empire への更新試行（409, R1-8）
 """
 
 from __future__ import annotations
 
 
 class EmpireNotFoundError(Exception):
-    """Raised when the requested Empire does not exist.
+    """要求された Empire が存在しないときに送出される。
 
-    Raised by ``EmpireService.find_by_id`` when the repository returns
-    ``None``, and by ``EmpireService.archive`` on the same condition.
-    The interfaces layer converts this to HTTP 404 / ``not_found``
-    (MSG-EM-HTTP-002).
+    ``EmpireService.find_by_id`` がリポジトリから ``None`` を受け取った場合、および
+    ``EmpireService.archive`` で同条件のときに送出される。interfaces 層では
+    HTTP 404 / ``not_found``（MSG-EM-HTTP-002）に変換される。
     """
 
     def __init__(self, empire_id: str) -> None:
@@ -27,11 +26,11 @@ class EmpireNotFoundError(Exception):
 
 
 class EmpireAlreadyExistsError(Exception):
-    """Raised when ``EmpireService.create`` detects an existing Empire (R1-5).
+    """``EmpireService.create`` が既存の Empire を検出したときに送出される（R1-5）。
 
-    Bakufu's Empire is a singleton; ``EmpireRepository.count() > 0``
-    triggers this. The interfaces layer converts it to HTTP 409 /
-    ``conflict`` (MSG-EM-HTTP-001).
+    bakufu の Empire はシングルトンであり、``EmpireRepository.count() > 0`` で
+    本例外がトリガされる。interfaces 層では HTTP 409 / ``conflict``
+    （MSG-EM-HTTP-001）に変換される。
     """
 
     def __init__(self) -> None:
@@ -39,11 +38,10 @@ class EmpireAlreadyExistsError(Exception):
 
 
 class EmpireArchivedError(Exception):
-    """Raised when an update is attempted on an archived Empire (R1-8).
+    """アーカイブ済み Empire に対して更新が試みられたときに送出される（R1-8）。
 
-    Checked in ``EmpireService.update`` before applying any field change.
-    The interfaces layer converts this to HTTP 409 / ``conflict``
-    (MSG-EM-HTTP-003).
+    ``EmpireService.update`` 内で、フィールド変更を適用する前にチェックされる。
+    interfaces 層では HTTP 409 / ``conflict``（MSG-EM-HTTP-003）に変換される。
     """
 
     def __init__(self, empire_id: str) -> None:

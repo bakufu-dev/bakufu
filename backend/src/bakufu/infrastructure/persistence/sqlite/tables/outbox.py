@@ -1,21 +1,19 @@
-"""``domain_event_outbox`` table (Outbox pattern, §確定 K).
+"""``domain_event_outbox`` テーブル（Outbox パターン、§確定 K）。
 
-The Outbox decouples domain event emission from external side effects
-(Discord notifier, LLM Adapter call, etc.). Each row carries a
-``payload_json`` blob — produced by an Aggregate's behavior — that
-**must** be redacted before it lands on disk because raw payloads can
-embed webhook URLs, API keys, or filesystem paths.
+Outbox はドメイン イベントの発行を外部副作用（Discord 通知、LLM Adapter 呼び出し
+等）から疎結合化する。各行は Aggregate の振る舞いが生成した ``payload_json`` blob
+を保持する。raw ペイロードは webhook URL、API キー、ファイルシステム パス等を
+埋め込む可能性があるため、ディスクに到達する前に **必ず** 伏字化する。
 
-Secret-column masking is enforced via :class:`MaskedJSONEncoded` /
-:class:`MaskedText` TypeDecorators in
-:mod:`bakufu.infrastructure.persistence.sqlite.base`. Their
-``process_bind_param`` hooks fire for both ORM ``Session.add()``
-flushes and Core ``session.execute(insert(table).values(...))``
-paths, so the "raw-SQL path is masked too" promise (Confirmation B
-/ Confirmation R1-D / Schneier #6) is honored end-to-end (BUG-PF-001
-fix; see ``docs/features/persistence-foundation/requirements-analysis.md``
-§確定 R1-D for the design rationale and TC-IT-PF-020 for the
-physical regression test).
+シークレット カラムのマスキングは
+:mod:`bakufu.infrastructure.persistence.sqlite.base` の :class:`MaskedJSONEncoded` /
+:class:`MaskedText` TypeDecorator で強制される。それらの ``process_bind_param``
+フックは ORM ``Session.add()`` フラッシュと Core
+``session.execute(insert(table).values(...))`` 経路の両方で発火するため、
+「raw SQL 経路もマスクされる」という約束（Confirmation B / Confirmation R1-D /
+Schneier #6）が端から端まで尊重される（BUG-PF-001 修正、設計根拠は
+``docs/features/persistence-foundation/requirements-analysis.md`` §確定 R1-D
+を、物理回帰テストは TC-IT-PF-020 を参照）。
 """
 
 from __future__ import annotations
@@ -37,12 +35,12 @@ from bakufu.infrastructure.persistence.sqlite.base import (
 
 
 class OutboxRow(Base):
-    """ORM mapping for the ``domain_event_outbox`` table.
+    """``domain_event_outbox`` テーブルの ORM マッピング。
 
-    ``payload_json`` and ``last_error`` use the ``Masked*`` column
-    types so every bind value passes through the masking gateway
-    regardless of whether the row arrives via ORM ``Session.add`` or
-    Core ``session.execute(insert(...).values(...))`` (BUG-PF-001 fix).
+    ``payload_json`` と ``last_error`` は ``Masked*`` カラム型を使うため、行が ORM
+    ``Session.add`` 経由で到達するか Core
+    ``session.execute(insert(...).values(...))`` 経由で到達するかに関わらず、
+    全バインド値がマスキング ゲートウェイを通る（BUG-PF-001 修正）。
     """
 
     __tablename__ = "domain_event_outbox"
@@ -59,7 +57,7 @@ class OutboxRow(Base):
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
     dispatched_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
-    # Polling SQL filter: `WHERE status = ? AND next_attempt_at <= ?`.
+    # ポーリング SQL フィルタ: `WHERE status = ? AND next_attempt_at <= ?`。
     __table_args__ = (Index("ix_outbox_status_next_attempt", "status", "next_attempt_at"),)
 
 

@@ -19,11 +19,11 @@ pytestmark = pytest.mark.asyncio
 
 
 class TestEmpireLifecycleE2E:
-    """TC-E2E-EM-003: Empire HTTP API lifecycle — complete blackbox end-to-end.
+    """TC-E2E-EM-003: Empire HTTP API ライフサイクル — 完全ブラックボックス E2E。
 
-    All assertions are against HTTP responses only (no DB direct access,
-    no internal state inspection).  This test exercises the full stack:
-    httpx → FastAPI → EmpireService → SqliteEmpireRepository → SQLite.
+    すべてのアサーションは HTTP レスポンスのみに対する（DB 直接アクセスなし、
+    内部状態検査なし）。このテストはフルスタックを実行：
+    httpx → FastAPI → EmpireService → SqliteEmpireRepository → SQLite。
     """
 
     async def test_full_lifecycle(self, empire_e2e_client: AsyncClient) -> None:
@@ -70,7 +70,7 @@ class TestEmpireLifecycleE2E:
         roundtrip = await empire_e2e_client.get(f"/api/empires/{empire_id}")
         assert roundtrip.json()["name"] == "新山田の幕府"
 
-        # ── Step 4: DELETE → 204 No Content ────────────────────────────────
+        # ── Step 4: DELETE → 204 No Content（204 応答）─────────────────────
         delete_resp = await empire_e2e_client.delete(f"/api/empires/{empire_id}")
         assert delete_resp.status_code == 204
         assert delete_resp.content == b""

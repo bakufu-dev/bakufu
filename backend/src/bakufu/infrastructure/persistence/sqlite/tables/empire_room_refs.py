@@ -1,19 +1,17 @@
-"""``empire_room_refs`` table — Empire ↔ Room relationship rows.
+"""``empire_room_refs`` テーブル — Empire ↔ Room 関係行。
 
-Stores :class:`bakufu.domain.value_objects.RoomRef` values as a side
-table of the Empire Aggregate. ``room_id`` is **intentionally not** a
-foreign key onto ``rooms.id`` because the ``rooms`` table arrives in
-``feature/room-repository`` (separate PR). The future migration adds
-the FK constraint via ``op.create_foreign_key(...)`` once the target
-exists.
+:class:`bakufu.domain.value_objects.RoomRef` の値を Empire Aggregate の関連
+テーブルとして保存する。``room_id`` は ``rooms.id`` への外部キーを **意図的に
+持たない**。``rooms`` テーブルは ``feature/room-repository``（別 PR）で投入される
+ため。将来のマイグレーションが対象テーブル存在後に
+``op.create_foreign_key(...)`` 経由で FK 制約を追加する。
 
-Cascade: when an Empire row is deleted, its room-ref rows go with it
-(``ON DELETE CASCADE``). The ``UNIQUE(empire_id, room_id)`` index is
-the row-level uniqueness contract that mirrors the Aggregate Root's
-``Empire`` invariant on ``rooms``.
+カスケード: Empire 行を削除すると、その room 参照行も一緒に削除される
+（``ON DELETE CASCADE``）。``UNIQUE(empire_id, room_id)`` インデックスは Aggregate
+Root の ``Empire`` の ``rooms`` 不変条件をミラーする行レベル一意性コントラクト。
 
-No ``Masked*`` TypeDecorator: see :mod:`...tables.empires` and the
-storage.md §逆引き表 explicit "no masking targets" entry.
+``Masked*`` TypeDecorator は付けない: :mod:`...tables.empires` および storage.md
+§逆引き表 の明示的な「マスキング対象なし」エントリを参照。
 """
 
 from __future__ import annotations
@@ -27,7 +25,7 @@ from bakufu.infrastructure.persistence.sqlite.base import Base, UUIDStr
 
 
 class EmpireRoomRefRow(Base):
-    """ORM mapping for the ``empire_room_refs`` table."""
+    """``empire_room_refs`` テーブルの ORM マッピング。"""
 
     __tablename__ = "empire_room_refs"
 

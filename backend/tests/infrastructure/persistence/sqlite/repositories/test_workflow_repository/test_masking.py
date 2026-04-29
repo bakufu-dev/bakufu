@@ -42,19 +42,19 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.asyncio
 
 
-# A real-shape (but synthetic) Discord webhook URL. The token segment
-# is intentionally something distinctive so the assertion can prove
-# the on-disk bytes do NOT carry it after masking.
+# 実際の形状 (ただし合成) の Discord webhook URL。トークンセグメントは
+# 意図的に特徴的なものを使用して、アサーションがマスク後
+# ディスク上バイトがそれを持たないことを証明できるようにする。
 _REAL_SHAPE_TOKEN = "JeffMaskingProbe_-9876543210xyzABCDEFGHIJ"
 _REAL_SHAPE_WEBHOOK = "https://discord.com/api/webhooks/1234567890123456789/" + _REAL_SHAPE_TOKEN
 _DISCORD_REDACT_SENTINEL = "<REDACTED:DISCORD_WEBHOOK>"
 
 
 def _make_external_review_workflow(*, target_url: str) -> Workflow:
-    """Build a Workflow whose entry Stage is ``EXTERNAL_REVIEW`` + given webhook.
+    """入口 Stage が ``EXTERNAL_REVIEW`` + 与えられた webhook の Workflow を構築。
 
-    Returned shape is the bare ``Workflow`` aggregate; the test bodies
-    save / re-fetch it and assert against the persisted bytes.
+    返される形状は bare な ``Workflow`` aggregate；テスト本体が
+    それを保存 / 再取得してディスク上バイトに対してアサート。
     """
     notify_channel = NotifyChannel(
         kind="discord",
@@ -81,28 +81,28 @@ def _make_external_review_workflow(*, target_url: str) -> Workflow:
 # TC-IT-WFR-013: MaskedJSONEncoded wiring (Schneier 申し送り #6 物理確認)
 # ---------------------------------------------------------------------------
 class TestNotifyChannelsJsonMaskedOnDisk:
-    """TC-IT-WFR-013: ``notify_channels_json`` carries ``<REDACTED:...>`` not the raw token."""
+    """TC-IT-WFR-013: ``notify_channels_json`` は raw token ではなく ``<REDACTED:...>`` を持つ。"""
 
     async def test_discord_webhook_token_redacted_in_persisted_json(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-WFR-013: raw-SQL ``SELECT`` shows masked JSON, never the secret token.
+        """TC-IT-WFR-013: raw-SQL ``SELECT`` はマスク済み JSON を示し、secret token は表示しない。
 
-        Two assertions, in this order (positive before negative):
+        2 つのアサーション（ポジティブ優先）：
 
-        1. The redaction sentinel appears — proves the masking gateway
-           ran. A bug that silently dropped the masking step would
-           drop both the sentinel **and** leave the token in plaintext.
-        2. The original token does NOT appear anywhere in the JSON
-           string — the credential never lands on disk in any form.
+        1. redaction sentinel が現れる — masking gateway が実行されたことを証明。
+           masking ステップをサイレントにドロップするバグは
+           sentinel を **ドロップし** token を平文で残す。
+        2. 元の token は JSON 文字列内のどこにも現れない —
+           認証情報はディスク上にどのような形式でも格納されない。
         """
         workflow = _make_external_review_workflow(target_url=_REAL_SHAPE_WEBHOOK)
         async with session_factory() as session, session.begin():
             await SqliteWorkflowRepository(session).save(workflow)
 
-        # Raw SQL — bypass MaskedJSONEncoded.process_result_value so we
-        # see the literal bytes that hit the disk.
+        # Raw SQL — MaskedJSONEncoded.process_result_value を迂回して
+        # ディスク上の文字通りのバイトを見る。
         async with session_factory() as session:
             stmt = text(
                 "SELECT notify_channels_json FROM workflow_stages "
@@ -115,20 +115,20 @@ class TestNotifyChannelsJsonMaskedOnDisk:
         persisted_json = row[0]
         assert isinstance(persisted_json, str)
 
-        # Positive: redaction sentinel is present.
+        # ポジティブ: redaction sentinel が存在する。
         assert _DISCORD_REDACT_SENTINEL in persisted_json, (
-            f"[FAIL] notify_channels_json missing redaction sentinel.\n"
-            f"Next: verify workflow_stages.notify_channels_json column type is "
-            f"MaskedJSONEncoded; this is the §確定 H 物理保証. "
+            f"[FAIL] notify_channels_json が redaction sentinel がない。\n"
+            f"Next: workflow_stages.notify_channels_json カラム型が "
+            f"MaskedJSONEncoded であることを確認； これは §確定 H 物理保証。 "
             f"Persisted JSON: {persisted_json!r}"
         )
-        # Negative: raw token is absent.
+        # ネガティブ: raw token は不在。
         assert _REAL_SHAPE_TOKEN not in persisted_json, (
-            f"[FAIL] raw Discord webhook token leaked into notify_channels_json.\n"
-            f"Next: this is the catastrophic case the §確定 H + Schneier 申し送り #6 "
-            f"three-layer defense was designed to prevent. Verify "
+            f"[FAIL] raw Discord webhook token が notify_channels_json に漏洩。\n"
+            f"Next: これは §確定 H + Schneier 申し送り #6 "
+            f"3 層防御が防止するように設計された壊滅的なケース。"
             f"NotifyChannel.field_serializer (Layer 1) AND MaskedJSONEncoded "
-            f"(Layer 2 / TypeDecorator) are both still in place. "
+            f"(Layer 2 / TypeDecorator) 両方がまだ配置されていることを確認。 "
             f"Persisted JSON: {persisted_json!r}"
         )
 
@@ -136,13 +136,13 @@ class TestNotifyChannelsJsonMaskedOnDisk:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-WFR-013 補強: a Stage with no notify_channels still persists cleanly.
+        """TC-IT-WFR-013 補強: notify_channels のない Stage も問題なく永続化。
 
-        ``WORK`` stages don't carry notify_channels by default. The
-        column is NOT NULL with server_default ``'[]'``; the
-        Repository's ``_to_row`` emits ``[]`` (empty list) which the
-        ``MaskedJSONEncoded.process_bind_param`` normalizes to
-        ``"[]"`` JSON. No masking artifacts on this path.
+        ``WORK`` stages はデフォルトで notify_channels を持たない。
+        カラムは NOT NULL で server_default は ``'[]'`` ；
+        Repository の ``_to_row`` は ``[]`` (空リスト) を発行し、
+        ``MaskedJSONEncoded.process_bind_param`` は
+        これを ``"[]"`` JSON に正規化。このパスではマスキングアーティファクトなし。
         """
         workflow = make_workflow()  # 1 WORK stage, empty notify_channels
         async with session_factory() as session, session.begin():
@@ -155,11 +155,11 @@ class TestNotifyChannelsJsonMaskedOnDisk:
             row = (await session.execute(stmt, {"workflow_id": workflow.id.hex})).first()
 
         assert row is not None
-        # Either ``"[]"`` (the explicit empty list JSON) or any other
-        # JSON-valid empty container — the contract is "no leakage" not
-        # "exact byte form". We assert both interpretations are safe.
+        # ``"[]"`` (明示的な空リスト JSON) または
+        # JSON-valid な空コンテナ — 契約は「漏洩なし」であり「正確なバイト形式」ではない。
+        # 両方の解釈が安全であることをアサート。
         assert _DISCORD_REDACT_SENTINEL not in str(row[0])
-        # Quick sanity that we got a string-shaped JSON value.
+        # 文字列型 JSON 値を取得したことの簡易チェック。
         assert str(row[0]).strip() in ("[]", "null", "")
 
 
@@ -167,36 +167,37 @@ class TestNotifyChannelsJsonMaskedOnDisk:
 # TC-IT-WFR-014: §確定 H §不可逆性 — find_by_id raises after mask
 # ---------------------------------------------------------------------------
 class TestFindByIdRaisesOnMaskedNotifyChannels:
-    """TC-IT-WFR-014: ``find_by_id`` on a masked Workflow raises ``ValidationError``.
+    """TC-IT-WFR-014: マスク済み Workflow の ``find_by_id`` は ``ValidationError`` を発生。
 
-    The §確定 H §不可逆性 contract: once notify_channels are masked
-    on disk, recovering the *typed* Workflow aggregate is impossible
-    because the masked URL fails the ``NotifyChannel`` G7 regex on
-    re-validate. This test pins that behavior so a hypothetical PR
-    that "rescued" the round-trip (e.g. by skipping invalid notify
-    channels silently) would fail loudly.
+    §確定 H §不可逆性 契約： notify_channels がディスク上でマスクされると、
+    *型付き* Workflow aggregate の回復は不可能。マスク済み URL は
+    ``NotifyChannel`` G7 regex の再検証に失敗するため。
+    このテストはその動作を確定させるため、「ラウンドトリップを救出」
+    しようとする hypothetical PR (例：invalid notify_channels を
+    サイレントにスキップ) は大きく失敗する。
     """
 
     async def test_find_by_id_raises_validation_error(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-WFR-014: a save-then-find_by_id on a masked URL must raise.
+        """TC-IT-WFR-014: マスク済み URL での save-then-find_by_id は raise しなければならない。
 
-        The contract:
+        契約:
 
-        * ``save`` succeeds (the gateway produces well-formed JSON,
-          just with the token redacted).
-        * ``find_by_id`` raises because ``NotifyChannel.model_validate``
-          rejects the masked URL — the G7 regex requires the token
-          segment to match ``[A-Za-z0-9_\\-]+`` and the redaction
-          sentinel ``<REDACTED:DISCORD_WEBHOOK>`` is not in that set
-          (``<`` / ``>`` / ``:`` are excluded).
+        * ``save`` は成功 (gateway は well-formed JSON を生成、
+          token は redact済み)。
+        * ``find_by_id`` は raise （``NotifyChannel.model_validate``
+          はマスク済み URL を reject — G7 regex は token
+          セグメントが ``[A-Za-z0-9_\\-]+`` にマッチを要求し
+          redaction sentinel ``<REDACTED:DISCORD_WEBHOOK>`` は
+          そのセットにない (``<`` / ``>`` / ``:`` は除外))。
 
-        The Repository docstring (workflow_repository.py L44-48)
-        commits to "find_by_id may therefore raise ``pydantic.ValidationError``";
-        we pin the contract here so a swap to a different exception
-        class would force a docs update + design revisit.
+        Repository docstring (workflow_repository.py L44-48)
+        は「find_by_id は ``pydantic.ValidationError`` を raise
+        するかもしれない」をコミット；
+        ここで契約を確定させるため、別の exception クラスへのスワップは
+        docs update + design revisit を強制するだろう。
         """
         workflow = _make_external_review_workflow(target_url=_REAL_SHAPE_WEBHOOK)
         async with session_factory() as session, session.begin():

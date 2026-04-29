@@ -1,24 +1,21 @@
-"""Aggregate-level invariant helpers for :class:`Directive`.
+""":class:`Directive` のための Aggregate レベル不変条件ヘルパ。
 
-Each helper is a **module-level pure function** so tests can ``import``
-and invoke directly — same testability pattern Norman / Steve approved
-for the agent ``aggregate_validators.py`` and the room
-``aggregate_validators.py``.
+各ヘルパは **モジュール レベルの純粋関数** であるため、テストから ``import``
+して直接呼べる — Norman / Steve が agent の ``aggregate_validators.py`` と
+room の ``aggregate_validators.py`` で承認したのと同じテスタビリティ パターン。
 
-Helpers:
+ヘルパ:
 
-1. :func:`_validate_text_range` — ``1 ≤ NFC(text) ≤ 10000``. Length is
-   judged on the **NFC-normalized** text without ``strip``; CEO
-   directives may carry meaningful leading / trailing whitespace and
-   newlines (multi-paragraph briefs).
-2. :func:`_validate_task_link_immutable` — Fail Fast when ``link_task``
-   is invoked on a Directive that already has a non-``None``
-   ``task_id``. The constructor path (used by Repository hydration)
-   accepts any ``TaskId | None`` value because a permanent attribute
-   value is not a *transition*; only ``link_task`` watches for
-   transition violations (see Directive detailed-design §確定 C).
+1. :func:`_validate_text_range` — ``1 ≤ NFC(text) ≤ 10000``。長さは ``strip``
+   無しの **NFC 正規化済み** テキストに対して判定する。CEO ディレクティブは
+   意味のある先頭／末尾空白や改行（複数段落のブリーフ）を含む可能性がある。
+2. :func:`_validate_task_link_immutable` — 既に non-``None`` ``task_id`` を持つ
+   Directive に対する ``link_task`` 呼び出しを Fail Fast する。コンストラクタ
+   経路（リポジトリ水和で使用）は任意の ``TaskId | None`` を受理する。永続的な
+   属性値は *遷移* ではないため。``link_task`` のみが遷移違反を監視する
+   （Directive detailed-design §確定 C 参照）。
 
-Naming follows the agent / room precedent (``_validate_*``).
+命名は agent / room の先例（``_validate_*``）に従う。
 """
 
 from __future__ import annotations
@@ -27,18 +24,18 @@ from uuid import UUID
 
 from bakufu.domain.exceptions import DirectiveInvariantViolation
 
-# Confirmation B: text length bounds (1〜10000 after NFC normalization).
+# Confirmation B: text 長境界（NFC 正規化後で 1〜10000）。
 MIN_TEXT_LENGTH: int = 1
 MAX_TEXT_LENGTH: int = 10_000
 
 
 def _validate_text_range(text: str) -> None:
-    """``Directive.text`` must fall in 1〜10000 characters (MSG-DR-001).
+    """``Directive.text`` は 1〜10000 文字でなければならない（MSG-DR-001）。
 
-    Length is judged on the **NFC-normalized** string (the field
-    validator runs the pipeline before this helper is invoked) without
-    ``strip`` — CEO directives may include leading / trailing
-    whitespace + multi-paragraph blocks that carry meaning.
+    長さは **NFC 正規化済み** 文字列に対して判定される（フィールド バリデータが
+    本ヘルパ呼び出し前にパイプラインを走らせる）。``strip`` は適用しない —
+    CEO ディレクティブは意味のある先頭／末尾空白や複数段落ブロックを含む可能性
+    がある。
     """
     length = len(text)
     if not (MIN_TEXT_LENGTH <= length <= MAX_TEXT_LENGTH):
@@ -61,18 +58,17 @@ def _validate_task_link_immutable(
     existing_task_id: UUID | None,
     attempted_task_id: UUID,
 ) -> None:
-    """Reject a ``link_task`` call against an already-linked Directive.
+    """既にリンク済みの Directive に対する ``link_task`` 呼び出しを拒否する。
 
-    Confirmation C / D / Norman 凍結: 1 Directive maps to 1 Task by
-    design; a second ``link_task`` call is **always** a Fail Fast
-    rather than a no-op, regardless of whether the new TaskId equals
-    the existing one. The simpler contract avoids special cases in the
-    aggregate validator and matches the business rule "re-issuing a
-    directive means creating a *new* Directive."
+    Confirmation C / D / Norman 凍結: 1 つの Directive が 1 つの Task に対応する
+    のは設計上の前提。2 回目の ``link_task`` 呼び出しは新 TaskId が既存と等しい
+    かに関わらず **常に** Fail Fast し、no-op にはしない。シンプルなコントラクト
+    は Aggregate バリデータの特例を避け、ビジネス ルール「ディレクティブの再発行
+    とは *新しい* Directive の作成を意味する」と一致する。
 
     Raises:
-        DirectiveInvariantViolation: ``kind='task_already_linked'``
-            (MSG-DR-002) when ``existing_task_id is not None``.
+        DirectiveInvariantViolation: ``existing_task_id is not None`` の場合に
+            ``kind='task_already_linked'``（MSG-DR-002）。
     """
     if existing_task_id is None:
         return

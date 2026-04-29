@@ -1,10 +1,10 @@
-"""Alembic initial revision integration tests
-(TC-IT-PF-004 / 005 / 015 / 014).
+"""Alembic initial revision integration テスト
+(TC-IT-PF-004 / 005 / 015 / 014)。
 
-Confirmation C / Schneier 申し送り #4 — the SQLite triggers protecting
-``audit_log`` immutability are exercised against the **real**
-``DELETE`` / ``UPDATE`` paths so a future revision that forgets to
-re-apply them is caught at PR time.
+Confirmation C / Schneier 申し送り #4 — ``audit_log`` 不変性を保護する
+SQLite trigger は **実際の** ``DELETE`` / ``UPDATE`` パスに対して
+実行されます。将来の revision がこれらを再適用することを忘れた場合、
+PR 時にキャッチされるように。
 """
 
 from __future__ import annotations
@@ -22,24 +22,24 @@ pytestmark = pytest.mark.asyncio
 
 
 class TestSchemaCreatedByAlembic:
-    """TC-IT-PF-004: 3 tables + 2 triggers + index after upgrade head."""
+    """TC-IT-PF-004: upgrade head 後 3 テーブル + 2 トリガー + インデックス。"""
 
     async def test_three_tables_present(self, app_engine: AsyncEngine) -> None:
-        """TC-IT-PF-004: audit_log / bakufu_pid_registry / domain_event_outbox exist."""
+        """TC-IT-PF-004: audit_log / bakufu_pid_registry / domain_event_outbox が存在。"""
         async with app_engine.connect() as conn:
             result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
             tables = {row[0] for row in result}
         assert {"audit_log", "bakufu_pid_registry", "domain_event_outbox"}.issubset(tables)
 
     async def test_two_triggers_present(self, app_engine: AsyncEngine) -> None:
-        """TC-IT-PF-004: audit_log_no_delete + audit_log_update_restricted exist."""
+        """TC-IT-PF-004: audit_log_no_delete + audit_log_update_restricted が存在。"""
         async with app_engine.connect() as conn:
             result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='trigger'"))
             triggers = {row[0] for row in result}
         assert {"audit_log_no_delete", "audit_log_update_restricted"}.issubset(triggers)
 
     async def test_outbox_polling_index_present(self, app_engine: AsyncEngine) -> None:
-        """TC-IT-PF-004: ix_outbox_status_next_attempt for polling SQL."""
+        """TC-IT-PF-004: polling SQL 用の ix_outbox_status_next_attempt。"""
         async with app_engine.connect() as conn:
             result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='index'"))
             indices = {row[0] for row in result}
@@ -47,16 +47,15 @@ class TestSchemaCreatedByAlembic:
 
 
 class TestAuditLogDeleteForbidden:
-    """TC-IT-PF-005: DELETE on audit_log raises (Schneier #4)."""
+    """TC-IT-PF-005: audit_log への DELETE が raise (Schneier #4)。"""
 
     async def test_delete_raw_sql_aborts(self, app_engine: AsyncEngine) -> None:
-        """TC-IT-PF-005: DELETE FROM audit_log triggers RAISE(ABORT)."""
+        """TC-IT-PF-005: DELETE FROM audit_log が RAISE(ABORT) をトリガー。"""
         from datetime import UTC, datetime
         from uuid import uuid4
 
-        # Insert a row directly (mask listener fires for ORM, raw INSERT
-        # below uses parameter binding — same path the dispatcher would
-        # use).
+        # 直接行を INSERT (ORM の mask listener 発火、下記の raw INSERT は
+        # parameter binding を使用 — dispatcher が使用するのと同じパス)。
         row_id = uuid4().hex
         async with app_engine.begin() as conn:
             await conn.execute(
@@ -73,20 +72,20 @@ class TestAuditLogDeleteForbidden:
                 },
             )
 
-        # The trigger turns DELETE into a runtime error.
+        # Trigger が DELETE をランタイムエラーに変える。
         with pytest.raises(sa_exc.SQLAlchemyError) as excinfo:
             async with app_engine.begin() as conn:
                 await conn.execute(text("DELETE FROM audit_log WHERE id=:id"), {"id": row_id})
-        # SQLAlchemy wraps SQLite errors in OperationalError. The error
-        # message must carry the trigger's RAISE message.
+        # SQLAlchemy が SQLite エラーを OperationalError でラップ。エラー
+        # メッセージは trigger の RAISE メッセージを含む必要がある。
         assert "audit_log is append-only" in str(excinfo.value)
 
 
 class TestAuditLogUpdateOnceLocked:
-    """TC-IT-PF-015: UPDATE on audit_log row with result NOT NULL is forbidden."""
+    """TC-IT-PF-015: result NOT NULL の audit_log 行への UPDATE は禁止。"""
 
     async def test_update_after_result_set_is_aborted(self, app_engine: AsyncEngine) -> None:
-        """TC-IT-PF-015: cannot mutate result once it has a value."""
+        """TC-IT-PF-015: result が値を持つと mutate できない。"""
         from datetime import UTC, datetime
         from uuid import uuid4
 
@@ -116,7 +115,7 @@ class TestAuditLogUpdateOnceLocked:
         assert "audit_log result is immutable once set" in str(excinfo.value)
 
     async def test_update_with_null_result_is_allowed(self, app_engine: AsyncEngine) -> None:
-        """TC-IT-PF-015 supplemental: NULL → value transition is the *one* allowed UPDATE."""
+        """TC-IT-PF-015 補足: NULL → value 遷移が唯一許可される UPDATE。"""
         from datetime import UTC, datetime
         from uuid import uuid4
 
@@ -135,7 +134,7 @@ class TestAuditLogUpdateOnceLocked:
                     "ts": datetime.now(UTC).isoformat(),
                 },
             )
-        # First UPDATE — populating NULL result — must succeed.
+        # 最初の UPDATE — NULL result を定義 — は成功する必要がある。
         async with app_engine.begin() as conn:
             await conn.execute(
                 text("UPDATE audit_log SET result='SUCCESS' WHERE id=:id"),

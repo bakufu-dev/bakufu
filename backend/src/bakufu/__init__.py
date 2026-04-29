@@ -1,3 +1,3 @@
-"""bakufu backend package root."""
+"""bakufu バックエンドのパッケージルート。"""
 
 __version__: str = "0.0.0"

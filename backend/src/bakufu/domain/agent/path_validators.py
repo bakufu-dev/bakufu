@@ -1,19 +1,18 @@
-"""SkillRef.path traversal defense (Agent feature §確定 H, H1〜H10).
+"""SkillRef.path のトラバーサル防御（Agent feature §確定 H, H1〜H10）。
 
-Each Hx check is a **module-level pure function** so:
+各 Hx チェックは **モジュールレベルの純粋関数** として実装する。理由は以下:
 
-1. Tests can ``import`` them and invoke directly to prove each rule works
-   independently — same testability pattern as Workflow's
-   :mod:`bakufu.domain.workflow.dag_validators` (Confirmation F).
-2. :func:`_validate_skill_path` stays a thin sequencer over the ten checks,
-   with order locked by the design document.
-3. Future ``feature/skill-loader`` Phase-2 work that adds a runtime I/O
-   recheck can re-use the exact same helpers — single source of truth for
-   path policy, no rule drift.
+1. テストから ``import`` して直接呼べるため、各ルールが独立して機能することを
+   個別に検証できる（Workflow の :mod:`bakufu.domain.workflow.dag_validators` と
+   同じテスタビリティ パターン — Confirmation F）。
+2. :func:`_validate_skill_path` は 10 個のチェックの薄いシーケンサとして留まり、
+   実行順序は設計ドキュメントによりロックされる。
+3. 将来 ``feature/skill-loader`` Phase-2 でランタイム I/O 再チェックを追加する
+   際、同じヘルパを再利用できる — パスポリシーの単一情報源。ルールの揺らぎが起きない。
 
-The functions raise :class:`AgentInvariantViolation` directly so callers
-(``SkillRef`` field validator) get the structured ``kind='skill_path_invalid'``
-discriminator without going through Pydantic's ``ValidationError`` wrapping.
+これらの関数は :class:`AgentInvariantViolation` を直接送出する。これにより呼び元
+（``SkillRef`` フィールド バリデータ）は、Pydantic の ``ValidationError`` ラッピング
+を経由せずに構造化された ``kind='skill_path_invalid'`` 識別子を受け取れる。
 """
 
 from __future__ import annotations
@@ -25,20 +24,20 @@ from pathlib import Path, PurePosixPath
 
 from bakufu.domain.exceptions import AgentInvariantViolation
 
-# H2: 1〜500 chars (NFC-normalized form).
+# H2: 1〜500 文字（NFC 正規化後の長さ）。
 MIN_PATH_LENGTH: int = 1
 MAX_PATH_LENGTH: int = 500
 
-# H7: required prefix segments. Anything not under bakufu-data/skills/* is
-# rejected at the VO boundary, regardless of what the file system says.
+# H7: 必須のプレフィックス セグメント。bakufu-data/skills/* 配下にないものは
+# ファイル システムの状態にかかわらず VO 境界で拒否する。
 REQUIRED_PARTS_PREFIX: tuple[str, str] = ("bakufu-data", "skills")
 SKILLS_SUBDIR: str = "skills"
 
-# H4: leading-character rejections.
+# H4: 先頭文字による拒否。
 _WINDOWS_ABSOLUTE_RE = re.compile(r"^[A-Za-z]:[\\/]")
 
-# H9: Windows reserved device names. Compared case-insensitive on the part
-# stem (without extension) so "CON.md" is rejected too.
+# H9: Windows 予約デバイス名。拡張子を除いた part stem に対して
+# 大文字小文字を無視して比較するため、"CON.md" も拒否される。
 _WINDOWS_RESERVED_NAMES: frozenset[str] = frozenset(
     {
         "CON",
@@ -50,16 +49,16 @@ _WINDOWS_RESERVED_NAMES: frozenset[str] = frozenset(
     }
 )
 
-# H3: forbidden characters — NUL, ASCII C0/C1 control, backslash.
+# H3: 禁止文字 — NUL、ASCII C0/C1 制御文字、バックスラッシュ。
 _ASCII_CONTROL_RANGE = frozenset(chr(c) for c in range(0x00, 0x20)) | {chr(0x7F)}
 _FORBIDDEN_CHARS: frozenset[str] = _ASCII_CONTROL_RANGE | {"\\"}
 
 
 def _violation(check_id: str, detail_extra: dict[str, object]) -> AgentInvariantViolation:
-    """Centralize the ``AgentInvariantViolation`` shape used by every Hx helper.
+    """各 Hx ヘルパが共通で使う ``AgentInvariantViolation`` 形状を集約する。
 
-    Keeps the message format and ``kind`` consistent so callers can switch on
-    ``detail['check']`` to attribute the failure without parsing strings.
+    メッセージ書式と ``kind`` を一貫させるため、呼び元は文字列をパースせずに
+    ``detail['check']`` で失敗箇所を特定できる。
     """
     detail = {"check": check_id, **detail_extra}
     return AgentInvariantViolation(
@@ -70,15 +69,15 @@ def _violation(check_id: str, detail_extra: dict[str, object]) -> AgentInvariant
 
 
 # ---------------------------------------------------------------------------
-# H1: NFC normalization
+# H1: NFC 正規化
 # ---------------------------------------------------------------------------
 def _h1_nfc_normalize(raw_path: str) -> str:
-    """Apply NFC. Returned string is what every subsequent helper inspects."""
+    """NFC を適用する。返却された文字列が以降のヘルパが検査する対象となる。"""
     return unicodedata.normalize("NFC", raw_path)
 
 
 # ---------------------------------------------------------------------------
-# H2: length 1〜500
+# H2: 長さ 1〜500
 # ---------------------------------------------------------------------------
 def _h2_check_length(path: str) -> None:
     length = len(path)
@@ -94,7 +93,7 @@ def _h2_check_length(path: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# H3: forbidden chars (NUL / control / backslash)
+# H3: 禁止文字（NUL / 制御文字 / バックスラッシュ）
 # ---------------------------------------------------------------------------
 def _h3_check_forbidden_chars(path: str) -> None:
     for ch in path:
@@ -103,7 +102,7 @@ def _h3_check_forbidden_chars(path: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# H4: leading-character rejection (POSIX abs / Windows abs / home tilde)
+# H4: 先頭文字の拒否（POSIX 絶対 / Windows 絶対 / ホームのチルダ）
 # ---------------------------------------------------------------------------
 def _h4_check_leading(path: str) -> None:
     if path.startswith("/"):
@@ -115,32 +114,32 @@ def _h4_check_leading(path: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# H5: traversal sequences and surrounding whitespace
+# H5: トラバーサル列と前後の空白
 # ---------------------------------------------------------------------------
 def _h5_check_traversal_sequences(path: str) -> None:
     if path != path.strip():
         raise _violation("H5", {"reason": "leading or trailing whitespace"})
-    # ``path == '.'`` / ``path == '..'`` / leading ``./`` or ``../`` are
-    # current-dir or parent-dir aliases that round-trip through
-    # PurePosixPath silently — reject them at this layer.
+    # ``path == '.'`` / ``path == '..'`` / 先頭の ``./`` や ``../`` は、
+    # PurePosixPath を通すとサイレントに往復してしまうカレント／親ディレクトリ
+    # エイリアスとなる。この層で明示的に拒否する。
     if path in {".", ".."} or path.startswith(("./", "../")):
         raise _violation("H5", {"reason": "path starts with '.' or '..'"})
     if path.endswith(("/.", "/..", "/")):
         raise _violation("H5", {"reason": "path ends with '.' or '..' or trailing slash"})
-    # Two-dot traversal anywhere — most common attack form.
+    # 任意の位置に出現する `..` トラバーサル — 最も一般的な攻撃形態。
     if ".." in path.split("/"):
         raise _violation("H5", {"reason": "'..' parent-dir traversal in path"})
 
 
 # ---------------------------------------------------------------------------
-# H6: parse via PurePosixPath, return parts
+# H6: PurePosixPath でパースして parts を返す
 # ---------------------------------------------------------------------------
 def _h6_parse_parts(path: str) -> tuple[str, ...]:
     return PurePosixPath(path).parts
 
 
 # ---------------------------------------------------------------------------
-# H7: prefix must be ('bakufu-data', 'skills', <rest>)
+# H7: プレフィックスは ('bakufu-data', 'skills', <rest>) でなければならない
 # ---------------------------------------------------------------------------
 def _h7_check_prefix(parts: tuple[str, ...]) -> None:
     if len(parts) < 3:
@@ -159,7 +158,7 @@ def _h7_check_prefix(parts: tuple[str, ...]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# H8: re-check every part for forbidden chars (defense in depth post-parse)
+# H8: パース後の各 part を再度禁止文字でチェック（多層防御）
 # ---------------------------------------------------------------------------
 def _h8_recheck_parts(parts: tuple[str, ...]) -> None:
     for index, part in enumerate(parts):
@@ -172,11 +171,11 @@ def _h8_recheck_parts(parts: tuple[str, ...]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# H9: Windows reserved names
+# H9: Windows 予約名
 # ---------------------------------------------------------------------------
 def _h9_check_windows_reserved(parts: tuple[str, ...]) -> None:
     for index, part in enumerate(parts):
-        # Strip extension for the comparison: "CON.md" → "CON".
+        # 比較のため拡張子を除いて stem を取得: "CON.md" → "CON"。
         stem = part.split(".", 1)[0].upper()
         if stem in _WINDOWS_RESERVED_NAMES:
             raise _violation(
@@ -189,18 +188,18 @@ def _h9_check_windows_reserved(parts: tuple[str, ...]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# H10: filesystem-grounded base-escape verification
+# H10: ファイルシステム実体に基づく base-escape 検証
 # ---------------------------------------------------------------------------
 def _h10_check_base_escape(path: str) -> None:
-    """Resolve ``BAKUFU_DATA_DIR / path`` and require it to live under
-    ``BAKUFU_DATA_DIR / 'bakufu-data' / 'skills'`` (the canonical skills root).
+    """``BAKUFU_DATA_DIR / path`` を resolve し、``BAKUFU_DATA_DIR / 'bakufu-data' / 'skills'``
+    （正準 skills ルート）の配下にあることを要求する。
 
-    The relative path ``bakufu-data/skills/<rest>`` is resolved against
-    ``BAKUFU_DATA_DIR``; the joined absolute path must stay under the
-    skills root. ``Path.resolve()`` follows symlinks, so symlink-via-skills-subdir
-    escape is detected here — the final defensive line. If
-    ``BAKUFU_DATA_DIR`` is unset we raise a structured failure rather than
-    silently skipping (defense in depth).
+    相対パス ``bakufu-data/skills/<rest>`` は ``BAKUFU_DATA_DIR`` を起点として
+    解決される。連結された絶対パスは skills ルートの配下に留まらなければならない。
+    ``Path.resolve()`` はシンボリックリンクを辿るため、skills サブディレクトリ
+    経由のシンボリックリンク エスケープも検出される — 最終的な防御ライン。
+    ``BAKUFU_DATA_DIR`` 未設定の場合はサイレントにスキップせず、構造化された
+    失敗を送出する（多層防御）。
     """
     base_dir_str = os.environ.get("BAKUFU_DATA_DIR")
     if not base_dir_str:
@@ -209,8 +208,8 @@ def _h10_check_base_escape(path: str) -> None:
             {"reason": "BAKUFU_DATA_DIR not set"},
         )
     base_dir = Path(base_dir_str)
-    # ``REQUIRED_PARTS_PREFIX`` is ``('bakufu-data', 'skills')``, so the
-    # canonical skills root is exactly that prefix joined under the env var.
+    # ``REQUIRED_PARTS_PREFIX`` は ``('bakufu-data', 'skills')`` であるため、
+    # 正準 skills ルートはちょうどこのプレフィックスを環境変数の下に連結したもの。
     skills_root = base_dir.joinpath(*REQUIRED_PARTS_PREFIX).resolve()
     candidate = (base_dir / path).resolve()
     if not candidate.is_relative_to(skills_root):
@@ -224,20 +223,20 @@ def _h10_check_base_escape(path: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Orchestrator (used by SkillRef.field_validator)
+# オーケストレータ（SkillRef.field_validator から使用）
 # ---------------------------------------------------------------------------
 def _validate_skill_path(raw_path: str) -> str:
-    """Run H1〜H10 in the design's locked order and return the NFC-normalized form.
+    """設計でロックされた順序で H1〜H10 を実行し、NFC 正規化済みの形を返す。
 
-    The returned value is what :class:`SkillRef` stores as ``path`` — callers
-    must always replace their input with the function's output so downstream
-    consumers never see un-normalized strings.
+    返り値は :class:`SkillRef` が ``path`` として保存する値である。呼び元は必ず
+    入力をこの関数の出力で置き換えなければならない。これによりダウンストリーム
+    の利用側に未正規化文字列が渡ることを防ぐ。
 
     Raises:
-        AgentInvariantViolation: with ``kind='skill_path_invalid'`` on any
-            failure. ``detail['check']`` carries the Hx identifier (``'H1'``
-            ... ``'H10'``) so HTTP/API layers can localize without parsing
-            the message string.
+        AgentInvariantViolation: 失敗時に ``kind='skill_path_invalid'`` で送出。
+            ``detail['check']`` には Hx 識別子（``'H1'`` ... ``'H10'``）が入り、
+            HTTP / API 層はメッセージ文字列をパースせずに失敗箇所をローカライズ
+            できる。
     """
     normalized = _h1_nfc_normalize(raw_path)
     _h2_check_length(normalized)

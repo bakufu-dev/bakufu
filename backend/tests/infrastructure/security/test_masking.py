@@ -1,9 +1,9 @@
-"""MaskingGateway unit tests (TC-UT-PF-006 / 016 / 017 / 018 / 019 / 041 / 042).
+"""MaskingGateway 単体テスト（TC-UT-PF-006 / 016 / 017 / 018 / 019 / 041 / 042）。
 
-Covers REQ-PF-005 (single masking gateway) + Confirmation A's nine regex
-patterns + Confirmation F's Fail-Secure contract. The gateway must
-**never raise** — internal failures fall back to ``<REDACTED:*>``
-sentinels rather than letting raw bytes escape.
+REQ-PF-005（masking ゲートウェイの単一化）+ Confirmation A の 9 種の正規表現
++ Confirmation F の Fail-Secure 契約をカバーする。ゲートウェイは
+**決して例外を投げてはならない** — 内部失敗時は生バイトを漏らす代わりに
+``<REDACTED:*>`` センチネルへフォールバックする。
 """
 
 from __future__ import annotations
@@ -16,10 +16,10 @@ from bakufu.infrastructure.security import masking
 def _initialize_masking(  # pyright: ignore[reportUnusedFunction]
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Re-init masking with a known HOME so home-path tests are deterministic."""
+    """ホームパステストを決定的にするため、HOME を既知値に固定して masking を再初期化する。"""
     monkeypatch.setenv("HOME", "/home/myuser")
-    # Strip any provider env vars from the host so tests assert against a
-    # clean Layer-1 list.
+    # ホスト由来の provider 環境変数をすべて剥がし、テストはクリーンな
+    # Layer-1 リストに対してのみアサートする。
     for env_key in (
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
@@ -34,7 +34,7 @@ def _initialize_masking(  # pyright: ignore[reportUnusedFunction]
 
 
 class TestNineRegexPatterns:
-    """TC-UT-PF-006 / 042: each of the nine secret formats is redacted."""
+    """TC-UT-PF-006 / 042: 9 種類のシークレットフォーマットそれぞれが redact される。"""
 
     @pytest.mark.parametrize(
         ("payload", "expected_redaction"),
@@ -60,23 +60,23 @@ class TestNineRegexPatterns:
         ],
     )
     def test_each_regex_pattern_redacts(self, payload: str, expected_redaction: str) -> None:
-        """TC-UT-PF-042: parametrized over all nine regex families."""
+        """TC-UT-PF-042: 9 種すべての regex ファミリに対するパラメタライズ。"""
         masked = masking.mask(payload)
         assert expected_redaction in masked
 
 
 class TestApplicationOrder:
-    """TC-UT-PF-016: Anthropic regex applies before OpenAI regex."""
+    """TC-UT-PF-016: Anthropic regex は OpenAI regex より先に適用される。"""
 
     def test_anthropic_key_does_not_become_openai_redaction(self) -> None:
-        """TC-UT-PF-016: 'sk-ant-...' is redacted as ANTHROPIC, never OPENAI."""
+        """TC-UT-PF-016: 'sk-ant-...' は ANTHROPIC として redact され、OPENAI にはならない。"""
         ant_key = "sk-ant-api03-" + "A" * 60
         masked = masking.mask(f"key={ant_key}")
         assert "<REDACTED:ANTHROPIC_KEY>" in masked
         assert "<REDACTED:OPENAI_KEY>" not in masked
 
     def test_openai_key_does_not_match_anthropic(self) -> None:
-        """TC-UT-PF-016: plain 'sk-...' redacts as OPENAI, not ANTHROPIC."""
+        """TC-UT-PF-016: 素の 'sk-...' は OPENAI として redact される（ANTHROPIC ではない）。"""
         oai_key = "sk-" + "B" * 40
         masked = masking.mask(f"key={oai_key}")
         assert "<REDACTED:OPENAI_KEY>" in masked
@@ -84,19 +84,19 @@ class TestApplicationOrder:
 
 
 class TestEnvLengthFloor:
-    """TC-UT-PF-017: env values shorter than 8 chars are not patternized."""
+    """TC-UT-PF-017: 8 文字未満の env 値はパターン化されない。"""
 
     def test_short_env_value_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """TC-UT-PF-017: 5-char ANTHROPIC_API_KEY is ignored."""
+        """TC-UT-PF-017: 5 文字の ANTHROPIC_API_KEY は無視される。"""
         monkeypatch.setenv("ANTHROPIC_API_KEY", "short")
         masking.init()
-        # 'short' must not be redacted — only the 9 regex / home pass should fire.
+        # 'short' は redact されてはならない。9 種の regex / home パスのみが発火する。
         masked = masking.mask("plain text containing short value")
         assert "short" in masked
         assert "<REDACTED:ENV:ANTHROPIC_API_KEY>" not in masked
 
     def test_eight_char_env_value_is_patternized(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """TC-UT-PF-017: 8-char value lands in the env layer."""
+        """TC-UT-PF-017: 8 文字の値は env レイヤに到達する。"""
         monkeypatch.setenv("ANTHROPIC_API_KEY", "12345678")
         masking.init()
         masked = masking.mask("contains 12345678 secret")
@@ -105,39 +105,39 @@ class TestEnvLengthFloor:
 
 
 class TestFailSecureFallback:
-    """TC-UT-PF-018 / 006-A / 006-B: confirmation F sentinels for failure paths."""
+    """TC-UT-PF-018 / 006-A / 006-B: Confirmation F の失敗パス向けセンチネル。"""
 
     def test_non_str_input_is_coerced_or_redacted(self) -> None:
-        """TC-UT-PF-018: bytes payload is coerced via str() before masking."""
+        """TC-UT-PF-018: bytes ペイロードは masking 前に str() で変換される。"""
         masked = masking.mask(b"raw bytes data")
         assert isinstance(masked, str)
 
     def test_oversized_value_returns_overflow_sentinel(self) -> None:
-        """TC-UT-PF-006-B: an individual value above MAX_BYTES_FOR_RECURSION → MASK_OVERFLOW.
+        """TC-UT-PF-006-B: MAX_BYTES_FOR_RECURSION を超える個別値は MASK_OVERFLOW へ。
 
-        The overflow guard runs per recursion frame: the dict overhead
-        is tiny, so the dict itself stays a dict, but the giant string
-        value inside gets replaced with the overflow sentinel. Either
-        path is Fail-Secure — raw bytes never escape.
+        オーバーフローガードは再帰フレームごとに走る。dict のオーバーヘッドは
+        小さいので dict 自体は dict のまま残るが、中の巨大文字列値はオー
+        バーフローセンチネルに置換される。どちらの経路も Fail-Secure であり、
+        生バイトは漏れない。
         """
         huge = "x" * (masking.MAX_BYTES_FOR_RECURSION + 1)
         wrapped = {"k": huge}
         result = masking.mask_in(wrapped)
-        # Either the dict or its value gets replaced; both flavors
-        # satisfy the Fail-Secure contract (raw bytes do not leak).
+        # dict またはその値が置換される。どちらの形でも Fail-Secure 契約を
+        # 満たす（生バイトは漏れない）。
         if isinstance(result, dict):
             assert result["k"] == masking.REDACT_MASK_OVERFLOW
         else:
             assert result == masking.REDACT_MASK_OVERFLOW
 
     def test_oversized_string_directly_returns_overflow_sentinel(self) -> None:
-        """TC-UT-PF-006-B (direct): a giant top-level string also Fail-Secures."""
+        """TC-UT-PF-006-B（直接版）: 巨大なトップレベル文字列も Fail-Secure に倒れる。"""
         huge = "x" * (masking.MAX_BYTES_FOR_RECURSION + 1)
         result = masking.mask_in(huge)
         assert result == masking.REDACT_MASK_OVERFLOW
 
     def test_recursive_structure_walks_all_levels(self) -> None:
-        """TC-UT-PF-019: dict / list nesting recurses and masks every str."""
+        """TC-UT-PF-019: dict / list のネストを再帰的に走査し、全 str を mask する。"""
         payload = {
             "key": "sk-ant-api03-" + "A" * 50,
             "nested": {"pat": "ghp_" + "X" * 36, "list": ["plain"]},
@@ -150,32 +150,31 @@ class TestFailSecureFallback:
 
 
 class TestHomePathLayer:
-    """TC-UT-PF-041: $HOME absolute path → '<HOME>'."""
+    """TC-UT-PF-041: $HOME 配下の絶対パス → '<HOME>'。"""
 
     def test_home_path_substitution(self) -> None:
-        """TC-UT-PF-041: 'error at /home/myuser/...' gets replaced."""
+        """TC-UT-PF-041: 'error at /home/myuser/...' が置換される。"""
         masked = masking.mask("error at /home/myuser/.local/share/bakufu/db.sqlite")
         assert "/home/myuser" not in masked
         assert "<HOME>" in masked
 
 
 class TestFailSecureListenerErrorSentinel:
-    """TC-UT-PF-006-C: Listener-error sentinel exists and is publicly importable.
+    """TC-UT-PF-006-C: Listener エラーセンチネルが存在し、公開 import 可能であること。
 
-    The actual listener-failure path is exercised in the integration
-    tests because it requires a live SQLAlchemy listener that we can
-    force into the catch arm. Here we just freeze the sentinel value
-    contract for masking-listener consumers.
+    実際の listener 失敗パスは統合テスト側でカバーする。catch アームへ
+    強制的に倒すには本物の SQLAlchemy listener が必要なため。ここでは
+    masking-listener 利用者のためにセンチネル値の契約を凍結するに留める。
     """
 
     def test_listener_error_sentinel_value(self) -> None:
-        """TC-UT-PF-006-C: REDACT_LISTENER_ERROR is the documented sentinel."""
+        """TC-UT-PF-006-C: REDACT_LISTENER_ERROR は文書化されたセンチネル値である。"""
         assert masking.REDACT_LISTENER_ERROR == "<REDACTED:LISTENER_ERROR>"
 
     def test_mask_error_sentinel_value(self) -> None:
-        """TC-UT-PF-006-A: REDACT_MASK_ERROR matches the design wording."""
+        """TC-UT-PF-006-A: REDACT_MASK_ERROR は設計文言と一致する。"""
         assert masking.REDACT_MASK_ERROR == "<REDACTED:MASK_ERROR>"
 
     def test_mask_overflow_sentinel_value(self) -> None:
-        """TC-UT-PF-006-B: REDACT_MASK_OVERFLOW matches the design wording."""
+        """TC-UT-PF-006-B: REDACT_MASK_OVERFLOW は設計文言と一致する。"""
         assert masking.REDACT_MASK_OVERFLOW == "<REDACTED:MASK_OVERFLOW>"

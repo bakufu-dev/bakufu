@@ -1,22 +1,22 @@
-"""Aggregate-level invariant helpers for :class:`Room`.
+""":class:`Room` のための Aggregate レベル不変条件ヘルパ。
 
-Each helper is a **module-level pure function** so tests can ``import`` and
-invoke directly — same testability pattern Norman / Steve approved for the
-agent ``aggregate_validators.py`` and the workflow ``dag_validators.py``.
-The Aggregate Root in :mod:`bakufu.domain.room.room` stays a thin dispatch
-over them; rule changes touch only the helper, never the orchestration code.
+各ヘルパは **モジュール レベルの純粋関数** であるため、テストから ``import`` して
+直接呼べる — Norman / Steve が agent の ``aggregate_validators.py`` と workflow の
+``dag_validators.py`` で承認したのと同じテスタビリティ パターン。
+:mod:`bakufu.domain.room.room` の Aggregate Root はそれらの薄いディスパッチに留まり、
+ルール変更はヘルパのみに触れ、オーケストレーション コードは触らない。
 
-Helpers (run in this order in :class:`Room.model_validator`):
+ヘルパ（:class:`Room.model_validator` ではこの順で実行）:
 
 1. :func:`_validate_name_range` — ``1 ≤ NFC+strip(name) ≤ 80``
 2. :func:`_validate_description_length` — ``0 ≤ NFC+strip(description) ≤ 500``
-3. :func:`_validate_member_unique` — no duplicate ``(agent_id, role)`` pair
+3. :func:`_validate_member_unique` — ``(agent_id, role)`` 対の重複なし
 4. :func:`_validate_member_capacity` — ``len(members) ≤ 50``
 
-Naming follows the agent / workflow precedent (``_validate_*_unique`` for
-collection uniqueness checks). Boy Scout: every collection contract that says
-"no duplicate (a, b) pair" gets a dedicated helper so the rule survives
-future refactors (Steve's twin-defense symmetry rule from PR #16).
+命名は agent / workflow の先例（コレクション一意性チェックには
+``_validate_*_unique``）に従う。Boy Scout: 「(a, b) 対の重複なし」を謳うすべての
+コレクション コントラクトに専用ヘルパを設けることで、将来のリファクタにルールが
+生き残る（Steve の PR #16 twin-defense 対称性ルール）。
 """
 
 from __future__ import annotations
@@ -24,23 +24,23 @@ from __future__ import annotations
 from bakufu.domain.exceptions import RoomInvariantViolation
 from bakufu.domain.room.value_objects import AgentMembership
 
-# Confirmation B: name length bounds (1〜80 after NFC + strip).
+# Confirmation B: 名前長境界（NFC + strip 後で 1〜80）。
 MIN_NAME_LENGTH: int = 1
 MAX_NAME_LENGTH: int = 80
 
-# Confirmation B: description length bounds (0〜500 after NFC + strip).
+# Confirmation B: description 長境界（NFC + strip 後で 0〜500）。
 MAX_DESCRIPTION_LENGTH: int = 500
 
-# Confirmation C: member capacity (≤ 50).
+# Confirmation C: メンバ容量（≤ 50）。
 MAX_MEMBERS: int = 50
 
 
 def _validate_name_range(name: str) -> None:
-    """``Room.name`` must fall in 1〜80 characters after NFC + strip (MSG-RM-001).
+    """``Room.name`` は NFC + strip 後で 1〜80 文字でなければならない（MSG-RM-001）。
 
-    Length is judged on the *normalized* string (the field validator runs the
-    pipeline before this helper is invoked), so the count reflects what the
-    user will see in audit logs and UI labels.
+    長さは *正規化済み* 文字列に対して判定される（フィールド バリデータが本ヘルパ
+    呼び出し前にパイプラインを走らせる）ため、カウントは監査ログや UI ラベルで
+    ユーザが目にする文字数を反映する。
     """
     length = len(name)
     if not (MIN_NAME_LENGTH <= length <= MAX_NAME_LENGTH):
@@ -57,7 +57,7 @@ def _validate_name_range(name: str) -> None:
 
 
 def _validate_description_length(description: str) -> None:
-    """``Room.description`` must fall in 0〜500 characters after NFC + strip (MSG-RM-002)."""
+    """``Room.description`` は NFC + strip 後で 0〜500 文字でなければならない（MSG-RM-002）。"""
     length = len(description)
     if length > MAX_DESCRIPTION_LENGTH:
         raise RoomInvariantViolation(
@@ -74,13 +74,12 @@ def _validate_description_length(description: str) -> None:
 
 
 def _validate_member_unique(members: list[AgentMembership]) -> None:
-    """No two memberships may share the same ``(agent_id, role)`` pair (MSG-RM-003).
+    """2 つのメンバーシップが同じ ``(agent_id, role)`` 対を共有してはならない（MSG-RM-003）。
 
-    Allowing the same agent to hold multiple roles (LEADER + REVIEWER, etc.)
-    is a Room §確定 F design choice — the unique key is the **pair**, not
-    ``agent_id`` alone. ``joined_at`` participates in equality of the VO but
-    is intentionally **not** part of the uniqueness key here, so re-adding
-    the same pair at a later timestamp is still rejected as a duplicate.
+    同じエージェントが複数ロール（LEADER + REVIEWER 等）を持つことを許すのは
+    Room §確定 F の設計選択 — 一意キーは ``agent_id`` 単独ではなく **対**。
+    ``joined_at`` は VO の等価性には関与するが、ここでの一意性キーには意図的に
+    **含めない** ため、同じ対を異なるタイムスタンプで再追加しても重複として拒否される。
     """
     seen: set[tuple[object, str]] = set()
     for membership in members:
@@ -104,7 +103,7 @@ def _validate_member_unique(members: list[AgentMembership]) -> None:
 
 
 def _validate_member_capacity(members: list[AgentMembership]) -> None:
-    """Cap members at :data:`MAX_MEMBERS` (MSG-RM-004 / Room §確定 C)."""
+    """メンバ数を :data:`MAX_MEMBERS` で頭打ちにする（MSG-RM-004 / Room §確定 C）。"""
     count = len(members)
     if count > MAX_MEMBERS:
         raise RoomInvariantViolation(

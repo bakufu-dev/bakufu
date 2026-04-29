@@ -1,18 +1,18 @@
-"""ExternalReviewGate Repository: Protocol surface + basic CRUD + Lifecycle.
+"""ExternalReviewGate Repository: Protocol サーフェス + 基本 CRUD + ライフサイクル。
 
 TC-UT-ERGR-001〜004/009 + TC-IT-ERGR-LIFECYCLE.
 
-RQ-ERGR-001 / RQ-ERGR-002 — 6-method Protocol (§確定 R1-A / §確定 R1-D) +
-CRUD (find_by_id / count / save / Tx boundary) + Lifecycle.
+RQ-ERGR-001 / RQ-ERGR-002 ── 6 メソッドの Protocol (§確定 R1-A / §確定 R1-D) +
+CRUD (find_by_id / count / save / Tx 境界) + ライフサイクル。
 
-save() 5-step child-table semantics (TC-UT-ERGR-005/005b/005c) live in
-``test_save_child_tables.py``.  find_pending_by_reviewer + find_by_task_id
-(TC-UT-ERGR-006/007) live in ``test_find_methods.py``.
-count_by_decision (TC-UT-ERGR-008) lives in ``test_count_by_decision.py``.
-masking (TC-IT-ERGR-020-masking-*) lives in ``test_masking_fields.py``.
+save() の 5 ステップ子テーブルセマンティクス (TC-UT-ERGR-005/005b/005c) は
+``test_save_child_tables.py`` に置く。find_pending_by_reviewer + find_by_task_id
+(TC-UT-ERGR-006/007) は ``test_find_methods.py`` に置く。
+count_by_decision (TC-UT-ERGR-008) は ``test_count_by_decision.py`` に置く。
+masking (TC-IT-ERGR-020-masking-*) は ``test_masking_fields.py`` に置く。
 
-Per ``docs/features/external-review-gate-repository/test-design.md``.
-Issue #36 — M2 0008.
+``docs/features/external-review-gate-repository/test-design.md`` 準拠。
+Issue #36 — M2 0008。
 """
 
 from __future__ import annotations
@@ -53,10 +53,10 @@ pytestmark = pytest.mark.asyncio
 # TC-UT-ERGR-001: Protocol definition + 6-method surface (§確定 R1-A / §確定 R1-D)
 # ---------------------------------------------------------------------------
 class TestExternalReviewGateRepositoryProtocol:
-    """TC-UT-ERGR-001: Protocol declares 6 async methods."""
+    """TC-UT-ERGR-001: Protocol が 6 つの async メソッドを宣言する。"""
 
     async def test_protocol_declares_six_async_methods(self) -> None:
-        """TC-UT-ERGR-001: ExternalReviewGateRepository has all 6 required methods."""
+        """TC-UT-ERGR-001: ExternalReviewGateRepository が必須 6 メソッドをすべて持つ。"""
         for method_name in (
             "find_by_id",
             "count",
@@ -71,9 +71,9 @@ class TestExternalReviewGateRepositoryProtocol:
             )
 
     async def test_protocol_does_not_have_yagni_methods(self) -> None:
-        """TC-UT-ERGR-001: YAGNI methods absent from Protocol.
+        """TC-UT-ERGR-001: YAGNI メソッドは Protocol に含まれない。
 
-        §確定 R1-D YAGNI 拒否済み: find_all_pending / find_by_id_all_including_decided.
+        §確定 R1-D で YAGNI 拒否済み: find_all_pending / find_by_id_all_including_decided。
         """
         for banned_method in ("find_all_pending", "find_by_id_all_including_decided"):
             assert not hasattr(ExternalReviewGateRepository, banned_method), (
@@ -85,7 +85,7 @@ class TestExternalReviewGateRepositoryProtocol:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-UT-ERGR-001: SqliteExternalReviewGateRepository satisfies Protocol."""
+        """TC-UT-ERGR-001: SqliteExternalReviewGateRepository が Protocol を満たす。"""
         async with session_factory() as session:
             repo: ExternalReviewGateRepository = SqliteExternalReviewGateRepository(session)
             for method_name in (
@@ -102,7 +102,7 @@ class TestExternalReviewGateRepositoryProtocol:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-UT-ERGR-001: duck-typing confirms all 6 methods present on impl."""
+        """TC-UT-ERGR-001: ダックタイピングで実装に 6 メソッドすべての存在を確認する。"""
         async with session_factory() as session:
             repo = SqliteExternalReviewGateRepository(session)
             for method_name in (
@@ -122,14 +122,14 @@ class TestExternalReviewGateRepositoryProtocol:
 # TC-UT-ERGR-002: find_by_id 存在 / 不在
 # ---------------------------------------------------------------------------
 class TestFindById:
-    """TC-UT-ERGR-002: find_by_id returns Gate or None correctly."""
+    """TC-UT-ERGR-002: find_by_id が Gate または None を正しく返す。"""
 
     async def test_find_by_id_returns_saved_gate(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_gate_context: tuple[UUID, UUID, UUID],
     ) -> None:
-        """TC-UT-ERGR-002: find_by_id returns the Gate after save."""
+        """TC-UT-ERGR-002: save 後に find_by_id が Gate を返す。"""
         task_id, stage_id, reviewer_id = seeded_gate_context
         gate = make_gate(task_id=task_id, stage_id=stage_id, reviewer_id=reviewer_id)
 
@@ -146,7 +146,7 @@ class TestFindById:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-UT-ERGR-002: find_by_id returns None for a non-existent id."""
+        """TC-UT-ERGR-002: 存在しない id に対し find_by_id は None を返す。"""
         async with session_factory() as session:
             result = await SqliteExternalReviewGateRepository(session).find_by_id(uuid4())
         assert result is None
@@ -156,14 +156,14 @@ class TestFindById:
 # TC-UT-ERGR-003: save → find_by_id round-trip 全属性 (§確定 R1-C)
 # ---------------------------------------------------------------------------
 class TestSaveRoundTrip:
-    """TC-UT-ERGR-003: Full attribute round-trip including child tables."""
+    """TC-UT-ERGR-003: 子テーブルを含む全属性のラウンドトリップ。"""
 
     async def test_roundtrip_all_scalar_fields(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_gate_context: tuple[UUID, UUID, UUID],
     ) -> None:
-        """TC-UT-ERGR-003: save + find_by_id restores all Gate scalar fields."""
+        """TC-UT-ERGR-003: save + find_by_id が Gate のスカラーフィールドを全て復元する。"""
         task_id, stage_id, reviewer_id = seeded_gate_context
         snapshot_stage_id = uuid4()
         committed_by = uuid4()
@@ -207,7 +207,7 @@ class TestSaveRoundTrip:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_gate_context: tuple[UUID, UUID, UUID],
     ) -> None:
-        """TC-UT-ERGR-003: Attachment + AuditEntry child tables survive round-trip."""
+        """TC-UT-ERGR-003: Attachment + AuditEntry 子テーブルがラウンドトリップを生き残る。"""
         task_id, stage_id, reviewer_id = seeded_gate_context
         sha256 = "a" * 64
         attachment = Attachment(
@@ -244,14 +244,14 @@ class TestSaveRoundTrip:
 # TC-UT-ERGR-004: count() SQL COUNT(*) 契約
 # ---------------------------------------------------------------------------
 class TestCount:
-    """TC-UT-ERGR-004: count() issues SELECT COUNT(*) without full-row load."""
+    """TC-UT-ERGR-004: count() は全行ロード無しに SELECT COUNT(*) を発行する。"""
 
     async def test_count_returns_correct_total(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_gate_context: tuple[UUID, UUID, UUID],
     ) -> None:
-        """TC-UT-ERGR-004: count() returns the total number of gates."""
+        """TC-UT-ERGR-004: count() が gate の総数を返す。"""
         task_id, stage_id, reviewer_id = seeded_gate_context
         gate1 = make_gate(task_id=task_id, stage_id=stage_id, reviewer_id=reviewer_id)
         gate2 = make_gate(task_id=task_id, stage_id=stage_id, reviewer_id=reviewer_id)
@@ -294,7 +294,7 @@ class TestCount:
         assert any("COUNT" in s for s in sql_log), (
             f"[FAIL] count() did not issue COUNT(*) SQL.\nCaptured SQL: {sql_log}"
         )
-        # No SELECT * or full-row load
+        # SELECT * や全行ロードなし
         assert not any("SELECT external_review_gate" in s.lower() for s in sql_log), (
             f"[FAIL] count() triggered full-row load.\nCaptured SQL: {sql_log}"
         )
@@ -304,14 +304,14 @@ class TestCount:
 # TC-UT-ERGR-009: Tx 境界の責務分離 (empire §確定 B 踏襲)
 # ---------------------------------------------------------------------------
 class TestTransactionBoundary:
-    """TC-UT-ERGR-009: Repository never commits; caller-side UoW owns the boundary."""
+    """TC-UT-ERGR-009: Repository は commit しない。境界は呼び出し側 UoW が所有する。"""
 
     async def test_save_within_begin_is_committed(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seeded_gate_context: tuple[UUID, UUID, UUID],
     ) -> None:
-        """TC-UT-ERGR-009: save inside session.begin() is visible across sessions."""
+        """TC-UT-ERGR-009: session.begin() 内の save は別 session からも見える。"""
         task_id, stage_id, reviewer_id = seeded_gate_context
         gate = make_gate(task_id=task_id, stage_id=stage_id, reviewer_id=reviewer_id)
 
@@ -328,14 +328,14 @@ class TestTransactionBoundary:
         session_factory: async_sessionmaker[AsyncSession],
         seeded_gate_context: tuple[UUID, UUID, UUID],
     ) -> None:
-        """TC-UT-ERGR-009: save without session.begin() → not persisted (no auto-commit)."""
+        """TC-UT-ERGR-009: session.begin() なしの save → 永続化されない（自動 commit なし）。"""
         task_id, stage_id, reviewer_id = seeded_gate_context
         gate = make_gate(task_id=task_id, stage_id=stage_id, reviewer_id=reviewer_id)
 
         async with session_factory() as session:
-            # No session.begin() — no explicit transaction context
+            # session.begin() なし ── 明示的なトランザクション文脈なし
             await SqliteExternalReviewGateRepository(session).save(gate)
-            # Session closed without commit
+            # Session は commit せずに閉じる
 
         async with session_factory() as session:
             restored = await SqliteExternalReviewGateRepository(session).find_by_id(gate.id)
@@ -349,7 +349,7 @@ class TestTransactionBoundary:
 # TC-IT-ERGR-LIFECYCLE: 6 method 全経路連携
 # ---------------------------------------------------------------------------
 class TestLifecycle:
-    """TC-IT-ERGR-LIFECYCLE: All 6 Protocol methods interact correctly end-to-end."""
+    """TC-IT-ERGR-LIFECYCLE: 6 つの Protocol メソッドすべてが end-to-end で正しく協調する。"""
 
     async def test_full_lifecycle_six_methods(
         self,
@@ -357,25 +357,25 @@ class TestLifecycle:
         seeded_gate_context: tuple[UUID, UUID, UUID],
     ) -> None:
         """TC-IT-ERGR-LIFECYCLE: save → find_pending → find_by_task_id → find_by_id
-        → count_by_decision → approve → re-save → verify counts updated."""
+        → count_by_decision → approve → 再 save → カウント更新の検証。"""
         from tests.infrastructure.persistence.sqlite.repositories.test_external_review_gate_repository.conftest import (  # noqa: E501
             seed_gate_context,
         )
 
         task_id, stage_id, reviewer_id = seeded_gate_context
-        # Second task for isolation
+        # 隔離のための 2 つ目の task
         task_id2, stage_id2, reviewer_id2 = await seed_gate_context(session_factory)
 
         gate1 = make_gate(task_id=task_id, stage_id=stage_id, reviewer_id=reviewer_id)
         gate2 = make_gate(task_id=task_id2, stage_id=stage_id2, reviewer_id=reviewer_id2)
 
-        # (1) save both gates
+        # (1) 両 gate を save
         async with session_factory() as session, session.begin():
             repo = SqliteExternalReviewGateRepository(session)
             await repo.save(gate1)
             await repo.save(gate2)
 
-        # (2) find_pending_by_reviewer: only gate1 for reviewer
+        # (2) find_pending_by_reviewer: reviewer に対しては gate1 のみ
         async with session_factory() as session:
             pending = await SqliteExternalReviewGateRepository(session).find_pending_by_reviewer(
                 reviewer_id
@@ -383,26 +383,26 @@ class TestLifecycle:
         assert len(pending) == 1
         assert pending[0].id == gate1.id
 
-        # (3) find_by_task_id
+        # (3) find_by_task_id の検証
         async with session_factory() as session:
             by_task = await SqliteExternalReviewGateRepository(session).find_by_task_id(task_id)
         assert len(by_task) == 1
         assert by_task[0].id == gate1.id
 
-        # (4) find_by_id
+        # (4) find_by_id の検証
         async with session_factory() as session:
             single = await SqliteExternalReviewGateRepository(session).find_by_id(gate1.id)
         assert single is not None
         assert single.id == gate1.id
 
-        # (5) count_by_decision: 2 PENDING total
+        # (5) count_by_decision: 全体で 2 件の PENDING
         async with session_factory() as session:
             pending_count = await SqliteExternalReviewGateRepository(session).count_by_decision(
                 ReviewDecision.PENDING
             )
         assert pending_count == 2
 
-        # (6) approve gate1 → re-save
+        # (6) gate1 を approve → 再 save
         approved_gate1 = make_approved_gate(
             gate_id=gate1.id,
             task_id=task_id,
@@ -413,7 +413,7 @@ class TestLifecycle:
         async with session_factory() as session, session.begin():
             await SqliteExternalReviewGateRepository(session).save(approved_gate1)
 
-        # (7) counts updated
+        # (7) カウントが更新されている
         async with session_factory() as session:
             repo = SqliteExternalReviewGateRepository(session)
             pending_count_after = await repo.count_by_decision(ReviewDecision.PENDING)

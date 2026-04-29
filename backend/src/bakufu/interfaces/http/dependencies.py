@@ -25,7 +25,7 @@ from bakufu.application.services.room_service import RoomService
 from bakufu.application.services.task_service import TaskService
 from bakufu.application.services.workflow_service import WorkflowService
 
-# Suppress unused-import warnings: these are re-exported for type-checking use.
+# 未使用 import の警告抑制: 型チェック用途で再エクスポートしている。
 __all__ = [
     "AgentRepository",
     "EmpireRepository",
