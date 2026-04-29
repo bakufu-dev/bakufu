@@ -201,7 +201,7 @@ class TestWorkflowFkRestrict:
         seeded_empire_id: UUID,
         seeded_workflow_id: UUID,
     ) -> None:
-        """DELETE workflow while room references it → IntegrityError."""
+        """Room が参照中に workflow を DELETE → IntegrityError。"""
         from sqlalchemy.exc import IntegrityError
 
         room_id = uuid4()
@@ -224,8 +224,8 @@ class TestWorkflowFkRestrict:
                 },
             )
 
-        # Now try to delete the workflow that the room references —
-        # RESTRICT must fire.
+        # 次に、room が参照している workflow を削除しようとする ──
+        # RESTRICT が発動しなければならない。
         with pytest.raises(IntegrityError):
             async with session_factory() as session, session.begin():
                 await session.execute(
@@ -238,11 +238,11 @@ class TestWorkflowFkRestrict:
 # TC-IT-RR-009 補強: room_members CASCADE DELETE (§確定 R1-C)
 # ---------------------------------------------------------------------------
 class TestRoomMembersCascadeOnRoomDelete:
-    """room_members rows are deleted when the parent Room is deleted.
+    """親 Room 削除時に room_members 行が削除される。
 
-    ``room_members.room_id REFERENCES rooms.id ON DELETE CASCADE`` —
-    deleting a Room row must cascade to its member rows. This prevents
-    orphan room_members rows from accumulating after Room deletion.
+    ``room_members.room_id REFERENCES rooms.id ON DELETE CASCADE`` ——
+    Room 行削除はメンバー行にカスケードする必須。Room 削除後に
+    孤立 room_members 行が蓄積することを防ぐ。
     """
 
     async def test_cascade_deletes_member_rows(
@@ -251,7 +251,7 @@ class TestRoomMembersCascadeOnRoomDelete:
         seeded_empire_id: UUID,
         seeded_workflow_id: UUID,
     ) -> None:
-        """DELETE rooms row cascades to all room_members rows for that room."""
+        """rooms 行削除時に該当 room_members 行すべてにカスケードする。"""
         from datetime import UTC, datetime
 
         room_id = uuid4()
@@ -311,16 +311,16 @@ class TestRoomMembersCascadeOnRoomDelete:
 # TC-IT-RR-013-arch: Layer 2 arch-test reference — Room rows registered
 # ---------------------------------------------------------------------------
 class TestArchTestRegistrationStructure:
-    """TC-IT-RR-013-arch: ``test_masking_columns.py`` parametrize lists include Room.
+    """TC-IT-RR-013-arch: ``test_masking_columns.py`` parametrize リストが Room を含む。
 
-    Cross-checks that the CI Layer 2 arch test was extended to cover
-    Room tables (§確定 R1-E). A future PR that drops these registrations
-    (e.g. by accident during a refactor) would let an over-masking
-    or under-masking change land silently — this test catches it.
+    CI レイヤー2 アーキテクチャテストが Room テーブルをカバーするよう
+    拡張されたことを交差検証（§確定 R1-E）。将来の PR が
+    これらの登録を削除した場合（例：リファクタリング中の誤削除）、
+    過剰/過少 masking 変更がサイレントに落ちるが、本テストが検出。
     """
 
     async def test_rooms_prompt_kit_prefix_markdown_in_masking_contract(self) -> None:
-        """``rooms.prompt_kit_prefix_markdown`` is registered as MaskedText."""
+        """``rooms.prompt_kit_prefix_markdown`` は MaskedText で登録される。"""
         from bakufu.infrastructure.persistence.sqlite.base import MaskedText
 
         from tests.architecture.test_masking_columns import (
@@ -334,7 +334,7 @@ class TestArchTestRegistrationStructure:
         )
 
     async def test_room_members_in_no_mask_list(self) -> None:
-        """``room_members`` is a no-mask table (agent_id is not secret)."""
+        """``room_members`` は no-mask テーブル（agent_id は secret ではない）。"""
         from tests.architecture.test_masking_columns import (
             _NO_MASK_TABLES,  # pyright: ignore[reportPrivateUsage]
         )
@@ -345,7 +345,7 @@ class TestArchTestRegistrationStructure:
         )
 
     async def test_rooms_partial_mask_template_registered(self) -> None:
-        """``rooms`` is registered in the partial-mask template list."""
+        """``rooms`` は partial-mask テンプレートリストに登録される。"""
         from tests.architecture.test_masking_columns import (
             _PARTIAL_MASK_TABLES,  # pyright: ignore[reportPrivateUsage]
         )
