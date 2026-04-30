@@ -40,6 +40,7 @@ from bakufu.infrastructure.persistence.sqlite.tables import (
     agents,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     audit_log,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     deliverable_attachments,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    deliverable_templates,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     deliverables,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     directives,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     empire_agent_refs,  # noqa: F401  # pyright: ignore[reportUnusedImport]
@@ -50,6 +51,7 @@ from bakufu.infrastructure.persistence.sqlite.tables import (
     external_review_gates,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     outbox,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     pid_registry,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    role_profiles,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     room_members,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     rooms,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     task_assigned_agents,  # noqa: F401  # pyright: ignore[reportUnusedImport]
@@ -128,6 +130,12 @@ _NO_MASK_TABLES: list[str] = [
     # ファイルメタデータ (sha256 / filename / mime_type / size_bytes) は
     # Schneier #6 secret カテゴリに該当しない。
     "external_review_gate_attachments",
+    # DeliverableTemplate Repository (Issue #119, deliverable-template §確定 §13
+    # 業務判断): deliverable_templates / role_profiles は secret セマンティクスを
+    # 持たない。テンプレートメタデータ / ロールプロファイルは Schneier #6
+    # secret カテゴリに該当しない。
+    "deliverable_templates",
+    "role_profiles",
 ]
 
 # Partial-mask contract: **ちょうど 1 列**だけ masking されているテーブル。
