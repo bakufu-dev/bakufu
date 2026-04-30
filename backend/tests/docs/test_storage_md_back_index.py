@@ -320,3 +320,49 @@ class TestBackIndexHasTaskRows:
             "co-locates 'Task' and 'masking 対象なし' per "
             "task-repository §確定 R1-E (partial-mask テンプレート, Issue #35)."
         )
+
+
+class TestBackIndexHasDeliverableTemplateRows:
+    """TC-DOC-DTR-001: §逆引き表 に DeliverableTemplate の no-mask エントリが含まれる。
+
+    DeliverableTemplate Repository PR (Issue #119):
+    * deliverable_templates / role_profiles の全カラムが「masking 対象なし」
+    * feature-spec §13 業務判断「機密レベル低」に従い CI 三層防衛で物理保証
+    * domain-model/storage.md §逆引き表 に 2 行追加済み
+    """
+
+    def test_deliverable_templates_no_mask_row_present(
+        self, storage_md_text: str
+    ) -> None:
+        """TC-DOC-DTR-001a: §逆引き表 が deliverable_templates をノーマスクとして宣言する。
+
+        'deliverable_templates' と 'masking 対象なし' が同一行に併記されていること。
+        """
+        co_located_lines = [
+            line
+            for line in storage_md_text.splitlines()
+            if "deliverable_templates" in line and "masking 対象なし" in line
+        ]
+        assert co_located_lines, (
+            "storage.md §逆引き表 must contain at least one line that "
+            "co-locates 'deliverable_templates' and 'masking 対象なし' per "
+            "deliverable-template-repository §確定 J (Issue #119)."
+        )
+
+    def test_role_profiles_no_mask_row_present(
+        self, storage_md_text: str
+    ) -> None:
+        """TC-DOC-DTR-001b: §逆引き表 が role_profiles をノーマスクとして宣言する。
+
+        'role_profiles' と 'masking 対象なし' が同一行に併記されていること。
+        """
+        co_located_lines = [
+            line
+            for line in storage_md_text.splitlines()
+            if "role_profiles" in line and "masking 対象なし" in line
+        ]
+        assert co_located_lines, (
+            "storage.md §逆引き表 must contain at least one line that "
+            "co-locates 'role_profiles' and 'masking 対象なし' per "
+            "deliverable-template-repository §確定 J (Issue #119)."
+        )
