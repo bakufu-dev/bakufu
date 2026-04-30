@@ -4,13 +4,11 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
-from uuid import UUID, uuid4
 
 import pytest_asyncio
+from bakufu.domain.external_review_gate.gate import ExternalReviewGate
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
-from bakufu.domain.external_review_gate.gate import ExternalReviewGate
 
 
 @dataclass
@@ -22,6 +20,7 @@ class GateTestCtx:
 @pytest_asyncio.fixture
 async def gate_ctx(tmp_path: Path) -> AsyncIterator[GateTestCtx]:
     from bakufu.interfaces.http.app import create_app
+
     from tests.factories.db import create_all_tables, make_test_engine, make_test_session_factory
 
     app = create_app()
@@ -46,7 +45,7 @@ async def seed_gate(
     呼び出し元は先に依存エンティティをシードするか、
     seed_gate_with_deps を使うこと。
     """
-    from bakufu.infrastructure.persistence.sqlite.repositories.external_review_gate_repository import (
+    from bakufu.infrastructure.persistence.sqlite.repositories.external_review_gate_repository import (  # noqa: E501
         SqliteExternalReviewGateRepository,
     )
 
@@ -72,7 +71,7 @@ async def seed_gate_with_deps(
     from bakufu.infrastructure.persistence.sqlite.repositories.empire_repository import (
         SqliteEmpireRepository,
     )
-    from bakufu.infrastructure.persistence.sqlite.repositories.external_review_gate_repository import (
+    from bakufu.infrastructure.persistence.sqlite.repositories.external_review_gate_repository import (  # noqa: E501
         SqliteExternalReviewGateRepository,
     )
     from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
@@ -84,6 +83,7 @@ async def seed_gate_with_deps(
     from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
         SqliteWorkflowRepository,
     )
+
     from tests.factories.directive import make_directive
     from tests.factories.empire import make_empire
     from tests.factories.room import make_room

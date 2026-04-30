@@ -8,10 +8,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 
-from bakufu.application.services.external_review_gate_service import (
-    ExternalReviewGateService,
-)
-from bakufu.interfaces.http.dependencies import SessionDep, get_external_review_gate_service
+from bakufu.interfaces.http.dependencies import GateServiceDep, SessionDep
 from bakufu.interfaces.http.schemas.external_review_gate import (
     GateApprove,
     GateCancel,
@@ -29,10 +26,6 @@ _MSG_INVALID_AUTH_HEADER = (
 
 gates_router = APIRouter(prefix="/api/gates", tags=["external-review-gate"])
 task_gates_router = APIRouter(prefix="/api/tasks", tags=["external-review-gate"])
-
-ExternalReviewGateServiceDep = Annotated[
-    ExternalReviewGateService, Depends(get_external_review_gate_service)
-]
 
 
 def get_reviewer_id(
@@ -68,7 +61,7 @@ ReviewerIdDep = Annotated[UUID, Depends(get_reviewer_id)]
 )
 async def list_pending_gates(
     reviewer_id: UUID,
-    service: ExternalReviewGateServiceDep,
+    service: GateServiceDep,
     decision: str = "PENDING",
 ) -> GateListResponse:
     """reviewer_id の PENDING Gate 一覧を返す。
@@ -91,7 +84,7 @@ async def list_pending_gates(
 )
 async def list_gates_by_task(
     task_id: UUID,
-    service: ExternalReviewGateServiceDep,
+    service: GateServiceDep,
 ) -> GateListResponse:
     """task_id の Gate 履歴を時系列昇順で返す。Task 不在でも空リスト。"""
     gates = await service.find_by_task(task_id)
@@ -107,7 +100,7 @@ async def list_gates_by_task(
 )
 async def get_gate(
     gate_id: UUID,
-    service: ExternalReviewGateServiceDep,
+    service: GateServiceDep,
 ) -> GateDetailResponse:
     """Gate 単件を返す（deliverable_snapshot + audit_trail 含む）。
 
@@ -127,7 +120,7 @@ async def approve_gate(
     gate_id: UUID,
     body: GateApprove,
     reviewer_owner_id: ReviewerIdDep,
-    service: ExternalReviewGateServiceDep,
+    service: GateServiceDep,
     session: SessionDep,
 ) -> GateDetailResponse:
     """Gate を承認する。
@@ -158,7 +151,7 @@ async def reject_gate(
     gate_id: UUID,
     body: GateReject,
     reviewer_owner_id: ReviewerIdDep,
-    service: ExternalReviewGateServiceDep,
+    service: GateServiceDep,
     session: SessionDep,
 ) -> GateDetailResponse:
     """Gate を差し戻す。feedback_text は 1 文字以上必須（Pydantic で検証済み）。"""
@@ -184,7 +177,7 @@ async def cancel_gate(
     gate_id: UUID,
     body: GateCancel,
     reviewer_owner_id: ReviewerIdDep,
-    service: ExternalReviewGateServiceDep,
+    service: GateServiceDep,
     session: SessionDep,
 ) -> GateDetailResponse:
     """Gate をキャンセルする。"""

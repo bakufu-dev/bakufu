@@ -34,6 +34,7 @@ class GateE2ECtx:
 async def gate_e2e_ctx(tmp_path: Path) -> AsyncIterator[GateE2ECtx]:
     """Gate E2E テスト用 AsyncClient + session_factory."""
     from bakufu.interfaces.http.app import create_app
+
     from tests.factories.db import create_all_tables, make_test_engine, make_test_session_factory
 
     app = create_app()
@@ -59,7 +60,7 @@ async def _seed_gate_with_deps(
     from bakufu.infrastructure.persistence.sqlite.repositories.empire_repository import (
         SqliteEmpireRepository,
     )
-    from bakufu.infrastructure.persistence.sqlite.repositories.external_review_gate_repository import (
+    from bakufu.infrastructure.persistence.sqlite.repositories.external_review_gate_repository import (  # noqa: E501
         SqliteExternalReviewGateRepository,
     )
     from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
@@ -71,6 +72,7 @@ async def _seed_gate_with_deps(
     from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
         SqliteWorkflowRepository,
     )
+
     from tests.factories.directive import make_directive
     from tests.factories.empire import make_empire
     from tests.factories.room import make_room

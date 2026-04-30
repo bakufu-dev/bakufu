@@ -126,7 +126,7 @@ class TestApproveGateNoAuthHeader:
             f"/api/gates/{uuid4()}/approve",
             json={"comment": "LGTM"},
         )
-        assert resp.json()["error"]["code"] == "http_error_422"
+        assert resp.json()["error"]["code"] == "validation_error"
 
 
 class TestApproveGateWrongReviewer:
@@ -198,6 +198,15 @@ class TestApproveGateInvalidBearerToken:
             headers={"Authorization": "Bearer not-a-uuid"},
         )
         assert resp.status_code == 422
+
+    async def test_invalid_bearer_error_code(self, gate_ctx: GateTestCtx) -> None:
+        """TC-IT-ERG-HTTP-013: error.code == "validation_error"."""
+        resp = await gate_ctx.client.post(
+            f"/api/gates/{uuid4()}/approve",
+            json={"comment": "LGTM"},
+            headers={"Authorization": "Bearer not-a-uuid"},
+        )
+        assert resp.json()["error"]["code"] == "validation_error"
 
 
 class TestApproveGateInvalidPathUuid:
@@ -338,3 +347,11 @@ class TestApproveGateNoAuthMessage:
         )
         message = resp.json()["error"]["message"]
         assert "Next:" in message
+
+    async def test_no_auth_error_code(self, gate_ctx: GateTestCtx) -> None:
+        """TC-IT-ERG-HTTP-032: error.code == "validation_error"。"""
+        resp = await gate_ctx.client.post(
+            f"/api/gates/{uuid4()}/approve",
+            json={"comment": "LGTM"},
+        )
+        assert resp.json()["error"]["code"] == "validation_error"

@@ -46,6 +46,12 @@ async def http_exception_handler(request: Request, exc: Exception) -> JSONRespon
         code = FORBIDDEN
     elif status == 405:
         code = "method_not_allowed"
+    elif status == 422:
+        # 422 は常に validation_error に統一する。
+        # get_reviewer_id() Depends が raise する HTTPException(422) を含む全 422 経路を
+        # "validation_error" で返すことで、API クライアントが一貫した code で分岐できる
+        # （basic-design.md §エラーハンドリング方針 / ラムス指摘対応）。
+        code = VALIDATION_ERROR
     else:
         code = f"http_error_{status}"
 

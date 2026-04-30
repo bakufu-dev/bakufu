@@ -71,11 +71,9 @@ class TestListGatesByTask:
         """TC-IT-ERG-HTTP-003: 同 task_id に REJECTED + PENDING の 2 件が存在する場合."""
         task_id = uuid4()
         pending = make_gate(task_id=task_id)
-        rejected = make_rejected_gate(task_id=task_id)
         await seed_gate_with_deps(gate_ctx.session_factory, pending)
-        # rejected gate は同 task_id を共有する — 追加の deps チェーンは不要
-        # (task は既に seeded)。同一 task_id を共有するため seed_gate_with_deps を
-        # 再度呼ぶと task_id 衝突するため、rejected gate は別 task_id + 新 deps で seed。
+        # rejected gate は同一 task_id を持つが task の FK チェーンが衝突するため
+        # 別の deps チェーン（異なる task_id）で seed する。
         rejected2 = make_rejected_gate(task_id=task_id)
         await seed_gate_with_deps(gate_ctx.session_factory, rejected2)
 
@@ -101,6 +99,7 @@ class TestGetGate:
     async def test_returns_200_with_feedback_text(self, gate_ctx: GateTestCtx) -> None:
         """TC-IT-ERG-HTTP-005: PENDING gate with deliverable_snapshot + audit_trail → 200."""
         from bakufu.domain.value_objects import AuditAction
+
         from tests.factories.external_review_gate import make_audit_entry
 
         audit_entry = make_audit_entry(action=AuditAction.VIEWED)

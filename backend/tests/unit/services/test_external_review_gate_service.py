@@ -29,6 +29,7 @@ class TestFindByIdOrRaise:
         from bakufu.application.services.external_review_gate_service import (
             ExternalReviewGateService,
         )
+
         from tests.factories.external_review_gate import make_gate
 
         gate = make_gate()
@@ -66,6 +67,7 @@ class TestApproveGate:
             ExternalReviewGateService,
         )
         from bakufu.domain.value_objects.enums import ReviewDecision
+
         from tests.factories.external_review_gate import make_gate
 
         reviewer_id = uuid4()
@@ -88,6 +90,7 @@ class TestApproveGate:
         from bakufu.application.services.external_review_gate_service import (
             ExternalReviewGateService,
         )
+
         from tests.factories.external_review_gate import make_approved_gate
 
         reviewer_id = uuid4()
@@ -110,9 +113,8 @@ class TestGateRejectSchemaValidation:
 
     def test_empty_feedback_text_raises_validation_error(self) -> None:
         """TC-UT-ERG-HTTP-005: feedback_text="" → Pydantic ValidationError (min_length=1)."""
-        from pydantic import ValidationError
-
         from bakufu.interfaces.http.schemas.external_review_gate import GateReject
+        from pydantic import ValidationError
 
         with pytest.raises(ValidationError):
             GateReject(feedback_text="")
