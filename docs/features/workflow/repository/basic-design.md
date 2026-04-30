@@ -296,7 +296,7 @@ erDiagram
         String name
         String kind "WORK / INTERNAL_REVIEW / EXTERNAL_REVIEW"
         String roles_csv "frozenset[Role] のカンマ区切りシリアライズ (§確定 G)"
-        Text deliverable_template
+        JSONEncoded required_deliverables_json "list[DeliverableRequirement] (Issue #117, DEFAULT '[]')"
         JSONEncoded completion_policy_json "CompletionPolicy VO (§確定 I, masking 対象外)"
         MaskedJSONEncoded notify_channels_json "list[NotifyChannel] (§確定 H, webhook token マスキング)"
     }
