@@ -213,9 +213,7 @@ class TestReviewerFilterE2E:
         await _seed_gate_with_deps(gate_e2e_ctx.session_factory, gate2)
         await _seed_gate_with_deps(gate_e2e_ctx.session_factory, gate3)
 
-        resp = await gate_e2e_ctx.client.get(
-            "/api/gates", params={"reviewer_id": str(reviewer_r)}
-        )
+        resp = await gate_e2e_ctx.client.get("/api/gates", params={"reviewer_id": str(reviewer_r)})
         assert resp.status_code == 200, f"list failed: {resp.text}"
         body = resp.json()
         assert body["total"] == 2

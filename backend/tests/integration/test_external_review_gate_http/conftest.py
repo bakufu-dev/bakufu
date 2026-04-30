@@ -1,4 +1,5 @@
 """ExternalReviewGate HTTP API 結合テスト共有フィクスチャ。"""
+
 from __future__ import annotations
 
 from collections.abc import AsyncIterator

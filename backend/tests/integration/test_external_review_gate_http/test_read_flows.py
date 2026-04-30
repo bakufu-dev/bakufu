@@ -44,9 +44,7 @@ class TestListPendingGates:
         await seed_gate_with_deps(gate_ctx.session_factory, gate1)
         await seed_gate_with_deps(gate_ctx.session_factory, gate2)
 
-        resp = await gate_ctx.client.get(
-            "/api/gates", params={"reviewer_id": str(reviewer_id)}
-        )
+        resp = await gate_ctx.client.get("/api/gates", params={"reviewer_id": str(reviewer_id)})
         assert resp.status_code == 200
         body = resp.json()
         assert body["total"] == 2
@@ -55,9 +53,7 @@ class TestListPendingGates:
     async def test_returns_200_with_empty_list(self, gate_ctx: GateTestCtx) -> None:
         """TC-IT-ERG-HTTP-002: reviewer に対して Gate が 0 件の場合."""
         reviewer_id = uuid4()
-        resp = await gate_ctx.client.get(
-            "/api/gates", params={"reviewer_id": str(reviewer_id)}
-        )
+        resp = await gate_ctx.client.get("/api/gates", params={"reviewer_id": str(reviewer_id)})
         assert resp.status_code == 200
         body = resp.json()
         assert body["total"] == 0
