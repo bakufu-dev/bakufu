@@ -60,7 +60,7 @@ class TestAddStageCapacity:
                     "name": "S",
                     "kind": StageKind.WORK.value,
                     "required_role": [Role.DEVELOPER.value],
-                    "deliverable_template": "",
+                    "required_deliverables": [],
                     "completion_policy": {"kind": "manual", "description": ""},
                     "notify_channels": [],
                 }
@@ -155,7 +155,7 @@ class TestAddTransitionCapacity:
                 "name": "S",
                 "kind": StageKind.WORK.value,
                 "required_role": [Role.DEVELOPER.value],
-                "deliverable_template": "",
+                "required_deliverables": [],
                 "completion_policy": {"kind": "manual", "description": ""},
                 "notify_channels": [],
             }

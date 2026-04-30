@@ -264,7 +264,7 @@ class TestPartialMaskContract:
 
     Workflow Repository (PR #31) で 'partial mask' パターンを導入。
     ``workflow_stages.notify_channels_json`` のみが masking 対象で、
-    他カラムは masking しない ── ``deliverable_template`` /
+    他カラムは masking しない ── ``required_deliverables_json`` /
     ``completion_policy_json`` 等への過剰 masking を防ぐため。
     別カラムを追加で masking する PR は、まず §逆引き表 を更新せよ。
     さもないと本アサーションが発火する。

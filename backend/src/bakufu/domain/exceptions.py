@@ -98,10 +98,11 @@ type WorkflowViolationKind = Literal[
 
 
 type StageViolationKind = Literal[
+    "duplicate_required_deliverable",
     "empty_required_role",
     "missing_notify",
 ]
-""":class:`StageInvariantViolation` の判別子（Workflow 詳細設計）。"""
+""":class:`StageInvariantViolation` の判別子（Workflow 詳細設計 / Issue #117）。"""
 
 
 # DDD: "Violation" は不変条件違反を表現するもので、プログラミングのバグではない。

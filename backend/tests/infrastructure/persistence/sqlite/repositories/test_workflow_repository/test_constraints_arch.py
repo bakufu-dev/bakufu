@@ -111,7 +111,7 @@ class TestUniqueConstraintViolation:
                 text(
                     "INSERT INTO workflow_stages "
                     "(workflow_id, stage_id, name, kind, roles_csv, "
-                    "deliverable_template, completion_policy_json, "
+                    "required_deliverables_json, completion_policy_json, "
                     "notify_channels_json) "
                     "VALUES (:workflow_id, :stage_id, :name, :kind, :roles_csv, "
                     ":deliverable, :policy, :channels)"
@@ -122,7 +122,7 @@ class TestUniqueConstraintViolation:
                     "name": "first",
                     "kind": "WORK",
                     "roles_csv": "DEVELOPER",
-                    "deliverable": "",
+                    "deliverable": "[]",
                     "policy": '{"kind": "approved_by_reviewer", "description": ""}',
                     "channels": "[]",
                 },
@@ -134,7 +134,7 @@ class TestUniqueConstraintViolation:
                     text(
                         "INSERT INTO workflow_stages "
                         "(workflow_id, stage_id, name, kind, roles_csv, "
-                        "deliverable_template, completion_policy_json, "
+                        "required_deliverables_json, completion_policy_json, "
                         "notify_channels_json) "
                         "VALUES (:workflow_id, :stage_id, :name, :kind, :roles_csv, "
                         ":deliverable, :policy, :channels)"
@@ -145,7 +145,7 @@ class TestUniqueConstraintViolation:
                         "name": "duplicate",
                         "kind": "WORK",
                         "roles_csv": "DEVELOPER",
-                        "deliverable": "",
+                        "deliverable": "[]",
                         "policy": '{"kind": "approved_by_reviewer", "description": ""}',
                         "channels": "[]",
                     },

@@ -50,7 +50,7 @@ _VMODEL_STAGES: list[dict[str, Any]] = [
         "required_role": ["LEADER"],
         "completion_policy": {"kind": "manual", "description": ""},
         "notify_channels": [],
-        "deliverable_template": "",
+        "required_deliverables": [],
     },
     {
         "id": "00000001-0000-4000-8000-000000000002",
@@ -59,7 +59,7 @@ _VMODEL_STAGES: list[dict[str, Any]] = [
         "required_role": ["REVIEWER"],
         "completion_policy": {"kind": "manual", "description": ""},
         "notify_channels": [],
-        "deliverable_template": "",
+        "required_deliverables": [],
     },
     {
         "id": "00000001-0000-4000-8000-000000000003",
@@ -68,7 +68,7 @@ _VMODEL_STAGES: list[dict[str, Any]] = [
         "required_role": ["DEVELOPER"],
         "completion_policy": {"kind": "manual", "description": ""},
         "notify_channels": [],
-        "deliverable_template": "",
+        "required_deliverables": [],
     },
     {
         "id": "00000001-0000-4000-8000-000000000004",
@@ -77,7 +77,7 @@ _VMODEL_STAGES: list[dict[str, Any]] = [
         "required_role": ["REVIEWER"],
         "completion_policy": {"kind": "manual", "description": ""},
         "notify_channels": [],
-        "deliverable_template": "",
+        "required_deliverables": [],
     },
     {
         "id": "00000001-0000-4000-8000-000000000005",
@@ -86,7 +86,7 @@ _VMODEL_STAGES: list[dict[str, Any]] = [
         "required_role": ["DEVELOPER"],
         "completion_policy": {"kind": "manual", "description": ""},
         "notify_channels": [],
-        "deliverable_template": "",
+        "required_deliverables": [],
     },
     {
         "id": "00000001-0000-4000-8000-000000000006",
@@ -95,7 +95,7 @@ _VMODEL_STAGES: list[dict[str, Any]] = [
         "required_role": ["REVIEWER"],
         "completion_policy": {"kind": "manual", "description": ""},
         "notify_channels": [],
-        "deliverable_template": "",
+        "required_deliverables": [],
     },
     {
         "id": "00000001-0000-4000-8000-000000000007",
@@ -104,7 +104,7 @@ _VMODEL_STAGES: list[dict[str, Any]] = [
         "required_role": ["DEVELOPER"],
         "completion_policy": {"kind": "manual", "description": ""},
         "notify_channels": [],
-        "deliverable_template": "",
+        "required_deliverables": [],
     },
     {
         "id": "00000001-0000-4000-8000-000000000008",
@@ -113,7 +113,7 @@ _VMODEL_STAGES: list[dict[str, Any]] = [
         "required_role": ["TESTER"],
         "completion_policy": {"kind": "manual", "description": ""},
         "notify_channels": [],
-        "deliverable_template": "",
+        "required_deliverables": [],
     },
     {
         "id": "00000001-0000-4000-8000-000000000009",
@@ -122,7 +122,7 @@ _VMODEL_STAGES: list[dict[str, Any]] = [
         "required_role": ["REVIEWER"],
         "completion_policy": {"kind": "manual", "description": ""},
         "notify_channels": [],
-        "deliverable_template": "",
+        "required_deliverables": [],
     },
     {
         "id": "00000001-0000-4000-8000-000000000010",
@@ -131,7 +131,7 @@ _VMODEL_STAGES: list[dict[str, Any]] = [
         "required_role": ["TESTER"],
         "completion_policy": {"kind": "manual", "description": ""},
         "notify_channels": [],
-        "deliverable_template": "",
+        "required_deliverables": [],
     },
     {
         "id": "00000001-0000-4000-8000-000000000011",
@@ -140,7 +140,7 @@ _VMODEL_STAGES: list[dict[str, Any]] = [
         "required_role": ["TESTER"],
         "completion_policy": {"kind": "manual", "description": ""},
         "notify_channels": [],
-        "deliverable_template": "",
+        "required_deliverables": [],
     },
     {
         "id": "00000001-0000-4000-8000-000000000012",
@@ -149,7 +149,7 @@ _VMODEL_STAGES: list[dict[str, Any]] = [
         "required_role": ["REVIEWER"],
         "completion_policy": {"kind": "manual", "description": ""},
         "notify_channels": [],
-        "deliverable_template": "",
+        "required_deliverables": [],
     },
     {
         "id": "00000001-0000-4000-8000-000000000013",
@@ -158,7 +158,7 @@ _VMODEL_STAGES: list[dict[str, Any]] = [
         "required_role": ["LEADER"],
         "completion_policy": {"kind": "manual", "description": ""},
         "notify_channels": [],
-        "deliverable_template": "",
+        "required_deliverables": [],
     },
 ]
 
@@ -289,7 +289,7 @@ _AGILE_STAGES: list[dict[str, Any]] = [
         "required_role": ["LEADER"],
         "completion_policy": {"kind": "manual", "description": ""},
         "notify_channels": [],
-        "deliverable_template": "",
+        "required_deliverables": [],
     },
     {
         "id": "00000002-0000-4000-8000-000000000002",
@@ -298,7 +298,7 @@ _AGILE_STAGES: list[dict[str, Any]] = [
         "required_role": ["DEVELOPER"],
         "completion_policy": {"kind": "manual", "description": ""},
         "notify_channels": [],
-        "deliverable_template": "",
+        "required_deliverables": [],
     },
     {
         "id": "00000002-0000-4000-8000-000000000003",
@@ -307,7 +307,7 @@ _AGILE_STAGES: list[dict[str, Any]] = [
         "required_role": ["DEVELOPER"],
         "completion_policy": {"kind": "manual", "description": ""},
         "notify_channels": [],
-        "deliverable_template": "",
+        "required_deliverables": [],
     },
     {
         "id": "00000002-0000-4000-8000-000000000004",
@@ -316,7 +316,7 @@ _AGILE_STAGES: list[dict[str, Any]] = [
         "required_role": ["REVIEWER"],
         "completion_policy": {"kind": "manual", "description": ""},
         "notify_channels": [],
-        "deliverable_template": "",
+        "required_deliverables": [],
     },
     {
         "id": "00000002-0000-4000-8000-000000000005",
@@ -325,7 +325,7 @@ _AGILE_STAGES: list[dict[str, Any]] = [
         "required_role": ["TESTER"],
         "completion_policy": {"kind": "manual", "description": ""},
         "notify_channels": [],
-        "deliverable_template": "",
+        "required_deliverables": [],
     },
     {
         "id": "00000002-0000-4000-8000-000000000006",
@@ -334,7 +334,7 @@ _AGILE_STAGES: list[dict[str, Any]] = [
         "required_role": ["LEADER"],
         "completion_policy": {"kind": "manual", "description": ""},
         "notify_channels": [],
-        "deliverable_template": "",
+        "required_deliverables": [],
     },
 ]
 

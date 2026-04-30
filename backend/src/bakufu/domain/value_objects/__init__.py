@@ -68,6 +68,7 @@ from bakufu.domain.value_objects.references import (
 )
 from bakufu.domain.value_objects.template_vos import (
     AcceptanceCriterion,
+    DeliverableRequirement,
     DeliverableTemplateRef,
     SemVer,
 )
@@ -87,6 +88,7 @@ __all__ = [
     "CompletionPolicy",
     "CompletionPolicyKind",
     "Deliverable",
+    "DeliverableRequirement",
     "DeliverableTemplateId",
     "DeliverableTemplateRef",
     "DirectiveId",
