@@ -30,7 +30,7 @@
 | 項目 | 内容 |
 |-----|-----|
 | 入力 | なし（クエリパラメータなし） |
-| 処理 | `DeliverableTemplateService.find_all()` → `DeliverableTemplateRepository.find_all()` で全件取得 |
+| 処理 | `DeliverableTemplateService.find_all()` → `DeliverableTemplateRepository.find_all()` で全件取得（**ORDER BY name ASC**、アルファベット昇順で返却。同一 name は id ASC でさらにソート） |
 | 出力 | HTTP 200, `DeliverableTemplateListResponse`（空リストも 200） |
 | エラー時 | 該当なし |
 | 親 spec 参照 | UC-DT-001 |
@@ -64,6 +64,8 @@
 | 出力 | HTTP 204 No Content |
 | エラー時 | 不在 → `DeliverableTemplateNotFoundError`（MSG-DT-HTTP-001, 404） |
 | 親 spec 参照 | UC-DT-001 |
+
+**dangling ref 設計判断（確定）**: 削除前に「他テンプレートの composition や RoleProfile の deliverable_template_refs から被参照されているか」を確認する被参照チェックは **MVP スコープ外**（YAGNI）とする。`composition_json` / `deliverable_template_refs_json` は JSON 格納で FK 制約がないため、削除後に dangling ref が残存しうる。dangling ref は参照解決時（Room 作成 / ExternalReviewGate 取込み等）に application 層が「参照先テンプレートが見つからない」エラーとして検出する責務を持つ（将来 Issue で被参照チェック API を追加予定）。MVP では削除リクエストへのブロックなし・204 返却を**設計として明示的に選択**する。
 
 ### REQ-RP-HTTP-001: RoleProfile 一覧取得（GET /api/empires/{empire_id}/role-profiles）
 
@@ -122,6 +124,8 @@
 | 横断 | `error_handlers.py` 拡張 | `backend/src/bakufu/interfaces/http/error_handlers.py`（既存追記） | `DeliverableTemplateNotFoundError` / `RoleProfileNotFoundError` / `CompositionCycleError` → `ErrorResponse` ハンドラ追加 |
 | REQ-DT-HTTP-005 | `SqliteDeliverableTemplateRepository` 拡張 | `backend/src/bakufu/infrastructure/persistence/sqlite/repositories/deliverable_template_repository.py`（既存追記） | `delete(id)` 実装追加 |
 | REQ-RP-HTTP-004 | `SqliteRoleProfileRepository` 拡張 | `backend/src/bakufu/infrastructure/persistence/sqlite/repositories/role_profile_repository.py`（既存追記） | `delete(id)` 実装追加 |
+| REQ-RP-HTTP-001, 003 | `EmpireRepository` Protocol（既存）| `backend/src/bakufu/application/ports/empire_repository.py`（既存参照のみ、変更なし）| `RoleProfileService` が Empire 存在確認に使用（`find_by_id` のみ）。`common.py` `ErrorDetail` への `detail` フィールド追加も本 PR で実施（§確定 G）|
+| 横断 | `ErrorDetail` Schema 拡張 | `backend/src/bakufu/interfaces/http/schemas/common.py`（既存追記）| `detail: dict[str, object] \| None = None` フィールド追加（§確定 G、既存ハンドラへの影響なし）|
 
 ```
 本 sub-feature で追加・変更されるファイル:
@@ -151,18 +155,19 @@ backend/
 │           ├── deliverable_template.py             # 新規
 │           └── role_profile.py                     # 新規
 └── tests/
-    └── interfaces/http/
-        └── routers/
-            ├── test_deliverable_template/          # 新規ディレクトリ（500行ルール、分割）
-            │   ├── __init__.py
-            │   ├── test_create.py
-            │   ├── test_read.py
-            │   ├── test_update.py
-            │   └── test_delete.py
-            └── test_role_profile/                  # 新規ディレクトリ
-                ├── __init__.py
-                ├── test_upsert.py
-                └── test_read_delete.py
+    └── integration/                                # 既存パターン: tests/integration/test_*_http_api/
+        ├── test_deliverable_template_http_api/     # 新規（test_agent_http_api 等と同一階層）
+        │   ├── __init__.py
+        │   ├── conftest.py                         # ASGITransport + session_factory 直接注入（tests/integration/conftest.py 共通フィクスチャ引き継ぎ）
+        │   ├── test_create.py
+        │   ├── test_read.py
+        │   ├── test_update.py
+        │   └── test_delete.py
+        └── test_role_profile_http_api/             # 新規（同一階層）
+            ├── __init__.py
+            ├── conftest.py
+            ├── test_upsert.py
+            └── test_read_delete.py
 ```
 
 ## クラス設計（概要）
@@ -289,7 +294,7 @@ classDiagram
 2. `get_deliverable_template_service()` DI で `DeliverableTemplateService` を取得
 3. `DeliverableTemplateService.create(name, description, type, schema, acceptance_criteria, version, composition)` 呼び出し
 4. composition の各 ref.template_id について `DeliverableTemplateRepository.find_by_id` で存在確認（MSG-DT-HTTP-002）
-5. `_check_dag(refs, root_id=None)` で推移的循環参照を BFS/DFS で検出（MSG-DT-HTTP-003）
+5. `_check_dag(refs, root_id)` で推移的循環参照を BFS で検出（MSG-DT-HTTP-003）。`root_id` は新規生成 uuid を渡す（詳細は [detailed-design.md §確定 D](detailed-design.md)）
 6. `DeliverableTemplate.model_validate({id: uuid4(), ...})` で Aggregate 構築（domain 不変条件検査）
 7. `async with session.begin():` `DeliverableTemplateRepository.save(template)`
 8. HTTP 201, `DeliverableTemplateResponse` を返す
@@ -344,7 +349,7 @@ sequenceDiagram
     Service->>DTRepo: find_by_id(ref_A.template_id)
     DTRepo->>DB: SELECT
     DB-->>DTRepo: template_A
-    Service->>Service: _check_dag([ref_A], root_id=new_uuid) → 循環なし
+    Service->>Service: _check_dag(refs=[ref_A], root_id=new_uuid) → 循環なし
     Service->>Domain: DeliverableTemplate.model_validate({id=new_uuid, ...})
     Domain-->>Service: template
     Service->>DTRepo: save(template)
@@ -429,7 +434,7 @@ sequenceDiagram
 | A06 | Vulnerable Components | 依存 CVE は CI `pip-audit` で監視（http-api-foundation 確定済み） |
 | A07 | Auth Failures | MVP 設計上 意図的な認証なし（loopback バインドで代替）|
 | A08 | Data Integrity Failures | domain frozen Aggregate + Repository UPSERT + DB UNIQUE 制約（R1-D）の多重防衛 |
-| A09 | Logging Failures | 内部エラーは application 層でログ、スタックトレースはレスポンスに含めない（T3 対策）。acceptance_criteria.description 等は feature-spec §13 の業務判断に従い audit_log に raw で記録 |
+| A09 | Logging Failures | **操作監査**: MVP は loopback バインドで認証なし（個人開発 CEO 1 人が使用）のため操作者の特定が不可能。操作 audit log（誰が・いつ・何を変更したか）は **MVP スコープ外**とする。将来の認証実装時に Service 層で audit log テーブルへの書き込みを追加する（別 Issue）。**MVP では** Service 層が各操作（CREATE / UPDATE / DELETE）を Python `logging.INFO`（`logger.info("deliverable_template created id=%s", template.id)` 形式）で記録する。スタックトレースはレスポンスに含めない（T3 対策）。`ErrorResponse.detail` に機密情報を含めない（feature-spec §13 の業務判断、機密レベル「低」）|
 | A10 | SSRF | 該当なし（外部 URL fetch なし） |
 
 ## ER 図
@@ -478,6 +483,8 @@ erDiagram
 | その他例外 | どこでも | http-api-foundation の `generic_exception_handler` | 500（スタックトレース非露出）|
 
 Router 内に `try/except` は書かない（http-api-foundation 規律）。
+
+**dangling ref 発生後の検出経路**: DELETE /api/deliverable-templates/{id} により削除されたテンプレートを参照する dangling ref は、本 sub-feature のエラーハンドリングでは検出しない（MVP 設計判断、REQ-DT-HTTP-005 参照）。将来の参照解決処理（Room 作成等）が dangling ref を検出した場合は当該 application 層で `DeliverableTemplateNotFoundError` を raise して 422 を返す。
 
 ## MSG 一覧（ID のみ、確定文言は detailed-design.md で凍結）
 
