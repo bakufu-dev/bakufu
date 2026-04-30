@@ -281,6 +281,10 @@ classDiagram
 1. ユースケース 4 と同構造。`GateCancel` を受け取り `gate.cancel(by_owner_id, reason=body.reason, decided_at=utcnow())` を呼び出す
 2. HTTP 200 `GateDetailResponse`（decision=CANCELLED）を返す
 
+## シーケンス図
+
+該当なし — 理由: §処理フロー §ユースケース 1〜6 で approve / reject / cancel の全業務フローを箇条書きで記述済み。3 操作の構造は対称的（Bearer 抽出 → find_by_id_or_raise → reviewer_id 照合 → domain メソッド呼び出し → save → 200 返却）であり、シーケンス図として独立させると処理フローとの二重管理になる。
+
 ## エラーハンドリング方針
 
 | 例外クラス | 発生源 | HTTP | ErrorResponse.code | メッセージ |
@@ -380,3 +384,21 @@ erDiagram
 - 既存 feature への波及:
   - `http-api-foundation`: `dependencies.py` に `get_gate_service()` を追加。`error_handlers.py` に gate 例外ハンドラを追加（P-3）
   - `ExternalReviewGateService`（http-api-foundation で骨格定義済み）: approve / reject / cancel / find_pending_for_reviewer / find_by_task を追加
+
+## 外部連携
+
+該当なし — 理由: ExternalReviewGate HTTP API は外部通信を持たない。DB アクセスは persistence-foundation 経由の AsyncSession のみ。LLM 呼び出し / Discord 送信 / GitHub API 連携は別 feature 責務であり、本 sub-feature のスコープ外。
+
+| 連携先 | 目的 | プロトコル | 認証 | タイムアウト / リトライ |
+|---|---|---|---|---|
+| （なし）| — | — | — | — |
+
+## UX 設計
+
+該当なし — 理由: 本 sub-feature は HTTP API（JSON over HTTP）のみ。UI コンポーネントは存在しない。CEO によるレビュー操作 UI（Deliverable 確認 → approve / reject ボタン）は将来の `ui` sub-feature が担当する。
+
+| シナリオ | 期待される挙動 |
+|---|---|
+| （なし）| — |
+
+**アクセシビリティ方針**: 該当なし — 理由: HTTP API のみ（UI なし）。

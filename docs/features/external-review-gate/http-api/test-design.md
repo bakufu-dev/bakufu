@@ -145,3 +145,10 @@ backend/tests/
 |---|---|---|
 | TBD-1 | `GET /api/gates?decision=APPROVED` 等非 PENDING フィルタの実装（§確定A 参照）| 将来 Issue（MVP スコープ外） |
 | TBD-2 | `GET /api/gates/{id}` 経由の `record_view()` トリガー（§確定D 参照）| ui sub-feature Issue 起票時に再検討 |
+
+## 関連
+
+- [`basic-design.md §モジュール契約`](basic-design.md) — 機能要件（REQ-ERG-HTTP-001〜006）
+- [`detailed-design.md`](detailed-design.md) — MSG 確定文言 / スキーマ仕様 / §確定A〜F
+- [`../feature-spec.md`](../feature-spec.md) — 親業務仕様（受入基準 3〜5）
+- [`../system-test-design.md`](../system-test-design.md) — E2E テスト（HTTP 黒箱 TC-E2E-ERG-HTTP-001〜004）
