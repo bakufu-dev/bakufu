@@ -28,6 +28,7 @@ classDiagram
     }
     class RoleProfile {
         +id: RoleProfileId
+        +empire_id: EmpireId
         +role: Role
         +deliverable_template_refs: tuple~DeliverableTemplateRef~
         +add_template_ref(ref: DeliverableTemplateRef) RoleProfile
@@ -75,12 +76,13 @@ classDiagram
 - `arbitrary_types_allowed = False`
 - `extra = 'forbid'`
 
-**不変条件（model_validator(mode='after')）**: 4 種
+**不変条件（model_validator(mode='after')）**: 5 種
 
 1. `_validate_schema_format` — `type` が `JSON_SCHEMA` または `OPENAPI` のとき `schema` は有効な JSON Schema dict でなければならない（Validation Port 経由、**§確定 C** 参照）。構築時に Fail Fast。
 2. `_validate_composition_no_self_ref` — `composition` 内のいずれの `DeliverableTemplateRef.template_id` も `self.id` と一致してはならない。
 3. `_validate_version_non_negative` — `SemVer` の `major` / `minor` / `patch` がすべて 0 以上。
 4. `_validate_acceptance_criteria_non_empty_descriptions` — `acceptance_criteria` 内の各 `AcceptanceCriterion.description` が 1 文字以上。
+5. `_validate_acceptance_criteria_no_duplicate_ids` — `acceptance_criteria` 内の `AcceptanceCriterion.id`（UUID）が一意。同一 id が 2 件以上含まれる場合は `DeliverableTemplateInvariantViolation(kind='acceptance_criteria_duplicate_id')` を raise。
 
 **ふるまい**（全 2 種、すべて新インスタンス返却、pre-validate 方式、**§確定 A**）:
 - `create_new_version(new_version: SemVer) -> DeliverableTemplate`: 現バージョンより大きい `new_version` を受け取り、同内容で `version` のみ更新したコピーを返す。`new_version <= current version`（major.minor.patch の辞書的比較）の場合は `DeliverableTemplateInvariantViolation(kind='version_not_greater')` を raise。
@@ -91,7 +93,8 @@ classDiagram
 | 属性 | 型 | 制約 | 意図 |
 |----|----|----|----|
 | `id` | `RoleProfileId`（UUIDv4）| 不変 | 一意識別 |
-| `role` | `Role`（StrEnum）| 不変、既存 Enum 値を使用（新 Aggregate ではない） | Empire 内の役割（**§確定 D** 参照）|
+| `empire_id` | `EmpireId`（UUIDv4）| 不変、参照のみ | 所属する Empire（Empire スコープ一意性の DB 制約基盤。**§確定 D** 参照）|
+| `role` | `Role`（StrEnum）| 不変、既存 Enum 値を使用（新 Aggregate ではない） | Empire 内の役割（`(empire_id, role)` で一意、**§確定 D** 参照）|
 | `deliverable_template_refs` | `tuple[DeliverableTemplateRef, ...]` | 0 件以上、`template_id` 重複禁止 | 役割に紐づくテンプレート参照リスト |
 
 `model_config`:
@@ -157,11 +160,23 @@ classDiagram
 
 | 属性 | 型 | 制約 |
 |----|----|----|
-| `kind` | `str` | 違反種別（`'schema_format_invalid'` / `'composition_self_ref'` / `'version_not_greater'` 等）|
+| `kind` | `str` | 違反種別（`'schema_format_invalid'` / `'composition_self_ref'` / `'version_not_greater'` / `'acceptance_criteria_duplicate_id'` 等）|
 | `message` | `str` | MSG-DT-NNN 由来の文言（R1-F 2 行構造）|
-| `detail` | `dict[str, object]` | 違反の文脈情報 |
+| `detail` | `dict[str, object]` | 違反の文脈情報（**A09 detail ホワイトリスト参照**）|
 
 `Exception` 継承。`domain/exceptions.py` の既存例外と統一フォーマット。`super().__init__` 前に `message` を確定済み文言で設定する。
+
+**§確定A09: `detail` フィールドのホワイトリスト（secret 漏洩防止）**
+
+`detail` dict に含めてよい情報は以下のみ。`description` / `schema` の実際の文字列内容は含めてはならない（OWASP A09 対応）:
+
+| 違反 kind | 許可される detail キー | 禁止される detail |
+|---|---|---|
+| `schema_format_invalid` | `{"schema_type": str}` のみ | schema 本文 / dict の内容 |
+| `composition_self_ref` | `{"template_id": str}` のみ | — |
+| `version_not_greater` | `{"current_version": str, "requested_version": str}` のみ | — |
+| `acceptance_criteria_duplicate_id` | `{"criterion_id": str}` のみ | description 本文 |
+| `acceptance_criteria_empty_description` | `{"criterion_id": str, "description_length": int}` のみ | description 本文 |
 
 ### Exception: RoleProfileInvariantViolation（`domain/exceptions.py` 追記）
 
@@ -169,9 +184,16 @@ classDiagram
 |----|----|----|
 | `kind` | `str` | 違反種別（`'duplicate_template_ref'` / `'template_ref_not_found'` 等）|
 | `message` | `str` | MSG-DT-NNN 由来の文言（R1-F 2 行構造）|
-| `detail` | `dict[str, object]` | 違反の文脈情報 |
+| `detail` | `dict[str, object]` | 違反の文脈情報（**A09 detail ホワイトリスト参照**）|
 
 `Exception` 継承。`domain/exceptions.py` の既存例外と統一フォーマット。
+
+**§確定A09（RoleProfile）: `detail` フィールドのホワイトリスト**
+
+| 違反 kind | 許可される detail キー |
+|---|---|
+| `duplicate_template_ref` | `{"template_id": str}` のみ |
+| `template_ref_not_found` | `{"template_id": str}` のみ |
 
 ## 確定事項（先送り撤廃）
 
@@ -198,11 +220,16 @@ classDiagram
 
 | 分担 | 責務 |
 |---|---|
-| `DeliverableTemplate.compose` | 直接 refs を `composition` フィールドに設定するのみ |
-| `RoleProfile.get_all_acceptance_criteria` | `template_lookup` を使って refs を 1 段階解決、各テンプレートの `acceptance_criteria` を union |
+| `DeliverableTemplate.compose` | 直接 refs を `composition` フィールドに設定するのみ。`acceptance_criteria` は引き継がない |
+| `RoleProfile.get_all_acceptance_criteria` | `template_lookup` を使って refs を 1 段階解決、各テンプレートの `acceptance_criteria` を union（id 重複排除：最初の出現を保持）|
 | `acceptance_criteria` の継承 | `compose` は `acceptance_criteria` を引き継がない（composition は構造的なもの、criteria union は RoleProfile 責務）|
 
-この設計により、`DeliverableTemplate` は composition の DAG 構造を保持しつつ、cycles の検出（自己参照禁止は不変条件で担保）と再帰解決コストの両方をシンプルに管理できる。transitive 解決が必要になった場合は application 層サービスで実装し、domain を汚染しない。
+**MVP における transitive 循環参照の扱い（凍結）**:
+MVP では domain Aggregate が検出する循環参照は **自己参照のみ**（`_validate_composition_no_self_ref`）。A → B → A のような推移的循環参照は domain 層では検出しない。推移的循環参照の検出は application 層が全グラフを展開して DAG 検査する責務を持つが、その実装は **Issue #117（Stage.required_deliverables）以降の sub-feature** でまとめて凍結する。
+
+本書の T2 脅威対策は「MVP ではシャロー解決のみ、推移的 DAG 検査は Issue #117 スコープ」として明示凍結する。basic-design.md T2 の「detailed-design.md で凍結」はこの §確定B 宣言で完結する。
+
+この設計により、`DeliverableTemplate` は composition の DAG 構造を保持しつつ、再帰解決コストをシンプルに管理できる。将来 transitive 解決が必要になった場合は application 層サービスで実装し、domain を汚染しない。
 
 ### 確定 C: JSON Schema バリデーションは Validation Port パターン（domain → infrastructure 直接依存は不採用）
 
@@ -429,6 +456,8 @@ classDiagram
 ### 申し送り #1: JSON Schema バリデーション実装の DI 配線
 
 `AbstractJSONSchemaValidator` の具体実装を `DeliverableTemplate` の不変条件チェックに DI する配線方式（コンストラクタ注入 / module-level グローバル / Context Var 等）は application 層の設計確定後に決定する。domain 層は Port インターフェースのみを依存し、具体実装には依存しない（**§確定 C**）。
+
+**Fail Secure 規約（凍結）**: `AbstractJSONSchemaValidator` インスタンスが `None` または未設定の場合は、JSON Schema チェックをスキップしてはならない。`validator` が `None` の場合は `DeliverableTemplateInvariantViolation(kind='schema_format_invalid')` を raise して Fail Secure を保証する（validator bypass を禁止）。DI 方式の最終決定は application 層で行ってよいが、「validator=None の場合はデフォルト実装（`jsonschema` ライブラリ）を使用する」または「validator=None は構築エラー」のいずれかの安全方向の実装を必須とする。
 
 ### 申し送り #2: composition の transitive 解決
 

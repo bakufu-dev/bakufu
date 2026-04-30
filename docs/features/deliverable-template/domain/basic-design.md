@@ -9,8 +9,8 @@
 | 要件ID | 概要 | 入力 | 処理 | 出力 | エラー時 | 親 spec 参照 |
 |--------|------|------|------|------|---------|-------------|
 | REQ-DT-001 | DeliverableTemplate 構築 | id / name（1〜80文字）/ description（0〜500文字）/ type（TemplateType）/ schema（dict または str）/ acceptance_criteria（list[AcceptanceCriterion]）/ version（SemVer）/ composition（list[DeliverableTemplateRef]）| Pydantic 型バリデーション → model_validator で不変条件検査（①name 文字数 ②description 文字数 ③TemplateType=JSON_SCHEMA 時の schema が dict であること ④SemVer の各フィールドが 0 以上の整数 ⑤AcceptanceCriterion.description が 1 文字以上 ⑥composition の循環参照非存在）| valid な DeliverableTemplate インスタンス | 型違反: `pydantic.ValidationError` / 不変条件違反: `DeliverableTemplateInvariantViolation` | §9 AC#1, 2 |
-| REQ-DT-002 | バージョン作成（create_new_version）| 現 DeliverableTemplate + bump_type（"major" / "minor" / "patch"）| 現 version から指定 bump_type を 1 増加（major 増加時は minor / patch をゼロリセット、minor 増加時は patch をゼロリセット）→ 新 SemVer で DeliverableTemplate を再構築 | 新 DeliverableTemplate インスタンス（version のみ更新、その他属性は引き継ぎ） | `DeliverableTemplateInvariantViolation(kind='invalid_bump_type')` | §9 AC#3 |
-| REQ-DT-003 | テンプレート合成（compose）| 現 DeliverableTemplate + refs（list[DeliverableTemplateRef]）| ①refs の各 template_id が現 DeliverableTemplate の id と異なること（自己参照検出）②refs の template_id に重複がないこと ③既存 composition と refs をマージした DAG 検査（循環参照検出は application 層が全 Aggregate を参照可能な状態で実施し、本 Aggregate は refs の形式不変条件のみ担保）→ composition を refs で置換した新インスタンス再構築 | 新 DeliverableTemplate インスタンス（composition 更新） | `DeliverableTemplateInvariantViolation(kind='self_reference' / 'duplicate_ref')` | §9 AC#4 |
+| REQ-DT-002 | バージョン作成（create_new_version）| 現 DeliverableTemplate + new_version（SemVer）| 新 SemVer が現バージョンより大きいことを検査（(new.major, new.minor, new.patch) > (cur.major, cur.minor, cur.patch) の辞書的比較）→ 全属性をコピーし version のみ更新した新 DeliverableTemplate を model_validate 経由で構築 | 新 DeliverableTemplate インスタンス（version のみ更新、その他属性は引き継ぎ） | `DeliverableTemplateInvariantViolation(kind='version_not_greater')` | §9 AC#4 |
+| REQ-DT-003 | テンプレート合成（compose）| 現 DeliverableTemplate + refs（tuple[DeliverableTemplateRef, ...]）| ①refs の各 template_id が現 DeliverableTemplate の id と異なること（自己参照検出）を不変条件 `_validate_composition_no_self_ref` で担保 ②推移的循環参照の検出は application 層責務（MVP では Issue #117 スコープ）③`acceptance_criteria` は引き継がない（§確定B）→ composition を refs で置換した新インスタンスを model_validate 経由で構築 | 新 DeliverableTemplate インスタンス（composition 更新、acceptance_criteria は引き継がれない） | `DeliverableTemplateInvariantViolation(kind='composition_self_ref')` | §9 AC#5, 6 |
 | REQ-DT-004 | RoleProfile 構築 | id / role（Role StrEnum）/ deliverable_template_refs（list[DeliverableTemplateRef]）| Pydantic 型バリデーション → model_validator で不変条件検査（①deliverable_template_refs 内の template_id 重複なし ②各 DeliverableTemplateRef の minimum_version が有効な SemVer）| valid な RoleProfile インスタンス | `RoleProfileInvariantViolation` | §9 AC#5 |
 | REQ-DT-005 | テンプレート参照追加・削除（add_template_ref / remove_template_ref）| add: RoleProfile + ref（DeliverableTemplateRef）/ remove: RoleProfile + template_id（DeliverableTemplateId）| add: ①既存 deliverable_template_refs に同一 template_id が存在しないことを検査 → refs に追加した新リストで RoleProfile 再構築 / remove: ①指定 template_id が deliverable_template_refs に存在することを検査 → 該当 ref を除いた新リストで RoleProfile 再構築 | 新 RoleProfile インスタンス | add: `RoleProfileInvariantViolation(kind='duplicate_template_ref')` / remove: `RoleProfileInvariantViolation(kind='template_ref_not_found')` | §9 AC#6, 7 |
 | REQ-DT-006 | 不変条件検査（各 Aggregate・VO 共通）| 各 Aggregate / VO の現状属性 | ①DeliverableTemplate: name 1〜80 文字 / description 0〜500 文字 / TemplateType=JSON_SCHEMA 時は schema が dict / SemVer 各フィールド非負整数 / AcceptanceCriterion.description 1〜500 文字 / composition DAG（自己参照・重複参照禁止） ②RoleProfile: deliverable_template_refs の template_id 重複なし ③SemVer: major / minor / patch が 0 以上の整数 ④AcceptanceCriterion: description が 1 文字以上 500 文字以下 | None（検査通過） | `DeliverableTemplateInvariantViolation` または `RoleProfileInvariantViolation`（kind で違反種別識別） | §9 AC#2, 4, 5 |
@@ -82,21 +82,22 @@ classDiagram
         +description: str
         +type: TemplateType
         +schema: dict | str
-        +acceptance_criteria: list~AcceptanceCriterion~
+        +acceptance_criteria: tuple~AcceptanceCriterion~
         +version: SemVer
-        +composition: list~DeliverableTemplateRef~
-        +create_new_version(bump_type) DeliverableTemplate
-        +compose(refs) DeliverableTemplate
+        +composition: tuple~DeliverableTemplateRef~
+        +create_new_version(new_version: SemVer) DeliverableTemplate
+        +compose(refs: tuple) DeliverableTemplate
     }
 
     class RoleProfile {
         <<Aggregate Root>>
         +id: RoleProfileId
+        +empire_id: EmpireId
         +role: Role
-        +deliverable_template_refs: list~DeliverableTemplateRef~
+        +deliverable_template_refs: tuple~DeliverableTemplateRef~
         +add_template_ref(ref) RoleProfile
         +remove_template_ref(template_id) RoleProfile
-        +get_all_acceptance_criteria() list~AcceptanceCriterion~
+        +get_all_acceptance_criteria(lookup) list~AcceptanceCriterion~
     }
 
     class TemplateType {
@@ -206,11 +207,11 @@ classDiagram
 
 ### ユースケース 2: バージョン作成（create_new_version）
 
-1. application 層が `template.create_new_version(bump_type="minor")` を呼ぶ
+1. application 層が `template.create_new_version(new_version=SemVer(1, 3, 0))` を呼ぶ（呼び元が新 SemVer を計算して渡す）
 2. Aggregate 内:
-   - `bump_type` が "major" / "minor" / "patch" のいずれでもない場合、`kind='invalid_bump_type'` raise
-   - 現 `version` から bump_type に応じて新 `SemVer` を計算（major 増加時は minor=0 / patch=0 にリセット、minor 増加時は patch=0 にリセット）
-   - 新 `SemVer` で全属性をコピーした新 `DeliverableTemplate` を構築（`model_validate` 経由で不変条件再検査）
+   - `new_version` を `(new.major, new.minor, new.patch)` > `(cur.major, cur.minor, cur.patch)` の辞書的比較で検査
+   - 現バージョン以下の場合は `kind='version_not_greater'`（MSG-DT-003）を raise
+   - 検査通過後、全属性をコピーし `version=new_version` で新 `DeliverableTemplate` を `model_validate` 経由で構築（不変条件再検査）
 3. 新インスタンスを返す
 4. application 層が `DeliverableTemplateRepository.save(new_template)` を呼ぶ
 
@@ -220,9 +221,8 @@ classDiagram
 2. application 層が refs の各 `template_id` に対応する DeliverableTemplate が存在することを `DeliverableTemplateRepository.find_by_id()` で確認（参照整合性、application 層責務）
 3. application 層が refs を起点に完全な依存グラフを走査し循環参照の不在を確認（DAG 検査、application 層責務）
 4. Aggregate 内:
-   - `refs` に `self.id` が含まれないことを検査（自己参照禁止、`kind='self_reference'`）
-   - `refs` 内の `template_id` に重複がないことを検査（`kind='duplicate_ref'`）
-   - `composition=refs` で全属性をコピーした新 `DeliverableTemplate` を構築
+   - `refs` に `self.id` が含まれないことを検査（自己参照禁止、`kind='composition_self_ref'`）
+   - `composition=refs` で全属性をコピーした新 `DeliverableTemplate` を構築（`acceptance_criteria` は引き継がない、§確定B）
 5. 新インスタンスを返す
 
 ### ユースケース 4: RoleProfile 構築（RoleProfileService.create 経由）
@@ -256,11 +256,11 @@ sequenceDiagram
     participant RpRepo as RoleProfileRepository
 
     Note over Client,DtRepo: ユースケース 2: create_new_version（minor bump）
-    Client->>DtSvc: create_new_version(template_id, bump_type="minor")
+    Client->>DtSvc: create_new_version(template_id, new_version=SemVer(1,3,0))
     DtSvc->>DtRepo: find_by_id(template_id)
     DtRepo-->>DtSvc: template（version=1.2.3）
-    DtSvc->>DT: create_new_version(bump_type="minor")
-    DT->>DT: 新 SemVer 計算 → 1.3.0
+    DtSvc->>DT: create_new_version(new_version=SemVer(1,3,0))
+    DT->>DT: (1,3,0) > (1,2,3) の辞書的比較 → OK
     DT->>DT: model_validate で不変条件再検査
     DT-->>DtSvc: 新 DeliverableTemplate（version=1.3.0）
     DtSvc->>DtRepo: save(new_template)
@@ -299,33 +299,27 @@ sequenceDiagram
 
 | 例外種別 | 処理方針 | ユーザーへの通知 |
 |---------|---------|----------------|
-| `DeliverableTemplateInvariantViolation(kind='name_too_short' / 'name_too_long')` | application 層で catch、HTTP API 層で 422 Unprocessable Entity | MSG-DT-001 |
-| `DeliverableTemplateInvariantViolation(kind='description_too_long')` | application 層で catch、422 にマッピング | MSG-DT-002 |
-| `DeliverableTemplateInvariantViolation(kind='schema_not_dict_for_json_schema')` | application 層で catch、422 にマッピング | MSG-DT-003 |
-| `DeliverableTemplateInvariantViolation(kind='invalid_bump_type')` | application 層で catch、422 にマッピング | MSG-DT-004 |
-| `DeliverableTemplateInvariantViolation(kind='self_reference')` | application 層で catch、422 にマッピング | MSG-DT-005 |
-| `DeliverableTemplateInvariantViolation(kind='duplicate_ref')` | application 層で catch、422 にマッピング | MSG-DT-006 |
-| `DeliverableTemplateInvariantViolation(kind='circular_reference')` | application 層（DAG 走査）で検出・catch、422 にマッピング | MSG-DT-007 |
-| `RoleProfileInvariantViolation(kind='duplicate_template_ref')` | application 層で catch、409 Conflict | MSG-DT-008 |
-| `RoleProfileInvariantViolation(kind='template_ref_not_found')` | application 層で catch、404 Not Found | MSG-DT-009 |
+| `DeliverableTemplateInvariantViolation(kind='schema_format_invalid')` | application 層で catch、HTTP API 層で 422 Unprocessable Entity | MSG-DT-001 |
+| `DeliverableTemplateInvariantViolation(kind='composition_self_ref')` | application 層で catch、422 にマッピング | MSG-DT-002 |
+| `DeliverableTemplateInvariantViolation(kind='version_not_greater')` | application 層で catch、422 にマッピング | MSG-DT-003 |
+| `RoleProfileInvariantViolation(kind='duplicate_template_ref')` | application 層で catch、409 Conflict | MSG-DT-004 |
+| `RoleProfileInvariantViolation(kind='template_ref_not_found')` | application 層で catch、404 Not Found | MSG-DT-005 |
 | `pydantic.ValidationError` | application 層で catch、422 にマッピング | 汎用 Pydantic エラー |
 | その他 | 握り潰さない、application 層へ伝播 | 汎用エラーメッセージ |
+
+全例外の `detail` フィールドには機密情報を含めない（A09 ホワイトリスト制約。detailed-design.md §確定A09 参照）。
 
 全 `DeliverableTemplateInvariantViolation` / `RoleProfileInvariantViolation` は `[FAIL] ...` + `Next: ...` の 2 行構造（業務ルール、兄弟 feature 同パターン）。
 
 ## MSG 一覧（ID のみ、確定文言は detailed-design.md で凍結）
 
-| ID | 概要 | `kind` 値 |
-|----|-----|----------|
-| MSG-DT-001 | name 文字数違反 | `name_too_short` / `name_too_long` |
-| MSG-DT-002 | description 文字数違反 | `description_too_long` |
-| MSG-DT-003 | JSON_SCHEMA タイプで schema が dict でない | `schema_not_dict_for_json_schema` |
-| MSG-DT-004 | 無効な bump_type | `invalid_bump_type` |
-| MSG-DT-005 | compose 自己参照禁止違反 | `self_reference` |
-| MSG-DT-006 | compose 重複参照違反 | `duplicate_ref` |
-| MSG-DT-007 | compose 循環参照検出 | `circular_reference` |
-| MSG-DT-008 | add_template_ref 重複参照違反 | `duplicate_template_ref` |
-| MSG-DT-009 | remove_template_ref 参照未発見 | `template_ref_not_found` |
+| ID | 概要 | `kind` 値 | 例外型 |
+|----|-----|----------|-------|
+| MSG-DT-001 | JSON_SCHEMA/OPENAPI タイプで schema が無効な JSON Schema | `schema_format_invalid` | `DeliverableTemplateInvariantViolation` |
+| MSG-DT-002 | compose 自己参照禁止違反 | `composition_self_ref` | `DeliverableTemplateInvariantViolation` |
+| MSG-DT-003 | create_new_version で new_version が現バージョン以下 | `version_not_greater` | `DeliverableTemplateInvariantViolation` |
+| MSG-DT-004 | add_template_ref 重複参照違反 | `duplicate_template_ref` | `RoleProfileInvariantViolation` |
+| MSG-DT-005 | remove_template_ref 参照未発見 | `template_ref_not_found` | `RoleProfileInvariantViolation` |
 
 ## セキュリティ設計
 
@@ -336,7 +330,7 @@ sequenceDiagram
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|
 | **T1: schema フィールドへの任意データ混入** | TemplateType=MARKDOWN の DeliverableTemplate の schema フィールドに任意の dict を渡して解釈させる | テンプレートの型整合性 | TemplateType=JSON_SCHEMA 時のみ schema が dict であることを不変条件で強制。MARKDOWN / PROMPT 等の場合は str 型を期待し、Pydantic 型強制でガード |
-| **T2: 循環参照による無限ループ攻撃** | compose で相互参照するテンプレート群を登録 → application 層の DAG 走査で無限ループを誘発 | サービス可用性 | domain Aggregate は自己参照・重複参照の形式的不変条件のみ担保。application 層の DAG 走査はループ検出付きの深さ優先探索（訪問済みセット管理）で実施し、最大深さ制限を設ける（detailed-design.md で凍結） |
+| **T2: 循環参照による無限ループ攻撃** | compose で相互参照するテンプレート群を登録 → application 層の DAG 走査で無限ループを誘発 | サービス可用性 | domain Aggregate は自己参照の形式的不変条件（`composition_self_ref`）のみ担保。MVP ではシャロー解決のみ（§確定B）。推移的循環参照の完全 DAG 検査は Issue #117 スコープ |
 | **T3: SemVer 偽造によるバージョン互換性迂回** | major=0 / minor=INT_MAX のような極端な値で is_compatible_with を迂回 | バージョン互換性保証 | SemVer の各フィールドを 0 以上の整数に限定する不変条件（REQ-DT-006）で Pydantic 型強制。INT_MAX 等の攻撃は Python の int 型上限がないため許容するが、表示・永続化層で上限を設ける（repository sub-feature で凍結）|
 | **T4: acceptance_criteria.description への secret 混入** | LLM 出力の受入基準説明文に API key / webhook URL を含めて永続化 → ログ経由で漏洩 | API key / webhook token | Aggregate 内では raw 保持（domain 層責務外）。Repository 永続化前マスキング必須（repository sub-feature で実施）|
 
