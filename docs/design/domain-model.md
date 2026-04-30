@@ -60,7 +60,7 @@ classDiagram
         +kind: StageKind
         +required_role: frozenset~Role~
         +required_gate_roles: frozenset~GateRole~
-        +deliverable_template: str
+        +required_deliverables: list~DeliverableRequirement~
         +completion_policy: CompletionPolicy
     }
     class Transition {
@@ -134,9 +134,30 @@ classDiagram
         +status: OutboxStatus
         +attempt_count: int
     }
+    class DeliverableTemplate {
+        +id: DeliverableTemplateId
+        +name: str
+        +description: str
+        +type: TemplateType
+        +schema: dict | str
+        +acceptance_criteria: tuple~AcceptanceCriterion~
+        +version: SemVer
+        +composition: tuple~DeliverableTemplateRef~
+        +create_new_version(new_version) DeliverableTemplate
+        +compose(refs) DeliverableTemplate
+    }
+    class RoleProfile {
+        +id: RoleProfileId
+        +role: Role
+        +deliverable_template_refs: tuple~DeliverableTemplateRef~
+        +add_template_ref(ref) RoleProfile
+        +remove_template_ref(template_id) RoleProfile
+        +get_all_acceptance_criteria(lookup) list
+    }
 
     Empire "1" o-- "N" Room : owns
     Empire "1" o-- "N" Agent : employs
+    Empire "1" o-- "N" RoleProfile : defines
     Room "1" --> "1" Workflow : uses
     Room "1" o-- "N" AgentMembership : has
     Workflow "1" *-- "N" Stage : composed of
@@ -149,6 +170,8 @@ classDiagram
     Task ..> OutboxEvent : emits
     ExternalReviewGate ..> OutboxEvent : emits
     InternalReviewGate ..> OutboxEvent : emits
+    RoleProfile "1" --> "N" DeliverableTemplate : refs via DeliverableTemplateRef
+    Stage "1" --> "0..N" DeliverableTemplate : requires via DeliverableRequirement
 ```
 
 ## モジュール配置（提案）
@@ -168,6 +191,11 @@ backend/src/bakufu/
 │   │   ├── internal_review_gate.py
 │   │   ├── aggregate_validators.py
 │   │   └── state_machine.py
+│   ├── deliverable_template/    # DeliverableTemplate / RoleProfile Aggregate（Issue #115）
+│   │   ├── __init__.py
+│   │   ├── deliverable_template.py
+│   │   ├── role_profile.py
+│   │   └── invariant_validators.py
 │   ├── conversation.py          # Conversation Entity
 │   ├── value_objects.py         # 列挙型 / Value Object 共通
 │   ├── events.py                # Domain Event 定義

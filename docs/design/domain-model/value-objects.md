@@ -19,6 +19,8 @@
 | `MessageId` | UUID（VO） | Message の一意識別 |
 | `OwnerId` | UUID（VO） | Owner / Reviewer の一意識別 |
 | `EventId` | UUID（VO） | Domain Event の一意識別（Outbox 行 PK と一致） |
+| `DeliverableTemplateId` | UUID（VO） | DeliverableTemplate の一意識別 |
+| `RoleProfileId` | UUID（VO） | RoleProfile の一意識別 |
 
 ## 列挙型一覧
 
@@ -34,6 +36,7 @@
 | `OutboxStatus` | `PENDING` / `DISPATCHING` / `DISPATCHED` / `DEAD_LETTER` | Outbox 行の配送状態 |
 | `LLMErrorKind` | `SESSION_LOST` / `RATE_LIMITED` / `AUTH_EXPIRED` / `TIMEOUT` / `UNKNOWN` | LLM Adapter のエラー分類 |
 | `AuditAction` | `VIEWED` / `RETRIED` / `CANCELLED` / `APPROVED` / `REJECTED` / `ADMIN_RETRY_TASK` / `ADMIN_CANCEL_TASK` / `ADMIN_RETRY_EVENT` / `ADMIN_LIST_BLOCKED` / `ADMIN_LIST_DEAD_LETTERS` | 監査ログのアクション種別 |
+| `TemplateType` | `MARKDOWN` / `JSON_SCHEMA` / `OPENAPI` / `CODE_SKELETON` / `PROMPT` | DeliverableTemplate の種別 |
 
 ## Workflow 構成要素
 
@@ -140,3 +143,35 @@ Admin CLI 経由のすべての操作を `audit_log` に永続化する。詳細
 | `executed_at` | `datetime`（UTC） | — |
 
 `audit_log` は **追記のみ**。UPDATE / DELETE は禁止（Repository / SQL レベルで制約）。
+
+## DeliverableTemplate 構成要素
+
+### SemVer（Value Object）
+
+| 属性 | 型 | 制約 |
+|----|----|----|
+| `major` | `int` | >= 0 |
+| `minor` | `int` | >= 0 |
+| `patch` | `int` | >= 0 |
+
+- 文字列表現: `"{major}.{minor}.{patch}"`（例: `"1.2.3"`）
+- `is_compatible_with(other: SemVer) -> bool`: `self.major == other.major` のとき `True`（major が一致すれば後方互換とみなす）
+- 比較は `(major, minor, patch)` の辞書順（タプル比較）
+- `SemVer.parse(s: str) -> SemVer`: `"major.minor.patch"` 形式の文字列をパース。不正な書式は `[FAIL]` + `Next:` の形式でドメイン例外を raise
+
+### DeliverableTemplateRef（Value Object）
+
+| 属性 | 型 | 制約 |
+|----|----|----|
+| `template_id` | `DeliverableTemplateId` | 参照先テンプレートの一意識別 |
+| `minimum_version` | `SemVer` | 要求する最低互換バージョン（major が参照先の現行 major と一致すること） |
+
+- `minimum_version.is_compatible_with(actual_version)` が `False` の場合、参照解決時にドメイン例外を raise
+
+### AcceptanceCriterion（Value Object）
+
+| 属性 | 型 | 制約 |
+|----|----|----|
+| `id` | `UUID` | 不変。テンプレート内で一意 |
+| `description` | `str` | 1〜500 文字 |
+| `required` | `bool` | デフォルト `True`（必須受入基準か任意受入基準かを区別） |
