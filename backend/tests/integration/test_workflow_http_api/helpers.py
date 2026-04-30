@@ -71,7 +71,7 @@ def _minimal_stage_payload(stage_id: UUID | None = None) -> dict[str, object]:
         "required_role": ["DEVELOPER"],
         "completion_policy": None,
         "notify_channels": [],
-        "deliverable_template": "",
+        "required_deliverables": [],
     }
 
 
@@ -87,7 +87,7 @@ def _external_review_stage_payload(
         "required_role": ["REVIEWER"],
         "completion_policy": None,
         "notify_channels": [notify_url],
-        "deliverable_template": "",
+        "required_deliverables": [],
     }
 
 

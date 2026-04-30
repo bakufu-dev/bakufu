@@ -50,7 +50,7 @@ class StageCreate(BaseModel):
     required_role: list[str] = Field(min_length=1)
     completion_policy: dict[str, Any] | None = None
     notify_channels: list[str] = []
-    deliverable_template: str = ""
+    required_deliverables: list[dict[str, Any]] = []
 
     @field_validator("kind", mode="before")
     @classmethod
@@ -174,7 +174,7 @@ class StageResponse(BaseModel):
     required_role: list[str]
     completion_policy: dict[str, Any] | None
     notify_channels: list[str]
-    deliverable_template: str
+    required_deliverables: list[dict[str, Any]]
 
     @model_validator(mode="before")
     @classmethod
@@ -191,7 +191,11 @@ class StageResponse(BaseModel):
                 data.completion_policy.model_dump(mode="json") if data.completion_policy else None
             ),
             "notify_channels": [c.model_dump(mode="json")["target"] for c in data.notify_channels],
-            "deliverable_template": data.deliverable_template,
+            # Issue #117: required_deliverables は DeliverableRequirement の list。
+            # duck typing で model_dump を呼ぶ（domain import なし — Q-3）。
+            "required_deliverables": [
+                dr.model_dump(mode="json") for dr in data.required_deliverables
+            ],
         }
         return result
 

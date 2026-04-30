@@ -5,6 +5,7 @@
 - :class:`SemVer` — セマンティック バージョン（major.minor.patch）
 - :class:`DeliverableTemplateRef` — テンプレートへの参照（id + 最低バージョン）
 - :class:`AcceptanceCriterion` — 受け入れ基準の 1 項目
+- :class:`DeliverableRequirement` — Stage が要求する成果物テンプレート参照（ref + optional フラグ）
 """
 
 from __future__ import annotations
@@ -82,8 +83,25 @@ class AcceptanceCriterion(BaseModel):
     required: bool = True
 
 
+class DeliverableRequirement(BaseModel):
+    """Stage が要求する成果物テンプレート参照（Issue #117）。
+
+    ``template_ref`` は参照先成果物テンプレート、``optional`` は
+    ``False``（デフォルト）のとき必須成果物、``True`` のとき任意成果物を意味する。
+
+    重複チェックは呼び出し元（``Stage._check_self_invariants``）に委譲する。
+    本 VO は単純な immutable container として機能する。
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=False)
+
+    template_ref: DeliverableTemplateRef
+    optional: bool = False
+
+
 __all__ = [
     "AcceptanceCriterion",
+    "DeliverableRequirement",
     "DeliverableTemplateRef",
     "SemVer",
 ]

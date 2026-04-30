@@ -31,6 +31,7 @@ from weakref import WeakValueDictionary
 
 from bakufu.domain.value_objects import (
     CompletionPolicy,
+    DeliverableRequirement,
     NotifyChannel,
     Role,
     StageId,
@@ -98,7 +99,7 @@ def make_stage(
     name: str = "ステージ",
     kind: StageKind = StageKind.WORK,
     required_role: frozenset[Role] | None = None,
-    deliverable_template: str = "",
+    required_deliverables: tuple[DeliverableRequirement, ...] = (),
     completion_policy: CompletionPolicy | None = None,
     notify_channels: Sequence[NotifyChannel] | None = None,
 ) -> Stage:
@@ -107,6 +108,7 @@ def make_stage(
     デフォルトは ``kind=WORK`` + ``required_role={DEVELOPER}``。これで
     Stage の自己バリデータ (REQ-WF-007) が追加調整なしに通過する。
     EXTERNAL_REVIEW を使う呼び出し側は ``notify_channels`` を渡すこと。
+    ``required_deliverables`` は Issue #117 で追加された成果物要件タプル。
     """
     if required_role is None:
         required_role = frozenset({Role.DEVELOPER})
@@ -120,7 +122,7 @@ def make_stage(
         name=name,
         kind=kind,
         required_role=required_role,
-        deliverable_template=deliverable_template,
+        required_deliverables=required_deliverables,
         completion_policy=completion_policy,
         notify_channels=list(notify_channels),
     )
@@ -229,7 +231,7 @@ def build_v_model_payload() -> dict[str, object]:
             "name": stage_name,
             "kind": stage_kind.value,
             "required_role": [role.value for role in role_set],
-            "deliverable_template": "",
+            "required_deliverables": [],
             "completion_policy": {
                 "kind": "approved_by_reviewer",
                 "description": f"{stage_name} 完了判定",

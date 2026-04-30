@@ -55,6 +55,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bakufu.domain.value_objects import (
     CompletionPolicy,
+    DeliverableRequirement,
     NotifyChannel,
     Role,
     StageKind,
@@ -193,7 +194,11 @@ class SqliteWorkflowRepository:
                 # §確定 G: ソート済み CSV。``sorted(..., key=str)`` により Python の
                 # frozenset がどんな順序で反復しようとバイト等価性のコントラクトを保つ。
                 "roles_csv": ",".join(sorted(role.value for role in stage.required_role)),
-                "deliverable_template": stage.deliverable_template,
+                # §確定 C（Issue #117）: DeliverableRequirement を model_dump(mode='json') で
+                # list[dict] に変換。JSONEncoded TypeDecorator が json.dumps で永続化する。
+                "required_deliverables_json": [
+                    dr.model_dump(mode="json") for dr in stage.required_deliverables
+                ],
                 # §確定 I: 通常の JSONEncoded。``model_dump(mode='json')`` は
                 # ``{'kind': ..., 'description': ...}`` を返す。
                 "completion_policy_json": stage.completion_policy.model_dump(mode="json"),
@@ -255,6 +260,15 @@ class SqliteWorkflowRepository:
         # が ``ValueError`` を送出し、Aggregate の StageInvariantViolation 経路が
         # ダウンストリームで引き継ぐ（Fail-Fast）。
         roles = frozenset(Role(token) for token in row.roles_csv.split(","))
+        # §確定 C（Issue #117）: json.loads → list[dict] →
+        # DeliverableRequirement.model_validate 経由で復元（生 dict 直渡し禁止）。
+        deliverable_payloads = cast(
+            "list[dict[str, Any]]",
+            row.required_deliverables_json or [],
+        )
+        required_deliverables = tuple(
+            DeliverableRequirement.model_validate(d) for d in deliverable_payloads
+        )
         completion_policy = CompletionPolicy.model_validate(row.completion_policy_json)
         # §確定 H §不可逆性: NotifyChannel.model_validate は、保存時に ``target``
         # フィールドが伏字化されているため例外を送出することがある。例外が
@@ -269,7 +283,7 @@ class SqliteWorkflowRepository:
             name=row.name,
             kind=StageKind(row.kind),
             required_role=roles,
-            deliverable_template=row.deliverable_template,
+            required_deliverables=required_deliverables,
             completion_policy=completion_policy,
             notify_channels=notify_channels,
         )

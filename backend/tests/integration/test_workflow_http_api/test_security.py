@@ -34,7 +34,7 @@ class TestCsrfProtection:
                         "kind": "WORK",
                         "required_role": ["DEVELOPER"],
                         "notify_channels": [],
-                        "deliverable_template": "",
+                        "required_deliverables": [],
                     }
                 ],
                 "transitions": [],

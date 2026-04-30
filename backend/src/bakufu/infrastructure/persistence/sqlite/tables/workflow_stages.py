@@ -25,8 +25,10 @@
   Schneier 申し送り #6 の 6 カテゴリ スキャンに照らしてもシークレット保持値を
   持たないため、``MaskedJSONEncoded`` だと **過剰マスキング**（詳細設計 §確定 I
   で禁止）になる。
-* 残りのカラムは UUID / enum / CEO 著作の Markdown テンプレートを保持し、6 つの
-  マスキング カテゴリには該当しない。
+* ``required_deliverables_json`` は通常の :class:`JSONEncoded` カラム（Issue #117）。
+  ``DeliverableRequirement`` は ``template_ref``（UUID + SemVer）と ``optional``（bool）
+  のみを保持し、シークレット値を含まないため ``MaskedJSONEncoded`` だと過剰マスキング。
+* 残りのカラムは UUID / enum を保持し、6 つのマスキング カテゴリには該当しない。
 
 CI 3 層防御は本テーブル上の ``MaskedJSONEncoded`` カラム数を厳密に 1 個に固定する
 （``notify_channels_json`` への positive コントラクト、その他全カラムは no-mask）。
@@ -37,7 +39,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from bakufu.infrastructure.persistence.sqlite.base import (
@@ -63,11 +65,10 @@ class WorkflowStageRow(Base):
     name: Mapped[str] = mapped_column(String(80), nullable=False)
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     roles_csv: Mapped[str] = mapped_column(String(255), nullable=False)
-    deliverable_template: Mapped[str] = mapped_column(
-        Text,
-        nullable=False,
-        default="",
-    )
+    # §確定 C（Issue #117）: json.loads → list[dict] →
+    # DeliverableRequirement.model_validate 経由で復元。
+    # DEFAULT '[]' は 0011_stage_required_deliverables.py の server_default で強制。
+    required_deliverables_json: Mapped[Any] = mapped_column(JSONEncoded, nullable=False)
     completion_policy_json: Mapped[Any] = mapped_column(JSONEncoded, nullable=False)
     # デフォルト ``[]`` は 0003_workflow_aggregate.py の ``server_default`` で SQL
     # レベルにおいて強制される。Repository が常に明示的なリストを渡すため、

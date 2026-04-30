@@ -172,7 +172,7 @@ class TestExternalReviewNotify:
             name=good.name,
             kind=StageKind.EXTERNAL_REVIEW,
             required_role=good.required_role,
-            deliverable_template=good.deliverable_template,
+            required_deliverables=good.required_deliverables,
             completion_policy=good.completion_policy,
             notify_channels=[],
         )
@@ -211,7 +211,7 @@ class TestRequiredRoleNonEmpty:
             name=good.name,
             kind=StageKind.WORK,
             required_role=frozenset(),
-            deliverable_template=good.deliverable_template,
+            required_deliverables=good.required_deliverables,
             completion_policy=good.completion_policy,
             notify_channels=[],
         )

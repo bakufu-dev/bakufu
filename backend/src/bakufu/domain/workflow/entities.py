@@ -29,6 +29,8 @@ from pydantic import (
 from bakufu.domain.exceptions import StageInvariantViolation
 from bakufu.domain.value_objects import (
     CompletionPolicy,
+    DeliverableRequirement,
+    DeliverableTemplateId,
     NotifyChannel,
     Role,
     StageId,
@@ -60,7 +62,7 @@ class Stage(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     kind: StageKind
     required_role: frozenset[Role]
-    deliverable_template: str = Field(default="", max_length=10_000)
+    required_deliverables: tuple[DeliverableRequirement, ...] = ()
     completion_policy: CompletionPolicy
     notify_channels: list[NotifyChannel] = []
 
@@ -88,6 +90,20 @@ class Stage(BaseModel):
                 ),
                 detail={"stage_id": str(self.id)},
             )
+        # REQ-WF-007-③ required_deliverables 内の template_id 重複不可（MSG-WF-013 / Issue #117）。
+        seen_template_ids: set[DeliverableTemplateId] = set()
+        for dr in self.required_deliverables:
+            tid: DeliverableTemplateId = dr.template_ref.template_id
+            if tid in seen_template_ids:
+                raise StageInvariantViolation(
+                    kind="duplicate_required_deliverable",
+                    message=(
+                        f"[FAIL] Stage {self.id} required_deliverables "
+                        f"has duplicate template_id: {tid}"
+                    ),
+                    detail={"stage_id": str(self.id), "template_id": str(tid)},
+                )
+            seen_template_ids.add(tid)
         return self
 
 
