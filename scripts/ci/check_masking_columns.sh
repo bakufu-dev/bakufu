@@ -108,6 +108,11 @@ readonly NO_MASK_FILES=(
     # PARTIAL_MASK_FILES (masked columns: snapshot_body_markdown + feedback_text
     # and comment respectively).
     "${TABLES_DIR}/external_review_gate_attachments.py"
+    # DeliverableTemplate Repository (Issue #119, deliverable-template §確定 §13
+    # 業務判断): template metadata / role profile carry no Schneier #6 secret
+    # categories. MaskedJSONEncoded / MaskedText are absent by design.
+    "${TABLES_DIR}/deliverable_templates.py"
+    "${TABLES_DIR}/role_profiles.py"
 )
 
 for file in "${NO_MASK_FILES[@]}"; do
