@@ -99,7 +99,7 @@ backend/
 | 項目 | 内容 |
 |---|---|
 | 入力 | パスパラメータ `id: UUID` / リクエスト Body `GateReject`（`feedback_text: str`（**必須**、1〜10000 文字））/ `Authorization: Bearer <reviewer_owner_id>` ヘッダー |
-| 処理 | REQ-ERG-HTTP-004 と同構造。`gate.reject(by_owner_id, feedback_text=body.feedback_text, decided_at=utcnow())` を呼び出す。`feedback_text` が空文字列の場合は Pydantic バリデーションで 422 を返す（reject は差し戻し理由が業務的に必須）|
+| 処理 | REQ-ERG-HTTP-004 と同構造。`gate.reject(by_owner_id, comment=body.feedback_text, decided_at=utcnow())` を呼び出す（domain の引数名は `comment`、Schema フィールド名 `feedback_text` と区別）。`feedback_text` が空文字列の場合は Pydantic バリデーションで 422 を返す（reject は差し戻し理由が業務的に必須）|
 | 出力 | HTTP 200, `GateDetailResponse`（decision=REJECTED）|
 | エラー時 | 不在 → 404 / Authorization ヘッダー不正 → 422 / reviewer 不一致 → 403 / 既決定 → 409 / feedback_text 空または超過 → 422 / 不正 UUID → 422 |
 
@@ -262,18 +262,19 @@ classDiagram
 ### ユースケース 4: Gate 承認（POST /api/gates/{id}/approve）
 
 1. Router が `id: UUID` + `GateApprove` を受け取る。`Authorization: Bearer <owner_id>` ヘッダーから `reviewer_owner_id` を抽出（`get_reviewer_id()` Depends — 不正形式 → 422）
-2. Router → `ExternalReviewGateService.find_by_id_or_raise(gate_id)` → 不在 → `GateNotFoundError` → 404
-3. Router → `ExternalReviewGateService.approve(gate, reviewer_owner_id, comment, decided_at)` を呼び出す。**reviewer_id 照合は Service 内で実行する（照合責務の凍結: Router ではなく Service）**:
+2. **Router が `async with session.begin():` を開始する。以下 3〜5 はその内側で実行する（§確定E — autobegin 問題の回避）**
+3. `ExternalReviewGateService.find_by_id_or_raise(gate_id)` → 不在 → `GateNotFoundError` → 404
+4. `ExternalReviewGateService.approve(gate, reviewer_owner_id, comment, decided_at)` を呼び出す。**reviewer_id 照合は Service 内で実行する（照合責務の凍結: Router ではなく Service）**:
    - `gate.reviewer_id != reviewer_owner_id` → `GateAuthorizationError` → 403
    - `gate.approve(by_owner_id=reviewer_owner_id, comment=body.comment, decided_at=utcnow())`
      - `ExternalReviewGateInvariantViolation(kind='decision_already_decided')` → `GateAlreadyDecidedError` → 409
      - `ExternalReviewGateInvariantViolation(kind='feedback_text_range')` → 422
-4. `ExternalReviewGateRepository.save(updated_gate)` — Router が `async with session.begin()` 内で呼ぶ（§確定E）
-5. HTTP 200 `GateDetailResponse`（decision=APPROVED）を返す
+5. `ExternalReviewGateService.save(updated_gate)` — Router が Session.begin() 内で呼ぶ（§確定E）。Service が Repository.save() に委譲
+6. HTTP 200 `GateDetailResponse`（decision=APPROVED）を返す
 
 ### ユースケース 5: Gate 差し戻し（POST /api/gates/{id}/reject）
 
-1. ユースケース 4 と同構造。`GateReject` を受け取り `gate.reject(by_owner_id, feedback_text=body.feedback_text, decided_at=utcnow())` を呼び出す
+1. ユースケース 4 と同構造。`GateReject` を受け取り `gate.reject(by_owner_id, comment=body.feedback_text, decided_at=utcnow())` を呼び出す（domain の引数名は `comment`）
 2. `feedback_text` は Pydantic で 1 文字以上（空文字不可）を検証 → 空の場合 422
 3. HTTP 200 `GateDetailResponse`（decision=REJECTED）を返す
 
@@ -306,6 +307,7 @@ sequenceDiagram
     end
     Dep-->>Router: reviewer_owner_id: OwnerId
 
+    Note over Router,Repo: async with session.begin(): — 以下はUoW内（§確定E）
     Router->>Svc: find_by_id_or_raise(gate_id)
     Svc->>Repo: find_by_id(gate_id)
     alt Gate 不在
@@ -331,8 +333,12 @@ sequenceDiagram
     Dom-->>Svc: ExternalReviewGate(APPROVED)
     Svc-->>Router: ExternalReviewGate(APPROVED)
 
-    Router->>Repo: save(updated_gate)（async with session.begin()）
-    Repo-->>Router: None
+    Router->>Svc: save(updated_gate)
+    Svc->>Repo: save(updated_gate)（薄委譲）
+    Repo-->>Svc: None
+    Svc-->>Router: None
+    Note over Router,Repo: session.begin() commit（UoW終端）
+
     Router-->>Client: 200 OK + GateDetailResponse(decision=APPROVED)
 ```
 
