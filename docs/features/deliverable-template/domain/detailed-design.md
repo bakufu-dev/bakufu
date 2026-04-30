@@ -374,7 +374,7 @@ MVP では domain Aggregate が検出する循環参照は **自己参照のみ*
 
 | ファイル | 内容 | 備考 |
 |---|---|---|
-| `domain/deliverable_template/__init__.py` | `DeliverableTemplate` Aggregate Root | frozen Pydantic v2 model、4 不変条件、2 ふるまい |
+| `domain/deliverable_template/__init__.py` | `DeliverableTemplate` Aggregate Root | frozen Pydantic v2 model、5 不変条件、2 ふるまい |
 | `domain/role_profile/__init__.py` | `RoleProfile` Aggregate Root | frozen Pydantic v2 model、1 不変条件、3 ふるまい |
 | `domain/value_objects.py`（既存更新）| `SemVer` / `DeliverableTemplateRef` / `AcceptanceCriterion` / `TemplateType` 追加 | 既存 VO ファイルへの追記 |
 | `domain/exceptions.py`（既存更新）| `DeliverableTemplateInvariantViolation` / `RoleProfileInvariantViolation` 追加 | 既存例外ファイルへの追記、他 Aggregate 例外と統一フォーマット |
@@ -384,7 +384,7 @@ MVP では domain Aggregate が検出する循環参照は **自己参照のみ*
 ### `domain/deliverable_template/__init__.py` の実装要点
 
 - Pydantic `model_config = ConfigDict(frozen=True, extra='forbid', arbitrary_types_allowed=False)`
-- `model_validator(mode='after')` で 4 不変条件を順序通り実行
+- `model_validator(mode='after')` で 5 不変条件を順序通り実行
 - `AbstractJSONSchemaValidator` は DI 経由（コンストラクタ引数 or module-level デフォルト実装）
 - `create_new_version` / `compose` はともに `model_validate` 経由（pre-validate）
 
@@ -409,7 +409,7 @@ MVP では domain Aggregate が検出する循環参照は **自己参照のみ*
 | テストファイル | 責務 |
 |---|---|
 | `test_deliverable_template/test_construction.py` | `DeliverableTemplate` 構築 + Pydantic 型検査 + frozen + extra='forbid' + `TemplateType` 5 値 |
-| `test_deliverable_template/test_invariants.py` | 4 不変条件 helper（schema_format / composition_self_ref / version_non_negative / criteria_descriptions）+ MSG 文言照合 + Next: hint 物理保証 |
+| `test_deliverable_template/test_invariants.py` | 5 不変条件 helper（schema_format / composition_self_ref / version_non_negative / criteria_descriptions / acceptance_criteria_no_duplicate_ids）+ MSG 文言照合 + Next: hint 物理保証 |
 | `test_deliverable_template/test_behaviors.py` | `create_new_version`（正常系・version 比較境界値）+ `compose`（正常系・自己参照 NG・criteria 引き継ぎなし確認）|
 | `test_role_profile/test_construction.py` | `RoleProfile` 構築 + Pydantic 型検査 + frozen + extra='forbid' |
 | `test_role_profile/test_behaviors.py` | `add_template_ref`（正常系・重複 NG）+ `remove_template_ref`（正常系・未発見 NG）+ `get_all_acceptance_criteria`（union / 重複排除 / required 優先順）|

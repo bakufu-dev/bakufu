@@ -8,12 +8,12 @@
 
 | 要件ID | 概要 | 入力 | 処理 | 出力 | エラー時 | 親 spec 参照 |
 |--------|------|------|------|------|---------|-------------|
-| REQ-DT-001 | DeliverableTemplate 構築 | id / name（1〜80文字）/ description（0〜500文字）/ type（TemplateType）/ schema（dict または str）/ acceptance_criteria（list[AcceptanceCriterion]）/ version（SemVer）/ composition（list[DeliverableTemplateRef]）| Pydantic 型バリデーション → model_validator で不変条件検査（①name 文字数 ②description 文字数 ③TemplateType=JSON_SCHEMA 時の schema が dict であること ④SemVer の各フィールドが 0 以上の整数 ⑤AcceptanceCriterion.description が 1 文字以上 ⑥composition の循環参照非存在）| valid な DeliverableTemplate インスタンス | 型違反: `pydantic.ValidationError` / 不変条件違反: `DeliverableTemplateInvariantViolation` | §9 AC#1, 2 |
+| REQ-DT-001 | DeliverableTemplate 構築 | id / name（1〜80文字）/ description（0〜500文字）/ type（TemplateType）/ schema（dict または str）/ acceptance_criteria（tuple[AcceptanceCriterion, ...]）/ version（SemVer）/ composition（tuple[DeliverableTemplateRef, ...]）| Pydantic 型バリデーション → model_validator で不変条件検査（①name 文字数 ②description 文字数 ③TemplateType=JSON_SCHEMA 時の schema が dict であること ④SemVer の各フィールドが 0 以上の整数 ⑤AcceptanceCriterion.description が 1 文字以上 ⑥composition の自己参照非存在（`_validate_composition_no_self_ref`））| valid な DeliverableTemplate インスタンス | 型違反: `pydantic.ValidationError` / 不変条件違反: `DeliverableTemplateInvariantViolation` | §9 AC#1, 2 |
 | REQ-DT-002 | バージョン作成（create_new_version）| 現 DeliverableTemplate + new_version（SemVer）| 新 SemVer が現バージョンより大きいことを検査（(new.major, new.minor, new.patch) > (cur.major, cur.minor, cur.patch) の辞書的比較）→ 全属性をコピーし version のみ更新した新 DeliverableTemplate を model_validate 経由で構築 | 新 DeliverableTemplate インスタンス（version のみ更新、その他属性は引き継ぎ） | `DeliverableTemplateInvariantViolation(kind='version_not_greater')` | §9 AC#4 |
 | REQ-DT-003 | テンプレート合成（compose）| 現 DeliverableTemplate + refs（tuple[DeliverableTemplateRef, ...]）| ①refs の各 template_id が現 DeliverableTemplate の id と異なること（自己参照検出）を不変条件 `_validate_composition_no_self_ref` で担保 ②推移的循環参照の検出は application 層責務（MVP では Issue #117 スコープ）③`acceptance_criteria` は引き継がない（§確定B）→ composition を refs で置換した新インスタンスを model_validate 経由で構築 | 新 DeliverableTemplate インスタンス（composition 更新、acceptance_criteria は引き継がれない） | `DeliverableTemplateInvariantViolation(kind='composition_self_ref')` | §9 AC#5, 6 |
-| REQ-DT-004 | RoleProfile 構築 | id / role（Role StrEnum）/ deliverable_template_refs（list[DeliverableTemplateRef]）| Pydantic 型バリデーション → model_validator で不変条件検査（①deliverable_template_refs 内の template_id 重複なし ②各 DeliverableTemplateRef の minimum_version が有効な SemVer）| valid な RoleProfile インスタンス | `RoleProfileInvariantViolation` | §9 AC#5 |
+| REQ-DT-004 | RoleProfile 構築 | id / empire_id（EmpireId）/ role（Role StrEnum）/ deliverable_template_refs（tuple[DeliverableTemplateRef, ...]）| Pydantic 型バリデーション → model_validator で不変条件検査（①deliverable_template_refs 内の template_id 重複なし ②各 DeliverableTemplateRef の minimum_version が有効な SemVer）| valid な RoleProfile インスタンス | `RoleProfileInvariantViolation` | §9 AC#5 |
 | REQ-DT-005 | テンプレート参照追加・削除（add_template_ref / remove_template_ref）| add: RoleProfile + ref（DeliverableTemplateRef）/ remove: RoleProfile + template_id（DeliverableTemplateId）| add: ①既存 deliverable_template_refs に同一 template_id が存在しないことを検査 → refs に追加した新リストで RoleProfile 再構築 / remove: ①指定 template_id が deliverable_template_refs に存在することを検査 → 該当 ref を除いた新リストで RoleProfile 再構築 | 新 RoleProfile インスタンス | add: `RoleProfileInvariantViolation(kind='duplicate_template_ref')` / remove: `RoleProfileInvariantViolation(kind='template_ref_not_found')` | §9 AC#6, 7 |
-| REQ-DT-006 | 不変条件検査（各 Aggregate・VO 共通）| 各 Aggregate / VO の現状属性 | ①DeliverableTemplate: name 1〜80 文字 / description 0〜500 文字 / TemplateType=JSON_SCHEMA 時は schema が dict / SemVer 各フィールド非負整数 / AcceptanceCriterion.description 1〜500 文字 / composition DAG（自己参照・重複参照禁止） ②RoleProfile: deliverable_template_refs の template_id 重複なし ③SemVer: major / minor / patch が 0 以上の整数 ④AcceptanceCriterion: description が 1 文字以上 500 文字以下 | None（検査通過） | `DeliverableTemplateInvariantViolation` または `RoleProfileInvariantViolation`（kind で違反種別識別） | §9 AC#2, 4, 5 |
+| REQ-DT-006 | 不変条件検査（各 Aggregate・VO 共通）| 各 Aggregate / VO の現状属性 | ①DeliverableTemplate: name 1〜80 文字 / description 0〜500 文字 / TemplateType=JSON_SCHEMA 時は schema が dict / SemVer 各フィールド非負整数 / AcceptanceCriterion.description 1〜500 文字 / AcceptanceCriterion.id 重複なし / composition の自己参照なし（`_validate_composition_no_self_ref`） ②RoleProfile: deliverable_template_refs の template_id 重複なし ③SemVer: major / minor / patch が 0 以上の整数 ④AcceptanceCriterion: description が 1 文字以上 500 文字以下 | None（検査通過） | `DeliverableTemplateInvariantViolation` または `RoleProfileInvariantViolation`（kind で違反種別識別） | §9 AC#2, 4, 5 |
 
 ## 記述ルール（必ず守ること）
 
@@ -63,7 +63,7 @@
 │                   ├── __init__.py
 │                   ├── test_construction.py       # DeliverableTemplate 構築 + 不変条件
 │                   ├── test_versioning.py         # create_new_version bump_type 全パターン
-│                   ├── test_composition.py        # compose 正常系 + 自己参照 / 重複参照 異常系
+│                   ├── test_composition.py        # compose 正常系 + 自己参照 異常系 / §確定B: acceptance_criteria 非継承確認
 │                   ├── test_role_profile.py       # RoleProfile 構築 + add / remove ふるまい
 │                   └── test_value_objects.py      # SemVer / DeliverableTemplateRef / AcceptanceCriterion VO
 └── docs/
@@ -170,7 +170,7 @@ classDiagram
 - `SemVer` / `DeliverableTemplateRef` / `AcceptanceCriterion` の 3 VO はすべて frozen（Pydantic v2 `model_config.frozen=True`）
 - `SemVer.is_compatible_with(other)` は「major バージョンが一致するか」を純粋関数として実装
 - `TemplateType=JSON_SCHEMA` 時の `schema` 型検証（dict であること）は `invariant_validators.py` の helper 関数として独立
-- 循環参照 DAG 検査の完全な実施（他の DeliverableTemplate インスタンスとの関係検査）は **application 層責務**。domain Aggregate は自己参照・重複参照の形式的不変条件のみ担保する
+- 循環参照（推移的）DAG 検査の完全な実施は **application 層責務**（Issue #117 スコープ）。domain Aggregate は自己参照の形式的不変条件（`_validate_composition_no_self_ref`）のみ担保する
 - `Role` enum は **既存の StrEnum を参照するのみ**（本 feature では新規定義しない）
 - `get_all_acceptance_criteria()` は `deliverable_template_refs` を展開するためのふるまいであり、参照先 DeliverableTemplate の実体解決は **application 層責務**（domain 層は ref の構造のみ保持）
 - `DeliverableTemplateId` / `RoleProfileId` の参照整合性は **application 層責務**（Aggregate 内では参照のみ保持）
@@ -202,7 +202,7 @@ classDiagram
 2. `type=JSON_SCHEMA` の場合、`schema` が dict 型であることを application 層で事前確認（domain 層でも不変条件として二重検査）
 3. `composition` に自己参照が含まれないことを application 層で確認（自己の id はまだ未生成のため、application 層で uuid4() を先行生成して検査）
 4. `DeliverableTemplate(id=uuid4(), name=name, ..., version=SemVer(major=0, minor=1, patch=0), composition=composition)` を構築
-5. Pydantic 型バリデーション → `model_validator(mode='after')` で REQ-DT-006 の不変条件 6 種が走る
+5. Pydantic 型バリデーション → `model_validator(mode='after')` で REQ-DT-006 の不変条件 5 種が走る
 6. valid なら `DeliverableTemplateRepository.save(template)`（後続 repository sub-feature）
 
 ### ユースケース 2: バージョン作成（create_new_version）
@@ -274,8 +274,7 @@ sequenceDiagram
     DtRepo-->>DtSvc: 参照先 templates（存在確認）
     DtSvc->>DtSvc: DAG 走査（循環参照検出、application 層責務）
     DtSvc->>DT: compose(refs)
-    DT->>DT: 自己参照チェック → OK
-    DT->>DT: 重複参照チェック → OK
+    DT->>DT: 自己参照チェック（_validate_composition_no_self_ref）→ OK
     DT->>DT: model_validate で不変条件再検査
     DT-->>DtSvc: 新 DeliverableTemplate（composition 更新）
     DtSvc->>DtRepo: save(new_template)
@@ -341,11 +340,11 @@ sequenceDiagram
 | A01 | Broken Access Control | 該当なし（domain 層。アクセス制御は application 層責務）|
 | A02 | Cryptographic Failures | **適用**: `acceptance_criteria[*].description` / `schema` の永続化前マスキング（後続 repository sub-feature で配線）|
 | A03 | Injection | **適用**: Pydantic 型強制 + TemplateType StrEnum による列挙値制限 + name / description の文字数バリデーション |
-| A04 | Insecure Design | **適用**: pre-validate 方式 / frozen model / DAG 検査（application 層）/ 6 種不変条件の多重防衛 |
+| A04 | Insecure Design | **適用**: pre-validate 方式 / frozen model / DAG 検査（application 層）/ 5 種不変条件の多重防衛 |
 | A05 | Security Misconfiguration | 該当なし（domain 層）|
 | A06 | Vulnerable and Outdated Components | Pydantic v2 / pyright（`dev-workflow/audit` ジョブで横断管理）|
 | A07 | Auth Failures | 該当なし（domain 層。認証・認可は application 層責務）|
-| A08 | Data Integrity Failures | **適用**: frozen model / pre-validate / 自己参照・重複参照・型整合性の不変条件による多重防衛 |
+| A08 | Data Integrity Failures | **適用**: frozen model / pre-validate / composition 自己参照・RoleProfile refs 重複・AcceptanceCriterion id 重複・型整合性の 5 種不変条件による多重防衛 |
 | A09 | Logging Failures | **適用**: `DeliverableTemplateInvariantViolation` / `RoleProfileInvariantViolation` の例外ログに secret が混入しないよう、acceptance_criteria.description 等は長さ情報のみを detail に含める（detailed-design.md で凍結）|
 | A10 | SSRF | 該当なし（domain 層は外部 HTTP リクエストを一切発行しない）|
 
@@ -382,7 +381,9 @@ erDiagram
     }
     ROLE_PROFILES {
         UUIDStr id PK
+        UUIDStr empire_id FK "empires.id（§確定D: empire-scope 一意性の基盤）"
         String role "Role StrEnum（既存 enum）"
+        %% UNIQUE(empire_id, role) — repository sub-feature で DB 一意制約として実装（§確定D）
     }
     ROLE_PROFILE_TEMPLATE_REFS {
         UUIDStr profile_id FK

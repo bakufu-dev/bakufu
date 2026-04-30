@@ -258,7 +258,7 @@ backend/
         test_deliverable_template/      # 3 ファイル分割
           __init__.py
           test_construction.py          # TC-UT-DT-001〜007, TC-UT-DT-017（構築 + frozen + extra='forbid' + 型違反）
-          test_invariants.py            # TC-UT-DT-008〜016b, TC-UT-MSG-001〜005（不変条件 4 種 + MSG 2 行構造）
+          test_invariants.py            # TC-UT-DT-008〜016c, TC-UT-MSG-001〜005, TC-UT-A09-001〜003（不変条件 5 種 + MSG 2 行構造 + A09 detail ホワイトリスト）
           test_behaviors.py             # TC-UT-DT-018〜025（create_new_version + compose）
         test_role_profile/              # 2 ファイル分割
           __init__.py
