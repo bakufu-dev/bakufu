@@ -48,7 +48,7 @@
 | `name` | `str` | 1〜80 文字（例: "要求分析"、"基本設計"、"実装"、"外部レビュー"） |
 | `kind` | `StageKind` | `WORK` / `INTERNAL_REVIEW` / `EXTERNAL_REVIEW` |
 | `required_role` | `frozenset[Role]` | この Stage を担当する Role の集合。**空集合は不可（最低 1 件）**。複数役割の協業を表現できる（例: `{LEADER, UX}`） |
-| `deliverable_template` | `str` | Markdown テンプレ（成果物の形式） |
+| `required_deliverables` | `tuple[DeliverableRequirement, ...]` | この Stage で期待される成果物要件のリスト（空 tuple 許容）。`DeliverableRequirement.template_ref.template_id` は重複不可 |
 | `completion_policy` | `CompletionPolicy`（VO） | 完了判定ロジック（例: "approved by reviewer" / "all checklist items checked"） |
 | `notify_channels` | `List[NotifyChannel]` | `EXTERNAL_REVIEW` のときのみ必須。Discord / Slack / Email 等の通知先 |
 
@@ -175,3 +175,14 @@ Admin CLI 経由のすべての操作を `audit_log` に永続化する。詳細
 | `id` | `UUID` | 不変。テンプレート内で一意 |
 | `description` | `str` | 1〜500 文字 |
 | `required` | `bool` | デフォルト `True`（必須受入基準か任意受入基準かを区別） |
+
+### DeliverableRequirement（Value Object）
+
+| 属性 | 型 | 制約 |
+|----|----|----|
+| `template_ref` | `DeliverableTemplateRef` | 参照先成果物テンプレート（`template_id` + `minimum_version`） |
+| `optional` | `bool` | `False` のとき必須成果物、`True` のとき任意成果物（デフォルト `False`） |
+
+- Stage 内の `required_deliverables` は `template_ref.template_id` の重複を禁止する（Stage 自身の不変条件で検査、詳細は [`docs/features/workflow/domain/basic-design.md §REQ-WF-007`](../../features/workflow/domain/basic-design.md)）
+- `optional=False` の成果物は Task 完了前に提出が期待される（application 層の責務）
+- `DeliverableTemplateRef` の `minimum_version` によりバージョン互換性を保証する（`SemVer.is_compatible_with` 経由）
