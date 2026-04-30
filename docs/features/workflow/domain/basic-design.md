@@ -74,9 +74,9 @@
 | 項目 | 内容 |
 |------|------|
 | 入力 | Stage インスタンス |
-| 処理 | `model_validator(mode='after')` で: ①`required_role` が空集合でない ②`EXTERNAL_REVIEW` の場合 `notify_channels` を持つ ③`required_gate_roles` の各要素が slug 形式（1〜40 文字小文字英数字ハイフン、数字先頭禁止）を充足する |
+| 処理 | `model_validator(mode='after')` で: ①`required_role` が空集合でない ②`EXTERNAL_REVIEW` の場合 `notify_channels` を持つ ③`required_gate_roles` の各要素が slug 形式（1〜40 文字小文字英数字ハイフン、数字先頭禁止）を充足する ④`required_deliverables` 内の `template_ref.template_id` が重複していない |
 | 出力 | None |
-| エラー時 | `StageInvariantViolation`（`WorkflowInvariantViolation` のサブクラス） |
+| エラー時 | `StageInvariantViolation`（`WorkflowInvariantViolation` のサブクラス）。④違反時は `kind='duplicate_required_deliverable'` |
 
 ### REQ-WF-008: Stage の内部レビュー GateRole 設定
 
@@ -98,7 +98,7 @@
 | REQ-WF-001, 003 | `Transition` Entity | 同上 | Transition の属性 |
 | REQ-WF-005 | DAG 検査ユーティリティ | 同上（Workflow 内 private 関数） | BFS 到達可能性検査・終端 Stage 検出 |
 | REQ-WF-001 | `WorkflowInvariantViolation` / `StageInvariantViolation` | `backend/src/bakufu/domain/exceptions.py`（既存ファイル更新） | ドメイン例外 |
-| 共通 | ID 型 / 列挙型 / VO（`StageKind` / `TransitionCondition` / `Role` / `CompletionPolicy` / `NotifyChannel` / `GateRole`） | `backend/src/bakufu/domain/value_objects.py`（既存ファイル更新） | GateRole 型を追加 |
+| 共通 | ID 型 / 列挙型 / VO（`StageKind` / `TransitionCondition` / `Role` / `CompletionPolicy` / `NotifyChannel` / `GateRole` / `DeliverableRequirement`） | `backend/src/bakufu/domain/value_objects.py`（既存ファイル更新） | `DeliverableRequirement` VO を追加（`template_ref: DeliverableTemplateRef, optional: bool`）。`DeliverableTemplateRef` / `SemVer` は Issue #115 で実装済み |
 
 ```
 ディレクトリ構造（本 feature で追加・変更されるファイル）:
@@ -137,7 +137,7 @@ classDiagram
         +kind: StageKind
         +required_role: frozenset~Role~
         +required_gate_roles: frozenset~GateRole~
-        +deliverable_template: str
+        +required_deliverables: tuple~DeliverableRequirement~
         +completion_policy: CompletionPolicy
         +notify_channels: list~NotifyChannel~
     }

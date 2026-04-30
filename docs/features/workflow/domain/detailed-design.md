@@ -30,7 +30,7 @@ classDiagram
         +name: str
         +kind: StageKind
         +required_role: frozenset~Role~
-        +deliverable_template: str
+        +required_deliverables: tuple~DeliverableRequirement~
         +completion_policy: CompletionPolicy
         +notify_channels: list~NotifyChannel~
     }
@@ -81,13 +81,14 @@ classDiagram
 | `name` | `str` | 1〜80 文字（NFC 正規化済み） |
 | `kind` | `StageKind` | enum: `WORK` / `INTERNAL_REVIEW` / `EXTERNAL_REVIEW` |
 | `required_role` | `frozenset[Role]` | **空集合不可**、要素 1 件以上 |
-| `deliverable_template` | `str` | 0〜10000 文字、Markdown |
+| `required_deliverables` | `tuple[DeliverableRequirement, ...]` | 空 tuple 許容。`template_ref.template_id` の重複不可（`model_validator` で検査） |
 | `completion_policy` | `CompletionPolicy`（VO） | — |
 | `notify_channels` | `list[NotifyChannel]` | `kind == EXTERNAL_REVIEW` のとき非空、その他は空でも可 |
 
 `model_validator(mode='after')` で:
 - `required_role` の空集合違反 → `StageInvariantViolation(kind='empty_required_role')`
 - `kind == EXTERNAL_REVIEW` かつ `notify_channels == []` → `StageInvariantViolation(kind='missing_notify')`
+- `required_deliverables` 内の `template_ref.template_id` 重複 → `StageInvariantViolation(kind='duplicate_required_deliverable')`
 
 ### Entity within Aggregate: Transition
 
@@ -175,13 +176,22 @@ Transition 単体では参照整合性を検査しない（Workflow 集約検査
 | `detail` | `dict[str, object]` | 違反の文脈 |
 | `kind` | `Literal['entry_not_in_stages', 'transition_ref_invalid', 'transition_duplicate', 'unreachable_stage', 'no_sink_stage', 'capacity_exceeded', 'cannot_remove_entry', 'stage_not_found', 'missing_notify_aggregate', 'empty_required_role_aggregate', 'from_dict_invalid']` | Workflow レベルの違反種別。`*_aggregate` は集約検査経路で発生する種別（Stage 自身の検査経路は `StageInvariantViolation` のサブクラスで分離） |
 
+### Value Object: DeliverableRequirement
+
+| 属性 | 型 | 制約 |
+|----|----|----|
+| `template_ref` | `DeliverableTemplateRef` | 参照先成果物テンプレート（`template_id: DeliverableTemplateId` + `minimum_version: SemVer`）。`DeliverableTemplateRef` は Issue #115 実装済み |
+| `optional` | `bool` | `False`（デフォルト）のとき必須成果物、`True` のとき任意成果物 |
+
+`model_config.frozen = True`。重複チェックは Stage 側の `model_validator` に委譲（`DeliverableRequirement` 単体は単純 immutable VO）。
+
 ### Exception: StageInvariantViolation
 
 `WorkflowInvariantViolation` のサブクラス。
 
 | 属性 | 型 | 制約 |
 |----|----|----|
-| `kind` | `Literal['empty_required_role', 'missing_notify']` | Stage レベルの違反種別 |
+| `kind` | `Literal['empty_required_role', 'missing_notify', 'duplicate_required_deliverable']` | Stage レベルの違反種別 |
 
 ## 確定事項（先送り撤廃）
 
@@ -215,7 +225,10 @@ Stage を 1 件ずつ走査し、`from_stage_id == stage.id` の Transition が 
   "entry_stage_id": "<uuid>",
   "stages": [
     {"id": "<uuid>", "name": "<str>", "kind": "WORK|INTERNAL_REVIEW|EXTERNAL_REVIEW",
-     "required_role": ["LEADER", "UX"], "deliverable_template": "<markdown>",
+     "required_role": ["LEADER", "UX"],
+     "required_deliverables": [
+       {"template_ref": {"template_id": "<uuid>", "minimum_version": {"major": 1, "minor": 0, "patch": 0}}, "optional": false}
+     ],
      "completion_policy": {"kind": "approved_by_reviewer", "description": "..."},
      "notify_channels": [...]}
   ],

@@ -192,6 +192,12 @@ EXTERNAL_REVIEW Stage を含む Workflow を一度永続化すると、webhook t
 
 **理由**: webhook token の masking は不可逆（[`repository/detailed-design.md §確定H §不可逆性`](repository/detailed-design.md)）。masking 後に元の URL を復元する手段がないため、domain の `NotifyChannel` バリデーションが復元時に必ず失敗する。内部エラー（500）ではなく、業務的に理解可能な 409 として拒否することで Fail Fast 原則を満たし、CEO に明示的な操作ガイダンスを提供する。
 
+### 確定 R1-17: Stage の `required_deliverables` は `template_ref.template_id` の重複を禁止する（Issue #117）
+
+CEO は各 Stage に `required_deliverables`（`DeliverableRequirement` のリスト）を設定できる。各 `DeliverableRequirement` は `template_ref: DeliverableTemplateRef` と `optional: bool` を持つ。`required_deliverables` 内の `template_ref.template_id` は重複してはならない（同一テンプレートを必須・任意に二重設定する業務的に無意味な状態を防ぐ）。空リスト（成果物要件なし）は合法。
+
+**理由**: 旧 `deliverable_template: str`（Markdown 自由記述）は機械的な整合性チェックが不可能だった。`DeliverableRequirement` VO（`template_ref: DeliverableTemplateRef, optional: bool`）への置き換えにより、DeliverableTemplate との参照整合性・SemVer バージョン互換性をドメイン層で保証できる。`optional` フラグで「提出が期待される（必須）/ 任意」を明示し、将来の Task 完了判定（application 層）に活用できる構造を提供する。
+
 ## 8. 制約・前提
 
 | 区分 | 内容 |
@@ -257,7 +263,7 @@ E2E（受入基準 11, 22）は [`system-test-design.md`](system-test-design.md)
 | 区分 | 内容 | 機密レベル |
 |-----|------|----------|
 | Workflow.name | "V モデル開発フロー" 等の定義名 | 低 |
-| Stage.name / kind / required_role / deliverable_template | Stage のメタデータ | 低 |
+| Stage.name / kind / required_role / required_deliverables | Stage のメタデータ | 低 |
 | Stage.completion_policy | 完了判定ロジック設定（CEO 設計値） | 低 |
 | Stage.notify_channels | Discord webhook URL（token を含む）| **中**（token を持つ第三者は当該 webhook 経由で任意送信可、Repository 永続化前マスキング必須） |
 | 永続化テーブル群（workflows / workflow_stages / workflow_transitions） | 上記の永続化先 | 低〜中（`workflow_stages.notify_channels_json` のみ MaskedJSONEncoded、その他は masking 対象なし） |
