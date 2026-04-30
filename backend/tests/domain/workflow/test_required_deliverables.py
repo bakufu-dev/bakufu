@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 from typing import cast
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from bakufu.domain.exceptions import StageInvariantViolation
@@ -19,11 +19,10 @@ from bakufu.domain.workflow import Workflow
 from tests.factories.workflow import build_v_model_payload, make_stage
 
 
-def _make_ref(template_id: object | None = None) -> DeliverableTemplateRef:
+def _make_ref(template_id: UUID | None = None) -> DeliverableTemplateRef:
     """妥当な DeliverableTemplateRef を 1 件組み立てるヘルパ。"""
-    tid = template_id if template_id is not None else uuid4()
     return DeliverableTemplateRef(
-        template_id=tid,
+        template_id=template_id if template_id is not None else uuid4(),
         minimum_version=SemVer(major=1, minor=0, patch=0),
     )
 
