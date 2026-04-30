@@ -6,8 +6,8 @@
 
 * **Pre-validate rebuild（確定 A）** — ``create_new_version`` / ``compose`` はいずれも
   ``model_dump(mode='python') → swap → model_validate`` を経由する。
-* **Fail Secure（確定 B）** — JSON_SCHEMA / OPENAPI 型で validator が None の場合は
-  拒否する。
+* **Fail Secure（確定 C / Known Issues #1）** — JSON_SCHEMA / OPENAPI 型で
+  validator が None の場合は拒否する。
 * **合成時の acceptance_criteria 非継承（確定 B）** — ``compose()`` 呼び出し時は
   acceptance_criteria を空タプルにリセットする。
 * **ClassVar DI（確定 C）** — ``_validator`` クラス変数でテスト時に差し替え可能。

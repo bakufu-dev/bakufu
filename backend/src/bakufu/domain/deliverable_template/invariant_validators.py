@@ -211,6 +211,8 @@ def _validate_no_duplicate_refs(
 
 
 __all__ = [
+    "_MSG_DT_004_TMPL",
+    "_MSG_DT_005_TMPL",
     "_validate_acceptance_criteria_no_duplicate_ids",
     "_validate_acceptance_criteria_non_empty_descriptions",
     "_validate_composition_no_self_ref",
