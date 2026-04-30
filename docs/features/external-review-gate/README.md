@@ -2,7 +2,7 @@
 
 > 業務仕様: [feature-spec.md](feature-spec.md)
 > システムテスト戦略: [system-test-design.md](system-test-design.md)
-> 関連 Issue: [#38 feat(external-review-gate): ExternalReviewGate Aggregate Root (M1)](https://github.com/bakufu-dev/bakufu/issues/38) / [#36 feat(external-review-gate-repository): ExternalReviewGate SQLite Repository (M2)](https://github.com/bakufu-dev/bakufu/issues/36)
+> 関連 Issue: [#38 feat(external-review-gate): ExternalReviewGate Aggregate Root (M1)](https://github.com/bakufu-dev/bakufu/issues/38) / [#36 feat(external-review-gate-repository): ExternalReviewGate SQLite Repository (M2)](https://github.com/bakufu-dev/bakufu/issues/36) / [#61 feat(external-review-gate-http-api): ExternalReviewGate HTTP API (M3)](https://github.com/bakufu-dev/bakufu/issues/61)
 
 ## ディレクトリ構造
 
@@ -19,7 +19,10 @@ docs/features/external-review-gate/
     basic-design.md
     detailed-design.md
     test-design.md
-  (将来) http-api/                   ← approve / reject / cancel HTTP API
+  http-api/                          ← sub-feature: approve / reject / cancel HTTP API（M3）
+    basic-design.md
+    detailed-design.md
+    test-design.md
   (将来) ui/                         ← CEO レビュー操作 UI
 ```
 
@@ -29,12 +32,12 @@ docs/features/external-review-gate/
 |---|---|---|---|
 | domain | [#38](https://github.com/bakufu-dev/bakufu/issues/38) | 実装済み（PR #46） | [domain/](domain/) |
 | repository | [#36](https://github.com/bakufu-dev/bakufu/issues/36) | 実装済み（PR #53） | [repository/](repository/) |
-| http-api | 未起票 | 将来（M3） | — |
+| http-api | [#61](https://github.com/bakufu-dev/bakufu/issues/61) | 設計書作成中（M3） | [http-api/](http-api/) |
 | ui | 未起票 | 将来 | — |
 
 ## 着手順序
 
-1. **domain** (#38) — ExternalReviewGate Aggregate Root + AuditEntry VO + ReviewDecision / AuditAction enum
-2. **repository** (#36) — SQLite 永続化（`external_review_gates` / `external_review_gate_attachments` / `external_review_audit_entries` 3 テーブル + Alembic 0008）
-3. (将来) **http-api** — approve / reject / cancel エンドポイント（GateService application 層含む）
+1. **domain** (#38) — ExternalReviewGate Aggregate Root + AuditEntry VO + ReviewDecision / AuditAction enum（完了）
+2. **repository** (#36) — SQLite 永続化（`external_review_gates` / `external_review_gate_attachments` / `external_review_audit_entries` 3 テーブル + Alembic 0008）（完了）
+3. **http-api** (#61) — approve / reject / cancel エンドポイント（GateService application 層含む）（設計書作成中）
 4. (将来) **ui** — CEO が Deliverable を確認して approve / reject するレビュー画面

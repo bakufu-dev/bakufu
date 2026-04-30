@@ -55,7 +55,7 @@ backend/src/bakufu/
         ├── workflow_service.py           # REQ-HAF-006: WorkflowService skeleton
         ├── agent_service.py              # REQ-HAF-006: AgentService skeleton
         ├── task_service.py               # REQ-HAF-006: TaskService skeleton
-        └── external_review_gate_service.py  # REQ-HAF-006: ExternalReviewGateService skeleton
+        └── external_review_gate_service.py  # REQ-HAF-006: ExternalReviewGateService skeleton（Issue #61 で approve / reject / cancel 等を追加）
 ```
 
 ## モジュール契約（機能要件）
@@ -127,6 +127,8 @@ backend/src/bakufu/
 | エラー時 | 該当なし（骨格のため、実行時ロジックなし）|
 
 **紐付く UC**: UC-HAF-004
+
+**ExternalReviewGateService の拡張（Issue #61）**: `external_review_gate_service.py` は本 PR で骨格定義のみ。Issue #61（M3）で `approve` / `reject` / `cancel` / `find_pending_for_reviewer` / `find_by_task` の全メソッドを肉付けする（[`docs/features/external-review-gate/http-api/basic-design.md`](../../external-review-gate/http-api/basic-design.md) 前提 P-2 参照）。
 
 ### REQ-HAF-007: uvicorn エントリポイント
 
@@ -201,6 +203,7 @@ classDiagram
     }
     class ExternalReviewGateService {
         -_repo: ExternalReviewGateRepositoryPort
+        %% Issue #61 で approve / reject / cancel / find_pending_for_reviewer / find_by_task を追加
     }
     ErrorResponse *-- ErrorDetail
 ```
