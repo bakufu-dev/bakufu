@@ -35,6 +35,7 @@ __all__ = [
     "DirectiveServiceDep",
     "EmpireRepository",
     "ExternalReviewGateRepository",
+    "GateServiceDep",
     "RoomRepository",
     "SessionDep",
     "TaskRepository",
@@ -222,3 +223,6 @@ async def get_external_review_gate_service(
 
     repo = SqliteExternalReviewGateRepository(session)
     return ExternalReviewGateService(repo)
+
+
+GateServiceDep = Annotated[ExternalReviewGateService, Depends(get_external_review_gate_service)]
