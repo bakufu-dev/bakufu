@@ -159,15 +159,19 @@ class SqliteDeliverableTemplateRepository:
         )
         composition = tuple(DeliverableTemplateRef.model_validate(d) for d in comp_payloads)
 
-        return DeliverableTemplate(
-            id=_uuid(row.id),
-            name=row.name,
-            description=row.description,
-            type=template_type,
-            schema=schema_value,
-            version=version,
-            acceptance_criteria=acceptance_criteria,
-            composition=composition,
+        # §確定 C: model_validate 経由で post-validator（不変条件チェック）を再実行する。
+        # コンストラクタ直接呼び出しでは validator が走らない経路が存在するため禁止。
+        return DeliverableTemplate.model_validate(
+            {
+                "id": _uuid(row.id),
+                "name": row.name,
+                "description": row.description,
+                "type": template_type,
+                "schema": schema_value,
+                "version": version,
+                "acceptance_criteria": acceptance_criteria,
+                "composition": composition,
+            }
         )
 
 

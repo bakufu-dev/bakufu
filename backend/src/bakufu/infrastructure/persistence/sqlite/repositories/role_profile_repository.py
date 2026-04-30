@@ -124,11 +124,15 @@ class SqliteRoleProfileRepository:
             DeliverableTemplateRef.model_validate(d) for d in ref_payloads
         )
 
-        return RoleProfile(
-            id=_uuid(row.id),
-            empire_id=_uuid(row.empire_id),
-            role=Role(row.role),
-            deliverable_template_refs=deliverable_template_refs,
+        # §確定 C: model_validate 経由で post-validator（不変条件チェック）を再実行する。
+        # コンストラクタ直接呼び出しでは validator が走らない経路が存在するため禁止。
+        return RoleProfile.model_validate(
+            {
+                "id": _uuid(row.id),
+                "empire_id": _uuid(row.empire_id),
+                "role": Role(row.role),
+                "deliverable_template_refs": deliverable_template_refs,
+            }
         )
 
 
