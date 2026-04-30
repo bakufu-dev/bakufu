@@ -167,6 +167,19 @@ class VerdictDecision(StrEnum):
     REJECTED = "REJECTED"
 
 
+class TemplateType(StrEnum):
+    """DeliverableTemplate の種別。
+
+    Aggregate が schema フィールドの期待型（str vs dict）を判定するために使う。
+    """
+
+    MARKDOWN = "MARKDOWN"
+    JSON_SCHEMA = "JSON_SCHEMA"
+    OPENAPI = "OPENAPI"
+    CODE_SKELETON = "CODE_SKELETON"
+    PROMPT = "PROMPT"
+
+
 __all__ = [
     "AuditAction",
     "GateDecision",
@@ -176,6 +189,7 @@ __all__ = [
     "Role",
     "StageKind",
     "TaskStatus",
+    "TemplateType",
     "TransitionCondition",
     "VerdictDecision",
 ]

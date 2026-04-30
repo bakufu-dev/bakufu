@@ -61,14 +61,22 @@ type InternalGateId = UUID
 ``INTERNAL_REVIEW`` Stage の完了をゲートする内部（エージェント間）レビュー Gate
 用で、:data:`GateId` と並列。"""
 
+type DeliverableTemplateId = UUID
+"""DeliverableTemplate Aggregate 識別子（UUIDv4）。"""
+
+type RoleProfileId = UUID
+"""RoleProfile Aggregate 識別子（UUIDv4）。"""
+
 
 __all__ = [
     "AgentId",
+    "DeliverableTemplateId",
     "DirectiveId",
     "EmpireId",
     "GateId",
     "InternalGateId",
     "OwnerId",
+    "RoleProfileId",
     "RoomId",
     "SkillId",
     "StageId",
