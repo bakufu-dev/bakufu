@@ -29,6 +29,7 @@ from bakufu.domain.value_objects.enums import (
     Role,
     StageKind,
     TaskStatus,
+    TemplateType,
     TransitionCondition,
     VerdictDecision,
 )
@@ -42,11 +43,13 @@ from bakufu.domain.value_objects.helpers import (
 )
 from bakufu.domain.value_objects.identifiers import (
     AgentId,
+    DeliverableTemplateId,
     DirectiveId,
     EmpireId,
     GateId,
     InternalGateId,
     OwnerId,
+    RoleProfileId,
     RoomId,
     SkillId,
     StageId,
@@ -63,6 +66,11 @@ from bakufu.domain.value_objects.references import (
     NotifyChannelKind,
     RoomRef,
 )
+from bakufu.domain.value_objects.template_vos import (
+    AcceptanceCriterion,
+    DeliverableTemplateRef,
+    SemVer,
+)
 from bakufu.domain.value_objects.verdict import (
     _VERDICT_COMMENT_MAX_CHARS,
     Verdict,
@@ -70,6 +78,7 @@ from bakufu.domain.value_objects.verdict import (
 
 __all__ = [
     "_VERDICT_COMMENT_MAX_CHARS",
+    "AcceptanceCriterion",
     "AgentId",
     "AgentRef",
     "Attachment",
@@ -78,6 +87,8 @@ __all__ = [
     "CompletionPolicy",
     "CompletionPolicyKind",
     "Deliverable",
+    "DeliverableTemplateId",
+    "DeliverableTemplateRef",
     "DirectiveId",
     "EmpireId",
     "GateDecision",
@@ -93,13 +104,16 @@ __all__ = [
     "ProviderKind",
     "ReviewDecision",
     "Role",
+    "RoleProfileId",
     "RoomId",
     "RoomRef",
+    "SemVer",
     "SkillId",
     "StageId",
     "StageKind",
     "TaskId",
     "TaskStatus",
+    "TemplateType",
     "TransitionCondition",
     "TransitionId",
     "Verdict",

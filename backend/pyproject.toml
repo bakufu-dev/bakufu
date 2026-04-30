@@ -12,6 +12,7 @@ dependencies = [
     "greenlet>=3.0",
     "fastapi>=0.104",
     "uvicorn[standard]>=0.24",
+    "jsonschema>=4.0",
 ]
 
 [build-system]
