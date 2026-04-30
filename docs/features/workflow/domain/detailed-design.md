@@ -192,6 +192,17 @@ Transition 単体では参照整合性を検査しない（Workflow 集約検査
 | 属性 | 型 | 制約 |
 |----|----|----|
 | `kind` | `Literal['empty_required_role', 'missing_notify', 'duplicate_required_deliverable']` | Stage レベルの違反種別 |
+| `detail` | `dict[str, str]` | 違反の文脈。`kind` ごとのキーホワイトリストに従う（下表）。ホワイトリスト外のキーは **実装禁止**（A09 対応） |
+
+#### `detail` キーホワイトリスト（StageInvariantViolation）
+
+| `kind` | 許可するキー | 値の型 | 備考 |
+|---|---|---|---|
+| `empty_required_role` | `stage_id` | `str`（UUID 文字列） | 空集合違反の Stage を特定するための最小情報 |
+| `missing_notify` | `stage_id` | `str`（UUID 文字列） | `notify_channels` 未設定の `EXTERNAL_REVIEW` Stage を特定 |
+| `duplicate_required_deliverable` | `stage_id`、`template_id` | `str`（UUID 文字列） | 重複が発生した Stage と重複 `template_id` を特定。MSG-WF-013 のプレースホルダ `{stage_id}` / `{template_id}` に対応 |
+
+上記以外のキー（`name`、`description` 等）はログ漏洩・A09（セキュリティロギング失敗）リスクがあるため、実装時に含めてはならない（テストで検査する）。
 
 ## 確定事項（先送り撤廃）
 
@@ -313,7 +324,7 @@ Stage 自身の不変条件（`required_role` 非空 / `EXTERNAL_REVIEW` の `no
 | MSG-WF-010 | 例外 message | `[FAIL] Cannot remove entry stage: {stage_id}` |
 | MSG-WF-011 | 例外 message | `[FAIL] from_dict payload invalid: {detail}` |
 | MSG-WF-012 | 例外 message | `[FAIL] Stage not found in workflow: stage_id={stage_id}` |
-| MSG-WF-013 | 例外 message | `[FAIL] Stage {stage_id} required_deliverables has duplicate template_id: {template_id}\nNext: Remove the duplicate DeliverableRequirement before constructing the Stage.` |
+| MSG-WF-013 | 例外 message | `[FAIL] Stage {stage_id} required_deliverables has duplicate template_id: {template_id}` |
 
 メッセージ文字列は ASCII 範囲。日本語化は UI 側 i18n リソース（Phase 2）。
 
