@@ -22,12 +22,12 @@ from __future__ import annotations
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bakufu.domain.deliverable_template import RoleProfile
-from bakufu.domain.value_objects import DeliverableTemplateRef, EmpireId
+from bakufu.domain.value_objects import DeliverableTemplateRef, EmpireId, RoleProfileId
 from bakufu.domain.value_objects.enums import Role
 from bakufu.infrastructure.persistence.sqlite.tables.role_profiles import RoleProfileRow
 
@@ -91,6 +91,16 @@ class SqliteRoleProfileRepository:
             },
         )
         await self._session.execute(upsert_stmt)
+
+    async def delete(self, profile_id: RoleProfileId) -> None:
+        """``DELETE FROM role_profiles WHERE id = :profile_id``（§確定 E）。
+
+        対象行が存在しない場合は何もしない（no-op）。
+        """
+        await self._session.execute(
+            text("DELETE FROM role_profiles WHERE id = :id"),
+            {"id": str(profile_id).replace("-", "")},
+        )
 
     # ---- private domain ↔ row converters (§確定 C) -------------------
     def _to_row(self, role_profile: RoleProfile) -> dict[str, Any]:

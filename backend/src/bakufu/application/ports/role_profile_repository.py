@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from bakufu.domain.deliverable_template import RoleProfile
-from bakufu.domain.value_objects import EmpireId
+from bakufu.domain.value_objects import EmpireId, RoleProfileId
 from bakufu.domain.value_objects.enums import Role
 
 
@@ -54,6 +54,15 @@ class RoleProfileRepository(Protocol):
         同一 ``(empire_id, role)`` で別 ``id`` の INSERT は
         ``UNIQUE(empire_id, role)`` 違反として ``IntegrityError`` を上位伝播する
         （§確定 H）。Repository は commit / rollback を決して呼ばない。
+        """
+        ...
+
+    async def delete(self, profile_id: RoleProfileId) -> None:
+        """``DELETE FROM role_profiles WHERE id = :profile_id``。
+
+        対象行が存在しない場合は何もしない（no-op）。Service 層で事前に
+        ``find_by_empire_and_role`` による存在確認を行う設計のため、
+        Repository 側では silent no-op を許容する。
         """
         ...
 

@@ -18,11 +18,15 @@ from bakufu.application.ports.room_repository import RoomRepository
 from bakufu.application.ports.task_repository import TaskRepository
 from bakufu.application.ports.workflow_repository import WorkflowRepository
 from bakufu.application.services.agent_service import AgentService
+from bakufu.application.services.deliverable_template_service import (
+    DeliverableTemplateService,
+)
 from bakufu.application.services.directive_service import DirectiveService
 from bakufu.application.services.empire_service import EmpireService
 from bakufu.application.services.external_review_gate_service import (
     ExternalReviewGateService,
 )
+from bakufu.application.services.role_profile_service import RoleProfileService
 from bakufu.application.services.room_service import RoomService
 from bakufu.application.services.task_service import TaskService
 from bakufu.application.services.workflow_service import WorkflowService
@@ -31,20 +35,24 @@ from bakufu.application.services.workflow_service import WorkflowService
 __all__ = [
     "AgentRepository",
     "AgentServiceDep",
+    "DeliverableTemplateService",
     "DirectiveRepository",
     "DirectiveServiceDep",
     "EmpireRepository",
     "ExternalReviewGateRepository",
     "GateServiceDep",
+    "RoleProfileService",
     "RoomRepository",
     "SessionDep",
     "TaskRepository",
     "TaskServiceDep",
     "WorkflowRepository",
     "get_agent_service",
+    "get_deliverable_template_service",
     "get_directive_service",
     "get_empire_service",
     "get_external_review_gate_service",
+    "get_role_profile_service",
     "get_room_service",
     "get_session",
     "get_task_service",
@@ -226,3 +234,39 @@ async def get_external_review_gate_service(
 
 
 GateServiceDep = Annotated[ExternalReviewGateService, Depends(get_external_review_gate_service)]
+
+
+async def get_deliverable_template_service(session: SessionDep) -> DeliverableTemplateService:
+    """DeliverableTemplateService を DI 注入する（§確定 A）。"""
+    # 遅延 import: interfaces → infrastructure の直接依存を避けるため
+    # モジュールロード時の循環参照リスクを回避し、
+    # 依存方向 interfaces → application → infrastructure を遵守する
+    from bakufu.infrastructure.persistence.sqlite.repositories import (
+        deliverable_template_repository as _dt_mod,
+    )
+
+    repo = _dt_mod.SqliteDeliverableTemplateRepository(session)
+    return DeliverableTemplateService(repo, session)
+
+
+async def get_role_profile_service(session: SessionDep) -> RoleProfileService:
+    """RoleProfileService を DI 注入する（§確定 A）。"""
+    # 遅延 import: interfaces → infrastructure の直接依存を避けるため
+    # モジュールロード時の循環参照リスクを回避し、
+    # 依存方向 interfaces → application → infrastructure を遵守する
+    from bakufu.infrastructure.persistence.sqlite.repositories import (
+        deliverable_template_repository as _dt_mod,
+    )
+    from bakufu.infrastructure.persistence.sqlite.repositories.empire_repository import (
+        SqliteEmpireRepository,
+    )
+    from bakufu.infrastructure.persistence.sqlite.repositories.role_profile_repository import (
+        SqliteRoleProfileRepository,
+    )
+
+    return RoleProfileService(
+        rp_repo=SqliteRoleProfileRepository(session),
+        dt_repo=_dt_mod.SqliteDeliverableTemplateRepository(session),
+        empire_repo=SqliteEmpireRepository(session),
+        session=session,
+    )

@@ -17,6 +17,10 @@ from bakufu.interfaces.http.error_handlers import (
     agent_invariant_violation_handler,
     agent_name_already_exists_handler,
     agent_not_found_handler,
+    composition_cycle_handler,
+    deliverable_template_invariant_violation_handler,
+    deliverable_template_not_found_handler,
+    deliverable_template_version_downgrade_handler,
     directive_invariant_violation_handler,
     empire_already_exists_handler,
     empire_archived_handler,
@@ -28,6 +32,8 @@ from bakufu.interfaces.http.error_handlers import (
     http_exception_handler,
     internal_error_handler,
     pydantic_validation_error_handler,
+    role_profile_invariant_violation_handler,
+    role_profile_not_found_handler,
     room_archived_handler,
     room_invariant_violation_handler,
     room_name_already_exists_handler,
@@ -44,10 +50,14 @@ from bakufu.interfaces.http.error_handlers import (
     workflow_preset_not_found_handler,
 )
 from bakufu.interfaces.http.routers.agents import agents_router, empire_agents_router
+from bakufu.interfaces.http.routers.deliverable_template import (
+    router as deliverable_template_router,
+)
 from bakufu.interfaces.http.routers.directives import room_directives_router
 from bakufu.interfaces.http.routers.empire import router as empire_router
 from bakufu.interfaces.http.routers.external_review_gates import gates_router, task_gates_router
 from bakufu.interfaces.http.routers.health import router as health_router
+from bakufu.interfaces.http.routers.role_profile import router as role_profile_router
 from bakufu.interfaces.http.routers.rooms import empire_rooms_router, rooms_router
 from bakufu.interfaces.http.routers.tasks import room_tasks_router, tasks_router
 from bakufu.interfaces.http.routers.workflows import room_workflows_router, workflows_router
@@ -115,6 +125,12 @@ def create_app() -> FastAPI:
         AgentNameAlreadyExistsError,
         AgentNotFoundError,
     )
+    from bakufu.application.exceptions.deliverable_template_exceptions import (
+        CompositionCycleError,
+        DeliverableTemplateNotFoundError,
+        DeliverableTemplateVersionDowngradeError,
+        RoleProfileNotFoundError,
+    )
     from bakufu.application.exceptions.empire_exceptions import (
         EmpireAlreadyExistsError,
         EmpireArchivedError,
@@ -143,8 +159,10 @@ def create_app() -> FastAPI:
     )
     from bakufu.domain.exceptions import (
         AgentInvariantViolation,
+        DeliverableTemplateInvariantViolation,
         DirectiveInvariantViolation,
         EmpireInvariantViolation,
+        RoleProfileInvariantViolation,
         RoomInvariantViolation,
         TaskInvariantViolation,
         WorkflowInvariantViolation,
@@ -178,6 +196,24 @@ def create_app() -> FastAPI:
     app.add_exception_handler(GateNotFoundError, gate_not_found_handler)
     app.add_exception_handler(GateAlreadyDecidedError, gate_already_decided_handler)
     app.add_exception_handler(GateAuthorizationError, gate_authorization_error_handler)
+    # deliverable-template / role-profile 専用ハンドラ (gate ハンドラ群の直後)
+    app.add_exception_handler(
+        DeliverableTemplateNotFoundError, deliverable_template_not_found_handler
+    )
+    app.add_exception_handler(RoleProfileNotFoundError, role_profile_not_found_handler)
+    app.add_exception_handler(CompositionCycleError, composition_cycle_handler)
+    app.add_exception_handler(
+        DeliverableTemplateVersionDowngradeError,
+        deliverable_template_version_downgrade_handler,
+    )
+    app.add_exception_handler(
+        DeliverableTemplateInvariantViolation,
+        deliverable_template_invariant_violation_handler,
+    )
+    app.add_exception_handler(
+        RoleProfileInvariantViolation,
+        role_profile_invariant_violation_handler,
+    )
     app.add_exception_handler(ValidationError, pydantic_validation_error_handler)
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_error_handler)
@@ -197,6 +233,8 @@ def create_app() -> FastAPI:
     app.include_router(tasks_router)
     app.include_router(gates_router)
     app.include_router(task_gates_router)
+    app.include_router(deliverable_template_router)
+    app.include_router(role_profile_router)
 
     return app
 
