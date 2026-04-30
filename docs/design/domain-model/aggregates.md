@@ -223,3 +223,50 @@ BLOCKED + 人間が cancel → CANCELLED
 ai-team の「チャネル」概念に相当。Web UI では Room の対話空間として表示される。
 
 **重要**: `Message.body_markdown` および subprocess の stdout / stderr を message として保存する際は、永続化前に [`storage.md`](storage.md) §シークレットマスキング規則 を必ず適用する。
+
+## DeliverableTemplate（Aggregate Root、Issue #115）
+
+| 属性 | 型 | 制約 | 意図 |
+|----|----|----|----|
+| `id` | `DeliverableTemplateId`（UUID） | 不変 | テンプレートの一意識別 |
+| `name` | `str` | 1〜80 文字 | 人間が認識するテンプレート名（例: "基本設計書テンプレ"） |
+| `type` | `TemplateType` | `MARKDOWN` / `JSON_SCHEMA` / `OPENAPI` / `CODE_SKELETON` / `PROMPT` | テンプレートの種別 |
+| `version` | `SemVer` | major >= 0、minor >= 0、patch >= 0 | セマンティックバージョン（例: 1.0.0） |
+| `body` | `str` | 1〜100000 文字 | テンプレート本文（種別に応じた書式） |
+| `acceptance_criteria` | `List[AcceptanceCriterion]` | 0 件以上 | このテンプレートが定義する受入基準の一覧 |
+| `composed_of` | `List[DeliverableTemplateRef]` | 0 件以上、循環参照禁止 | 合成元テンプレートへの参照（合成テンプレートの場合） |
+| `created_at` / `updated_at` | `datetime` | UTC | 監査用 |
+
+構成要素 VO（`SemVer` / `DeliverableTemplateRef` / `AcceptanceCriterion`）の属性詳細は [`value-objects.md`](value-objects.md) §DeliverableTemplate 構成要素 参照。
+
+**不変条件**:
+- `type == JSON_SCHEMA` の場合、`body` は有効な JSON Schema である（構築時に検証）
+- `composed_of` に自身の `id` を含む直接・間接の循環参照は禁止
+- `composed_of` 内の各 `DeliverableTemplateRef.minimum_version` の `major` は参照先テンプレートの現行 `major` と一致しなければならない（互換性制約）
+- `acceptance_criteria` 内の `AcceptanceCriterion.id` は重複しない
+
+**ふるまい**:
+- `create_new_version(bump: 'major' | 'minor' | 'patch') -> DeliverableTemplate`: 現バージョンから新バージョンのテンプレートを生成（別 Aggregate として永続化）
+- `add_composition(ref: DeliverableTemplateRef) -> None`: 合成元テンプレートを追加。循環参照が生じる場合は `[FAIL]` + `Next:` の形式でドメイン例外を raise（pre-validate 方式）
+- `remove_composition(template_id: DeliverableTemplateId) -> None`: 合成元テンプレートを削除
+- `add_acceptance_criterion(criterion: AcceptanceCriterion) -> None`: 受入基準を追加
+- `resolve_criteria() -> List[AcceptanceCriterion]`: `composed_of` を再帰的に展開し、全受入基準をフラット化して返す
+
+## RoleProfile（Aggregate Root、Issue #115）
+
+| 属性 | 型 | 制約 | 意図 |
+|----|----|----|----|
+| `id` | `RoleProfileId`（UUID） | 不変 | RoleProfile の一意識別 |
+| `role` | `Role` | — | この RoleProfile が対応する役割（例: `DEVELOPER`） |
+| `template_refs` | `List[DeliverableTemplateRef]` | 1 件以上 | この役割が担う成果物テンプレートへの参照一覧 |
+| `description` | `str` | 0〜500 文字 | この RoleProfile の用途説明 |
+| `created_at` / `updated_at` | `datetime` | UTC | 監査用 |
+
+**不変条件**:
+- `template_refs` は 1 件以上（空集合禁止）
+- `template_refs` 内の `DeliverableTemplateRef.template_id` は重複しない（同一テンプレートの二重参照禁止）
+- `template_refs` 内の各 `minimum_version.major` は参照先テンプレートの現行 `major` と一致しなければならない
+
+**ふるまい**:
+- `add_template_ref(ref: DeliverableTemplateRef) -> None`: テンプレート参照を追加。重複時は `[FAIL]` + `Next:` の形式でドメイン例外を raise
+- `remove_template_ref(template_id: DeliverableTemplateId) -> None`: テンプレート参照を削除。削除後に `template_refs` が空になる場合は `[FAIL]` + `Next:` の形式でドメイン例外を raise（不変条件違反）
