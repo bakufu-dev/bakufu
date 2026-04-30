@@ -26,6 +26,8 @@
 |---|---|
 | TC-IT-DTH-001〜020 | DeliverableTemplate HTTP API 結合テスト |
 | TC-IT-RPH-001〜013 | RoleProfile HTTP API 結合テスト |
+| TC-IT-DTR-021〜022 | DeliverableTemplateRepository.delete() 単体（§確定 E 物理確認）|
+| TC-IT-RPR-016〜017 | RoleProfileRepository.delete() 単体（§確定 E 物理確認）|
 | TC-UT-DTS-001〜009 | DeliverableTemplateService ユニットテスト |
 | TC-UT-RPS-001〜006 | RoleProfileService ユニットテスト |
 
@@ -44,7 +46,7 @@
 | REQ-DT-HTTP-001 schema 型判別 | §確定I | TC-IT-DTH-018 | IT | 正常系 | `test_create.py::test_create_json_schema_type_returns_dict_schema` |
 | REQ-DT-HTTP-001 id 省略生成 | §確定H | TC-IT-DTH-019 | IT | 正常系 | `test_create.py::test_create_with_omitted_ac_id_generates_uuid` |
 | REQ-DT-HTTP-002 空リスト | — | TC-IT-DTH-007 | IT | 正常系 | `test_read.py::test_list_returns_200_with_empty_items` |
-| REQ-DT-HTTP-002 複数件昇順 | §確定I | TC-IT-DTH-008 | IT | 正常系 | `test_read.py::test_list_returns_items_sorted_by_name_asc` |
+| REQ-DT-HTTP-002 複数件昇順 | ORDER BY name ASC, id ASC | TC-IT-DTH-008 | IT | 正常系 | `test_read.py::test_list_returns_items_sorted_by_name_asc` |
 | REQ-DT-HTTP-003 正常系 | — | TC-IT-DTH-009 | IT | 正常系 | `test_read.py::test_get_returns_200_with_template` |
 | REQ-DT-HTTP-003 不在 | MSG-DT-HTTP-001 | TC-IT-DTH-010 | IT | 異常系 | `test_read.py::test_get_nonexistent_returns_404` |
 | REQ-DT-HTTP-003 UUID 不正 | — | TC-IT-DTH-011 | IT | 異常系 | `test_read.py::test_get_with_invalid_uuid_returns_422` |
@@ -74,6 +76,17 @@
 | REQ-RP-HTTP-004 不在 | MSG-RP-HTTP-001 | TC-IT-RPH-012 | IT | 異常系 | `test_read_delete.py::test_delete_nonexistent_returns_404` |
 | REQ-RP-HTTP-003 role 不正値 | — | TC-IT-RPH-013 | IT | 異常系 | `test_upsert.py::test_upsert_with_invalid_role_returns_422` |
 
+### Repository.delete() — 結合テスト（§確定 E 物理確認）
+
+| 要件 ID | 確定事項 | テストケース ID | テストレベル | 種別 | 期待する実装済みテスト |
+|---|---|---|---|---|---|
+| REQ-DT-HTTP-005 | §確定E | TC-IT-DTR-021 | IT | 正常系 | `test_protocol_and_crud.py::test_delete_removes_existing_template` |
+| REQ-DT-HTTP-005 | §確定E（no-op）| TC-IT-DTR-022 | IT | 異常系 | `test_protocol_and_crud.py::test_delete_noop_on_unknown_id` |
+| REQ-RP-HTTP-004 | §確定E | TC-IT-RPR-016 | IT | 正常系 | `test_crud_basic.py::test_delete_removes_existing_profile` |
+| REQ-RP-HTTP-004 | §確定E（no-op）| TC-IT-RPR-017 | IT | 異常系 | `test_crud_basic.py::test_delete_noop_on_unknown_id` |
+
+**設計判断**: HTTP DELETE（TC-IT-DTH-016/017 / TC-IT-RPH-011/012）では Service 経由でのエンドツーエンド確認を行う。Repository.delete() の no-op 挙動（存在しない id でも例外なし）は HTTP 層と分離して物理確認する必要があるため、TC-IT-DTR-021/022 / TC-IT-RPR-016/017 を Repository 直接呼び出しテストとして追加する。
+
 ### Service ユニットテスト
 
 | 対象クラス / メソッド | 確定事項 | テストケース ID | テストレベル | 種別 | 期待する実装済みテスト |
@@ -102,7 +115,7 @@
 | FastAPI ASGI | 結合テスト: HTTP リクエスト送信 | — | — | `httpx.AsyncClient(transport=ASGITransport(app=app))` + `base_url="http://test"` | 済（http-api-foundation パターン）|
 | `DeliverableTemplateRepository` モック | ユニットテスト: Service の業務ロジック分離 | — | `tests/factories/deliverable_template.py` が返す `DeliverableTemplate` / `RoleProfile` インスタンス | `AsyncMock` で Repository Protocol をモック。返却値に factory 生成済みインスタンスを使用 | 要実装（factory 済み）|
 | `RoleProfileRepository` モック | ユニットテスト: RoleProfileService の業務ロジック分離 | — | 同上 | 同上 | 要実装 |
-| `EmpireRepository` モック | ユニットテスト: RoleProfileService の Empire 存在確認分離 | — | `tests/factories/empire.py` または inline Empire stub | `AsyncMock` で `find_by_id` を None / empire インスタンスに設定 | 要確認（empire factory 存在確認が必要）|
+| `EmpireRepository` モック | ユニットテスト: RoleProfileService の Empire 存在確認分離 | — | `tests/factories/empire.py`（存在確認済み）| `AsyncMock` で `find_by_id` を None / empire インスタンスに設定 | 済（物理確認済み）|
 
 **モック設計の注意**:
 - assumed mock（根拠なき仮定の返却値）禁止。factory 生成済みインスタンスを `return_value` に渡すこと
@@ -162,7 +175,7 @@
 | 種別 | 境界値 |
 | 前提条件 | 深度 10 以上の composition チェーン（T1 → T2 → ... → T11）を DB に構築済み |
 | 操作 | T12 を作成し `composition: [ref_to_T11]` を指定（深度 11） |
-| 期待結果 | HTTP 422。`code == "composition_cycle"`（`cycle_path=["depth_limit_exceeded"]`） |
+| 期待結果 | HTTP 422。`code == "composition_cycle"`。`response["error"]["detail"]["reason"] == "depth_limit"` かつ `response["error"]["detail"]["cycle_path"] == []` |
 
 ### TC-IT-DTH-006: POST — name 空文字 → 422
 
@@ -183,7 +196,7 @@
 | 操作 | `GET /api/deliverable-templates` |
 | 期待結果 | HTTP 200。`{"items": [], "total": 0}` |
 
-### TC-IT-DTH-008: GET /api/deliverable-templates — 複数件 name 昇順
+### TC-IT-DTH-008: GET /api/deliverable-templates — 複数件 name 昇順 / 同一 name は id 昇順
 
 | 項目 | 内容 |
 |---|---|
@@ -192,6 +205,7 @@
 | 前提条件 | name = "Z-template" / "A-template" / "M-template" の 3 件を順不同で POST |
 | 操作 | `GET /api/deliverable-templates` |
 | 期待結果 | HTTP 200。`items[0].name == "A-template"` / `items[1].name == "M-template"` / `items[2].name == "Z-template"` |
+| 注記 | ソート仕様: ORDER BY name ASC、同一 name は id ASC（`basic-design.md` REQ-DT-HTTP-002 確定）。同名テンプレートが生じるケースは conftest fixture で UUID の昇順を確認する別ケースを必要に応じ追加する |
 
 ### TC-IT-DTH-009: GET /api/deliverable-templates/{id} 正常系
 
@@ -349,9 +363,19 @@
 |---|---|
 | 対応 | §確定 D |
 | 種別 | 境界値 |
-| モック | `DeliverableTemplateRepository.find_by_id` が 11 段のチェーンを返す（depth=11 で上限 10 超） |
-| 操作 | `_check_dag(refs=[chain_start], root_id=..., depth=0, visited=set())` |
-| 期待結果 | `CompositionCycleError` raise。`cycle_path == ["depth_limit_exceeded"]` |
+| モック | `DeliverableTemplateRepository.find_by_id` が 11 段のチェーンを返す（depth 11 で上限 10 超） |
+| 操作 | `_check_dag(refs=[chain_start], root_id=...)` ※ 2 引数。depth / visited は内部局所状態（§確定 D 確定済み）|
+| 期待結果 | `CompositionCycleError` raise。`err.reason == "depth_limit"` かつ `err.cycle_path == []` |
+
+### TC-UT-DTS-005: _check_dag ノード上限 100 超 → CompositionCycleError（§確定 D）
+
+| 項目 | 内容 |
+|---|---|
+| 対応 | §確定 D |
+| 種別 | 境界値 |
+| モック | `DeliverableTemplateRepository.find_by_id` が 101 ノードの幅広グラフを返す（各ノードが 1 段の子を持つ星型など）|
+| 操作 | `_check_dag(refs=[...], root_id=...)` ※ 2 引数。visited の内部カウントが 100 超で打ち切り |
+| 期待結果 | `CompositionCycleError` raise。`err.reason == "node_limit"` かつ `err.cycle_path == []` |
 
 ### TC-UT-DTS-006: update — version 降格 → DeliverableTemplateVersionDowngradeError（§確定 B）
 
@@ -372,6 +396,54 @@
 | モック | `find_by_id` が version 1.0.0 の template を返す。`template.create_new_version` に spy を設定 |
 | 操作 | `update(id, ..., version=SemVer(major=1, minor=0, patch=0), ...)` |
 | 期待結果 | 例外なし。`create_new_version` は呼ばれない |
+
+### TC-IT-DTR-021: SqliteDeliverableTemplateRepository.delete() — 存在する id → 行削除（§確定 E）
+
+| 項目 | 内容 |
+|---|---|
+| 対応 | §確定 E / REQ-DT-HTTP-005 |
+| テストレベル | IT（Repository 直接呼び出し）|
+| 種別 | 正常系 |
+| 前提条件 | テスト用 SQLite DB に `DeliverableTemplate` が 1 件 INSERT 済み（Alembic upgrade head 適用済み）|
+| 操作 | `await repository.delete(template.id)` |
+| 期待結果 | 例外なし。`await repository.find_by_id(template.id)` が `None` を返す（物理削除確認）|
+| 配置ファイル | `tests/infrastructure/persistence/sqlite/repositories/test_deliverable_template_repository/test_crud/test_protocol_and_crud.py` |
+
+### TC-IT-DTR-022: SqliteDeliverableTemplateRepository.delete() — 存在しない id → no-op（§確定 E）
+
+| 項目 | 内容 |
+|---|---|
+| 対応 | §確定 E / REQ-DT-HTTP-005 |
+| テストレベル | IT（Repository 直接呼び出し）|
+| 種別 | 異常系 |
+| 前提条件 | DB 空 |
+| 操作 | `await repository.delete(uuid4())` |
+| 期待結果 | 例外なし（no-op）。DB に変化なし |
+| 配置ファイル | `tests/infrastructure/persistence/sqlite/repositories/test_deliverable_template_repository/test_crud/test_protocol_and_crud.py` |
+
+### TC-IT-RPR-016: SqliteRoleProfileRepository.delete() — 存在する id → 行削除（§確定 E）
+
+| 項目 | 内容 |
+|---|---|
+| 対応 | §確定 E / REQ-RP-HTTP-004 |
+| テストレベル | IT（Repository 直接呼び出し）|
+| 種別 | 正常系 |
+| 前提条件 | テスト用 SQLite DB に `RoleProfile` が 1 件 INSERT 済み |
+| 操作 | `await repository.delete(profile.id)` |
+| 期待結果 | 例外なし。`await repository.find_by_id(profile.id)` が `None` を返す（物理削除確認）|
+| 配置ファイル | `tests/infrastructure/persistence/sqlite/repositories/test_role_profile_repository/test_crud/test_crud_basic.py` |
+
+### TC-IT-RPR-017: SqliteRoleProfileRepository.delete() — 存在しない id → no-op（§確定 E）
+
+| 項目 | 内容 |
+|---|---|
+| 対応 | §確定 E / REQ-RP-HTTP-004 |
+| テストレベル | IT（Repository 直接呼び出し）|
+| 種別 | 異常系 |
+| 前提条件 | DB 空 |
+| 操作 | `await repository.delete(uuid4())` |
+| 期待結果 | 例外なし（no-op）。DB に変化なし |
+| 配置ファイル | `tests/infrastructure/persistence/sqlite/repositories/test_role_profile_repository/test_crud/test_crud_basic.py` |
 
 ### TC-UT-RPS-004: upsert — 既存あり → 既存 id 保持（§確定 C）
 
@@ -400,24 +472,34 @@
 
 ```
 backend/tests/
-├── infrastructure/persistence/sqlite/
-│   └── routers/                                  # 結合テスト（HTTP API）
-│       ├── test_deliverable_template/
-│       │   ├── __init__.py
-│       │   ├── test_create.py                    # TC-IT-DTH-001〜006 / 018 / 019
-│       │   ├── test_read.py                      # TC-IT-DTH-007〜011 / 020
-│       │   ├── test_update.py                    # TC-IT-DTH-012〜015
-│       │   └── test_delete.py                    # TC-IT-DTH-016〜017
-│       └── test_role_profile/
-│           ├── __init__.py
-│           ├── test_upsert.py                    # TC-IT-RPH-006〜010 / 013
-│           └── test_read_delete.py               # TC-IT-RPH-001〜005 / 011〜012
+├── integration/
+│   ├── test_deliverable_template_http_api/       # TC-IT-DTH-001〜020
+│   │   ├── __init__.py
+│   │   ├── conftest.py                           # app fixture / ASGITransport / engine
+│   │   ├── test_create.py                        # TC-IT-DTH-001〜006 / 018 / 019
+│   │   ├── test_read.py                          # TC-IT-DTH-007〜011 / 020
+│   │   ├── test_update.py                        # TC-IT-DTH-012〜015
+│   │   └── test_delete.py                        # TC-IT-DTH-016〜017
+│   └── test_role_profile_http_api/               # TC-IT-RPH-001〜013
+│       ├── __init__.py
+│       ├── conftest.py
+│       ├── test_upsert.py                        # TC-IT-RPH-006〜010 / 013
+│       └── test_read_delete.py                   # TC-IT-RPH-001〜005 / 011〜012
+├── infrastructure/persistence/sqlite/repositories/
+│   ├── test_deliverable_template_repository/
+│   │   └── test_crud/
+│   │       ├── test_protocol_and_crud.py         # 既存 + TC-IT-DTR-021〜022 追加
+│   │       └── test_schema_and_conversions.py    # 既存
+│   └── test_role_profile_repository/
+│       └── test_crud/
+│           ├── test_crud_basic.py                # 既存 + TC-IT-RPR-016〜017 追加
+│           └── test_crud_constraints.py          # 既存
 └── unit/
     ├── test_deliverable_template_service.py      # TC-UT-DTS-001〜009
     └── test_role_profile_service.py              # TC-UT-RPS-001〜006
 ```
 
-**注記**: bakufu リポジトリの既存テスト構造（`tests/infrastructure/persistence/sqlite/repositories/`）に準拠し、HTTP API テストは `tests/infrastructure/persistence/sqlite/routers/` 配下に配置する。既存の http-api-foundation テスト（`tests/interfaces/http/`）が存在する場合はそちらのパターンを優先する。実装 PR で既存パターンを確認の上、適切なディレクトリを選択する。
+**注記**: HTTP API テストの配置パターンは `tests/integration/test_{feature}_http_api/`（ディレクトリ形式）に統一する（既存: `test_directive_http_api/` / `test_room_http_api/` / `test_agent_http_api/` 等と同一パターン）。`conftest.py` は各 `test_*_http_api/` ディレクトリ直下に配置し、`app` fixture と `ASGITransport` の共通セットアップを行う。
 
 ## カバレッジ基準
 
@@ -428,29 +510,38 @@ backend/tests/
 - §確定 H（AcceptanceCriterion.id 省略時 UUID 生成）/ §確定 I（schema type 判別: JSON_SCHEMA/OPENAPI → dict、他 → str）を物理確認する
 - Service の業務ロジック（DAG 走査・version 比較・upsert id 継承）はユニットテストで独立して検証する
 
+## A09 監査ログ（テスト対象外）
+
+**MVP スコープ外。UT / IT の対象なし。**
+
+`basic-design.md` § A09 の決定: 操作監査ログ（誰が・いつ・何を）は別 Issue で実装する。本 PR の範囲では Python 標準 `logging.INFO` を使用した簡易ログ出力（`logger.info("deliverable_template created id=%s", template.id)` 等）のみ実装する。操作ログの構造化・永続化・検索はスコープ外。
+
+これにより本テスト設計書には監査ログ検証ケースを追加しない。将来の監査ログ Issue 実装時に、その PR のテスト設計書で改めて定義する。
+
 ## 人間が動作確認できるタイミング
 
 CI 統合後（PR #122 の GitHub Actions 全ジョブ緑確認）:
 
 ```sh
 # 結合テスト（DeliverableTemplate HTTP API）
-uv run pytest backend/tests/infrastructure/persistence/sqlite/routers/test_deliverable_template/ -v
+uv run pytest backend/tests/integration/test_deliverable_template_http_api/ -v
 
 # 結合テスト（RoleProfile HTTP API）
-uv run pytest backend/tests/infrastructure/persistence/sqlite/routers/test_role_profile/ -v
+uv run pytest backend/tests/integration/test_role_profile_http_api/ -v
+
+# Repository delete() 単体（§確定 E 物理確認）
+uv run pytest backend/tests/infrastructure/persistence/sqlite/repositories/test_deliverable_template_repository/ backend/tests/infrastructure/persistence/sqlite/repositories/test_role_profile_repository/ -v -k "delete"
 
 # ユニットテスト（Service 業務ロジック）
 uv run pytest backend/tests/unit/test_deliverable_template_service.py backend/tests/unit/test_role_profile_service.py -v
 ```
 
-**注記**: 実際のテストディレクトリは実装 PR での既存パターン確認後に確定する。上記パスは予定。
-
 ## 未決課題・characterization task
 
 | # | 内容 | 起票先 |
 |---|---|---|
-| 1 | `tests/factories/empire.py` の存在確認（RoleProfileService UT で Empire stub が必要）。存在しない場合は inline stub で代替 | 実装 PR で確認 |
-| 2 | 既存 http-api-foundation の `conftest.py` で `app` fixture / `ASGITransport` の共通セットアップがあるか確認。ある場合は再利用、ない場合は本 PR で追加 | 実装 PR で確認 |
+| 1 | `tests/factories/empire.py` の存在確認（RoleProfileService UT で Empire stub が必要）— **確定済み**: `tests/factories/empire.py` が存在することを物理確認（PR #135 ブランチで確認）。`make_empire()` 等を再利用する | 解決済み |
+| 2 | 既存 http-api-foundation の `conftest.py` で `app` fixture / `ASGITransport` の共通セットアップがあるか確認— **確定済み**: 既存パターン（`test_directive_http_api/` 等）に `conftest.py` が存在することを確認。各 `test_*_http_api/` ディレクトリに独立 `conftest.py` を配置するパターンを採用 | 解決済み |
 | 3 | TC-IT-DTH-003〜004（DAG 循環）の結合テスト構成が複雑（複数 POST が前提）。50 行超過の場合は conftest fixture に前提データ構築を移動する | 実装時判断 |
 | characterization | 外部 API 依存なし。SQLite は実接続のため characterization fixture 不要 | — |
 
