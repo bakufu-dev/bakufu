@@ -22,7 +22,7 @@
 | 入力 | `DeliverableTemplateCreate`（name 1〜80文字 / description 0〜500文字 / type TemplateType / schema dict\|str / acceptance_criteria list[AcceptanceCriterionCreate] / version SemVerCreate(optional, default 0.1.0) / composition list[DeliverableTemplateRefCreate](optional, default [])） |
 | 処理 | `DeliverableTemplateService.create()` → ①各 composition ref の template_id が実在することを `DeliverableTemplateRepository.find_by_id` で確認 → ②composition の推移的 DAG 走査で循環参照を検出（application 層責務、R1-B）→ ③`DeliverableTemplate.model_validate({...})` で Aggregate 構築（自己参照チェック・不変条件 R1-A〜C 検査）→ `async with session.begin():` `DeliverableTemplateRepository.save(template)` |
 | 出力 | HTTP 201, `DeliverableTemplateResponse` |
-| エラー時 | ref template 不在 → `DeliverableTemplateNotFoundError`（MSG-DT-HTTP-002, 422）/ 推移的 DAG 循環検出 → `CompositionCycleError`（MSG-DT-HTTP-003, 422）/ schema 形式不正（MSG-DT-001, domain raises）→ 422 / 自己参照（MSG-DT-002, domain raises）→ 422 / Pydantic 形式違反 → 422 |
+| エラー時 | ref template 不在 → `DeliverableTemplateNotFoundError`（MSG-DT-HTTP-002, 422, kind="composition_ref"）/ DAG 循環・上限超過 → `CompositionCycleError`（MSG-DT-HTTP-003a/003b/003c, 422）/ schema 形式不正（MSG-DT-001, domain raises）→ 422 / 自己参照（MSG-DT-002, domain raises）→ 422 / Pydantic 形式違反 → 422 |
 | 親 spec 参照 | UC-DT-001, UC-DT-003 |
 
 ### REQ-DT-HTTP-002: DeliverableTemplate 一覧取得（GET /api/deliverable-templates）
@@ -52,7 +52,7 @@
 | 入力 | パスパラメータ `template_id: str` + `DeliverableTemplateUpdate`（name / description / type / schema / acceptance_criteria / version / composition 全フィールド必須） |
 | 処理 | `DeliverableTemplateService.update(template_id, ...)` → ①`find_by_id` で現状取得（不在なら 404）→ ②提供 version が現バージョン未満の場合は拒否（§確定 B、MSG-DT-HTTP-004, 422）→ ③version が現バージョン超の場合は `template.create_new_version(new_version)` で新インスタンス生成、同一の場合は `model_validate` で直接再構築 → ④composition の DAG 走査と各 ref 存在確認 → ⑤`async with session.begin():` `save(updated_template)` |
 | 出力 | HTTP 200, 更新済み `DeliverableTemplateResponse` |
-| エラー時 | 不在 → 404（MSG-DT-HTTP-001）/ version 降格 → 422（MSG-DT-HTTP-004）/ version_not_greater（MSG-DT-003, domain raises）→ 422 / composition 循環 → 422（MSG-DT-HTTP-003）/ ref 不在 → 422（MSG-DT-HTTP-002）|
+| エラー時 | 不在 → 404（MSG-DT-HTTP-001, kind="primary"）/ version 降格 → 422（MSG-DT-HTTP-004）/ version_not_greater（MSG-DT-003, domain raises）→ 422 / composition 循環・上限超過 → 422（MSG-DT-HTTP-003a/003b/003c）/ ref 不在 → 422（MSG-DT-HTTP-002, kind="composition_ref"）|
 | 親 spec 参照 | UC-DT-002, UC-DT-003 |
 
 ### REQ-DT-HTTP-005: DeliverableTemplate 削除（DELETE /api/deliverable-templates/{template_id}）
@@ -94,7 +94,7 @@
 | 入力 | パスパラメータ `empire_id: str` + `role: str`（Role StrEnum 値）+ `RoleProfileUpsertRequest`（deliverable_template_refs: list[DeliverableTemplateRefCreate]） |
 | 処理 | `RoleProfileService.upsert(empire_id, role, refs)` → ①`EmpireRepository.find_by_id(empire_id)` で Empire 存在確認（不在なら 404）→ ②各 ref の template_id が実在することを `DeliverableTemplateRepository.find_by_id` で確認（不在なら 422）→ ③`RoleProfileRepository.find_by_empire_and_role(empire_id, role)` で既存確認 → ④既存あり: 既存 id を保持し `RoleProfile.model_validate({...全 refs 置換...})` で再構築、なし: `RoleProfile(id=uuid4(), ...)` 新規構築 → ⑤`async with session.begin():` `RoleProfileRepository.save(profile)`（§確定 C、R1-D） |
 | 出力 | HTTP 200, `RoleProfileResponse` |
-| エラー時 | Empire 不在 → 404（MSG-RP-HTTP-003）/ ref template 不在 → 422（MSG-RP-HTTP-002）/ role 不正値 → Pydantic 422 / `RoleProfileInvariantViolation`（重複 ref 等）→ 422 |
+| エラー時 | Empire 不在 → 404（MSG-RP-HTTP-003）/ ref template 不在 → 422（MSG-RP-HTTP-002, kind="role_profile_ref"）/ role 不正値 → Pydantic 422 / `RoleProfileInvariantViolation`（重複 ref 等）→ 422 |
 | 親 spec 参照 | UC-DT-004 |
 
 ### REQ-RP-HTTP-004: RoleProfile 削除（DELETE /api/empires/{empire_id}/role-profiles/{role}）
@@ -121,10 +121,10 @@
 | 横断 | `DeliverableTemplateSchemas` | `backend/src/bakufu/interfaces/http/schemas/deliverable_template.py` | Pydantic v2 リクエスト / レスポンスモデル（新規） |
 | 横断 | `RoleProfileSchemas` | `backend/src/bakufu/interfaces/http/schemas/role_profile.py` | Pydantic v2 リクエスト / レスポンスモデル（新規） |
 | 横断 | `dependencies.py` 拡張 | `backend/src/bakufu/interfaces/http/dependencies.py`（既存追記） | `get_deliverable_template_service` / `get_role_profile_service` DI ファクトリ追加 |
-| 横断 | `error_handlers.py` 拡張 | `backend/src/bakufu/interfaces/http/error_handlers.py`（既存追記） | `DeliverableTemplateNotFoundError` / `RoleProfileNotFoundError` / `CompositionCycleError` → `ErrorResponse` ハンドラ追加 |
+| 横断 | `error_handlers.py` 拡張 | `backend/src/bakufu/interfaces/http/error_handlers.py`（既存追記） | `DeliverableTemplateNotFoundError`（`kind` 属性で分岐: `"primary"`→404 / `"composition_ref"` / `"role_profile_ref"`→422）/ `RoleProfileNotFoundError`（404）/ `CompositionCycleError`（422）→ `ErrorResponse` ハンドラ追加 |
 | REQ-DT-HTTP-005 | `SqliteDeliverableTemplateRepository` 拡張 | `backend/src/bakufu/infrastructure/persistence/sqlite/repositories/deliverable_template_repository.py`（既存追記） | `delete(id)` 実装追加 |
 | REQ-RP-HTTP-004 | `SqliteRoleProfileRepository` 拡張 | `backend/src/bakufu/infrastructure/persistence/sqlite/repositories/role_profile_repository.py`（既存追記） | `delete(id)` 実装追加 |
-| REQ-RP-HTTP-001, 003 | `EmpireRepository` Protocol（既存）| `backend/src/bakufu/application/ports/empire_repository.py`（既存参照のみ、変更なし）| `RoleProfileService` が Empire 存在確認に使用（`find_by_id` のみ）。`common.py` `ErrorDetail` への `detail` フィールド追加も本 PR で実施（§確定 G）|
+| REQ-RP-HTTP-001, 003 | `EmpireRepository` Protocol（既存）| `backend/src/bakufu/application/ports/empire_repository.py`（既存参照のみ、変更なし）| `RoleProfileService` が Empire 存在確認に使用（`find_by_id` のみ）|
 | 横断 | `ErrorDetail` Schema 拡張 | `backend/src/bakufu/interfaces/http/schemas/common.py`（既存追記）| `detail: dict[str, object] \| None = None` フィールド追加（§確定 G、既存ハンドラへの影響なし）|
 
 ```
@@ -402,7 +402,7 @@ sequenceDiagram
 | テンプレートが 0 件で GET /api/deliverable-templates | `{"items": [], "total": 0}` を返す（エラーではない）|
 | 存在しない template_id で GET /api/deliverable-templates/{id} | `{"error": {"code": "not_found", ...}}` で 404 |
 | composition に自分自身の id を指定して POST | domain が `composition_self_ref` を detect → 422（MSG-DT-002）|
-| 推移的循環参照（A→B→A）を含む composition で POST | service の DAG 走査が検出 → 422（MSG-DT-HTTP-003）|
+| 推移的循環参照（A→B→A）を含む composition で POST | service の DAG 走査が検出 → 422（MSG-DT-HTTP-003a）|
 | 存在しない empire_id で GET role-profiles | `EmpireNotFoundError` → 404（MSG-RP-HTTP-003）|
 | 同一 role で 2 回 PUT role-profiles | 2 回目も 200 で返す（upsert、冪等性保証）|
 
@@ -434,7 +434,7 @@ sequenceDiagram
 | A06 | Vulnerable Components | 依存 CVE は CI `pip-audit` で監視（http-api-foundation 確定済み） |
 | A07 | Auth Failures | MVP 設計上 意図的な認証なし（loopback バインドで代替）|
 | A08 | Data Integrity Failures | domain frozen Aggregate + Repository UPSERT + DB UNIQUE 制約（R1-D）の多重防衛 |
-| A09 | Logging Failures | **操作監査**: MVP は loopback バインドで認証なし（個人開発 CEO 1 人が使用）のため操作者の特定が不可能。操作 audit log（誰が・いつ・何を変更したか）は **MVP スコープ外**とする。将来の認証実装時に Service 層で audit log テーブルへの書き込みを追加する（別 Issue）。**MVP では** Service 層が各操作（CREATE / UPDATE / DELETE）を Python `logging.INFO`（`logger.info("deliverable_template created id=%s", template.id)` 形式）で記録する。スタックトレースはレスポンスに含めない（T3 対策）。`ErrorResponse.detail` に機密情報を含めない（feature-spec §13 の業務判断、機密レベル「低」）|
+| A09 | Logging Failures | **操作監査**: MVP は loopback バインドで認証なし（個人開発 CEO 1 人が使用）のため操作者の特定が不可能。操作 audit log（誰が・いつ・何を変更したか）は **MVP スコープ外**とする。将来の認証実装時に Service 層で audit log テーブルへの書き込みを追加する（別 Issue）。スタックトレースはレスポンスに含めない（T3 対策）。`ErrorResponse.detail` に機密情報を含めない（feature-spec §13 の業務判断、機密レベル「低」）|
 | A10 | SSRF | 該当なし（外部 URL fetch なし） |
 
 ## ER 図
@@ -472,7 +472,7 @@ erDiagram
 
 | 例外種別 | 発生箇所 | 処理方針 | HTTP ステータス |
 |---------|---------|---------|---------------|
-| `DeliverableTemplateNotFoundError` | `DeliverableTemplateService`（find_by_id 結果 None 時）| `error_handlers.py` 専用ハンドラ → 404 | 404 |
+| `DeliverableTemplateNotFoundError` | `DeliverableTemplateService`（find_by_id / ref 確認時）/ `RoleProfileService`（ref 確認時）| `error_handlers.py` 専用ハンドラが `kind` を参照: `"primary"`→404 / `"composition_ref"` / `"role_profile_ref"`→422 | 404 or 422（`kind` 依存）|
 | `RoleProfileNotFoundError` | `RoleProfileService`（find_by_empire_and_role 結果 None 時）| 専用ハンドラ → 404 | 404 |
 | `EmpireNotFoundError`（既存）| `RoleProfileService`（empire 存在確認 None 時）| 既存 empire ハンドラ → 404 | 404 |
 | `CompositionCycleError` | `DeliverableTemplateService._check_dag()`（推移的循環検出）| 専用ハンドラ → 422 | 422 |
@@ -484,15 +484,15 @@ erDiagram
 
 Router 内に `try/except` は書かない（http-api-foundation 規律）。
 
-**dangling ref 発生後の検出経路**: DELETE /api/deliverable-templates/{id} により削除されたテンプレートを参照する dangling ref は、本 sub-feature のエラーハンドリングでは検出しない（MVP 設計判断、REQ-DT-HTTP-005 参照）。将来の参照解決処理（Room 作成等）が dangling ref を検出した場合は当該 application 層で `DeliverableTemplateNotFoundError` を raise して 422 を返す。
-
 ## MSG 一覧（ID のみ、確定文言は detailed-design.md で凍結）
 
 | ID | 種別 | 概要 | HTTP ステータス | 例外型 |
 |----|------|------|---------------|-------|
 | MSG-DT-HTTP-001 | エラー（不在）| DeliverableTemplate が見つからない | 404 | `DeliverableTemplateNotFoundError` |
 | MSG-DT-HTTP-002 | エラー（参照不在）| composition ref の template が存在しない | 422 | `DeliverableTemplateNotFoundError` |
-| MSG-DT-HTTP-003 | エラー（DAG 循環）| composition に推移的循環参照が検出された | 422 | `CompositionCycleError` |
+| MSG-DT-HTTP-003a | エラー（DAG 循環: 推移的）| composition に推移的循環参照が検出された（reason=transitive_cycle）| 422 | `CompositionCycleError` |
+| MSG-DT-HTTP-003b | エラー（DAG 上限: 深度）| composition 参照深度が上限（10）を超えた（reason=depth_limit）| 422 | `CompositionCycleError` |
+| MSG-DT-HTTP-003c | エラー（DAG 上限: ノード数）| composition 参照ノード数が上限（100）を超えた（reason=node_limit）| 422 | `CompositionCycleError` |
 | MSG-DT-HTTP-004 | エラー（version 降格）| PUT 提供 version が現 version 未満 | 422 | `DeliverableTemplateVersionDowngradeError` |
 | MSG-RP-HTTP-001 | エラー（不在）| RoleProfile が見つからない | 404 | `RoleProfileNotFoundError` |
 | MSG-RP-HTTP-002 | エラー（参照不在）| deliverable_template_refs の template が存在しない | 422 | `DeliverableTemplateNotFoundError` |
