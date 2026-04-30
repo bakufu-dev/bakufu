@@ -82,7 +82,7 @@ backend/
 |---|---|
 | 入力 | パスパラメータ `id: UUID` |
 | 処理 | `ExternalReviewGateService.find_by_id_or_raise(gate_id)` → `ExternalReviewGateRepository.find_by_id(gate_id)` → None → `GateNotFoundError`。取得成功後 `record_view` は呼び出さない（HTTP GET は副作用なし）|
-| 出力 | HTTP 200, `GateDetailResponse`（`deliverable_snapshot.body_markdown` / `feedback_text` / `audit_trail[*].comment` は DB マスキング済みの値を取得するが、**API 応答では原文（マスク解除後）を返す** — 詳細は §セキュリティ設計 §確定B）|
+| 出力 | HTTP 200, `GateDetailResponse`（`deliverable_snapshot.body_markdown` / `feedback_text` / `audit_trail[*].comment` は DB から取得したマスキング済みの値をそのまま返す（`<REDACTED:...>` パターンが含まれることがある）— 詳細は §セキュリティ設計 §確定B）|
 | エラー時 | 不在 → 404 (MSG-ERG-HTTP-001) / 不正 UUID → 422 |
 
 ### REQ-ERG-HTTP-004: Gate 承認（POST /api/gates/{id}/approve）
@@ -262,13 +262,14 @@ classDiagram
 ### ユースケース 4: Gate 承認（POST /api/gates/{id}/approve）
 
 1. Router が `id: UUID` + `GateApprove` を受け取る。`Authorization: Bearer <owner_id>` ヘッダーから `reviewer_owner_id` を抽出（`get_reviewer_id()` Depends — 不正形式 → 422）
-2. `ExternalReviewGateService.find_by_id_or_raise(gate_id)` → 不在 → `GateNotFoundError` → 404
-3. `gate.reviewer_id != reviewer_owner_id` → `GateAuthorizationError` → 403
-4. `gate.approve(by_owner_id=reviewer_owner_id, comment=body.comment, decided_at=utcnow())`
-   - `ExternalReviewGateInvariantViolation(kind='decision_already_decided')` → `GateAlreadyDecidedError` → 409
-   - `ExternalReviewGateInvariantViolation(kind='feedback_text_range')` → 422
-5. `ExternalReviewGateRepository.save(updated_gate)` — `async with session.begin()` 内
-6. HTTP 200 `GateDetailResponse`（decision=APPROVED）を返す
+2. Router → `ExternalReviewGateService.find_by_id_or_raise(gate_id)` → 不在 → `GateNotFoundError` → 404
+3. Router → `ExternalReviewGateService.approve(gate, reviewer_owner_id, comment, decided_at)` を呼び出す。**reviewer_id 照合は Service 内で実行する（照合責務の凍結: Router ではなく Service）**:
+   - `gate.reviewer_id != reviewer_owner_id` → `GateAuthorizationError` → 403
+   - `gate.approve(by_owner_id=reviewer_owner_id, comment=body.comment, decided_at=utcnow())`
+     - `ExternalReviewGateInvariantViolation(kind='decision_already_decided')` → `GateAlreadyDecidedError` → 409
+     - `ExternalReviewGateInvariantViolation(kind='feedback_text_range')` → 422
+4. `ExternalReviewGateRepository.save(updated_gate)` — Router が `async with session.begin()` 内で呼ぶ（§確定E）
+5. HTTP 200 `GateDetailResponse`（decision=APPROVED）を返す
 
 ### ユースケース 5: Gate 差し戻し（POST /api/gates/{id}/reject）
 
@@ -283,7 +284,57 @@ classDiagram
 
 ## シーケンス図
 
-該当なし — 理由: §処理フロー §ユースケース 1〜6 で approve / reject / cancel の全業務フローを箇条書きで記述済み。3 操作の構造は対称的（Bearer 抽出 → find_by_id_or_raise → reviewer_id 照合 → domain メソッド呼び出し → save → 200 返却）であり、シーケンス図として独立させると処理フローとの二重管理になる。
+approve / reject / cancel の 3 操作は対称構造なので、approve を代表として 1 枚で凍結する。reject / cancel も Bearer 抽出 → find_by_id_or_raise → reviewer_id 照合 → domain メソッド（`reject` / `cancel`）→ save → 200 の同一フローを辿る。
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as API クライアント（CEO）
+    participant Router as GateRouter
+    participant Dep as get_reviewer_id()<br/>Depends
+    participant Svc as ExternalReviewGateService
+    participant Dom as ExternalReviewGate<br/>（domain）
+    participant Repo as ExternalReviewGateRepository
+    participant EH as ErrorHandler
+
+    Client->>Router: POST /api/gates/{id}/approve<br/>Authorization: Bearer &lt;owner_id&gt;<br/>Body: GateApprove
+
+    Router->>Dep: Authorization header
+    alt ヘッダー不在 / 形式不正 / UUID 不正
+        Dep-->>EH: HTTPException(422)
+        EH-->>Client: 422 validation_error (MSG-ERG-HTTP-004)
+    end
+    Dep-->>Router: reviewer_owner_id: OwnerId
+
+    Router->>Svc: find_by_id_or_raise(gate_id)
+    Svc->>Repo: find_by_id(gate_id)
+    alt Gate 不在
+        Repo-->>Svc: None
+        Svc-->>EH: GateNotFoundError
+        EH-->>Client: 404 not_found (MSG-ERG-HTTP-001)
+    end
+    Repo-->>Svc: ExternalReviewGate(PENDING)
+    Svc-->>Router: gate
+
+    Router->>Svc: approve(gate, reviewer_owner_id, comment, decided_at)
+    Svc->>Svc: gate.reviewer_id != reviewer_owner_id?
+    alt 照合失敗
+        Svc-->>EH: GateAuthorizationError
+        EH-->>Client: 403 forbidden (MSG-ERG-HTTP-003)
+    end
+    Svc->>Dom: gate.approve(by_owner_id, comment, decided_at)
+    alt 既決定（decision_already_decided）
+        Dom-->>Svc: ExternalReviewGateInvariantViolation
+        Svc-->>EH: GateAlreadyDecidedError
+        EH-->>Client: 409 conflict (MSG-ERG-HTTP-002)
+    end
+    Dom-->>Svc: ExternalReviewGate(APPROVED)
+    Svc-->>Router: ExternalReviewGate(APPROVED)
+
+    Router->>Repo: save(updated_gate)（async with session.begin()）
+    Repo-->>Router: None
+    Router-->>Client: 200 OK + GateDetailResponse(decision=APPROVED)
+```
 
 ## エラーハンドリング方針
 
@@ -308,7 +359,7 @@ classDiagram
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |---|---|---|---|
 | **T1: なりすまし reviewer** | 他の reviewer_id を `Authorization: Bearer` に指定し、他人の Gate を approve する | Gate の判断整合性（誰が承認したか）| `gate.reviewer_id != reviewer_owner_id` → `GateAuthorizationError` → 403（REQ-ERG-HTTP-004〜006）|
-| **T2: 二重決定（TOCTOU）** | 2 リクエストが同一 PENDING Gate に approve を送信し、domain 不変条件をバイパスしようとする | Gate の判断状態（decision 1 回限り）| domain の `gate.approve()` が `decision_already_decided` を raise（`ExternalReviewGateInvariantViolation`）→ `GateAlreadyDecidedError` → 409。DB `unique` 制約は別途存在しないが domain Aggregate が guard |
+| **T2: 二重決定（TOCTOU）** | 2 リクエストが同一 PENDING Gate に approve を送信し、domain 不変条件をバイパスしようとする | Gate の判断状態（decision 1 回限り）| **MVP 前提の凍結: 単一プロセス・シングル CEO ユーザー・loopback バインド（127.0.0.1）の組み合わせにより、同一 Gate への同時並列承認リクエストは実運用上発生しない。この前提を明示することで、楽観的ロック・DB 一意制約の追加を Phase 2 スコープとする（YAGNI）。将来マルチユーザー / マルチプロセス対応時は `version: int` フィールド + UPDATE 行数チェックによる楽観的ロックを導入すること。** シリアルアクセスでの防御は domain の `gate.approve()` による `decision_already_decided` raise（→ 409）が担保 |
 | **T3: スタックトレース露出** | 500 エラーレスポンスへの内部情報混入 | 内部実装情報 | http-api-foundation 確定A: `generic_exception_handler` が `internal_error` のみ返す |
 | **T4: 不正 UUID によるパス注入** | gate_id / task_id に不正値を注入 | DB 整合性 | FastAPI `UUID` 型強制（422 on 不正形式）+ SQLAlchemy ORM（raw SQL 不使用）|
 | **T5: CSRF 経由での判断操作** | ブラウザ経由の不正 POST | Gate の判断状態 | http-api-foundation 確定D: CSRF Origin 検証ミドルウェア（Origin ヘッダ不一致なら 403）|
@@ -316,9 +367,11 @@ classDiagram
 
 ### §確定B: `deliverable_snapshot.body_markdown` / `feedback_text` / `audit_trail[*].comment` の API 返却方針
 
-> **意図**: DB は `MaskedText` TypeDecorator により secret パターンを `<REDACTED:*>` でマスキングして永続化している。このマスキングは **DB 直接参照（dump / 管理ツール）による secret 漏洩防御** が目的であり、HTTP API 経由の CEO への表示を制限することが目的ではない。
+> **一意確定（全4箇所で同一定義）**: `MaskedText` TypeDecorator は `process_bind_param`（書き込み時）で `mask()` を適用し、`process_result_value`（読み出し時）は値をそのまま返す（アンマスク処理なし — `infrastructure/persistence/sqlite/base.py MaskedText` 実装による）。したがって DB には mask() 済み文字列が永続化されており、API はその値をそのまま返す。
 >
-> HTTP API 応答では **DB から取得した値をそのまま返す**。DB 書き込み前に mask() が適用されているため、API 応答値は mask() 済み文字列（`<REDACTED:DISCORD_WEBHOOK>` 等）が含まれることがある。これは仕様であり、設計上の意図として本書で明示コメントを残す。
+> **API 応答値 = DB に保存されている mask() 済み文字列**（`<REDACTED:DISCORD_WEBHOOK>` 等のパターンが含まれることがある）。これは仕様であり、設計上の意図として凍結する。"原文（マスク解除後）" という表現は本書では使用しない。
+>
+> **防御の目的**: DB 直接参照（dump / 管理ツール / ログ）による secret 漏洩防御。HTTP API 経由の表示を制限することが目的ではない。
 >
 > CEO が「なぜコメントが `<REDACTED:DISCORD_WEBHOOK>` になっているのか」を理解できる UI 補足説明は ui sub-feature のスコープ。
 
@@ -326,7 +379,7 @@ classDiagram
 
 | # | カテゴリ | 対応状況 |
 |---|---|---|
-| A01 | Broken Access Control | loopback バインド（`127.0.0.1:8000`）+ reviewer_id 照合（REQ-ERG-HTTP-004〜006 の `gate.reviewer_id != reviewer_owner_id` チェック）|
+| A01 | Broken Access Control | **GET エンドポイント（REQ-001〜003）は認証なし。loopback バインド（`127.0.0.1:8000`）を唯一の防御線とする（設計上の意図: MVP シングルユーザー前提 — §脅威モデル T2 参照）。** POST エンドポイント（REQ-004〜006）は `Authorization: Bearer <owner_id>` + `gate.reviewer_id != reviewer_owner_id` チェック（ExternalReviewGateService 責務）で二重防御 |
 | A02 | Cryptographic Failures | DB 永続化は MaskedText（多層防御）。API 応答は raw 値返却（§確定B 参照）|
 | A03 | Injection | SQLAlchemy ORM 経由（raw SQL 不使用）。Pydantic v2 で入力バリデーション |
 | A04 | Insecure Design | domain の pre-validate + frozen Gate で不整合状態を物理的に防止。state machine decision table で不正遷移を拒否 |

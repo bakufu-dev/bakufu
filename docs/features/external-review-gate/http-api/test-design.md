@@ -19,13 +19,15 @@
 | REQ-ERG-HTTP-001 | `GET /api/gates` + `find_pending_for_reviewer` | TC-IT-ERG-HTTP-001, TC-IT-ERG-HTTP-002 | 結合 | 正常系 / 異常系 | — |
 | REQ-ERG-HTTP-002 | `GET /api/tasks/{task_id}/gates` + `find_by_task` | TC-IT-ERG-HTTP-003, TC-IT-ERG-HTTP-004 | 結合 | 正常系 / 異常系 | — |
 | REQ-ERG-HTTP-003 | `GET /api/gates/{id}` + `find_by_id_or_raise` | TC-IT-ERG-HTTP-005, TC-IT-ERG-HTTP-006, TC-IT-ERG-HTTP-007 | 結合 | 正常系 / 異常系 | — |
-| REQ-ERG-HTTP-004 | `POST /api/gates/{id}/approve` + `ExternalReviewGateService.approve` | TC-IT-ERG-HTTP-008〜013 | 結合 | 正常系 / 異常系 | feature-spec 受入基準 3, 5 |
-| REQ-ERG-HTTP-005 | `POST /api/gates/{id}/reject` + `ExternalReviewGateService.reject` | TC-IT-ERG-HTTP-014〜019 | 結合 | 正常系 / 異常系 | feature-spec 受入基準 4, 5 |
-| REQ-ERG-HTTP-006 | `POST /api/gates/{id}/cancel` + `ExternalReviewGateService.cancel` | TC-IT-ERG-HTTP-020〜024 | 結合 | 正常系 / 異常系 | feature-spec 受入基準 4, 5 |
+| REQ-ERG-HTTP-004 | `POST /api/gates/{id}/approve` + `ExternalReviewGateService.approve` | TC-IT-ERG-HTTP-008〜013, TC-IT-ERG-HTTP-026 | 結合 | 正常系 / 異常系 | feature-spec 受入基準 3, 5 |
+| REQ-ERG-HTTP-005 | `POST /api/gates/{id}/reject` + `ExternalReviewGateService.reject` | TC-IT-ERG-HTTP-014〜019, TC-IT-ERG-HTTP-027 | 結合 | 正常系 / 異常系 | feature-spec 受入基準 4, 5 |
+| REQ-ERG-HTTP-006 | `POST /api/gates/{id}/cancel` + `ExternalReviewGateService.cancel` | TC-IT-ERG-HTTP-020〜024, TC-IT-ERG-HTTP-028 | 結合 | 正常系 / 異常系 | feature-spec 受入基準 4, 5 |
 | P-1: GateNotFoundError | `error_handlers.py` | TC-IT-ERG-HTTP-006, TC-IT-ERG-HTTP-009 | 結合 | 異常系 | — |
 | P-1: GateAlreadyDecidedError | `error_handlers.py` | TC-IT-ERG-HTTP-012, TC-IT-ERG-HTTP-017 | 結合 | 異常系 | feature-spec 受入基準 5 |
 | P-1: GateAuthorizationError | `error_handlers.py` | TC-IT-ERG-HTTP-011, TC-IT-ERG-HTTP-016, TC-IT-ERG-HTTP-022 | 結合 | 異常系 | — |
 | `get_reviewer_id()` Depends | `dependencies.py` | TC-IT-ERG-HTTP-013 | 結合 | 異常系 | — |
+| §確定B（masking 挙動）| `GET /api/gates/{id}` レスポンス | TC-IT-ERG-HTTP-025 | 結合 | 正常系 | — |
+| R1-G（2行エラー構造）| `error_handlers.py` MSG-ERG-HTTP-002〜004 | TC-IT-ERG-HTTP-029 | 結合 | 異常系 | feature-spec 受入基準 12 |
 | `ExternalReviewGateService` | Service 単体 | TC-UT-ERG-HTTP-001〜005 | ユニット | 正常系 / 異常系 | — |
 
 ## 外部 I/O 依存マップ
@@ -93,6 +95,26 @@
 | TC-IT-ERG-HTTP-023 | APPROVED Gate（決済済み）seed 済み | cancel リクエスト（同 reviewer）| HTTP 409 `conflict` |
 | TC-IT-ERG-HTTP-024 | PENDING Gate seed 済み | `Authorization` ヘッダーなし | HTTP 422 `validation_error` |
 
+### §確定B 検証: masking 挙動（GET /api/gates/{id}）
+
+| テスト ID | 前提条件 | 操作 | 期待結果 |
+|---|---|---|---|
+| TC-IT-ERG-HTTP-025 | `body_markdown` に `DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/xxx/yyy` を含む PENDING Gate を seed（DB 書き込み時に MaskedText が mask() 適用済み）| `GET /api/gates/{id}` | HTTP 200。レスポンスの `deliverable_snapshot.body_markdown` に `<REDACTED:` パターンが含まれ、元の webhook URL が含まれない（§確定B — DB 保存済みのマスク値をそのまま返す検証）|
+
+### POST 系不正 UUID（REQ-ERG-HTTP-004〜006）
+
+| テスト ID | 操作 | 期待結果 |
+|---|---|---|
+| TC-IT-ERG-HTTP-026 | `POST /api/gates/invalid-not-uuid/approve` + `Authorization: Bearer <valid-uuid>` | HTTP 422 `validation_error`（パスパラメータ UUID 型強制）|
+| TC-IT-ERG-HTTP-027 | `POST /api/gates/invalid-not-uuid/reject` + `Authorization: Bearer <valid-uuid>` + `{"feedback_text": "x"}` | HTTP 422 `validation_error` |
+| TC-IT-ERG-HTTP-028 | `POST /api/gates/invalid-not-uuid/cancel` + `Authorization: Bearer <valid-uuid>` | HTTP 422 `validation_error` |
+
+### R1-G 準拠検証（MSG 2行構造）
+
+| テスト ID | 前提条件 | 操作 | 期待結果 |
+|---|---|---|---|
+| TC-IT-ERG-HTTP-029 | APPROVED Gate（決済済み）seed 済み | `POST /api/gates/{id}/approve`（同 reviewer）| HTTP 409。レスポンス body に `[FAIL]` 文字列 + `Next:` 文字列の両方が含まれる（MSG-ERG-HTTP-002 R1-G 準拠の静的照合）|
+
 ## ユニットテストケース（UT）
 
 ### ExternalReviewGateService
@@ -108,10 +130,12 @@
 ## カバレッジ基準
 
 - REQ-ERG-HTTP-001〜006 の各要件が **最低 1 件の TC-IT-ERG-HTTP-NNN** で検証されている
-- MSG-ERG-HTTP-001〜004 の各文言が**静的文字列で照合**されている（`assert "Gate not found" in response.json()...`）
-- feature-spec 受入基準 3（approve 遷移）/ 4（reject / cancel 遷移）/ 5（二重決定拒否）がそれぞれ **最低 1 件の IT** で検証されている
+- MSG-ERG-HTTP-001〜004 の各文言が**静的文字列で照合**されている（`assert "[FAIL]" in ...` + `assert "Next:" in ...` で R1-G 2行構造を検証）
+- feature-spec 受入基準 3（approve 遷移）/ 4（reject / cancel 遷移）/ 5（二重決定拒否）/ 12（R1-G 2行エラー構造）がそれぞれ **最低 1 件の IT** で検証されている
+- §確定B（masking 挙動）が TC-IT-ERG-HTTP-025 で検証されている（secret パターン含む seed → `<REDACTED:` 含有確認）
 - C0（行カバレッジ）目標: `routers/external_review_gates.py` 90% 以上 / `services/external_review_gate_service.py` 90% 以上
 - reviewer_id 照合（T1 脅威）が TC-IT-ERG-HTTP-011 / TC-IT-ERG-HTTP-016 / TC-IT-ERG-HTTP-022 で検証されている
+- POST 系不正 UUID が TC-IT-ERG-HTTP-026〜028 で検証されている（3 操作すべて）
 
 ## 人間が動作確認できるタイミング
 
