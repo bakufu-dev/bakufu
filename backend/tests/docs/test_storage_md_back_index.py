@@ -331,9 +331,7 @@ class TestBackIndexHasDeliverableTemplateRows:
     * domain-model/storage.md §逆引き表 に 2 行追加済み
     """
 
-    def test_deliverable_templates_no_mask_row_present(
-        self, storage_md_text: str
-    ) -> None:
+    def test_deliverable_templates_no_mask_row_present(self, storage_md_text: str) -> None:
         """TC-DOC-DTR-001a: §逆引き表 が deliverable_templates をノーマスクとして宣言する。
 
         'deliverable_templates' と 'masking 対象なし' が同一行に併記されていること。
@@ -349,9 +347,7 @@ class TestBackIndexHasDeliverableTemplateRows:
             "deliverable-template-repository §確定 J (Issue #119)."
         )
 
-    def test_role_profiles_no_mask_row_present(
-        self, storage_md_text: str
-    ) -> None:
+    def test_role_profiles_no_mask_row_present(self, storage_md_text: str) -> None:
         """TC-DOC-DTR-001b: §逆引き表 が role_profiles をノーマスクとして宣言する。
 
         'role_profiles' と 'masking 対象なし' が同一行に併記されていること。

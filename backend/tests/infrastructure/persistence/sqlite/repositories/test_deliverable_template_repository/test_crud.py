@@ -18,10 +18,13 @@ import json
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-import pytest
 import pydantic
+import pytest
 from bakufu.application.ports.deliverable_template_repository import (
     DeliverableTemplateRepository,
+)
+from bakufu.domain.deliverable_template.deliverable_template import (
+    DeliverableTemplate as _DeliverableTemplate,
 )
 from bakufu.domain.value_objects.enums import TemplateType
 from bakufu.domain.value_objects.template_vos import SemVer
@@ -30,15 +33,11 @@ from bakufu.infrastructure.persistence.sqlite.repositories.deliverable_template_
 )
 from sqlalchemy import text
 
-from bakufu.domain.deliverable_template.deliverable_template import (
-    DeliverableTemplate as _DeliverableTemplate,
-)
 from tests.factories.deliverable_template import (
     ValidStubValidator,
     make_acceptance_criterion,
     make_deliverable_template,
     make_deliverable_template_ref,
-    make_semver,
 )
 
 if TYPE_CHECKING:
@@ -65,9 +64,7 @@ class TestDeliverableTemplateRepositoryProtocol:
     ) -> None:
         """TC-IT-DTR-002: SqliteDeliverableTemplateRepository が Protocol duck typing を満たす。"""
         async with session_factory() as session:
-            repo: DeliverableTemplateRepository = SqliteDeliverableTemplateRepository(
-                session
-            )
+            repo: DeliverableTemplateRepository = SqliteDeliverableTemplateRepository(session)
             assert hasattr(repo, "find_by_id")
             assert hasattr(repo, "find_all")
             assert hasattr(repo, "save")
@@ -90,9 +87,7 @@ class TestFindById:
             await SqliteDeliverableTemplateRepository(session).save(template)
 
         async with session_factory() as session:
-            restored = await SqliteDeliverableTemplateRepository(session).find_by_id(
-                template.id
-            )
+            restored = await SqliteDeliverableTemplateRepository(session).find_by_id(template.id)
 
         assert restored is not None
         assert restored.id == template.id
@@ -104,9 +99,7 @@ class TestFindById:
     ) -> None:
         """TC-IT-DTR-004: 未知の id は None を返す。例外を raise しない。"""
         async with session_factory() as session:
-            result = await SqliteDeliverableTemplateRepository(session).find_by_id(
-                uuid4()
-            )
+            result = await SqliteDeliverableTemplateRepository(session).find_by_id(uuid4())
         assert result is None
 
 
@@ -183,16 +176,12 @@ class TestSaveUpsert:
         async with session_factory() as session, session.begin():
             await SqliteDeliverableTemplateRepository(session).save(template)
 
-        updated = make_deliverable_template(
-            template_id=template.id, name="updated-name"
-        )
+        updated = make_deliverable_template(template_id=template.id, name="updated-name")
         async with session_factory() as session, session.begin():
             await SqliteDeliverableTemplateRepository(session).save(updated)
 
         async with session_factory() as session:
-            restored = await SqliteDeliverableTemplateRepository(session).find_by_id(
-                template.id
-            )
+            restored = await SqliteDeliverableTemplateRepository(session).find_by_id(template.id)
 
         assert restored is not None
         assert restored.name == "updated-name"
@@ -215,9 +204,7 @@ class TestTxBoundary:
             await SqliteDeliverableTemplateRepository(session).save(template)
 
         async with session_factory() as session:
-            result = await SqliteDeliverableTemplateRepository(session).find_by_id(
-                template.id
-            )
+            result = await SqliteDeliverableTemplateRepository(session).find_by_id(template.id)
         assert result is not None
 
     async def test_rollback_path_drops_template(
@@ -226,20 +213,18 @@ class TestTxBoundary:
     ) -> None:
         """TC-IT-DTR-009b: begin() ブロック内例外で rollback → 行が消える。"""
 
-        class _Boom(Exception):
+        class _BoomError(Exception):
             pass
 
         template = make_deliverable_template()
 
-        with pytest.raises(_Boom):
+        with pytest.raises(_BoomError):
             async with session_factory() as session, session.begin():
                 await SqliteDeliverableTemplateRepository(session).save(template)
-                raise _Boom
+                raise _BoomError
 
         async with session_factory() as session:
-            result = await SqliteDeliverableTemplateRepository(session).find_by_id(
-                template.id
-            )
+            result = await SqliteDeliverableTemplateRepository(session).find_by_id(template.id)
         assert result is None, (
             "[FAIL] Rollback 経路で template 行が残存。\n"
             "Next: SqliteDeliverableTemplateRepository.save() は "
@@ -258,9 +243,7 @@ class TestTxBoundary:
             # commit() を呼ばずに退出 → AsyncSession.__aexit__ が rollback
 
         async with session_factory() as session:
-            result = await SqliteDeliverableTemplateRepository(session).find_by_id(
-                template.id
-            )
+            result = await SqliteDeliverableTemplateRepository(session).find_by_id(template.id)
         assert result is None, (
             "[FAIL] 暗黙 commit で template 行が永続化された。"
             "Repository は session.commit() を呼ばないこと (§確定 B)。"
@@ -287,18 +270,16 @@ class TestSchemaTypeDiscrimination:
         # §確定 D: JSON_SCHEMA / OPENAPI はドメインのバリデーター設定が必要
         needs_validator = type_ in self._JSON_TYPES
         if needs_validator:
-            _DeliverableTemplate._validator = ValidStubValidator()
+            _DeliverableTemplate._validator = ValidStubValidator()  # pyright: ignore[reportPrivateUsage]
         try:
             template = make_deliverable_template(type_=type_, schema=schema)
             async with session_factory() as session, session.begin():
                 await SqliteDeliverableTemplateRepository(session).save(template)
             async with session_factory() as session:
-                return await SqliteDeliverableTemplateRepository(session).find_by_id(
-                    template.id
-                )
+                return await SqliteDeliverableTemplateRepository(session).find_by_id(template.id)
         finally:
             if needs_validator:
-                _DeliverableTemplate._validator = None  # type: ignore[assignment]
+                _DeliverableTemplate._validator = None  # type: ignore[assignment]  # pyright: ignore[reportPrivateUsage]
 
     async def test_json_schema_type_roundtrip(
         self,
@@ -328,9 +309,7 @@ class TestSchemaTypeDiscrimination:
             "openapi": "3.0.0",
             "info": {"title": "test-api", "version": "1.0.0"},
         }
-        restored = await self._save_and_restore(
-            session_factory, TemplateType.OPENAPI, schema_dict
-        )
+        restored = await self._save_and_restore(session_factory, TemplateType.OPENAPI, schema_dict)
         assert restored is not None
         assert isinstance(restored.schema, dict), (
             f"[FAIL] OPENAPI: schema が dict でなく {type(restored.schema)}"
@@ -343,9 +322,7 @@ class TestSchemaTypeDiscrimination:
     ) -> None:
         """TC-IT-DTR-012: MARKDOWN type → schema が plain text str でラウンドトリップ。"""
         schema_str = "# 設計書\n## 概要\nmarkdown テンプレート"
-        restored = await self._save_and_restore(
-            session_factory, TemplateType.MARKDOWN, schema_str
-        )
+        restored = await self._save_and_restore(session_factory, TemplateType.MARKDOWN, schema_str)
         assert restored is not None
         assert isinstance(restored.schema, str), (
             f"[FAIL] MARKDOWN: schema が str でなく {type(restored.schema)}"
@@ -373,9 +350,7 @@ class TestSchemaTypeDiscrimination:
     ) -> None:
         """TC-IT-DTR-014: PROMPT type → schema が plain text str でラウンドトリップ。"""
         schema_str = "あなたは {{role}} としてふるまいます。"
-        restored = await self._save_and_restore(
-            session_factory, TemplateType.PROMPT, schema_str
-        )
+        restored = await self._save_and_restore(session_factory, TemplateType.PROMPT, schema_str)
         assert restored is not None
         assert isinstance(restored.schema, str), (
             f"[FAIL] PROMPT: schema が str でなく {type(restored.schema)}"
@@ -405,9 +380,7 @@ class TestSemVerTextRoundTrip:
         # raw SQL で格納値を確認（§確定 E: "3.14.159" TEXT）
         async with session_factory() as session:
             result = await session.execute(
-                text(
-                    "SELECT version FROM deliverable_templates WHERE id = :id"
-                ),
+                text("SELECT version FROM deliverable_templates WHERE id = :id"),
                 {"id": str(template.id).replace("-", "")},
             )
             row = result.fetchone()
@@ -420,9 +393,7 @@ class TestSemVerTextRoundTrip:
 
         # ORM 経由の復元確認
         async with session_factory() as session:
-            restored = await SqliteDeliverableTemplateRepository(session).find_by_id(
-                template.id
-            )
+            restored = await SqliteDeliverableTemplateRepository(session).find_by_id(template.id)
 
         assert restored is not None
         assert restored.version == semver, (
@@ -554,15 +525,13 @@ class TestJsonFieldsA08Defense:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-DTR-018: 不正な acceptance_criteria_json で ValidationError / ValueError (A08 Fail-Fast)。
+        """TC-IT-DTR-018: 不正な acceptance_criteria_json で ValidationError (A08 Fail-Fast)。
 
         template_id が UUID 形式でない壊れたペイロードを直接 INSERT し、
         find_by_id が ValidationError を raise することを確認。
         Repository が Exception を握り潰さない証拠。
         """
-        bad_payload = json.dumps(
-            [{"id": "not-a-uuid", "description": "bad", "required": True}]
-        )
+        bad_payload = json.dumps([{"id": "not-a-uuid", "description": "bad", "required": True}])
         template_id = uuid4().hex
 
         async with session_factory() as session, session.begin():
@@ -587,9 +556,7 @@ class TestJsonFieldsA08Defense:
 
         with pytest.raises((pydantic.ValidationError, ValueError)):
             async with session_factory() as session:
-                await SqliteDeliverableTemplateRepository(session).find_by_id(
-                    UUID(template_id)
-                )
+                await SqliteDeliverableTemplateRepository(session).find_by_id(UUID(template_id))
 
 
 # ---------------------------------------------------------------------------
@@ -602,7 +569,10 @@ class TestFullRoundTrip:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-DTR-019: acceptance_criteria 2 件 + composition 1 件の template が同値でラウンドトリップ。"""
+        """TC-IT-DTR-019: acceptance_criteria 2 件 + composition 1 件の template が同値。
+
+        save → find_by_id で全フィールド構造的等価 (§確定 C)。
+        """
         ac1 = make_acceptance_criterion(description="受入条件1", required=True)
         ac2 = make_acceptance_criterion(description="受入条件2", required=False)
         ref1 = make_deliverable_template_ref()
@@ -622,9 +592,7 @@ class TestFullRoundTrip:
             await SqliteDeliverableTemplateRepository(session).save(template)
 
         async with session_factory() as session:
-            restored = await SqliteDeliverableTemplateRepository(session).find_by_id(
-                template.id
-            )
+            restored = await SqliteDeliverableTemplateRepository(session).find_by_id(template.id)
 
         assert restored is not None
         assert restored.id == template.id

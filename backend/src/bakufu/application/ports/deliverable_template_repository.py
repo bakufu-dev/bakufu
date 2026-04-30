@@ -26,9 +26,7 @@ class DeliverableTemplateRepository(Protocol):
     に存在する。
     """
 
-    async def find_by_id(
-        self, template_id: DeliverableTemplateId
-    ) -> DeliverableTemplate | None:
+    async def find_by_id(self, template_id: DeliverableTemplateId) -> DeliverableTemplate | None:
         """主キーが ``template_id`` の DeliverableTemplate をハイドレートする。
 
         該当行がない場合は ``None`` を返す。SQLAlchemy / ドライバの例外は

@@ -56,9 +56,7 @@ async def _seed_empire(
     """
     async with session_factory() as session, session.begin():
         await session.execute(
-            text(
-                "INSERT OR IGNORE INTO empires (id, name) VALUES (:id, :name)"
-            ),
+            text("INSERT OR IGNORE INTO empires (id, name) VALUES (:id, :name)"),
             {"id": empire_id.hex, "name": "test-empire"},
         )
 
@@ -107,9 +105,9 @@ class TestFindByEmpireAndRole:
             await SqliteRoleProfileRepository(session).save(profile)
 
         async with session_factory() as session:
-            restored = await SqliteRoleProfileRepository(
-                session
-            ).find_by_empire_and_role(empire_id, Role.DEVELOPER)
+            restored = await SqliteRoleProfileRepository(session).find_by_empire_and_role(
+                empire_id, Role.DEVELOPER
+            )
 
         assert restored is not None
         assert restored.id == profile.id
@@ -121,9 +119,9 @@ class TestFindByEmpireAndRole:
     ) -> None:
         """TC-IT-RPR-004: 不在の (empire_id, role) は None を返す。例外を raise しない。"""
         async with session_factory() as session:
-            result = await SqliteRoleProfileRepository(
-                session
-            ).find_by_empire_and_role(uuid4(), Role.DEVELOPER)
+            result = await SqliteRoleProfileRepository(session).find_by_empire_and_role(
+                uuid4(), Role.DEVELOPER
+            )
         assert result is None
 
 
@@ -152,9 +150,7 @@ class TestFindAllByEmpire:
             await repo.save(p_reviewer)
 
         async with session_factory() as session:
-            results = await SqliteRoleProfileRepository(
-                session
-            ).find_all_by_empire(empire_id)
+            results = await SqliteRoleProfileRepository(session).find_all_by_empire(empire_id)
 
         assert len(results) == 3
         # Role StrEnum: "DEVELOPER" < "REVIEWER" < "TESTER" (ASCII 昇順)
@@ -183,9 +179,7 @@ class TestFindAllByEmpire:
             await repo.save(p_b)
 
         async with session_factory() as session:
-            results = await SqliteRoleProfileRepository(
-                session
-            ).find_all_by_empire(empire_a)
+            results = await SqliteRoleProfileRepository(session).find_all_by_empire(empire_a)
 
         assert len(results) == 1
         assert results[0].id == p_a.id
@@ -224,7 +218,10 @@ class TestRoleProfileSaveUpsert:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-RPR-008: 同 id に新 deliverable_template_refs で再 save → 更新された refs が返る。"""
+        """TC-IT-RPR-008: 同 id に新 deliverable_template_refs で再 save。
+
+        更新された refs が返ること (UPSERT 上書き確認、§確定 B)。
+        """
         empire_id = uuid4()
         await _seed_empire(session_factory, empire_id)
 
@@ -248,9 +245,9 @@ class TestRoleProfileSaveUpsert:
             await SqliteRoleProfileRepository(session).save(updated)
 
         async with session_factory() as session:
-            restored = await SqliteRoleProfileRepository(
-                session
-            ).find_by_empire_and_role(empire_id, Role.REVIEWER)
+            restored = await SqliteRoleProfileRepository(session).find_by_empire_and_role(
+                empire_id, Role.REVIEWER
+            )
 
         assert restored is not None
         assert len(restored.deliverable_template_refs) == 1
@@ -276,9 +273,9 @@ class TestRoleProfileTxBoundary:
             await SqliteRoleProfileRepository(session).save(profile)
 
         async with session_factory() as session:
-            result = await SqliteRoleProfileRepository(
-                session
-            ).find_by_empire_and_role(empire_id, profile.role)
+            result = await SqliteRoleProfileRepository(session).find_by_empire_and_role(
+                empire_id, profile.role
+            )
         assert result is not None
 
     async def test_rollback_path_drops_profile(
@@ -287,22 +284,22 @@ class TestRoleProfileTxBoundary:
     ) -> None:
         """TC-IT-RPR-009b: begin() ブロック内例外で rollback → 行が消える。"""
 
-        class _Boom(Exception):
+        class _BoomError(Exception):
             pass
 
         empire_id = uuid4()
         await _seed_empire(session_factory, empire_id)
         profile = make_role_profile(empire_id=empire_id)
 
-        with pytest.raises(_Boom):
+        with pytest.raises(_BoomError):
             async with session_factory() as session, session.begin():
                 await SqliteRoleProfileRepository(session).save(profile)
-                raise _Boom
+                raise _BoomError
 
         async with session_factory() as session:
-            result = await SqliteRoleProfileRepository(
-                session
-            ).find_by_empire_and_role(empire_id, profile.role)
+            result = await SqliteRoleProfileRepository(session).find_by_empire_and_role(
+                empire_id, profile.role
+            )
         assert result is None, (
             "[FAIL] Rollback 経路で role_profile 行が残存。"
             "Repository は session.commit() を呼ばないこと (§確定 B)。"
@@ -350,9 +347,9 @@ class TestDeliverableTemplateRefsA08Defense:
             )
 
         async with session_factory() as session:
-            restored = await SqliteRoleProfileRepository(
-                session
-            ).find_by_empire_and_role(empire_id, Role.DEVELOPER)
+            restored = await SqliteRoleProfileRepository(session).find_by_empire_and_role(
+                empire_id, Role.DEVELOPER
+            )
 
         assert restored is not None
         assert len(restored.deliverable_template_refs) == 1
@@ -369,7 +366,10 @@ class TestDeliverableTemplateRefsA08Defense:
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-RPR-011: 不正な deliverable_template_refs_json で ValidationError (A08 Fail-Fast)。"""
+        """TC-IT-RPR-011: 不正な deliverable_template_refs_json で ValidationError。
+
+        A08 Fail-Fast 防御 (§確定 G): UUID 形式でないペイロードで raise を確認。
+        """
         empire_id = uuid4()
         await _seed_empire(session_factory, empire_id)
 
@@ -400,9 +400,9 @@ class TestDeliverableTemplateRefsA08Defense:
 
         with pytest.raises((pydantic.ValidationError, ValueError)):
             async with session_factory() as session:
-                await SqliteRoleProfileRepository(
-                    session
-                ).find_by_empire_and_role(empire_id, Role.REVIEWER)
+                await SqliteRoleProfileRepository(session).find_by_empire_and_role(
+                    empire_id, Role.REVIEWER
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -453,9 +453,9 @@ class TestUniqueEmpireRoleConstraint:
             await SqliteRoleProfileRepository(session).save(profile)
 
         async with session_factory() as session:
-            result = await SqliteRoleProfileRepository(
-                session
-            ).find_by_empire_and_role(empire_id, Role.UX)
+            result = await SqliteRoleProfileRepository(session).find_by_empire_and_role(
+                empire_id, Role.UX
+            )
         assert result is not None
         assert result.id == profile.id
 
@@ -516,12 +516,8 @@ class TestRoleProfileFullRoundTrip:
         empire_id = uuid4()
         await _seed_empire(session_factory, empire_id)
 
-        ref1 = make_deliverable_template_ref(
-            minimum_version=SemVer(major=1, minor=2, patch=3)
-        )
-        ref2 = make_deliverable_template_ref(
-            minimum_version=SemVer(major=2, minor=0, patch=0)
-        )
+        ref1 = make_deliverable_template_ref(minimum_version=SemVer(major=1, minor=2, patch=3))
+        ref2 = make_deliverable_template_ref(minimum_version=SemVer(major=2, minor=0, patch=0))
 
         profile = make_role_profile(
             empire_id=empire_id,
@@ -533,9 +529,9 @@ class TestRoleProfileFullRoundTrip:
             await SqliteRoleProfileRepository(session).save(profile)
 
         async with session_factory() as session:
-            restored = await SqliteRoleProfileRepository(
-                session
-            ).find_by_empire_and_role(empire_id, Role.REVIEWER)
+            restored = await SqliteRoleProfileRepository(session).find_by_empire_and_role(
+                empire_id, Role.REVIEWER
+            )
 
         assert restored is not None
         assert restored.id == profile.id
@@ -544,8 +540,6 @@ class TestRoleProfileFullRoundTrip:
         assert len(restored.deliverable_template_refs) == 2
 
         # template_id で引き当て（順序保証のため dict）
-        restored_by_id = {
-            r.template_id: r for r in restored.deliverable_template_refs
-        }
+        restored_by_id = {r.template_id: r for r in restored.deliverable_template_refs}
         assert restored_by_id[ref1.template_id].minimum_version == SemVer(major=1, minor=2, patch=3)
         assert restored_by_id[ref2.template_id].minimum_version == SemVer(major=2, minor=0, patch=0)

@@ -74,9 +74,7 @@ class TestMigration0012Upgrade:
         engine: AsyncEngine = empty_engine
         await run_upgrade_head(engine)
         async with engine.connect() as conn:
-            result = await conn.execute(
-                text("SELECT name FROM sqlite_master WHERE type='table'")
-            )
+            result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
             tables = {row[0] for row in result}
         assert "deliverable_templates" in tables, (
             "[FAIL] deliverable_templates テーブルが存在しない。\n"
@@ -93,9 +91,7 @@ class TestMigration0012Upgrade:
         engine: AsyncEngine = empty_engine
         await run_upgrade_head(engine)
         async with engine.connect() as conn:
-            result = await conn.execute(
-                text("SELECT name FROM sqlite_master WHERE type='table'")
-            )
+            result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
             tables = {row[0] for row in result}
         assert "role_profiles" in tables, (
             "[FAIL] role_profiles テーブルが存在しない。\n"
@@ -119,9 +115,7 @@ class TestMigration0012UniqueConstraint:
         engine: AsyncEngine = empty_engine
         await run_upgrade_head(engine)
         async with engine.connect() as conn:
-            result = await conn.execute(
-                text("PRAGMA index_list(role_profiles)")
-            )
+            result = await conn.execute(text("PRAGMA index_list(role_profiles)"))
             indexes = list(result)
         # UNIQUE インデックスが少なくとも 1 件存在すること
         assert indexes, (
@@ -162,9 +156,7 @@ class TestMigration0012Downgrade:
         await asyncio.to_thread(_downgrade)
 
         async with engine.connect() as conn:
-            result = await conn.execute(
-                text("SELECT name FROM sqlite_master WHERE type='table'")
-            )
+            result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
             tables = {row[0] for row in result}
 
         assert "deliverable_templates" not in tables, (
@@ -196,9 +188,7 @@ class TestMigration0012Downgrade:
         await asyncio.to_thread(_downgrade)
 
         async with engine.connect() as conn:
-            result = await conn.execute(
-                text("SELECT name FROM sqlite_master WHERE type='table'")
-            )
+            result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
             tables = {row[0] for row in result}
 
         # 他テーブルは残っているはず
@@ -226,9 +216,7 @@ class TestMigration0012RoundTrip:
         # 1st upgrade
         await run_upgrade_head(engine)
         async with engine.connect() as conn:
-            result = await conn.execute(
-                text("SELECT name FROM sqlite_master WHERE type='table'")
-            )
+            result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
             tables_after_up = {row[0] for row in result}
         assert "deliverable_templates" in tables_after_up
         assert "role_profiles" in tables_after_up
@@ -245,9 +233,7 @@ class TestMigration0012RoundTrip:
         # 2nd upgrade
         await run_upgrade_head(engine)
         async with engine.connect() as conn:
-            result = await conn.execute(
-                text("SELECT name FROM sqlite_master WHERE type='table'")
-            )
+            result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
             tables_after_reup = {row[0] for row in result}
 
         assert "deliverable_templates" in tables_after_reup, (
@@ -281,6 +267,5 @@ class TestMigration0012RevisionChain:
         rev = script.get_revision(_REVISION_ID)
         assert rev is not None, f"Revision {_REVISION_ID!r} が見つからない"
         assert rev.down_revision == _DOWN_REVISION, (
-            f"[FAIL] 0012.down_revision = {rev.down_revision!r}, "
-            f"期待値 = {_DOWN_REVISION!r}"
+            f"[FAIL] 0012.down_revision = {rev.down_revision!r}, 期待値 = {_DOWN_REVISION!r}"
         )

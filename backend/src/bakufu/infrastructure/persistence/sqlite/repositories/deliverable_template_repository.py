@@ -56,9 +56,7 @@ class SqliteDeliverableTemplateRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def find_by_id(
-        self, template_id: DeliverableTemplateId
-    ) -> DeliverableTemplate | None:
+    async def find_by_id(self, template_id: DeliverableTemplateId) -> DeliverableTemplate | None:
         """主キーが ``template_id`` の DeliverableTemplate をハイドレートする。
 
         行が存在しない場合は ``None`` を返す。
@@ -141,9 +139,7 @@ class SqliteDeliverableTemplateRepository:
 
         # §確定 D: type カラムを判別キーとしてシリアライズ形式を逆転する。
         schema_value: dict[str, object] | str = (
-            json.loads(row.schema)
-            if template_type in _JSON_TYPES
-            else row.schema
+            json.loads(row.schema) if template_type in _JSON_TYPES else row.schema
         )
 
         # §確定 E: "major.minor.patch" TEXT を SemVer に復元。
@@ -155,17 +151,13 @@ class SqliteDeliverableTemplateRepository:
             "list[dict[str, Any]]",
             row.acceptance_criteria_json or [],
         )
-        acceptance_criteria = tuple(
-            AcceptanceCriterion.model_validate(d) for d in ac_payloads
-        )
+        acceptance_criteria = tuple(AcceptanceCriterion.model_validate(d) for d in ac_payloads)
 
         comp_payloads = cast(
             "list[dict[str, Any]]",
             row.composition_json or [],
         )
-        composition = tuple(
-            DeliverableTemplateRef.model_validate(d) for d in comp_payloads
-        )
+        composition = tuple(DeliverableTemplateRef.model_validate(d) for d in comp_payloads)
 
         return DeliverableTemplate(
             id=_uuid(row.id),
