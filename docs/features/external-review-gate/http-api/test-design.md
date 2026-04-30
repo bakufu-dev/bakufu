@@ -27,17 +27,17 @@
 | P-1: GateAuthorizationError | `error_handlers.py` | TC-IT-ERG-HTTP-011, TC-IT-ERG-HTTP-016, TC-IT-ERG-HTTP-022 | 結合 | 異常系 | — |
 | `get_reviewer_id()` Depends | `dependencies.py` | TC-IT-ERG-HTTP-013 | 結合 | 異常系 | — |
 | §確定B（masking 挙動）| `GET /api/gates/{id}` レスポンス | TC-IT-ERG-HTTP-025 | 結合 | 正常系 | — |
-| R1-G（2行エラー構造）| `error_handlers.py` MSG-ERG-HTTP-002〜004 | TC-IT-ERG-HTTP-029 | 結合 | 異常系 | feature-spec 受入基準 12 |
+| R1-G（2行エラー構造）| `error_handlers.py` MSG-ERG-HTTP-001〜004 | TC-IT-ERG-HTTP-029〜032 | 結合 | 異常系 | feature-spec 受入基準 12 |
 | `ExternalReviewGateService` | Service 単体 | TC-UT-ERG-HTTP-001〜005 | ユニット | 正常系 / 異常系 | — |
 
 ## 外部 I/O 依存マップ
 
-| 外部 I/O | 用途 | raw fixture | factory | characterization 状態 |
+| 外部 I/O | 用途 | characterization fixture | factory | characterization 状態 |
 |---|---|---|---|---|
 | テスト用インメモリ SQLite | Gate / Task / Stage 等のシードデータ | `tests/fixtures/db/` の conftest で管理 | `tests/factories/external_review_gate.py`（M1 確定済み）| 済（M2 PR #53 で整備）|
 | httpx AsyncClient | HTTP エンドポイント黒箱テスト | — | — | 済（http-api-foundation で確立）|
 
-**assumed mock 禁止**: 外部観測値に代わる raw fixture が未整備のまま IT を書くことを禁じる。本 sub-feature は M2 で整備された DB fixture / factory を流用する。
+**assumed mock 禁止**: 外部観測値に代わる characterization fixture が未整備のまま IT を書くことを禁じる。本 sub-feature は M2 で整備された DB fixture / factory を流用する。
 
 ## 結合テストケース（IT）
 
@@ -59,8 +59,8 @@
 
 | テスト ID | 前提条件 | 操作 | 期待結果 |
 |---|---|---|---|
-| TC-IT-ERG-HTTP-005 | PENDING Gate が seed 済み（`deliverable_snapshot`・`audit_trail` 含む）| `GET /api/gates/{id}` | HTTP 200, `GateDetailResponse`。`feedback_text` / `body_markdown` / `audit_trail[*].comment` が DB 値と一致（§確定B — raw 返却）|
-| TC-IT-ERG-HTTP-006 | Gate 不在 | `GET /api/gates/{unknown-uuid}` | HTTP 404, `{"error": {"code": "not_found", "message": "Gate not found"}}` |
+| TC-IT-ERG-HTTP-005 | PENDING Gate が seed 済み（`deliverable_snapshot`・`audit_trail` 含む）| `GET /api/gates/{id}` | HTTP 200, `GateDetailResponse`。`feedback_text` / `body_markdown` / `audit_trail[*].comment` が DB 値と一致（§確定B — DB 書き込み時 mask() 適用済みの値をそのまま返す）|
+| TC-IT-ERG-HTTP-006 | Gate 不在 | `GET /api/gates/{unknown-uuid}` | HTTP 404, レスポンス body に `[FAIL]` + `Gate not found` + `Next:` が含まれる（MSG-ERG-HTTP-001 R1-G 準拠の静的照合）|
 | TC-IT-ERG-HTTP-007 | — | `GET /api/gates/invalid-not-uuid` | HTTP 422 `validation_error` |
 
 ### REQ-ERG-HTTP-004: POST /api/gates/{id}/approve
@@ -109,11 +109,14 @@
 | TC-IT-ERG-HTTP-027 | `POST /api/gates/invalid-not-uuid/reject` + `Authorization: Bearer <valid-uuid>` + `{"feedback_text": "x"}` | HTTP 422 `validation_error` |
 | TC-IT-ERG-HTTP-028 | `POST /api/gates/invalid-not-uuid/cancel` + `Authorization: Bearer <valid-uuid>` | HTTP 422 `validation_error` |
 
-### R1-G 準拠検証（MSG 2行構造）
+### R1-G 準拠検証（MSG 2行構造 — 受入基準 #12、全4件）
 
-| テスト ID | 前提条件 | 操作 | 期待結果 |
-|---|---|---|---|
-| TC-IT-ERG-HTTP-029 | APPROVED Gate（決済済み）seed 済み | `POST /api/gates/{id}/approve`（同 reviewer）| HTTP 409。レスポンス body に `[FAIL]` 文字列 + `Next:` 文字列の両方が含まれる（MSG-ERG-HTTP-002 R1-G 準拠の静的照合）|
+| テスト ID | 対象 MSG | 前提条件 | 操作 | 期待結果 |
+|---|---|---|---|---|
+| TC-IT-ERG-HTTP-029 | MSG-ERG-HTTP-002 | APPROVED Gate（決済済み）seed 済み | `POST /api/gates/{id}/approve`（同 reviewer）| HTTP 409。レスポンス body に `[FAIL]` + `Gate decision is already finalized` + `Next:` の文字列が全て含まれる |
+| TC-IT-ERG-HTTP-030 | MSG-ERG-HTTP-001 | Gate 不在 | `GET /api/gates/{unknown-uuid}` | HTTP 404。レスポンス body に `[FAIL]` + `Gate not found` + `Next:` の文字列が全て含まれる |
+| TC-IT-ERG-HTTP-031 | MSG-ERG-HTTP-003 | PENDING Gate（`reviewer_id=R`）seed 済み | `POST /api/gates/{id}/approve` + `Authorization: Bearer OTHER_ID` | HTTP 403。レスポンス body に `[FAIL]` + `Not authorized` + `Next:` の文字列が全て含まれる |
+| TC-IT-ERG-HTTP-032 | MSG-ERG-HTTP-004 | PENDING Gate seed 済み | `POST /api/gates/{id}/approve`（`Authorization` ヘッダーなし）| HTTP 422。レスポンス body に `[FAIL]` + `Authorization` + `Next:` の文字列が全て含まれる |
 
 ## ユニットテストケース（UT）
 

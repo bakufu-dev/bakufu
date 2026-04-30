@@ -133,7 +133,7 @@ backend/
 | application 例外 | `GateNotFoundError` / `GateAlreadyDecidedError` / `GateAuthorizationError` | 本 PR で新規定義（P-1）| `application/exceptions/gate_exceptions.py` |
 | domain | `ExternalReviewGate` / `GateId` / `OwnerId` / `TaskId` / `ReviewDecision` / `ExternalReviewGateInvariantViolation` | M1 確定（PR #46）| external-review-gate domain sub-feature |
 | repository | `ExternalReviewGateRepository` Protocol（6 method）| M2 確定（PR #53）| find_pending_by_reviewer / find_by_task_id を使用 |
-| masking（解除）| `deliverable_snapshot.body_markdown` / `feedback_text` / `audit_trail[*].comment` | DB 保存時マスキング済み | **API 応答は原文を返す**（CEO への表示は raw secret が含まれ得る前提で意図的に解除 — §確定B）|
+| masking（§確定B）| `deliverable_snapshot.body_markdown` / `feedback_text` / `audit_trail[*].comment` | DB 保存時 mask() 適用済み | **API 応答は DB から取得した mask() 済み文字列をそのまま返す**（`<REDACTED:...>` パターンが含まれることがある — §確定B / §セキュリティ設計 §確定B 参照）|
 | 基盤 | http-api-foundation（ErrorResponse / lifespan / CORS / error handler / dependencies）| M3 確定（Issue #55）| 全 error handler / session_factory を引き継ぐ |
 
 ## クラス設計（概要）
@@ -361,15 +361,15 @@ sequenceDiagram
 | **T1: なりすまし reviewer** | 他の reviewer_id を `Authorization: Bearer` に指定し、他人の Gate を approve する | Gate の判断整合性（誰が承認したか）| `gate.reviewer_id != reviewer_owner_id` → `GateAuthorizationError` → 403（REQ-ERG-HTTP-004〜006）|
 | **T2: 二重決定（TOCTOU）** | 2 リクエストが同一 PENDING Gate に approve を送信し、domain 不変条件をバイパスしようとする | Gate の判断状態（decision 1 回限り）| **MVP 前提の凍結: 単一プロセス・シングル CEO ユーザー・loopback バインド（127.0.0.1）の組み合わせにより、同一 Gate への同時並列承認リクエストは実運用上発生しない。この前提を明示することで、楽観的ロック・DB 一意制約の追加を Phase 2 スコープとする（YAGNI）。将来マルチユーザー / マルチプロセス対応時は `version: int` フィールド + UPDATE 行数チェックによる楽観的ロックを導入すること。** シリアルアクセスでの防御は domain の `gate.approve()` による `decision_already_decided` raise（→ 409）が担保 |
 | **T3: スタックトレース露出** | 500 エラーレスポンスへの内部情報混入 | 内部実装情報 | http-api-foundation 確定A: `generic_exception_handler` が `internal_error` のみ返す |
-| **T4: 不正 UUID によるパス注入** | gate_id / task_id に不正値を注入 | DB 整合性 | FastAPI `UUID` 型強制（422 on 不正形式）+ SQLAlchemy ORM（raw SQL 不使用）|
+| **T4: 不正 UUID によるパス注入** | gate_id / task_id に不正値を注入 | DB 整合性 | FastAPI `UUID` 型強制（422 on 不正形式）+ SQLAlchemy ORM（SQL 文字列を直接組み立てない）|
 | **T5: CSRF 経由での判断操作** | ブラウザ経由の不正 POST | Gate の判断状態 | http-api-foundation 確定D: CSRF Origin 検証ミドルウェア（Origin ヘッダ不一致なら 403）|
-| **T6: マスキング解除の意図せぬ漏洩（A02）** | `feedback_text` / `body_markdown` の raw secret が HTTP レスポンスに露出 | API key / webhook token | §確定B 参照。CEO への表示は raw 値を返す**設計上の意図**。loopback バインドにより外部到達不能（防御線は OS ユーザー権限）。DB 層は MaskedText で独立防御 |
+| **T6: アンマスク実装誤りによる secret 漏洩（A02）** | 実装者が誤って `unmask()` 処理を API レスポンス生成に追加し、mask() 済み値をアンマスクして返す実装誤りリスク | API key / webhook token | §確定B 凍結: 「mask() 済み文字列をそのまま返す」が唯一の正実装。ORM read の `process_result_value` がアンマスク処理を含まないことは `infrastructure/persistence/sqlite/base.py MaskedText` で確認済み。コードレビューでアンマスク処理の追加（`unmask()` / `decode()` 等の呼び出し）を検出・拒否すること |
 
 ### §確定B: `deliverable_snapshot.body_markdown` / `feedback_text` / `audit_trail[*].comment` の API 返却方針
 
 > **一意確定（全4箇所で同一定義）**: `MaskedText` TypeDecorator は `process_bind_param`（書き込み時）で `mask()` を適用し、`process_result_value`（読み出し時）は値をそのまま返す（アンマスク処理なし — `infrastructure/persistence/sqlite/base.py MaskedText` 実装による）。したがって DB には mask() 済み文字列が永続化されており、API はその値をそのまま返す。
 >
-> **API 応答値 = DB に保存されている mask() 済み文字列**（`<REDACTED:DISCORD_WEBHOOK>` 等のパターンが含まれることがある）。これは仕様であり、設計上の意図として凍結する。"原文（マスク解除後）" という表現は本書では使用しない。
+> **API 応答値 = DB に保存されている mask() 済み文字列**（`<REDACTED:DISCORD_WEBHOOK>` 等のパターンが含まれることがある）。これは仕様であり、設計上の意図として凍結する。アンマスク処理・秘匿前の文字列を返す表現は本書で使用禁止。
 >
 > **防御の目的**: DB 直接参照（dump / 管理ツール / ログ）による secret 漏洩防御。HTTP API 経由の表示を制限することが目的ではない。
 >
@@ -380,8 +380,8 @@ sequenceDiagram
 | # | カテゴリ | 対応状況 |
 |---|---|---|
 | A01 | Broken Access Control | **GET エンドポイント（REQ-001〜003）は認証なし。loopback バインド（`127.0.0.1:8000`）を唯一の防御線とする（設計上の意図: MVP シングルユーザー前提 — §脅威モデル T2 参照）。** POST エンドポイント（REQ-004〜006）は `Authorization: Bearer <owner_id>` + `gate.reviewer_id != reviewer_owner_id` チェック（ExternalReviewGateService 責務）で二重防御 |
-| A02 | Cryptographic Failures | DB 永続化は MaskedText（多層防御）。API 応答は raw 値返却（§確定B 参照）|
-| A03 | Injection | SQLAlchemy ORM 経由（raw SQL 不使用）。Pydantic v2 で入力バリデーション |
+| A02 | Cryptographic Failures | DB 永続化は MaskedText（書き込み時 mask() 強制）。API 応答も mask() 済み文字列をそのまま返すため DB・API 両層で secret が外部に出ない多層防御（§確定B / T6 参照）|
+| A03 | Injection | SQLAlchemy ORM 経由（SQL 文字列を直接組み立てない）。Pydantic v2 で入力バリデーション |
 | A04 | Insecure Design | domain の pre-validate + frozen Gate で不整合状態を物理的に防止。state machine decision table で不正遷移を拒否 |
 | A05 | Security Misconfiguration | http-api-foundation の lifespan / CORS 設定を引き継ぐ |
 | A06 | Vulnerable Components | 依存 CVE は CI `pip-audit` で監視 |
