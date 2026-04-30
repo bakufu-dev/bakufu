@@ -313,6 +313,7 @@ Stage 自身の不変条件（`required_role` 非空 / `EXTERNAL_REVIEW` の `no
 | MSG-WF-010 | 例外 message | `[FAIL] Cannot remove entry stage: {stage_id}` |
 | MSG-WF-011 | 例外 message | `[FAIL] from_dict payload invalid: {detail}` |
 | MSG-WF-012 | 例外 message | `[FAIL] Stage not found in workflow: stage_id={stage_id}` |
+| MSG-WF-013 | 例外 message | `[FAIL] Stage {stage_id} required_deliverables has duplicate template_id: {template_id}\nNext: Remove the duplicate DeliverableRequirement before constructing the Stage.` |
 
 メッセージ文字列は ASCII 範囲。日本語化は UI 側 i18n リソース（Phase 2）。
 
