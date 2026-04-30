@@ -133,16 +133,17 @@ async def approve_gate(
     """Gate を承認する。
 
     reviewer_id 照合は Service 内で実施（basic-design.md §確定 UC4）。
-    save() は UoW 内で呼ぶ（detailed-design.md §確定E）。
+    find_by_id_or_raise と save() の両方を同一 UoW 内で呼ぶ（detailed-design.md §確定E）。
+    autobegin 問題回避: SELECT が autobegin を起動する前に begin() を呼ぶ。
     """
-    gate = await service.find_by_id_or_raise(gate_id)
-    updated_gate = await service.approve(
-        gate=gate,
-        reviewer_id=reviewer_owner_id,
-        comment=body.comment,
-        decided_at=datetime.now(UTC),
-    )
     async with session.begin():
+        gate = await service.find_by_id_or_raise(gate_id)
+        updated_gate = await service.approve(
+            gate=gate,
+            reviewer_id=reviewer_owner_id,
+            comment=body.comment,
+            decided_at=datetime.now(UTC),
+        )
         await service.save(updated_gate)
     return GateDetailResponse.model_validate(updated_gate)
 
@@ -161,14 +162,14 @@ async def reject_gate(
     session: SessionDep,
 ) -> GateDetailResponse:
     """Gate を差し戻す。feedback_text は 1 文字以上必須（Pydantic で検証済み）。"""
-    gate = await service.find_by_id_or_raise(gate_id)
-    updated_gate = await service.reject(
-        gate=gate,
-        reviewer_id=reviewer_owner_id,
-        feedback_text=body.feedback_text,
-        decided_at=datetime.now(UTC),
-    )
     async with session.begin():
+        gate = await service.find_by_id_or_raise(gate_id)
+        updated_gate = await service.reject(
+            gate=gate,
+            reviewer_id=reviewer_owner_id,
+            feedback_text=body.feedback_text,
+            decided_at=datetime.now(UTC),
+        )
         await service.save(updated_gate)
     return GateDetailResponse.model_validate(updated_gate)
 
@@ -187,14 +188,14 @@ async def cancel_gate(
     session: SessionDep,
 ) -> GateDetailResponse:
     """Gate をキャンセルする。"""
-    gate = await service.find_by_id_or_raise(gate_id)
-    updated_gate = await service.cancel(
-        gate=gate,
-        reviewer_id=reviewer_owner_id,
-        reason=body.reason,
-        decided_at=datetime.now(UTC),
-    )
     async with session.begin():
+        gate = await service.find_by_id_or_raise(gate_id)
+        updated_gate = await service.cancel(
+            gate=gate,
+            reviewer_id=reviewer_owner_id,
+            reason=body.reason,
+            decided_at=datetime.now(UTC),
+        )
         await service.save(updated_gate)
     return GateDetailResponse.model_validate(updated_gate)
 
