@@ -14,7 +14,7 @@
       "type": "tool_use",
       "id": "tool_call_characterization_001",
       "name": "some_tool",
-      "input": {"key": "value"}
+      "input": { "key": "value" }
     }
   ],
   "model": "claude-3-5-sonnet-20241022",
