@@ -56,6 +56,36 @@ classDiagram
     DeliverableTemplate "1" --> "0..*" DeliverableTemplateRef : composition
     DeliverableTemplateRef "1" --> "1" SemVer : minimum_version
     RoleProfile "1" --> "0..*" DeliverableTemplateRef : deliverable_template_refs
+
+    class DeliverableRecord {
+        +id: DeliverableRecordId
+        +deliverable_id: DeliverableId
+        +template_ref: DeliverableTemplateRef
+        +content: str
+        +task_id: TaskId
+        +validation_status: ValidationStatus
+        +criterion_results: tuple~CriterionValidationResult~
+        +produced_by: AgentId
+        +created_at: datetime
+        +validated_at: datetime
+        +validate_criteria(criteria, llm_port) DeliverableRecord
+    }
+    class ValidationStatus {
+        <<StrEnum>>
+        PENDING
+        PASSED
+        FAILED
+        UNCERTAIN
+    }
+    class CriterionValidationResult {
+        +criterion_id: UUID
+        +status: ValidationStatus
+        +reason: str
+    }
+    DeliverableRecord --> DeliverableTemplateRef : template_ref
+    DeliverableRecord --> ValidationStatus : validation_status
+    DeliverableRecord "1" --> "0..*" CriterionValidationResult
+    CriterionValidationResult --> ValidationStatus
 ```
 
 ### Aggregate Root: DeliverableTemplate
@@ -148,11 +178,57 @@ classDiagram
 
 `model_config`: frozen / extra='forbid' / arbitrary_types_allowed=False。
 
+### Aggregate Root: DeliverableRecord（Issue #123 追加）
+
+| 属性 | 型 | 制約 | 意図 |
+|----|----|----|----|
+| `id` | `DeliverableRecordId`（UUIDv4）| 不変 | 一意識別 |
+| `deliverable_id` | `DeliverableId`（UUIDv4）| 不変、参照のみ | 評価対象 Task 成果物への参照（Task feature の `deliverables` テーブル）|
+| `template_ref` | `DeliverableTemplateRef` | 不変 | 評価に使用したテンプレートのスナップショット参照（template_id + minimum_version）|
+| `content` | `str` | 0 文字以上 | 評価対象コンテンツ（Deliverable.body_markdown のコピー。DRY 違反に見えるが自己完結のため冗長保持を認める — §確定 F 参照）|
+| `task_id` | `TaskId` | 不変、参照のみ | 文脈情報（どのタスクの成果物か）|
+| `validation_status` | `ValidationStatus` | 初期値 `PENDING`、criterion_results との整合必須 | 全 criterion の総合判定（§確定 R1-G 規則）|
+| `criterion_results` | `tuple[CriterionValidationResult, ...]` | 0 件以上 | 各 AcceptanceCriterion の判定結果（LLM 実行後に設定）|
+| `produced_by` | `AgentId \| None` | optional | 生成エージェント（None = 不明 / 手動）|
+| `created_at` | `datetime` | UTC | 生成時刻（不変）|
+| `validated_at` | `datetime \| None` | UTC | LLM 検証完了時刻（PENDING 中は None）|
+
+`model_config`: `frozen=True` / `extra='forbid'` / `arbitrary_types_allowed=False`。
+
+**不変条件（model_validator(mode='after')）**: 2 種
+
+1. `_validate_status_consistency` — `validation_status != PENDING` のとき `criterion_results` が空でないこと（PENDING → 未評価のため空タプルを許容。PASSED/FAILED/UNCERTAIN → 評価済みのため criterion_results に最低 1 件必要）。違反時: `DeliverableRecordInvariantViolation(kind='invalid_validation_state')`
+2. `_validate_criterion_results_status_values` — `criterion_results` の各 `status` が `ValidationStatus` 有効値であること（Pydantic 型で保証されるが多層防御）
+
+**ふるまい**: 1 種（pre-validate 方式）
+- `validate_criteria(criteria: tuple[AcceptanceCriterion, ...], llm_port: AbstractLLMValidationPort) -> DeliverableRecord`: 各 criterion を `llm_port.evaluate(self.content, criterion)` で評価 → 全結果を tuple で収集 → §確定 R1-G の status 導出ルールで overall status を決定 → `criterion_results` / `validation_status` / `validated_at` を更新した新インスタンスを `model_validate` 経由で構築して返す。
+
+### VO: CriterionValidationResult（Issue #123 追加）
+
+| 属性 | 型 | 制約 | 意図 |
+|----|----|----|----|
+| `criterion_id` | `UUID` | UUIDv4 | 対応する AcceptanceCriterion の id |
+| `status` | `ValidationStatus` | PASSED / FAILED / UNCERTAIN のいずれか（PENDING は不可）| LLM による単一 criterion 判定結果 |
+| `reason` | `str` | 0〜1000 文字 | LLM が提供する判定根拠（空文字は許容、過度に長い説明を切り詰め）|
+
+`model_config`: `frozen=True` / `extra='forbid'` / `arbitrary_types_allowed=False`。
+
+### インターフェース: AbstractLLMValidationPort（Issue #123 追加）
+
+`domain/ports/llm_validation_port.py` に配置（§確定 C の `AbstractJSONSchemaValidator` と同パターン）。
+
+| メソッド | 引数 | 戻り値 | 動作 |
+|---|---|---|---|
+| `evaluate` | `content: str, criterion: AcceptanceCriterion` | `CriterionValidationResult` | 成果物コンテンツが AcceptanceCriterion を満たすかを評価して結果を返す。LLM 呼び出し失敗時は `LLMValidationError` を raise（infrastructure 層で定義）|
+
+Python `abc.ABC` + `@abc.abstractmethod` で定義。infrastructure 層の `LLMValidationAdapter` が実装する。
+
 ### Enum 追加（`domain/value_objects.py`）
 
 | Enum | 値 | 用途 |
 |---|---|---|
 | `TemplateType` | `MARKDOWN / JSON_SCHEMA / OPENAPI / CODE_SKELETON / PROMPT` | `DeliverableTemplate.type` |
+| `ValidationStatus` | `PENDING / PASSED / FAILED / UNCERTAIN` | `DeliverableRecord.validation_status` および `CriterionValidationResult.status` |
 
 `StrEnum` として実体化。`JSON_SCHEMA` および `OPENAPI` の場合のみ `schema` に対して JSON Schema バリデーションを実施（`_validate_schema_format` 不変条件）。
 
@@ -259,6 +335,20 @@ MVP では domain Aggregate が検出する循環参照は **自己参照のみ*
 
 `Role` は既存の StrEnum を参照するのみで、新しい Aggregate として定義しない。
 
+### 確定 F: LLM Validation Port Pattern（§確定 C の JSON Schema Validator と同パターン）
+
+`DeliverableRecord.validate_criteria` が呼び出す LLM 評価は、domain 層に **`AbstractLLMValidationPort` インターフェース** を置き、infrastructure 層に実装するパターンを採用する（**設計決定 D-2 確定**）。
+
+| レイヤ | 配置内容 |
+|---|---|
+| `domain/ports/llm_validation_port.py` | `AbstractLLMValidationPort` インターフェース（抽象基底クラス）|
+| `infrastructure/llm_validation/llm_validation_adapter.py` | `AbstractLLMValidationPort` の具体実装（LLM API 呼び出し）|
+| `domain/deliverable_template/deliverable_record.py` | `validate_criteria` 内で `AbstractLLMValidationPort` を DI 経由で呼び出す |
+
+**`ProviderKind` は使用しない（確定）**: 既存の `ProviderKind` 列挙値（CLAUDE_CODE / CODEX / GEMINI 等）はコーディングエージェントの実行バックエンド識別子であり、LLM API プロバイダとは別概念。LLM validation は `BAKUFU_LLM_VALIDATION_PROVIDER` 環境変数（`anthropic` / `openai` / `ollama` 等）で設定された LLM API を呼ぶ。`ProviderKind` を拡張せず、独立した Port + Adapter パターンで実装する（SRP: コーディングエージェント管理と LLM API 呼び出しは別責務）。
+
+**Fail Secure 規約**: `AbstractLLMValidationPort` が `None` または未設定の場合は、LLM 検証をスキップして全 criterion を `UNCERTAIN` として扱うのではなく、`LLMValidationError` を raise する（バイパス禁止）。
+
 ### 確定 E: get_all_acceptance_criteria はドメインサービス化しない（Tell, Don't Ask）
 
 `RoleProfile.get_all_acceptance_criteria` は `RoleProfile` 自身のメソッドとして実装する（ドメインサービスに切り出さない）。
@@ -291,6 +381,7 @@ MVP では domain Aggregate が検出する循環参照は **自己参照のみ*
 | MSG-DT-003 | `DeliverableTemplateInvariantViolation(kind='version_not_greater')` | `[FAIL] New version must be greater than current version {current}.` / `Next: Use a version greater than {current} (MAJOR.MINOR.PATCH format).` |
 | MSG-DT-004 | `RoleProfileInvariantViolation(kind='duplicate_template_ref')` | `[FAIL] Template reference {template_id} already exists in this RoleProfile.` / `Next: Remove the duplicate before adding a new reference.` |
 | MSG-DT-005 | `RoleProfileInvariantViolation(kind='template_ref_not_found')` | `[FAIL] Template reference {template_id} not found in this RoleProfile.` / `Next: Verify the template_id and retry.` |
+| MSG-DT-006 | `DeliverableRecordInvariantViolation(kind='invalid_validation_state')` | `[FAIL] DeliverableRecord validation_status={status} but criterion_results is empty.` / `Next: Provide criterion_results when status is not PENDING, or set status=PENDING for unvalidated records.` |
 
 ##### 「Next:」行の役割（フィードバック原則、他 Aggregate 踏襲）
 
