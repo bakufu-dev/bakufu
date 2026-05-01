@@ -102,14 +102,19 @@ bakufu システム全体ペルソナは [`docs/analysis/personas.md`](../../ana
 | UC-RM-012 | CEO | HTTP API 経由で Room をアーカイブできる（DELETE /api/rooms/{room_id}、論理削除）| 必須 | http-api |
 | UC-RM-013 | CEO | HTTP API 経由で Room に Agent を割り当てられる（POST /api/rooms/{room_id}/agents）| 必須 | http-api |
 | UC-RM-014 | CEO | HTTP API 経由で Room の Agent 割り当てを解除できる（DELETE /api/rooms/{room_id}/agents/{agent_id}/roles/{role}）| 必須 | http-api |
+| UC-RM-015 | CEO | Agent を Room に割り当てる際、その Role が Workflow の全 Stage で要求される必須成果物テンプレートを提供できるかが自動検証される（業務ルール R1-11）| 必須 | deliverable-template/room-matching（#120） |
+| UC-RM-016 | CEO | 特定 Room において特定 Role の DeliverableTemplate 提供セットを Empire デフォルト（RoleProfile）からオーバーライドできる（PUT / DELETE /api/rooms/{room_id}/role-overrides/{role}）| 必須 | deliverable-template/room-matching（#120） |
+| UC-RM-017 | CEO | Room に設定されている Role オーバーライドの一覧を確認できる（GET /api/rooms/{room_id}/role-overrides）| 必須 | deliverable-template/room-matching（#120） |
 
 ## 6. スコープ
 
 ### In Scope
 
-- Room 業務概念全体で観察可能な業務ふるまい（UC-RM-001〜014）
+- Room 業務概念全体で観察可能な業務ふるまい（UC-RM-001〜017）
 - ふるまいの呼び出し失敗時に観察される拒否シグナル（業務ルール違反）
 - HTTP API 経由の Room CRUD + Agent 割り当て/解除（UC-RM-008〜014）
+- Agent 割り当て時の DeliverableTemplate カバレッジ自動検証（UC-RM-015）
+- Room × Role の DeliverableTemplate オーバーライド機構（UC-RM-016〜017）
 - 業務概念単位の E2E 検証戦略 → [`system-test-design.md`](system-test-design.md)
 
 ### Out of Scope（参照）
@@ -164,6 +169,18 @@ bakufu システム全体ペルソナは [`docs/analysis/personas.md`](../../ana
 
 **理由**: `empire_id` / `room_id` / `agent_id` はすべて UUID 型で受け取り、不正形式（非 UUID 文字列）には `RequestValidationError` → 422 を返す（500 ではない）。empire-http-api BUG-EM-SEC-001 解消方針に準拠。
 
+### 確定 R1-11: Agent 役割割り当て時に DeliverableTemplate カバレッジを自動検証する（Issue #120）
+
+CEO が `POST /api/rooms/{room_id}/agents` で Agent に Role を割り当てる際、application 層は以下の検証を行う:
+
+1. その Role に対する「有効 refs」を決定する（優先順位: リクエスト時 custom_refs → Room レベルオーバーライド → Empire RoleProfile → 空）
+2. Room が採用している Workflow の全 Stage について、`required_deliverables`（`optional=False` のみ）が有効 refs の `template_id` セットに含まれているかを検査する
+3. 1 件でも不足が検出された場合は `RoomDeliverableMatchingError`（422）を raise し、不足している Stage / template の詳細を一括報告する
+
+**理由**: Role の設定ミス（RoleProfile に必要なテンプレートが登録されていない）を Room 編成時（run-time より早い段階）に検出し、後続の Task 完了時に突然 deliverable 不整合が発覚する事故を防ぐ（Fail Fast 原則）。CEO が Room を設立した時点で必要な成果物が提供されることを保証することが bakufu の品質向上戦略の核心。
+
+`optional=True` の `DeliverableRequirement` は検証対象外とする（任意提出 deliverable の提供能力は Room 編成時の必須条件ではない）。
+
 ## 8. 制約・前提
 
 | 区分 | 内容 |
@@ -210,8 +227,14 @@ bakufu システム全体ペルソナは [`docs/analysis/personas.md`](../../ana
 | 29 | アーカイブ済み Room への Agent 割り当ては 409 が返る（業務ルール R1-5）| UC-RM-013 | TC-IT-RM-HTTP-011 |
 | 30 | HTTP API 経由で Agent 割り当てを解除できる（DELETE /api/rooms/{room_id}/agents/{agent_id}/roles/{role} → 204）| UC-RM-014 | TC-IT-RM-HTTP-012 |
 | 31 | 不正な UUID パスパラメータ（empire_id / room_id / agent_id）は 422 が返る（業務ルール R1-10）| UC-RM-008〜014 | TC-IT-RM-HTTP-013 |
+| 32 | Agent 割り当て時に RoleProfile が Workflow の必須 deliverable を全て充足していれば 201 が返る（業務ルール R1-11）| UC-RM-015 | TC-IT-RM-MATCH-001（[`../../deliverable-template/room-matching/test-design.md`](../../deliverable-template/room-matching/test-design.md)） |
+| 33 | Agent 割り当て時に RoleProfile が不足している場合 422 が返り、不足 Stage / template の詳細が `error.detail.missing` に列挙される（業務ルール R1-11）| UC-RM-015 | TC-IT-RM-MATCH-002 |
+| 34 | `custom_refs` を指定して assign_agent を呼ぶと、Empire RoleProfile の代わりに `custom_refs` でマッチング検証が行われ、かつその設定が Room レベルオーバーライドとして永続化される（業務ルール R1-11）| UC-RM-015, UC-RM-016 | TC-IT-RM-MATCH-003 |
+| 35 | HTTP API 経由で Room の Role オーバーライドを設定できる（PUT /api/rooms/{room_id}/role-overrides/{role} → 200）| UC-RM-016 | TC-IT-RM-MATCH-010 |
+| 36 | Room の Role オーバーライドを削除できる（DELETE /api/rooms/{room_id}/role-overrides/{role} → 204）| UC-RM-016 | TC-IT-RM-MATCH-011 |
+| 37 | HTTP API 経由で Room の Role オーバーライド一覧を取得できる（GET /api/rooms/{room_id}/role-overrides → 200）| UC-RM-017 | TC-IT-RM-MATCH-012 |
 
-E2E（受入基準 16, 17）は [`system-test-design.md`](system-test-design.md) で詳細凍結。受入基準 1〜14 は domain sub-feature の IT / UT で検証（[`domain/test-design.md`](domain/test-design.md)）。受入基準 18 は repository IT（TC-IT-RR-008）と E2E（TC-E2E-RM-003）の両方で検証。受入基準 19〜31 は http-api sub-feature の IT で検証（[`http-api/test-design.md`](http-api/test-design.md)）。
+E2E（受入基準 16, 17）は [`system-test-design.md`](system-test-design.md) で詳細凍結。受入基準 1〜14 は domain sub-feature の IT / UT で検証（[`domain/test-design.md`](domain/test-design.md)）。受入基準 18 は repository IT（TC-IT-RR-008）と E2E（TC-E2E-RM-003）の両方で検証。受入基準 19〜31 は http-api sub-feature の IT で検証（[`http-api/test-design.md`](http-api/test-design.md)）。受入基準 32〜37 は deliverable-template/room-matching sub-feature の IT で検証（[`../../deliverable-template/room-matching/test-design.md`](../../deliverable-template/room-matching/test-design.md)）。
 
 ## 10. 開発者品質基準（CI 担保、業務要求ではない）
 
@@ -221,7 +244,7 @@ E2E（受入基準 16, 17）は [`system-test-design.md`](system-test-design.md)
 
 ## 11. 開放論点 (Open Questions)
 
-凍結時点で未確定の論点はなし — R1 レビューで全件凍結済み。確定 R1-1〜10 として §7 に集約。
+凍結時点で未確定の論点はなし — R1 レビューで全件凍結済み。確定 R1-1〜11 として §7 に集約。
 
 ## 12. sub-feature 一覧とマイルストーン整理
 
