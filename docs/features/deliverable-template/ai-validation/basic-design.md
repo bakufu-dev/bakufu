@@ -234,7 +234,7 @@ sequenceDiagram
 | ランタイム | Python 3.12+ | `pyproject.toml` | 既存 |
 | ランタイム | `pydantic` v2 | `pyproject.toml` | 既存。`CriterionValidationResult` に使用 |
 | application port | `LLMProviderPort` | llm-client feature（`application/ports/llm_provider_port.py`）| `chat(messages, system, ...) -> ChatResult` Protocol。CLIサブプロセス経由で LLM 呼び出し |
-| infrastructure | `ClaudeCodeLLMClient` / `CodexLLMClient` | llm-client feature 提供（`infrastructure/llm_provider/`）| DI で `LLMProviderPort` として注入される concrete 実装。各々 Claude Code CLI / Codex CLI をサブプロセス実行 |
+| infrastructure | `ClaudeCodeLLMClient` / `CodexLLMClient` | llm-client feature 提供（`infrastructure/llm/`）| DI で `LLMProviderPort` として注入される concrete 実装。各々 Claude Code CLI / Codex CLI をサブプロセス実行 |
 | ランタイム | `sqlalchemy` v2 | `pyproject.toml` | 既存。SqliteDeliverableRecordRepository に使用 |
 | ランタイム | `alembic` | `pyproject.toml` | 既存。migration 0015 に使用 |
 | 廃止 | `anthropic` SDK / `openai` SDK | — | 旧設計（PR #147 クローズ済み）で依存。新設計では不要 |
@@ -267,7 +267,7 @@ sequenceDiagram
 | **T1** | Prompt Injection | `DeliverableRecord.content` に LLM 操作コマンドを埋め込み、LLM の応答を改ざんする | 評価結果の信頼性（ValidationStatus の正確性）| 構造化プロンプト（System / User / Criterion の明確な役割分離）。content は `--- BEGIN CONTENT ---` / `--- END CONTENT ---` delimiter 内に閉じ込め。system msg にユーザー入力を含まない（§確定 B）|
 | **T2** | 機密情報漏洩 | LLM 呼び出しエラー時に内部情報がログや例外 detail に混入 | システム内部情報 | `LLMValidationError` の typed フィールド（`message` / `kind` / `llm_error_kind` / `provider`）に機密情報を含めない設計。`LLMProviderError.provider` の値（"claude-code" / "codex"）のみを `provider` フィールドに格納 |
 | **T3** | content 機密情報の LLM 送信 | `DeliverableRecord.content` に PII 等が含まれる場合、LLM CLI 経由で第三者に送信される | ユーザーデータ / 業務機密 | `deliverable_records.content` に `MaskedText` を適用（agent 出力への APIキー等の混入防止）。詳細は §MaskedText 適用（下記）参照 |
-| **T4** | 任意コマンド実行 | CLIサブプロセスの引数を操作して任意コマンドを実行 | システムセキュリティ | `ClaudeCodeLLMClient` / `CodexLLMClient` は引数リストを固定。プロンプト文字列のみ変動パラメータとして渡し、シェルインジェクションが不可能な `subprocess` の list 形式を使用（llm-client feature §確定 参照）|
+| **T4** | 任意コマンド実行 | CLIサブプロセスの引数を操作して任意コマンドを実行 | システムセキュリティ | `ClaudeCodeLLMClient` / `CodexLLMClient` は引数リストを固定。プロンプト文字列のみ変動パラメータとして渡し、シェルインジェクションが不可能な `subprocess` の list 形式を使用（[llm-client feature §確定 CMD-EXEC](../../llm-client/infrastructure/basic-design.md) 参照）|
 
 ### MaskedText 適用（SEC-2 解消）
 

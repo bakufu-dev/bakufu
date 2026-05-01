@@ -160,7 +160,7 @@ classDiagram
 
 1. Application Service が `LLMMessage` を構築してタプルに積む
 2. Service が DI で注入された `AbstractLLMClient.complete(messages, max_tokens)` を呼ぶ
-3. 具体実装（`AnthropicLLMClient` 等）が `asyncio.wait_for()` でタイムアウト付き SDK 呼び出しを実行（処理は infrastructure sub-feature で定義）
+3. 具体実装（`ClaudeCodeLLMClient` / `CodexLLMClient` 等）が `asyncio.wait_for()` でタイムアウト付き SDK 呼び出しを実行（処理は infrastructure sub-feature で定義）
 4. SDK が応答を返したら具体実装が `LLMResponse` を構築して返却
 5. SDK がエラーを返したら具体実装が `LLMClientError` サブクラスに変換して raise
 6. Service が `LLMResponse.content` を受け取り業務ロジックを継続
@@ -203,7 +203,7 @@ sequenceDiagram
 
 - [`docs/design/domain-model.md`](../../../design/domain-model.md) への変更: `LLMMessage` / `LLMResponse` VO と `LLMClientError` 例外階層を §Value Object / §Domain Errors に追記
 - [`docs/design/tech-stack.md`](../../../design/tech-stack.md) への変更: §LLM Adapter に `AbstractLLMClient`（HTTP API）vs `LLMProviderPort`（CLI subprocess）の役割区分を明記（同一 PR で更新）
-- 既存 feature への波及: `ai-validation`（Issue #123）は本 feature 完了後に `AbstractLLMClient` を参照するよう再設計
+- 既存 feature への波及: `ai-validation`（Issue #123）は `LLMProviderPort`（CLI subprocess）を DI で受け取る設計に移行済み（PR #148）
 
 ## 外部連携
 
@@ -222,7 +222,7 @@ sequenceDiagram
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |---|---|---|---|
-| **T1: 内部コード誤実装** | `LLMClientConfig.api_key` を `str()` で出力 | API キー平文漏洩 | `SecretStr` 採用（R1-2）。`str(config)` で `**********` を返す Pydantic 仕様で防護 |
+| **T1: 内部コード誤実装** | `LLMClientConfig.api_key` を `str()` で出力 | API キー平文漏洩 | `SecretStr` 採用（R1-2）。`str(config)` で `**********` を返す Pydantic 仕様で防護（Phase 2 HTTP API アプローチでのみ適用。Phase 1 CLI subprocess では API キー不要）|
 | **T2: SDK 依存の漏洩** | application/ports が SDK 固有例外を再 raise | 呼び出し元が SDK に依存 | `LLMClientError` 階層への変換（R1-3）。infrastructure が SDK 例外を catch して変換する責務を持つ |
 
 詳細な信頼境界は [`docs/design/threat-model.md`](../../../design/threat-model.md)。
