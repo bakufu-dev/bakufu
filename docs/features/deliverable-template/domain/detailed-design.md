@@ -68,7 +68,7 @@ classDiagram
         +produced_by: AgentId
         +created_at: datetime
         +validated_at: datetime
-        +validate_criteria(criteria, llm_port) DeliverableRecord
+        +derive_status(criterion_results: tuple~CriterionValidationResult~) DeliverableRecord
     }
     class ValidationStatus {
         <<StrEnum>>
@@ -197,11 +197,11 @@ classDiagram
 
 **不変条件（model_validator(mode='after')）**: 2 種
 
-1. `_validate_status_consistency` — `validation_status != PENDING` のとき `criterion_results` が空でないこと（PENDING → 未評価のため空タプルを許容。PASSED/FAILED/UNCERTAIN → 評価済みのため criterion_results に最低 1 件必要）。違反時: `DeliverableRecordInvariantViolation(kind='invalid_validation_state')`
+1. `_validate_status_consistency` — 3パターンで検査する。①`validation_status == PENDING` → `criterion_results` が空であること（未評価のため）。②`validation_status in (FAILED, UNCERTAIN)` → `criterion_results` が空でないこと（判定根拠が必須）。③`validation_status == PASSED` → 制約なし（`criteria` が空の場合は `criterion_results` も空で PASSED が合法 — §確定 R1-G「criteria 空 = PASSED」ルールを保持する）。違反時: `DeliverableRecordInvariantViolation(kind='invalid_validation_state')`
 2. `_validate_criterion_results_status_values` — `criterion_results` の各 `status` が `ValidationStatus` 有効値であること（Pydantic 型で保証されるが多層防御）
 
 **ふるまい**: 1 種（pre-validate 方式）
-- `validate_criteria(criteria: tuple[AcceptanceCriterion, ...], llm_port: AbstractLLMValidationPort) -> DeliverableRecord`: 各 criterion を `llm_port.evaluate(self.content, criterion)` で評価 → 全結果を tuple で収集 → §確定 R1-G の status 導出ルールで overall status を決定 → `criterion_results` / `validation_status` / `validated_at` を更新した新インスタンスを `model_validate` 経由で構築して返す。
+- `derive_status(criterion_results: tuple[CriterionValidationResult, ...]) -> DeliverableRecord`: `criterion_results` を受け取り、§確定 R1-G の status 導出ルール（required=True の FAILED/UNCERTAIN 有無）で overall status を決定 → `criterion_results` / `validation_status` / `validated_at` を更新した新インスタンスを `model_validate` 経由で構築して返す。**純粋関数**（外部 I/O なし、引数のみで決定）。LLM 呼び出しの責務は `ValidationService`（Application Service）が持つ。
 
 ### VO: CriterionValidationResult（Issue #123 追加）
 
@@ -212,16 +212,6 @@ classDiagram
 | `reason` | `str` | 0〜1000 文字 | LLM が提供する判定根拠（空文字は許容、過度に長い説明を切り詰め）|
 
 `model_config`: `frozen=True` / `extra='forbid'` / `arbitrary_types_allowed=False`。
-
-### インターフェース: AbstractLLMValidationPort（Issue #123 追加）
-
-`domain/ports/llm_validation_port.py` に配置（§確定 C の `AbstractJSONSchemaValidator` と同パターン）。
-
-| メソッド | 引数 | 戻り値 | 動作 |
-|---|---|---|---|
-| `evaluate` | `content: str, criterion: AcceptanceCriterion` | `CriterionValidationResult` | 成果物コンテンツが AcceptanceCriterion を満たすかを評価して結果を返す。LLM 呼び出し失敗時は `LLMValidationError` を raise（infrastructure 層で定義）|
-
-Python `abc.ABC` + `@abc.abstractmethod` で定義。infrastructure 層の `LLMValidationAdapter` が実装する。
 
 ### Enum 追加（`domain/value_objects.py`）
 
@@ -335,32 +325,9 @@ MVP では domain Aggregate が検出する循環参照は **自己参照のみ*
 
 `Role` は既存の StrEnum を参照するのみで、新しい Aggregate として定義しない。
 
-### 確定 F: LLM Validation Port Pattern（§確定 C の JSON Schema Validator と同パターン）
-
-`DeliverableRecord.validate_criteria` が呼び出す LLM 評価は、domain 層に **`AbstractLLMValidationPort` インターフェース** を置き、infrastructure 層に実装するパターンを採用する（**設計決定 D-2 確定**）。
-
-| レイヤ | 配置内容 |
-|---|---|
-| `domain/ports/llm_validation_port.py` | `AbstractLLMValidationPort` インターフェース（抽象基底クラス）|
-| `infrastructure/llm_validation/llm_validation_adapter.py` | `AbstractLLMValidationPort` の具体実装（LLM API 呼び出し）|
-| `domain/deliverable_template/deliverable_record.py` | `validate_criteria` 内で `AbstractLLMValidationPort` を DI 経由で呼び出す |
-
-**`ProviderKind` は使用しない（確定）**: 既存の `ProviderKind` 列挙値（CLAUDE_CODE / CODEX / GEMINI 等）はコーディングエージェントの実行バックエンド識別子であり、LLM API プロバイダとは別概念。LLM validation は `BAKUFU_LLM_VALIDATION_PROVIDER` 環境変数（`anthropic` / `openai` / `ollama` 等）で設定された LLM API を呼ぶ。`ProviderKind` を拡張せず、独立した Port + Adapter パターンで実装する（SRP: コーディングエージェント管理と LLM API 呼び出しは別責務）。
-
-**Fail Secure 規約**: `AbstractLLMValidationPort` が `None` または未設定の場合は、LLM 検証をスキップして全 criterion を `UNCERTAIN` として扱うのではなく、`LLMValidationError` を raise する（バイパス禁止）。
-
 ### 確定 E: get_all_acceptance_criteria はドメインサービス化しない（Tell, Don't Ask）
 
-`RoleProfile.get_all_acceptance_criteria` は `RoleProfile` 自身のメソッドとして実装する（ドメインサービスに切り出さない）。
-
-| 比較観点 | RoleProfile 自身のメソッド（採用）| ドメインサービス（不採用）|
-|---|---|---|
-| Tell, Don't Ask | 呼び元が「criteria を取得する方法」を知る必要がない | 呼び元がサービスを知り、引数を組み立てる必要がある |
-| 凝集性 | 「自分の refs から criteria を集める」ロジックが RoleProfile に収まる | criteria 集約ロジックがモデルの外に散在 |
-| テスト容易性 | `template_lookup` を引数で渡すため DI 可能、テスト容易 | 差はほぼない |
-| 導入コスト | メソッド追加のみ | サービスクラス新設が必要 |
-
-`Mapping[DeliverableTemplateId, DeliverableTemplate]` を引数として受け取ることで、`RoleProfile` は `DeliverableTemplateRepository` に直接依存せず、domain 純粋性を保つ。
+`RoleProfile.get_all_acceptance_criteria` は `RoleProfile` 自身のメソッドとして実装する（ドメインサービスに切り出さない）。Tell, Don't Ask 原則に基づき「自分の refs から criteria を集める」ロジックを RoleProfile 内に閉じることで凝集性を高める。`Mapping[DeliverableTemplateId, DeliverableTemplate]` を引数として受け取るため domain 純粋性を保つ。
 
 ## MSG 確定文言表
 
@@ -381,7 +348,7 @@ MVP では domain Aggregate が検出する循環参照は **自己参照のみ*
 | MSG-DT-003 | `DeliverableTemplateInvariantViolation(kind='version_not_greater')` | `[FAIL] New version must be greater than current version {current}.` / `Next: Use a version greater than {current} (MAJOR.MINOR.PATCH format).` |
 | MSG-DT-004 | `RoleProfileInvariantViolation(kind='duplicate_template_ref')` | `[FAIL] Template reference {template_id} already exists in this RoleProfile.` / `Next: Remove the duplicate before adding a new reference.` |
 | MSG-DT-005 | `RoleProfileInvariantViolation(kind='template_ref_not_found')` | `[FAIL] Template reference {template_id} not found in this RoleProfile.` / `Next: Verify the template_id and retry.` |
-| MSG-DT-006 | `DeliverableRecordInvariantViolation(kind='invalid_validation_state')` | `[FAIL] DeliverableRecord validation_status={status} but criterion_results is empty.` / `Next: Provide criterion_results when status is not PENDING, or set status=PENDING for unvalidated records.` |
+| MSG-DT-006 | `DeliverableRecordInvariantViolation(kind='invalid_validation_state')` | `[FAIL] DeliverableRecord validation_status={status} requires at least one criterion_result.` / `Next: FAILED and UNCERTAIN statuses must include criterion_results as evidence. For PASSED with no criteria, criterion_results may be empty per R1-G.` |
 
 ##### 「Next:」行の役割（フィードバック原則、他 Aggregate 踏襲）
 
@@ -492,47 +459,6 @@ MVP では domain Aggregate が検出する循環参照は **自己参照のみ*
 - インターフェース名: `AbstractJSONSchemaValidator`
 - メソッド: `validate(schema: dict) -> None`（無効なら例外、有効なら `None` 返却）
 - domain 層から import される唯一の窓口
-
-## テスト戦略への対応（UTマトリクス）
-
-テストファイルは最初から分割構成で作成する（task PR #42 / external-review-gate §確定 K 教訓継承）。500 行ルール厳守、各ファイル 200 行目安。
-
-| テストファイル | 責務 |
-|---|---|
-| `test_deliverable_template/test_construction.py` | `DeliverableTemplate` 構築 + Pydantic 型検査 + frozen + extra='forbid' + `TemplateType` 5 値 |
-| `test_deliverable_template/test_invariants.py` | 5 不変条件 helper（schema_format / composition_self_ref / version_non_negative / criteria_descriptions / acceptance_criteria_no_duplicate_ids）+ MSG 文言照合 + Next: hint 物理保証 |
-| `test_deliverable_template/test_behaviors.py` | `create_new_version`（正常系・version 比較境界値）+ `compose`（正常系・自己参照 NG・criteria 引き継ぎなし確認）|
-| `test_role_profile/test_construction.py` | `RoleProfile` 構築 + Pydantic 型検査 + frozen + extra='forbid' |
-| `test_role_profile/test_behaviors.py` | `add_template_ref`（正常系・重複 NG）+ `remove_template_ref`（正常系・未発見 NG）+ `get_all_acceptance_criteria`（union / 重複排除 / required 優先順）|
-| `test_value_objects/test_semver.py` | `SemVer` 構築・比較・`from_str`・`is_compatible_with`・`__str__` |
-
-### UTマトリクス（主要テストケース）
-
-| TC ID | 対象 | シナリオ | 期待結果 |
-|---|---|---|---|
-| TC-UT-DT-001 | `DeliverableTemplate` 構築 | `type=JSON_SCHEMA`, 有効な JSON Schema dict | 構築成功 |
-| TC-UT-DT-002 | `_validate_schema_format` | `type=JSON_SCHEMA`, 無効な schema | `DeliverableTemplateInvariantViolation(kind='schema_format_invalid')` + MSG-DT-001 文言 |
-| TC-UT-DT-003 | `_validate_schema_format` | `type=MARKDOWN`, `schema` が `str` | 構築成功（JSON Schema チェックなし）|
-| TC-UT-DT-004 | `_validate_composition_no_self_ref` | `composition` に自己 ID を含む | `DeliverableTemplateInvariantViolation(kind='composition_self_ref')` + MSG-DT-002 文言 |
-| TC-UT-DT-005 | `_validate_composition_no_self_ref` | `composition` が空 tuple | 構築成功 |
-| TC-UT-DT-006 | `create_new_version` | `new_version > current` | 新インスタンス返却、`version` のみ更新 |
-| TC-UT-DT-007 | `create_new_version` | `new_version == current` | `DeliverableTemplateInvariantViolation(kind='version_not_greater')` + MSG-DT-003 文言 |
-| TC-UT-DT-008 | `create_new_version` | `new_version < current` | 同上 |
-| TC-UT-DT-009 | `compose` | 他テンプレートへの refs を渡す | `composition` に refs が設定された新インスタンス、`acceptance_criteria` は引き継がれない |
-| TC-UT-DT-010 | `compose` | 自己参照を含む refs を渡す | `DeliverableTemplateInvariantViolation(kind='composition_self_ref')` |
-| TC-UT-RP-001 | `RoleProfile` 構築 | 重複なし refs | 構築成功 |
-| TC-UT-RP-002 | `_validate_no_duplicate_refs` | 同一 `template_id` の ref を 2 件 | `RoleProfileInvariantViolation(kind='duplicate_template_ref')` + MSG-DT-004 文言 |
-| TC-UT-RP-003 | `add_template_ref` | 新規 ref を追加 | 末尾に ref が追加された新インスタンス |
-| TC-UT-RP-004 | `add_template_ref` | 既存 `template_id` の ref を追加 | `RoleProfileInvariantViolation(kind='duplicate_template_ref')` + MSG-DT-004 文言 |
-| TC-UT-RP-005 | `remove_template_ref` | 存在する `template_id` を削除 | ref を除いた新インスタンス |
-| TC-UT-RP-006 | `remove_template_ref` | 存在しない `template_id` | `RoleProfileInvariantViolation(kind='template_ref_not_found')` + MSG-DT-005 文言 |
-| TC-UT-RP-007 | `get_all_acceptance_criteria` | 複数テンプレート、重複 criterion あり | 重複排除済みリスト、`required=True` 先頭 |
-| TC-UT-RP-008 | `get_all_acceptance_criteria` | `required=False` のみの criteria | 全件後続グループとして返却 |
-| TC-UT-SV-001 | `SemVer.from_str` | `"1.2.3"` | `SemVer(major=1, minor=2, patch=3)` |
-| TC-UT-SV-002 | `SemVer.from_str` | `"invalid"` | `ValueError` |
-| TC-UT-SV-003 | `SemVer.is_compatible_with` | 同 major, 異なる minor | `True` |
-| TC-UT-SV-004 | `SemVer.is_compatible_with` | 異なる major | `False` |
-| TC-UT-SV-005 | MSG 文言 Next: 行 | MSG-DT-001〜005 全件 | `assert "Next:" in str(exc)` |
 
 ## データ構造（永続化キー）
 
