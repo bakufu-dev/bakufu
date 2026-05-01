@@ -290,8 +290,7 @@ class TestCheckDagNodeLimit:
 
         # 100 refs を root の直接子として渡す
         refs = tuple(
-            DeliverableTemplateRef(template_id=cid, minimum_version=semver)
-            for cid in child_ids
+            DeliverableTemplateRef(template_id=cid, minimum_version=semver) for cid in child_ids
         )
         service = DeliverableTemplateService(dt_repo=mock_repo, session=_make_mock_session())
 
@@ -322,8 +321,7 @@ class TestCheckDagNodeLimit:
         mock_repo.find_by_id = _find_by_id
 
         refs = tuple(
-            DeliverableTemplateRef(template_id=cid, minimum_version=semver)
-            for cid in child_ids
+            DeliverableTemplateRef(template_id=cid, minimum_version=semver) for cid in child_ids
         )
         service = DeliverableTemplateService(dt_repo=mock_repo, session=_make_mock_session())
 

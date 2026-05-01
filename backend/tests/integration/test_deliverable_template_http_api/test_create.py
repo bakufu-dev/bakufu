@@ -282,9 +282,7 @@ class TestCreateTransitiveCycle:
         )
         assert resp.json()["error"]["detail"]["reason"] == "transitive_cycle"
 
-    async def test_transitive_cycle_cycle_path_contains_both_uuids(
-        self, dt_ctx: DtTestCtx
-    ) -> None:
+    async def test_transitive_cycle_cycle_path_contains_both_uuids(self, dt_ctx: DtTestCtx) -> None:
         b = await _create_template(dt_ctx, {**_MINIMAL_MARKDOWN_BODY, "name": "template-B4"})
         a = await _create_template(
             dt_ctx,
@@ -329,9 +327,7 @@ class TestCreateDagDepthLimit:
     async def test_create_dag_depth_limit_returns_422(self, dt_ctx: DtTestCtx) -> None:
         """深度 11 の composition チェーン構築 → 422。"""
         # T1 (leaf)
-        prev = await _create_template(
-            dt_ctx, {**_MINIMAL_MARKDOWN_BODY, "name": "depth-chain-T1"}
-        )
+        prev = await _create_template(dt_ctx, {**_MINIMAL_MARKDOWN_BODY, "name": "depth-chain-T1"})
         # T2〜T11: 各 T_i が T_{i-1} を参照（10段のチェーン: T11→T10→...→T1）
         for i in range(2, 12):
             prev = await _create_template(
@@ -366,9 +362,7 @@ class TestCreateDagDepthLimit:
     async def test_create_dag_depth_limit_code_is_composition_cycle(
         self, dt_ctx: DtTestCtx
     ) -> None:
-        prev = await _create_template(
-            dt_ctx, {**_MINIMAL_MARKDOWN_BODY, "name": "dl-chain-T1"}
-        )
+        prev = await _create_template(dt_ctx, {**_MINIMAL_MARKDOWN_BODY, "name": "dl-chain-T1"})
         for i in range(2, 12):
             prev = await _create_template(
                 dt_ctx,
@@ -398,12 +392,8 @@ class TestCreateDagDepthLimit:
         )
         assert resp.json()["error"]["code"] == "composition_cycle"
 
-    async def test_create_dag_depth_limit_reason_is_depth_limit(
-        self, dt_ctx: DtTestCtx
-    ) -> None:
-        prev = await _create_template(
-            dt_ctx, {**_MINIMAL_MARKDOWN_BODY, "name": "dr-chain-T1"}
-        )
+    async def test_create_dag_depth_limit_reason_is_depth_limit(self, dt_ctx: DtTestCtx) -> None:
+        prev = await _create_template(dt_ctx, {**_MINIMAL_MARKDOWN_BODY, "name": "dr-chain-T1"})
         for i in range(2, 12):
             prev = await _create_template(
                 dt_ctx,
@@ -433,12 +423,8 @@ class TestCreateDagDepthLimit:
         )
         assert resp.json()["error"]["detail"]["reason"] == "depth_limit"
 
-    async def test_create_dag_depth_limit_cycle_path_is_empty(
-        self, dt_ctx: DtTestCtx
-    ) -> None:
-        prev = await _create_template(
-            dt_ctx, {**_MINIMAL_MARKDOWN_BODY, "name": "de-chain-T1"}
-        )
+    async def test_create_dag_depth_limit_cycle_path_is_empty(self, dt_ctx: DtTestCtx) -> None:
+        prev = await _create_template(dt_ctx, {**_MINIMAL_MARKDOWN_BODY, "name": "de-chain-T1"})
         for i in range(2, 12):
             prev = await _create_template(
                 dt_ctx,
@@ -487,9 +473,7 @@ class TestCreateInvalidName:
 class TestCreateJsonSchemaType:
     """TC-IT-DTH-018: type=JSON_SCHEMA → schema レスポンスが dict (§確定I)。"""
 
-    async def test_create_json_schema_type_returns_dict_schema(
-        self, dt_ctx: DtTestCtx
-    ) -> None:
+    async def test_create_json_schema_type_returns_dict_schema(self, dt_ctx: DtTestCtx) -> None:
         """JSON_SCHEMA type で dict schema を POST → レスポンスの schema が dict。"""
         from bakufu.domain.deliverable_template.deliverable_template import DeliverableTemplate
 

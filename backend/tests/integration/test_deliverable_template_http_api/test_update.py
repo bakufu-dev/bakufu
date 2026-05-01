@@ -70,9 +70,7 @@ class TestUpdateSameVersion:
         )
         assert resp.status_code == 200
 
-    async def test_update_same_version_response_version_unchanged(
-        self, dt_ctx: DtTestCtx
-    ) -> None:
+    async def test_update_same_version_response_version_unchanged(self, dt_ctx: DtTestCtx) -> None:
         created = await _create_template(dt_ctx, name="same-ver-test2")
         resp = await _put_template(
             dt_ctx,
@@ -101,9 +99,7 @@ class TestUpdateHigherVersion:
         )
         assert resp.status_code == 200
 
-    async def test_update_higher_version_response_version_updated(
-        self, dt_ctx: DtTestCtx
-    ) -> None:
+    async def test_update_higher_version_response_version_updated(self, dt_ctx: DtTestCtx) -> None:
         created = await _create_template(dt_ctx, name="higher-ver-test2")
         resp = await _put_template(
             dt_ctx,
@@ -138,9 +134,7 @@ class TestUpdateLowerVersion:
         )
         assert resp.status_code == 422
 
-    async def test_update_lower_version_code_is_version_downgrade(
-        self, dt_ctx: DtTestCtx
-    ) -> None:
+    async def test_update_lower_version_code_is_version_downgrade(self, dt_ctx: DtTestCtx) -> None:
         created = await _create_template(dt_ctx, name="lower-ver-test2")
         await _put_template(
             dt_ctx,

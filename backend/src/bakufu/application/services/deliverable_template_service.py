@@ -158,9 +158,11 @@ class DeliverableTemplateService:
                         str(ref.template_id), kind="composition_ref"
                     )
 
-            # DAG 走査
-            await self._check_dag(ref_tuple, root_id=new_id)
-
+            # BUG-003: domain invariant（自己参照チェック）を _check_dag より先に発火させる。
+            # model_validate() → DeliverableTemplate._validate_composition_no_self_ref が
+            # 自己参照を DeliverableTemplateInvariantViolation として検出する。
+            # _check_dag を先に実行すると root_id == visited で CompositionCycleError が
+            # raise され error.code が "composition_cycle" になってしまう（仕様違反）。
             template = DeliverableTemplate.model_validate(
                 {
                     "id": new_id,
@@ -194,6 +196,10 @@ class DeliverableTemplateService:
                     ],
                 }
             )
+
+            # DAG 走査（推移的循環 / 深度 / ノード数上限を検出）
+            await self._check_dag(ref_tuple, root_id=new_id)
+
             await self._dt_repo.save(template)
         return template
 
@@ -289,14 +295,15 @@ class DeliverableTemplateService:
                         str(ref.template_id), kind="composition_ref"
                     )
 
-            # DAG 走査（既存 id を root として循環検出）
-            await self._check_dag(ref_tuple, root_id=template_id)
-
             # version が現 version より大きい場合は create_new_version 経由でドメイン不変条件を通す
             if new_tuple > current_tuple:
                 existing = existing.create_new_version(new_semver)
 
-            # 全フィールド再構築
+            # BUG-003: domain invariant（自己参照チェック）を _check_dag より先に発火させる。
+            # model_validate() → DeliverableTemplate._validate_composition_no_self_ref が
+            # 自己参照を DeliverableTemplateInvariantViolation として検出する。
+            # _check_dag を先に実行すると root_id == visited で CompositionCycleError が
+            # raise され error.code が "composition_cycle" になってしまう（仕様違反）。
             template = DeliverableTemplate.model_validate(
                 {
                     "id": template_id,
@@ -330,6 +337,10 @@ class DeliverableTemplateService:
                     ],
                 }
             )
+
+            # DAG 走査（推移的循環 / 深度 / ノード数上限を検出）
+            await self._check_dag(ref_tuple, root_id=template_id)
+
             await self._dt_repo.save(template)
         return template
 
