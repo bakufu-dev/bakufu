@@ -22,10 +22,14 @@ Issue: #120
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
+
+if TYPE_CHECKING:
+    from bakufu.application.services.room_role_override_service import RoomRoleOverrideService
 
 pytestmark = pytest.mark.asyncio
 
@@ -42,7 +46,7 @@ def _make_service(
     room_repo: AsyncMock | None = None,
     override_repo: AsyncMock | None = None,
     session: MagicMock | None = None,
-) -> object:
+) -> RoomRoleOverrideService:
     from bakufu.application.services.room_role_override_service import RoomRoleOverrideService
 
     return RoomRoleOverrideService(

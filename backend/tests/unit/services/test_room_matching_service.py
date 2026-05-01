@@ -26,16 +26,20 @@ Issue: #120
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 
+if TYPE_CHECKING:
+    from bakufu.application.services.room_matching_service import RoomMatchingService
+
 
 def _make_service(
     override_repo: AsyncMock | None = None,
     role_profile_repo: AsyncMock | None = None,
-) -> object:
+) -> RoomMatchingService:
     from bakufu.application.services.room_matching_service import RoomMatchingService
 
     return RoomMatchingService(
