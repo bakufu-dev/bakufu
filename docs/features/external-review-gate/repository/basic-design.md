@@ -9,12 +9,13 @@
 | 要件ID | 概要 | 入力 | 処理 | 出力 | エラー時 | 親 spec 参照 |
 |--------|------|------|------|------|---------|-------------|
 | REQ-ERGR-001 | ExternalReviewGateRepository Protocol 定義 | — | 6 method（find_by_id / count / save / find_pending_by_reviewer / find_by_task_id / count_by_decision）を async def で宣言 | Protocol 型定義 | — | §9 AC#14 |
-| REQ-ERGR-002 | save() 5 段階 DELETE+UPSERT+INSERT | gate: ExternalReviewGate | 子テーブル DELETE → gate UPSERT → 子テーブル INSERT（§確定 R1-B 5 段階） | None | `sqlalchemy.IntegrityError`（FK 違反等）→ 上位伝播 | §9 AC#14 |
+| REQ-ERGR-002 | save() 7 段階 DELETE+UPSERT+INSERT | gate: ExternalReviewGate | 子テーブル DELETE（3 種）→ gate UPSERT → 子テーブル INSERT（3 種）（§確定 R1-B 7 段階） | None | `sqlalchemy.IntegrityError`（FK 違反等）→ 上位伝播 | §9 AC#14 |
 | REQ-ERGR-003 | find_pending_by_reviewer | reviewer_id: OwnerId | WHERE reviewer_id + decision='PENDING' ORDER BY created_at DESC, id DESC | list[ExternalReviewGate]（空の場合 []） | — | §9 AC#14 |
 | REQ-ERGR-004 | find_by_task_id | task_id: TaskId | WHERE task_id ORDER BY created_at ASC, id ASC | list[ExternalReviewGate]（時系列昇順）| — | §9 AC#14 |
 | REQ-ERGR-005 | count_by_decision | decision: ReviewDecision | SELECT COUNT(*) WHERE decision = :decision | int | — | §9 AC#14 |
 | REQ-ERGR-006 | 3 masking カラム永続化（§確定 R1-E） | snapshot_body_markdown / feedback_text / audit_entries.comment を含む gate | MaskedText TypeDecorator が bind param 生成前に secret をマスキング | DB に raw secret が保存されない | — | §9 AC#15 |
 | REQ-ERGR-007 | Alembic 0008 DDL | — | 3 テーブル（external_review_gates / external_review_gate_attachments / external_review_audit_entries）+ INDEX 3 件（task_id_created / reviewer_decision / decision）を作成 | migrate 済み DB スキーマ | — | §9 AC#14 |
+| REQ-ERGR-008 | Alembic 0014 DDL（criteria テーブル追加）| — | 1 テーブル（external_review_gate_criteria）+ INDEX 1 件（gate_id）を追加。`down_revision="0013_add_room_role_overrides"` | migrate 済み DB スキーマ（criteria テーブル含む）| — | §9 AC#14, 16 |
 
 ## 記述ルール（必ず守ること）
 
@@ -35,6 +36,8 @@
 | 共通 | `tables/external_review_gates.py` | `backend/src/bakufu/infrastructure/persistence/sqlite/tables/` | `external_review_gates` テーブル ORM 定義（snapshot_body_markdown は MaskedText） |
 | 共通 | `tables/external_review_gate_attachments.py` | 同上 | `external_review_gate_attachments` テーブル ORM 定義 |
 | 共通 | `tables/external_review_audit_entries.py` | 同上 | `external_review_audit_entries` テーブル ORM 定義（comment は MaskedText） |
+| REQ-ERGR-008 | `tables/external_review_gate_criteria.py` | 同上 | `external_review_gate_criteria` テーブル ORM 定義（gate_id FK / criterion_id / description / required / order_index）|
+| REQ-ERGR-008 | Alembic 0014 revision | `backend/alembic/versions/0014_external_review_gate_criteria.py` | external_review_gate_criteria テーブル + INDEX 1 件、`down_revision="0013_add_room_role_overrides"` |
 
 ```
 ディレクトリ構造（本 feature で追加・変更されるファイル）:
@@ -101,8 +104,8 @@ classDiagram
         +async find_pending_by_reviewer(reviewer_id) list~ExternalReviewGate~
         +async find_by_task_id(task_id) list~ExternalReviewGate~
         +async count_by_decision(decision) int
-        -_to_rows(gate) tuple~GateRow, list~AttachRow~, list~AuditRow~~
-        -_from_rows(gate_row, attach_rows, audit_rows) ExternalReviewGate
+        -_to_rows(gate) tuple~GateRow, list~AttachRow~, list~AuditRow~, list~CriteriaRow~~
+        -_from_rows(gate_row, attach_rows, audit_rows, criteria_rows) ExternalReviewGate
     }
     class ExternalReviewGate {
         <<Aggregate Root>>
@@ -114,6 +117,7 @@ classDiagram
         +decision: ReviewDecision
         +feedback_text: str
         +audit_trail: list~AuditEntry~
+        +required_deliverable_criteria: tuple~AcceptanceCriterion~
         +created_at: datetime
         +decided_at: datetime | None
     }
@@ -126,17 +130,18 @@ classDiagram
 - `ExternalReviewGateRepository` Protocol は application 層（empire §確定 A 踏襲）
 - `SqliteExternalReviewGateRepository` は `AsyncSession` をコンストラクタで受け取る（依存性注入）
 - `_to_rows` / `_from_rows` は private に閉じる（empire §確定 C 踏襲）
-- 3 テーブルにまたがるため mapping method は複数 Row を tuple で扱う（task-repository パターン踏襲）
+- 4 テーブルにまたがるため mapping method は複数 Row を tuple で扱う（task-repository パターン踏襲）
 - `deliverable_snapshot` は Gate 本体の scalar カラム + `external_review_gate_attachments` 子テーブルで永続化
+- `required_deliverable_criteria` は `external_review_gate_criteria` 子テーブルで永続化（order_index で元の tuple 順序を保持、domain 不変条件は変更がないため DELETE+INSERT は冪等）
 
 ## 処理フロー
 
 ### ユースケース 1: Gate の新規作成（save 経路）
 
-1. application 層（`GateService.create()`）が ExternalReviewGate インスタンスを構築（`decision=PENDING`, `audit_trail=[]`, `snapshot` 凍結済み）
+1. application 層（`GateService.create()`）が ExternalReviewGate インスタンスを構築（`decision=PENDING`, `audit_trail=[]`, `snapshot` 凍結済み, `required_deliverable_criteria` 凍結済み）
 2. `ExternalReviewGateRepository.save(gate)` を呼び出す
-3. `_to_rows(gate)` で 3 種 Row に変換（`snapshot_body_markdown` は MaskedText TypeDecorator が自動マスキング）
-4. §確定 R1-B の 5 段階を順次実行（新規 Gate では段階 1〜2 DELETE が 0 件）
+3. `_to_rows(gate)` で 4 種 Row に変換（`snapshot_body_markdown` は MaskedText TypeDecorator が自動マスキング）
+4. §確定 R1-B の 7 段階を順次実行（新規 Gate では段階 1〜3 DELETE が 0 件）
 5. 成功: `None` 返却
 
 ### ユースケース 2: Gate の取得（find_by_id 経路）
@@ -151,9 +156,9 @@ classDiagram
 ### ユースケース 3: Gate の状態遷移後 save（CEO が approve / reject / cancel）
 
 1. application 層が `find_by_id(gate_id)` で既存 Gate を取得
-2. CEO アクション: `gate.approve(by_owner_id=ceo_id, comment="OK", decided_at=now)` で新 Gate インスタンス取得（`decision=APPROVED`, `audit_trail` に APPROVED エントリ追加）
+2. CEO アクション: `gate.approve(by_owner_id=ceo_id, comment="OK", decided_at=now)` で新 Gate インスタンス取得（`decision=APPROVED`, `audit_trail` に APPROVED エントリ追加、`required_deliverable_criteria` は不変）
 3. `ExternalReviewGateRepository.save(updated_gate)` を呼び出す
-4. §確定 R1-B の 5 段階で既存子行を DELETE → Gate UPSERT（決済日時 / decision 更新）→ 子行 INSERT
+4. §確定 R1-B の 7 段階で既存子行を DELETE（3 種）→ Gate UPSERT（決済日時 / decision 更新）→ 子行 INSERT（3 種）
 5. 成功: `None` 返却
 
 ### ユースケース 4: PENDING Gate の一覧取得（reviewer 視点）
@@ -179,8 +184,8 @@ sequenceDiagram
     participant DB as SQLite (3 tables)
     participant Masking as MaskedText TypeDecorator
 
-    App->>Repo: save(gate{decision=APPROVED, snapshot.body="...secret...", audit_trail=[...]})
-    Repo->>Repo: _to_rows(gate)
+    App->>Repo: save(gate{decision=APPROVED, snapshot.body="...secret...", audit_trail=[...], required_deliverable_criteria=(...)})
+    Repo->>Repo: _to_rows(gate) → (gate_row, attach_rows, audit_rows, criteria_rows)
     Repo->>Masking: process_bind_param(snapshot_body_markdown)
     Masking-->>Repo: masked_snapshot_body
     Repo->>Masking: process_bind_param(audit_entry.comment)
@@ -189,11 +194,15 @@ sequenceDiagram
     DB-->>Repo: OK
     Repo->>DB: DELETE external_review_audit_entries WHERE gate_id (段階2)
     DB-->>Repo: OK
-    Repo->>DB: INSERT OR REPLACE INTO external_review_gates VALUES(...) (段階3)
+    Repo->>DB: DELETE external_review_gate_criteria WHERE gate_id (段階3)
     DB-->>Repo: OK
-    Repo->>DB: INSERT INTO external_review_gate_attachments (段階4)
+    Repo->>DB: INSERT OR REPLACE INTO external_review_gates VALUES(...) (段階4)
     DB-->>Repo: OK
-    Repo->>DB: INSERT INTO external_review_audit_entries (段階5)
+    Repo->>DB: INSERT INTO external_review_gate_attachments (段階5)
+    DB-->>Repo: OK
+    Repo->>DB: INSERT INTO external_review_audit_entries (段階6)
+    DB-->>Repo: OK
+    Repo->>DB: INSERT INTO external_review_gate_criteria (段階7)
     DB-->>Repo: OK
     Repo-->>App: None
 
@@ -298,14 +307,25 @@ erDiagram
         datetime occurred_at "NOT NULL"
     }
 
+    external_review_gate_criteria {
+        string id PK "内部識別子"
+        string gate_id FK
+        string criterion_id "AcceptanceCriterion.id (UUID, NOT NULL)"
+        text description "NOT NULL (1-500 chars)"
+        boolean required "NOT NULL DEFAULT true"
+        int order_index "NOT NULL (0-based, tuple順序保持)"
+    }
+
     external_review_gates ||--o{ external_review_gate_attachments : "gate_id (CASCADE)"
     external_review_gates ||--o{ external_review_audit_entries : "gate_id (CASCADE)"
+    external_review_gates ||--o{ external_review_gate_criteria : "gate_id (CASCADE)"
 ```
 
 UNIQUE 制約:
 - `external_review_gate_attachments(gate_id, sha256)`: 同一 Gate 内で同 sha256 の重複参照を禁止（snapshot 凍結後の重複防止）
+- `external_review_gate_criteria(gate_id, order_index)`: 同一 Gate 内での order_index 重複を禁止
 
-masking 対象カラム: `external_review_gates.snapshot_body_markdown` / `external_review_gates.feedback_text` / `external_review_audit_entries.comment`（各 MaskedText、§確定 R1-E で CI 三層防衛が物理保証）。
+masking 対象カラム: `external_review_gates.snapshot_body_markdown` / `external_review_gates.feedback_text` / `external_review_audit_entries.comment`（各 MaskedText、§確定 R1-E で CI 三層防衛が物理保証）。`external_review_gate_criteria.description` は開発者定義のテンプレートメタデータのため masking 不要（ユーザー入力 / Agent 出力でない）。
 
 ## エラーハンドリング方針
 

@@ -82,7 +82,7 @@ backend/
 |---|---|
 | 入力 | パスパラメータ `id: UUID` |
 | 処理 | `ExternalReviewGateService.find_by_id_or_raise(gate_id)` → `ExternalReviewGateRepository.find_by_id(gate_id)` → None → `GateNotFoundError`。取得成功後 `record_view` は呼び出さない（HTTP GET は副作用なし）|
-| 出力 | HTTP 200, `GateDetailResponse`（`deliverable_snapshot.body_markdown` / `feedback_text` / `audit_trail[*].comment` は DB から取得したマスキング済みの値をそのまま返す（`<REDACTED:...>` パターンが含まれることがある）— 詳細は §セキュリティ設計 §確定B）|
+| 出力 | HTTP 200, `GateDetailResponse`（`deliverable_snapshot.body_markdown` / `feedback_text` / `audit_trail[*].comment` は DB から取得したマスキング済みの値をそのまま返す（`<REDACTED:...>` パターンが含まれることがある）— 詳細は §セキュリティ設計 §確定B。**`required_deliverable_criteria: list[AcceptanceCriterionResponse]` を含む（受入基準 #17）**）|
 | エラー時 | 不在 → 404 (MSG-ERG-HTTP-001) / 不正 UUID → 422 |
 
 ### REQ-ERG-HTTP-004: Gate 承認（POST /api/gates/{id}/approve）
@@ -190,6 +190,12 @@ classDiagram
         +created_at: str
         +decided_at: str | None
     }
+    class AcceptanceCriterionResponse {
+        <<Pydantic BaseModel>>
+        +id: str
+        +description: str
+        +required: bool
+    }
     class GateDetailResponse {
         <<Pydantic BaseModel>>
         +id: str
@@ -200,6 +206,7 @@ classDiagram
         +feedback_text: str
         +deliverable_snapshot: DeliverableSnapshotResponse
         +audit_trail: list~AuditEntryResponse~
+        +required_deliverable_criteria: list~AcceptanceCriterionResponse~
         +created_at: str
         +decided_at: str | None
     }
@@ -231,6 +238,7 @@ classDiagram
     GateRouter ..> GateCancel : deserializes
     GateRouter ..> GateDetailResponse : serializes
     GateRouter ..> GateListResponse : serializes
+    GateDetailResponse --> AcceptanceCriterionResponse : required_deliverable_criteria 0..N
 ```
 
 ## 処理フロー
@@ -432,8 +440,18 @@ erDiagram
         TEXT comment "MaskedText NOT NULL"
         DATETIME occurred_at
     }
+    external_review_gate_criteria {
+        TEXT id PK
+        TEXT gate_id FK
+        TEXT criterion_id
+        TEXT description
+        BOOLEAN required
+        INTEGER order_index
+    }
+
     external_review_gates ||--o{ external_review_gate_attachments : "gate_id"
     external_review_gates ||--o{ external_review_audit_entries : "gate_id"
+    external_review_gates ||--o{ external_review_gate_criteria : "gate_id"
 ```
 
 ## アーキテクチャへの影響

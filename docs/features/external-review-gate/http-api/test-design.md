@@ -18,7 +18,7 @@
 |---|---|---|---|---|---|
 | REQ-ERG-HTTP-001 | `GET /api/gates` + `find_pending_for_reviewer` | TC-IT-ERG-HTTP-001, TC-IT-ERG-HTTP-002 | 結合 | 正常系 / 異常系 | — |
 | REQ-ERG-HTTP-002 | `GET /api/tasks/{task_id}/gates` + `find_by_task` | TC-IT-ERG-HTTP-003, TC-IT-ERG-HTTP-004 | 結合 | 正常系 / 異常系 | — |
-| REQ-ERG-HTTP-003 | `GET /api/gates/{id}` + `find_by_id_or_raise` | TC-IT-ERG-HTTP-005, TC-IT-ERG-HTTP-006, TC-IT-ERG-HTTP-007 | 結合 | 正常系 / 異常系 | — |
+| REQ-ERG-HTTP-003 | `GET /api/gates/{id}` + `find_by_id_or_raise` | TC-IT-ERG-HTTP-005, TC-IT-ERG-HTTP-006, TC-IT-ERG-HTTP-007, **TC-IT-ERG-HTTP-033** | 結合 | 正常系 / 異常系 | —, **受入基準 #17** |
 | REQ-ERG-HTTP-004 | `POST /api/gates/{id}/approve` + `ExternalReviewGateService.approve` | TC-IT-ERG-HTTP-008〜013, TC-IT-ERG-HTTP-026 | 結合 | 正常系 / 異常系 | feature-spec 受入基準 3, 5 |
 | REQ-ERG-HTTP-005 | `POST /api/gates/{id}/reject` + `ExternalReviewGateService.reject` | TC-IT-ERG-HTTP-014〜019, TC-IT-ERG-HTTP-027 | 結合 | 正常系 / 異常系 | feature-spec 受入基準 4, 5 |
 | REQ-ERG-HTTP-006 | `POST /api/gates/{id}/cancel` + `ExternalReviewGateService.cancel` | TC-IT-ERG-HTTP-020〜024, TC-IT-ERG-HTTP-028 | 結合 | 正常系 / 異常系 | feature-spec 受入基準 4, 5 |
@@ -59,7 +59,7 @@
 
 | テスト ID | 前提条件 | 操作 | 期待結果 |
 |---|---|---|---|
-| TC-IT-ERG-HTTP-005 | PENDING Gate が seed 済み（`deliverable_snapshot`・`audit_trail` 含む）| `GET /api/gates/{id}` | HTTP 200, `GateDetailResponse`。`feedback_text` / `body_markdown` / `audit_trail[*].comment` が DB 値と一致（§確定B — DB 書き込み時 mask() 適用済みの値をそのまま返す）|
+| TC-IT-ERG-HTTP-005 | PENDING Gate が seed 済み（`deliverable_snapshot`・`audit_trail` 含む、`required_deliverable_criteria` 空タプル）| `GET /api/gates/{id}` | HTTP 200, `GateDetailResponse`。`feedback_text` / `body_markdown` / `audit_trail[*].comment` が DB 値と一致（§確定B）。`required_deliverable_criteria` フィールドが存在し空配列 `[]`（空タプル seed）|
 | TC-IT-ERG-HTTP-006 | Gate 不在 | `GET /api/gates/{unknown-uuid}` | HTTP 404, レスポンス body に `[FAIL]` + `Gate not found` + `Next:` が含まれる（MSG-ERG-HTTP-001 R1-G 準拠の静的照合）|
 | TC-IT-ERG-HTTP-007 | — | `GET /api/gates/invalid-not-uuid` | HTTP 422 `validation_error` |
 
@@ -118,6 +118,12 @@
 | TC-IT-ERG-HTTP-031 | MSG-ERG-HTTP-003 | PENDING Gate（`reviewer_id=R`）seed 済み | `POST /api/gates/{id}/approve` + `Authorization: Bearer OTHER_ID` | HTTP 403。レスポンス body に `[FAIL]` + `Not authorized` + `Next:` の文字列が全て含まれる |
 | TC-IT-ERG-HTTP-032 | MSG-ERG-HTTP-004 | PENDING Gate seed 済み | `POST /api/gates/{id}/approve`（`Authorization` ヘッダーなし）| HTTP 422。レスポンス body に `[FAIL]` + `Authorization` + `Next:` の文字列が全て含まれる |
 
+### required_deliverable_criteria 取得（受入基準 #17）
+
+| テスト ID | 前提条件 | 操作 | 期待結果 |
+|---|---|---|---|
+| **TC-IT-ERG-HTTP-033** | `required_deliverable_criteria` に AcceptanceCriterion 2 件（required=True/False 混在）を持つ PENDING Gate を seed | `GET /api/gates/{id}` | HTTP 200, `GateDetailResponse` の `required_deliverable_criteria` が長さ 2 の配列。各要素が `AcceptanceCriterionResponse`（id: str / description: str / required: bool）として返される。order_index 順（seed 時の tuple 順序を保持）。`required_deliverable_criteria` キーが JSON レスポンスに必ず存在する（criteria が空タプルの場合も `[]` が返る）|
+
 ## ユニットテストケース（UT）
 
 ### ExternalReviewGateService
@@ -136,6 +142,7 @@
 - MSG-ERG-HTTP-001〜004 の各文言が**静的文字列で照合**されている（`assert "[FAIL]" in ...` + `assert "Next:" in ...` で R1-G 2行構造を検証）
 - feature-spec 受入基準 3（approve 遷移）/ 4（reject / cancel 遷移）/ 5（二重決定拒否）/ 12（R1-G 2行エラー構造）がそれぞれ **最低 1 件の IT** で検証されている
 - §確定B（masking 挙動）が TC-IT-ERG-HTTP-025 で検証されている（secret パターン含む seed → `<REDACTED:` 含有確認）
+- **受入基準 #17（criteria 取得）** が TC-IT-ERG-HTTP-033 で検証されている（criteria 2件 seed → `GateDetailResponse.required_deliverable_criteria` に 2 件の `AcceptanceCriterionResponse` が含まれることを確認）
 - C0（行カバレッジ）目標: `routers/external_review_gates.py` 90% 以上 / `services/external_review_gate_service.py` 90% 以上
 - reviewer_id 照合（T1 脅威）が TC-IT-ERG-HTTP-011 / TC-IT-ERG-HTTP-016 / TC-IT-ERG-HTTP-022 で検証されている
 - POST 系不正 UUID が TC-IT-ERG-HTTP-026〜028 で検証されている（3 操作すべて）
@@ -155,7 +162,7 @@ backend/tests/
     test_external_review_gate_http/   # 本 sub-feature の IT（新規ディレクトリ）
       __init__.py
       conftest.py                     # app fixture / seed helpers
-      test_read_flows.py              # TC-IT-ERG-HTTP-001〜007（GET 系）
+      test_read_flows.py              # TC-IT-ERG-HTTP-001〜007, TC-IT-ERG-HTTP-033（GET 系 + criteria 取得）
       test_approve_flow.py            # TC-IT-ERG-HTTP-008〜013
       test_reject_flow.py             # TC-IT-ERG-HTTP-014〜019
       test_cancel_flow.py             # TC-IT-ERG-HTTP-020〜024
