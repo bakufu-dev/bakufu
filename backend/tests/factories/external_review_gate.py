@@ -133,9 +133,7 @@ def make_gate(
             "feedback_text": feedback_text,
             "audit_trail": list(audit_trail) if audit_trail is not None else [],
             "required_deliverable_criteria": (
-                required_deliverable_criteria
-                if required_deliverable_criteria is not None
-                else ()
+                required_deliverable_criteria if required_deliverable_criteria is not None else ()
             ),
             "created_at": created_at if created_at is not None else now,
             "decided_at": decided_at,

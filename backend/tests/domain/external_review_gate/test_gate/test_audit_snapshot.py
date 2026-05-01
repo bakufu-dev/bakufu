@@ -148,7 +148,9 @@ class TestCriteriaPreservedAfterStateTransitions:
     def _build_criteria(self) -> tuple[AcceptanceCriterion, ...]:
         return (
             AcceptanceCriterion(id=uuid4(), description="設計書の要件を満たす", required=True),
-            AcceptanceCriterion(id=uuid4(), description="テストケースが全て通過する", required=False),
+            AcceptanceCriterion(
+                id=uuid4(), description="テストケースが全て通過する", required=False
+            ),
             AcceptanceCriterion(id=uuid4(), description="レビュアーが承認する", required=True),
         )
 
@@ -186,7 +188,7 @@ class TestCriteriaPreservedAfterStateTransitions:
         gate = make_gate(required_deliverable_criteria=criteria)
         approved = gate.approve(uuid4(), "ok", decided_at=datetime.now(UTC))
         for i, (original, rebuilt) in enumerate(
-            zip(criteria, approved.required_deliverable_criteria)
+            zip(criteria, approved.required_deliverable_criteria, strict=True)
         ):
             assert original == rebuilt, f"criterion at index {i} changed after approve"
 
@@ -195,5 +197,5 @@ class TestCriteriaPreservedAfterStateTransitions:
         criteria = self._build_criteria()
         gate = make_gate(required_deliverable_criteria=criteria)
         approved = gate.approve(uuid4(), "ok", decided_at=datetime.now(UTC))
-        for original, rebuilt in zip(criteria, approved.required_deliverable_criteria):
+        for original, rebuilt in zip(criteria, approved.required_deliverable_criteria, strict=True):
             assert original.required == rebuilt.required

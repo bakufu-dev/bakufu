@@ -93,7 +93,7 @@ class ExternalReviewGateService:
             all_criteria.extend(template.acceptance_criteria)
 
         return ExternalReviewGate(
-            id=GateId(uuid4()),
+            id=uuid4(),
             task_id=task_id,
             stage_id=stage_id,
             deliverable_snapshot=deliverable_snapshot,

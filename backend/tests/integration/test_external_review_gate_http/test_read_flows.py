@@ -184,9 +184,7 @@ class TestGetGateCriteria:
         """TC-IT-ERG-HTTP-033a: criteria 付き Gate → required_deliverable_criteria が非空配列。"""
         from bakufu.domain.value_objects import AcceptanceCriterion
 
-        c1 = AcceptanceCriterion(
-            id=uuid4(), description="設計書の要件を満たす", required=True
-        )
+        c1 = AcceptanceCriterion(id=uuid4(), description="設計書の要件を満たす", required=True)
         c2 = AcceptanceCriterion(
             id=uuid4(), description="テストケースが全て通過する", required=False
         )
@@ -195,19 +193,15 @@ class TestGetGateCriteria:
 
         resp = await gate_ctx.client.get(f"/api/gates/{gate.id}")
         assert resp.status_code == 200
-        criteria = resp.json()["required_deliverable_criteria"]
+        criteria: list[object] = resp.json()["required_deliverable_criteria"]
         assert isinstance(criteria, list)
         assert len(criteria) == 2
 
-    async def test_criteria_values_match_inserted(
-        self, gate_ctx: GateTestCtx
-    ) -> None:
+    async def test_criteria_values_match_inserted(self, gate_ctx: GateTestCtx) -> None:
         """TC-IT-ERG-HTTP-033b: criteria の description / required フラグが正しく返る."""
         from bakufu.domain.value_objects import AcceptanceCriterion
 
-        c1 = AcceptanceCriterion(
-            id=uuid4(), description="設計書の要件を満たす", required=True
-        )
+        c1 = AcceptanceCriterion(id=uuid4(), description="設計書の要件を満たす", required=True)
         c2 = AcceptanceCriterion(
             id=uuid4(), description="テストケースが全て通過する", required=False
         )
@@ -221,9 +215,7 @@ class TestGetGateCriteria:
         assert criteria[1]["description"] == "テストケースが全て通過する"
         assert criteria[1]["required"] is False
 
-    async def test_gate_without_criteria_returns_empty_array(
-        self, gate_ctx: GateTestCtx
-    ) -> None:
+    async def test_gate_without_criteria_returns_empty_array(self, gate_ctx: GateTestCtx) -> None:
         """TC-IT-ERG-HTTP-033c: criteria なし Gate → required_deliverable_criteria が空配列。"""
         gate = make_gate()
         await seed_gate_with_deps(gate_ctx.session_factory, gate)
@@ -233,9 +225,7 @@ class TestGetGateCriteria:
         criteria = resp.json()["required_deliverable_criteria"]
         assert criteria == []
 
-    async def test_criteria_order_preserved_in_response(
-        self, gate_ctx: GateTestCtx
-    ) -> None:
+    async def test_criteria_order_preserved_in_response(self, gate_ctx: GateTestCtx) -> None:
         """TC-IT-ERG-HTTP-033d: criteria の order_index 順（挿入順）が維持される."""
         gate = make_gate_with_criteria()
         await seed_gate_with_deps(gate_ctx.session_factory, gate)

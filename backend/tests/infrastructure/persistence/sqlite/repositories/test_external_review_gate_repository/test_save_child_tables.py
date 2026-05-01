@@ -48,9 +48,7 @@ async def _count_criteria(
     async with session_factory() as session:
         row = (
             await session.execute(
-                text(
-                    "SELECT COUNT(*) FROM external_review_gate_criteria WHERE gate_id = :gate_id"
-                ),
+                text("SELECT COUNT(*) FROM external_review_gate_criteria WHERE gate_id = :gate_id"),
                 {"gate_id": gate_id.hex},
             )
         ).first()
@@ -352,7 +350,7 @@ class TestCriteriaRoundTrip:
 
         assert restored is not None
         for i, (original, rebuilt) in enumerate(
-            zip(original_criteria, restored.required_deliverable_criteria)
+            zip(original_criteria, restored.required_deliverable_criteria, strict=True)
         ):
             assert original.description == rebuilt.description, (
                 f"[FAIL] criterion[{i}].description: "
@@ -368,13 +366,14 @@ class TestCriteriaRoundTrip:
         seeded_gate_context: tuple[UUID, UUID, UUID],
     ) -> None:
         """TC-UT-ERGR-010d: required=True/False 混在が DB 往復後も保持される。"""
-        from bakufu.domain.value_objects import AcceptanceCriterion as _AC
-        from uuid import uuid4 as _uuid4
+        from uuid import uuid4
+
+        from bakufu.domain.value_objects import AcceptanceCriterion
 
         task_id, stage_id, reviewer_id = seeded_gate_context
         criteria = (
-            _AC(id=_uuid4(), description="必須基準", required=True),
-            _AC(id=_uuid4(), description="任意基準", required=False),
+            AcceptanceCriterion(id=uuid4(), description="必須基準", required=True),
+            AcceptanceCriterion(id=uuid4(), description="任意基準", required=False),
         )
         gate = make_gate(
             task_id=task_id,
