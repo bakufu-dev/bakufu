@@ -3,6 +3,9 @@
 副作用のない純粋なデータ定数モジュール。import しても DB 接続や I/O は発生しない。
 DeliverableTemplate.model_validate() で構築済みの Aggregate インスタンスを保持する。
 
+slug は ``_TEMPLATES_BY_SLUG`` の辞書キーとして 1 箇所にのみ定義する（DRY）。
+``WELL_KNOWN_TEMPLATES`` は同 dict から派生し、``_ref()`` も同 dict から id を取得する。
+
 設計書: docs/features/deliverable-template/template-library/detailed-design.md §確定A〜C
 """
 
@@ -57,14 +60,16 @@ def _build_template(
 
 
 # ---------------------------------------------------------------------------
-# §確定 A: WELL_KNOWN_TEMPLATES — 12 件の確定定義（凍結）
+# §確定 A: _TEMPLATES_BY_SLUG — slug を唯一の真実源とした定義（DRY）
 # ---------------------------------------------------------------------------
+# slug がキー。WELL_KNOWN_TEMPLATES / _ref() は両方ここから派生する。
+# slug の追加・削除は _TEMPLATES_BY_SLUG だけを変更すればよい。
 # 全件 MARKDOWN / version 1.0.0 / acceptance_criteria=() / composition=()
 # id = UUID5(BAKUFU_TEMPLATE_NS, slug)
 # ---------------------------------------------------------------------------
-WELL_KNOWN_TEMPLATES: tuple[DeliverableTemplate, ...] = (
+_TEMPLATES_BY_SLUG: dict[str, DeliverableTemplate] = {
     # LEADER (3件)
-    _build_template(
+    "leader-plan": _build_template(
         slug="leader-plan",
         name="計画書",
         description="タスクの背景・目標・スコープ・マイルストーンを記述する計画文書。",
@@ -77,7 +82,7 @@ WELL_KNOWN_TEMPLATES: tuple[DeliverableTemplate, ...] = (
             "### リスク\n（想定リスクと対応方針）"
         ),
     ),
-    _build_template(
+    "leader-priority": _build_template(
         slug="leader-priority",
         name="優先度判定レポート",
         description="複数候補の優先順位を比較根拠とともに記述するレポート。",
@@ -90,7 +95,7 @@ WELL_KNOWN_TEMPLATES: tuple[DeliverableTemplate, ...] = (
             "### 次のアクション\n（判定を受けた具体的な行動計画）"
         ),
     ),
-    _build_template(
+    "leader-stakeholder": _build_template(
         slug="leader-stakeholder",
         name="ステークホルダ報告",
         description="進捗・リスク・決定事項を人間向けに要約する報告文書。",
@@ -104,7 +109,7 @@ WELL_KNOWN_TEMPLATES: tuple[DeliverableTemplate, ...] = (
         ),
     ),
     # DEVELOPER (5件)
-    _build_template(
+    "dev-design": _build_template(
         slug="dev-design",
         name="設計書",
         description="システム設計・データモデル・コンポーネント構成を記述する設計文書。",
@@ -118,7 +123,7 @@ WELL_KNOWN_TEMPLATES: tuple[DeliverableTemplate, ...] = (
             "### セキュリティ考慮\n（信頼境界・入力検証・認可要件）"
         ),
     ),
-    _build_template(
+    "dev-adr": _build_template(
         slug="dev-adr",
         name="ADR",
         description=("Architecture Decision Record — 決定の背景・選択肢・根拠を記録する文書。"),
@@ -131,7 +136,7 @@ WELL_KNOWN_TEMPLATES: tuple[DeliverableTemplate, ...] = (
             "### 影響\n（この決定がもたらすポジティブ・ネガティブな影響）"
         ),
     ),
-    _build_template(
+    "dev-acceptance": _build_template(
         slug="dev-acceptance",
         name="受入条件",
         description="機能の受入基準（Given / When / Then 形式推奨）を記述する文書。",
@@ -146,7 +151,7 @@ WELL_KNOWN_TEMPLATES: tuple[DeliverableTemplate, ...] = (
             "### 対象外\n（スコープに含めない事項を明記）"
         ),
     ),
-    _build_template(
+    "dev-impl-pr": _build_template(
         slug="dev-impl-pr",
         name="実装 PR",
         description=("Pull Request の概要・変更点・テスト方法・レビュー観点を記述する文書。"),
@@ -159,7 +164,7 @@ WELL_KNOWN_TEMPLATES: tuple[DeliverableTemplate, ...] = (
             "### 関連 Issue\n（対応する Issue 番号）"
         ),
     ),
-    _build_template(
+    "dev-lib-readme": _build_template(
         slug="dev-lib-readme",
         name="ライブラリ README",
         description=("ライブラリの目的・インストール・使用例・API リファレンスを記述する文書。"),
@@ -174,7 +179,7 @@ WELL_KNOWN_TEMPLATES: tuple[DeliverableTemplate, ...] = (
         ),
     ),
     # TESTER (3件)
-    _build_template(
+    "tester-testdesign": _build_template(
         slug="tester-testdesign",
         name="テスト設計書",
         description="テスト戦略・テストケース（TC-XX-NNN）・カバレッジ方針を記述する文書。",
@@ -188,7 +193,7 @@ WELL_KNOWN_TEMPLATES: tuple[DeliverableTemplate, ...] = (
             "### 除外事項\n（テスト対象外の範囲と理由）"
         ),
     ),
-    _build_template(
+    "tester-report": _build_template(
         slug="tester-report",
         name="テスト結果報告書",
         description=("テスト実施結果・バグ件数・品質メトリクス・品質評価を記述する報告文書。"),
@@ -202,7 +207,7 @@ WELL_KNOWN_TEMPLATES: tuple[DeliverableTemplate, ...] = (
             "### 残課題\n（未解決事項と次ステップ）"
         ),
     ),
-    _build_template(
+    "tester-regression": _build_template(
         slug="tester-regression",
         name="回帰スイート定義",
         description="回帰テスト対象範囲・実行条件・合否基準を記述する文書。",
@@ -217,7 +222,7 @@ WELL_KNOWN_TEMPLATES: tuple[DeliverableTemplate, ...] = (
         ),
     ),
     # REVIEWER (1件)
-    _build_template(
+    "reviewer-review": _build_template(
         slug="reviewer-review",
         name="コードレビュー報告",
         description=("コード品質・設計上の問題・改善提案を構造化して記述するレビュー報告文書。"),
@@ -231,7 +236,11 @@ WELL_KNOWN_TEMPLATES: tuple[DeliverableTemplate, ...] = (
             "### 確認事項\n（追加で確認が必要な点）"
         ),
     ),
-)
+}
+
+# dict の挿入順（Python 3.7+ 保証）を保持して tuple 化する。
+# slug の追加・削除は _TEMPLATES_BY_SLUG だけを変更すればよい（DRY）。
+WELL_KNOWN_TEMPLATES: tuple[DeliverableTemplate, ...] = tuple(_TEMPLATES_BY_SLUG.values())
 
 # ---------------------------------------------------------------------------
 # §確定 B: PRESET_ROLE_TEMPLATE_MAP — 4 件の確定定義（凍結）
@@ -239,37 +248,16 @@ WELL_KNOWN_TEMPLATES: tuple[DeliverableTemplate, ...] = (
 # Role → DeliverableTemplateRef リスト。minimum_version は全件 1.0.0。
 # LEADER / DEVELOPER / TESTER / REVIEWER の 4 Role が対象。
 # ---------------------------------------------------------------------------
-_REFS: dict[str, DeliverableTemplateRef] = {
-    t.id: DeliverableTemplateRef(
-        template_id=t.id,
-        minimum_version=SemVer(major=1, minor=0, patch=0),
-    )
-    for t in WELL_KNOWN_TEMPLATES
-}
-
-# slug → id のマッピングを構築して参照しやすくする
-_SLUG_TO_ID: dict[str, object] = {
-    slug: uuid5(BAKUFU_TEMPLATE_NS, slug)
-    for slug in (
-        "leader-plan",
-        "leader-priority",
-        "leader-stakeholder",
-        "dev-design",
-        "dev-adr",
-        "dev-acceptance",
-        "dev-impl-pr",
-        "dev-lib-readme",
-        "tester-testdesign",
-        "tester-report",
-        "tester-regression",
-        "reviewer-review",
-    )
-}
 
 
 def _ref(slug: str) -> DeliverableTemplateRef:
+    """slug から DeliverableTemplateRef を生成する。
+
+    id は _TEMPLATES_BY_SLUG から取得するため slug との一致が保証される。
+    存在しない slug を渡した場合は KeyError で Fail Fast する（import 時検出）。
+    """
     return DeliverableTemplateRef(
-        template_id=_SLUG_TO_ID[slug],  # type: ignore[arg-type]
+        template_id=_TEMPLATES_BY_SLUG[slug].id,
         minimum_version=SemVer(major=1, minor=0, patch=0),
     )
 

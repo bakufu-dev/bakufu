@@ -48,6 +48,12 @@ from bakufu.infrastructure.persistence.sqlite.outbox import (
 from bakufu.infrastructure.persistence.sqlite.outbox import (
     handler_registry,
 )
+from bakufu.infrastructure.persistence.sqlite.repositories.deliverable_template_repository import (
+    SqliteDeliverableTemplateRepository,
+)
+from bakufu.infrastructure.persistence.sqlite.repositories.role_profile_repository import (
+    SqliteRoleProfileRepository,
+)
 from bakufu.infrastructure.security import masking
 from bakufu.infrastructure.storage import attachment_root
 
@@ -277,8 +283,12 @@ class Bootstrap:
             "[INFO] Bootstrap stage 3b/8: seeding template-library (%d templates)...",
             n,
         )
+        seeder = TemplateLibrarySeeder(
+            template_repo_factory=SqliteDeliverableTemplateRepository,
+            role_profile_repo_factory=SqliteRoleProfileRepository,
+        )
         try:
-            upserted = await TemplateLibrarySeeder()._seed_global_templates(self._session_factory)
+            upserted = await seeder._seed_global_templates(self._session_factory)
         except Exception as exc:
             logger.error(
                 "[FAIL] Bootstrap stage 3b/8: template-library seed failed: %s: %s",

@@ -1,6 +1,12 @@
 """TemplateLibrarySeeder — 起動時グローバルテンプレート seed + Empire RoleProfile プリセット適用。
 
 Application 層サービス。Repository Protocol のみに依存し、インフラ実装を知らない。
+コンストラクタで Repository Factory を DI 注入することで Infrastructure 具体実装から
+独立する（Clean Architecture 依存規則）。UoW 境界（async with session.begin():）は
+自クラスが管理する。
+
+_seed_global_templates は Bootstrap._stage_3b_seed_template_library() からのみ呼ぶ
+（§確定 H）。seed_role_profiles_for_empire は HTTP API / CLI からも呼べる。
 
 設計書: docs/features/deliverable-template/template-library/detailed-design.md
 §確定E（all-or-nothing Tx）/ §確定F（TOCTOU対策・skip戦略）/ §確定H（Bootstrap限定）
@@ -10,10 +16,15 @@ from __future__ import annotations
 
 import logging
 import uuid as _uuid
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from sqlalchemy.exc import IntegrityError
 
+from bakufu.application.ports.deliverable_template_repository import (
+    DeliverableTemplateRepository,
+)
+from bakufu.application.ports.role_profile_repository import RoleProfileRepository
 from bakufu.application.services.template_library.definitions import (
     BAKUFU_ROLE_NS,
     PRESET_ROLE_TEMPLATE_MAP,
@@ -21,12 +32,6 @@ from bakufu.application.services.template_library.definitions import (
 )
 from bakufu.domain.deliverable_template.role_profile import RoleProfile
 from bakufu.domain.value_objects.enums import Role
-from bakufu.infrastructure.persistence.sqlite.repositories.deliverable_template_repository import (
-    SqliteDeliverableTemplateRepository,
-)
-from bakufu.infrastructure.persistence.sqlite.repositories.role_profile_repository import (
-    SqliteRoleProfileRepository,
-)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -41,11 +46,24 @@ logger = logging.getLogger(__name__)
 class TemplateLibrarySeeder:
     """グローバルテンプレート seed と Empire プリセット RoleProfile 適用を担うサービス。
 
-    コンストラクタは持たず、全メソッドが session_factory を受け取る。
-    UoW 境界（async with session.begin():）は自クラスが管理する。
-    _seed_global_templates は Bootstrap._stage_3b_seed_template_library() からのみ呼ぶ
-    （§確定 H）。seed_role_profiles_for_empire は HTTP API / CLI からも呼べる。
+    コンストラクタで Repository Factory callable を受け取る。各メソッド内で
+    session_factory から session を生成し、factory 経由で Repository インスタンスを
+    作成することで Infrastructure 実装への直接依存を排除する。
+
+    Args:
+        template_repo_factory: AsyncSession を受け取り DeliverableTemplateRepository を
+            返す callable。Bootstrap のコンポジションルートで具体実装を注入する。
+        role_profile_repo_factory: AsyncSession を受け取り RoleProfileRepository を
+            返す callable。同上。
     """
+
+    def __init__(
+        self,
+        template_repo_factory: Callable[[AsyncSession], DeliverableTemplateRepository],
+        role_profile_repo_factory: Callable[[AsyncSession], RoleProfileRepository],
+    ) -> None:
+        self._template_repo_factory = template_repo_factory
+        self._role_profile_repo_factory = role_profile_repo_factory
 
     async def _seed_global_templates(
         self,
@@ -101,7 +119,7 @@ class TemplateLibrarySeeder:
         session: AsyncSession,
         templates: list[DeliverableTemplate],
     ) -> int:
-        """各テンプレートを SqliteDeliverableTemplateRepository.save() 経由で UPSERT する。
+        """各テンプレートを DeliverableTemplateRepository.save() 経由で UPSERT する。
 
         Args:
             session: 呼び元が begin() 済みの AsyncSession。
@@ -110,7 +128,7 @@ class TemplateLibrarySeeder:
         Returns:
             upserted 件数。
         """
-        repo = SqliteDeliverableTemplateRepository(session)
+        repo = self._template_repo_factory(session)
         for template in templates:
             await repo.save(template)
         return len(templates)
@@ -136,7 +154,7 @@ class TemplateLibrarySeeder:
         Returns:
             True: save 成功。False: 既存のためスキップ（IntegrityError を含む）。
         """
-        repo = SqliteRoleProfileRepository(session)
+        repo = self._role_profile_repo_factory(session)
 
         # 存在確認 — 既存の場合は skip（CEO の業務判断を破壊しない）
         existing = await repo.find_by_empire_and_role(empire_id, role)

@@ -89,7 +89,10 @@ class TestSeedGlobalTemplatesFirstRun:
         self,
         tl_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        seeder = TemplateLibrarySeeder()
+        seeder = TemplateLibrarySeeder(
+            SqliteDeliverableTemplateRepository,
+            SqliteRoleProfileRepository,
+        )
         await seeder._seed_global_templates(tl_session_factory)
 
         templates = await _find_all_templates(tl_session_factory)
@@ -99,7 +102,10 @@ class TestSeedGlobalTemplatesFirstRun:
         self,
         tl_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        seeder = TemplateLibrarySeeder()
+        seeder = TemplateLibrarySeeder(
+            SqliteDeliverableTemplateRepository,
+            SqliteRoleProfileRepository,
+        )
         await seeder._seed_global_templates(tl_session_factory)
 
         templates = await _find_all_templates(tl_session_factory)
@@ -120,7 +126,10 @@ class TestSeedGlobalTemplatesIdempotency:
         self,
         tl_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        seeder = TemplateLibrarySeeder()
+        seeder = TemplateLibrarySeeder(
+            SqliteDeliverableTemplateRepository,
+            SqliteRoleProfileRepository,
+        )
         await seeder._seed_global_templates(tl_session_factory)
         await seeder._seed_global_templates(tl_session_factory)
 
@@ -140,7 +149,10 @@ class TestSeedGlobalTemplatesContentMatch:
         self,
         tl_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        seeder = TemplateLibrarySeeder()
+        seeder = TemplateLibrarySeeder(
+            SqliteDeliverableTemplateRepository,
+            SqliteRoleProfileRepository,
+        )
         await seeder._seed_global_templates(tl_session_factory)
 
         for expected in WELL_KNOWN_TEMPLATES:
@@ -170,7 +182,10 @@ class TestSeedRoleProfilesFirstRun:
         tl_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         empire_id = await _create_empire(tl_session_factory)
-        seeder = TemplateLibrarySeeder()
+        seeder = TemplateLibrarySeeder(
+            SqliteDeliverableTemplateRepository,
+            SqliteRoleProfileRepository,
+        )
         await seeder.seed_role_profiles_for_empire(empire_id, tl_session_factory)
 
         profiles = await _find_all_role_profiles_by_empire(tl_session_factory, empire_id)
@@ -181,7 +196,10 @@ class TestSeedRoleProfilesFirstRun:
         tl_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         empire_id = await _create_empire(tl_session_factory)
-        seeder = TemplateLibrarySeeder()
+        seeder = TemplateLibrarySeeder(
+            SqliteDeliverableTemplateRepository,
+            SqliteRoleProfileRepository,
+        )
         await seeder.seed_role_profiles_for_empire(empire_id, tl_session_factory)
 
         profiles = await _find_all_role_profiles_by_empire(tl_session_factory, empire_id)
@@ -202,7 +220,10 @@ class TestSeedRoleProfilesIdempotency:
         tl_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         empire_id = await _create_empire(tl_session_factory)
-        seeder = TemplateLibrarySeeder()
+        seeder = TemplateLibrarySeeder(
+            SqliteDeliverableTemplateRepository,
+            SqliteRoleProfileRepository,
+        )
         await seeder.seed_role_profiles_for_empire(empire_id, tl_session_factory)
         await seeder.seed_role_profiles_for_empire(empire_id, tl_session_factory)
 
@@ -245,7 +266,10 @@ class TestSeedRoleProfilesSkipExisting:
             await repo.save(custom_profile)
 
         # seed を呼ぶ → DEVELOPER は既存のため skip
-        seeder = TemplateLibrarySeeder()
+        seeder = TemplateLibrarySeeder(
+            SqliteDeliverableTemplateRepository,
+            SqliteRoleProfileRepository,
+        )
         await seeder.seed_role_profiles_for_empire(empire_id, tl_session_factory)
 
         # DEVELOPER は手動設定値のまま
@@ -358,7 +382,10 @@ class TestSeedGlobalTemplatesRollback:
             "save",
             new=_save_with_fail_on_7th,
         ):
-            seeder = TemplateLibrarySeeder()
+            seeder = TemplateLibrarySeeder(
+                SqliteDeliverableTemplateRepository,
+                SqliteRoleProfileRepository,
+            )
             with pytest.raises(SQLAlchemyError):
                 await seeder._seed_global_templates(tl_session_factory)
 
@@ -382,7 +409,10 @@ class TestSeedGlobalTemplatesRollback:
             "save",
             new=_always_fail,
         ):
-            seeder = TemplateLibrarySeeder()
+            seeder = TemplateLibrarySeeder(
+                SqliteDeliverableTemplateRepository,
+                SqliteRoleProfileRepository,
+            )
             with pytest.raises(SQLAlchemyError):
                 await seeder._seed_global_templates(tl_session_factory)
 
@@ -399,7 +429,10 @@ class TestSeedGlobalTemplatesOverrideManualEdit:
         self,
         tl_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        seeder = TemplateLibrarySeeder()
+        seeder = TemplateLibrarySeeder(
+            SqliteDeliverableTemplateRepository,
+            SqliteRoleProfileRepository,
+        )
 
         # (1) 初回 seed
         await seeder._seed_global_templates(tl_session_factory)
