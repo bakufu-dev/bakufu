@@ -18,7 +18,7 @@
 |--------|---------|-------|------|
 | `find_by_id` | `(gate_id: GateId) -> ExternalReviewGate \| None` | `ExternalReviewGate`（存在時）/ `None`（不在時） | async def |
 | `count` | `() -> int` | `int`（全件数） | async def |
-| `save` | `(gate: ExternalReviewGate) -> None` | `None` | async def、§確定 R1-B 5 段階実行 |
+| `save` | `(gate: ExternalReviewGate) -> None` | `None` | async def、§確定 R1-B 7 段階実行 |
 | `find_pending_by_reviewer` | `(reviewer_id: OwnerId) -> list[ExternalReviewGate]` | `list[ExternalReviewGate]`（空の場合 `[]`）| async def、ORDER BY created_at DESC, id DESC |
 | `find_by_task_id` | `(task_id: TaskId) -> list[ExternalReviewGate]` | `list[ExternalReviewGate]`（空の場合 `[]`）| async def、ORDER BY created_at ASC, id ASC |
 | `count_by_decision` | `(decision: ReviewDecision) -> int` | `int`（decision 別件数）| async def |
@@ -33,12 +33,12 @@
 |--------|---------|-------|-----------|
 | `find_by_id` | `(gate_id: GateId) -> ExternalReviewGate \| None` | `ExternalReviewGate \| None` | `external_review_gates` 1 行 SELECT → 不在は None。存在すれば 2 子テーブルを個別 SELECT（§確定 R1-H ORDER BY 適用）→ `_from_rows()` |
 | `count` | `() -> int` | `int` | `select(func.count()).select_from(ExternalReviewGateRow)` |
-| `save` | `(gate: ExternalReviewGate) -> None` | `None` | `_to_rows()` → §確定 R1-B 5 段階 DELETE+UPSERT+INSERT |
+| `save` | `(gate: ExternalReviewGate) -> None` | `None` | `_to_rows()` → §確定 R1-B 7 段階 DELETE+UPSERT+INSERT |
 | `find_pending_by_reviewer` | `(reviewer_id: OwnerId) -> list[ExternalReviewGate]` | `list[ExternalReviewGate]` | `SELECT * FROM external_review_gates WHERE reviewer_id = :id AND decision = 'PENDING' ORDER BY created_at DESC, id DESC` → 各行で `find_by_id` 相当の子テーブル取得 → `_from_rows()` |
 | `find_by_task_id` | `(task_id: TaskId) -> list[ExternalReviewGate]` | `list[ExternalReviewGate]` | `SELECT * FROM external_review_gates WHERE task_id = :id ORDER BY created_at ASC, id ASC` → 各行で同様に子テーブル取得 → `_from_rows()` |
 | `count_by_decision` | `(decision: ReviewDecision) -> int` | `int` | `SELECT COUNT(*) FROM external_review_gates WHERE decision = :decision`（SQLAlchemy `func.count()` 経由） |
-| `_to_rows` | `(gate: ExternalReviewGate) -> tuple[GateRow, list[AttachRow], list[AuditRow]]` | 3 種 Row の tuple | TypeDecorator 信頼（UUIDStr/MaskedText 二重変換しない、§確定 R1-A 詳細）。`snapshot` スカラは Gate row の各カラムに展開、`snapshot.attachments` は AttachRow リスト、`audit_trail` は AuditRow リスト |
-| `_from_rows` | `(gate_row, attach_rows, audit_rows) -> ExternalReviewGate` | `ExternalReviewGate` | TypeDecorator 信頼。`snapshot` は Gate row のスカラカラム + `attach_rows` から `Deliverable(stage_id=..., body_markdown=..., attachments=[...], ...)` として復元 |
+| `_to_rows` | `(gate: ExternalReviewGate) -> tuple[GateRow, list[AttachRow], list[AuditRow], list[CriteriaRow]]` | 4 種 Row の tuple | TypeDecorator 信頼（UUIDStr/MaskedText 二重変換しない、§確定 R1-A 詳細）。`snapshot` スカラは Gate row の各カラムに展開、`snapshot.attachments` は AttachRow リスト、`audit_trail` は AuditRow リスト、`required_deliverable_criteria` は order_index 付き CriteriaRow リスト |
+| `_from_rows` | `(gate_row, attach_rows, audit_rows, criteria_rows) -> ExternalReviewGate` | `ExternalReviewGate` | TypeDecorator 信頼。`snapshot` は Gate row のスカラカラム + `attach_rows` から `Deliverable(...)` として復元。`required_deliverable_criteria` は `criteria_rows` を order_index ASC でソートして `tuple[AcceptanceCriterion, ...]` に変換 |
 
 ## 確定事項（先送り撤廃）
 
@@ -48,19 +48,21 @@
 
 `MaskedText` TypeDecorator は INSERT 時に `process_bind_param` でマスキング済み値を bind parameter に渡す。`_to_rows()` 内で `MaskingGateway.mask()` を手動呼び出しせず、TypeDecorator に委ねる（責務の重複排除）。
 
-### §確定 R1-B: save() 5 段階の順序と SQLite FK 整合性
+### §確定 R1-B: save() 7 段階の順序と SQLite FK 整合性
 
-§確定 R1-B（[`basic-design.md`](basic-design.md) §確定 R1-B）で定義した 5 段階を詳細凍結する:
+§確定 R1-B（[`basic-design.md`](basic-design.md) §確定 R1-B）で定義した 7 段階を詳細凍結する:
 
 | 段階 | SQL 操作 | 対象 | 留意点 |
 |------|---------|------|-------|
 | 1 | `DELETE FROM external_review_gate_attachments WHERE gate_id = :id` | gate_attachments | FK CASCADE 先がない。直接 DELETE。新規 Gate では 0 件（問題なし） |
 | 2 | `DELETE FROM external_review_audit_entries WHERE gate_id = :id` | audit_entries | 同上 |
-| 3 | `INSERT ... ON CONFLICT (id) DO UPDATE SET ...` | external_review_gates（UPSERT） | SQLAlchemy `sqlite_insert(...).on_conflict_do_update(...)` で既存行を UPDATE。新規・更新両対応 |
-| 4 | `INSERT INTO external_review_gate_attachments ...` | 各 Attachment（snapshot.attachments）| gate_id FK が段階 3 で確定済み。`UNIQUE(gate_id, sha256)` は段階 1 の DELETE でクリア済み |
-| 5 | `INSERT INTO external_review_audit_entries ...` | 各 AuditEntry（audit_trail）| gate_id FK が段階 3 で確定済み |
+| 3 | `DELETE FROM external_review_gate_criteria WHERE gate_id = :id` | criteria | 同上。criteria は domain 不変条件で内容変化なし（冪等）。一貫性のため他子テーブルと同パターン |
+| 4 | `INSERT ... ON CONFLICT (id) DO UPDATE SET ...` | external_review_gates（UPSERT） | SQLAlchemy `sqlite_insert(...).on_conflict_do_update(...)` で既存行を UPDATE。新規・更新両対応 |
+| 5 | `INSERT INTO external_review_gate_attachments ...` | 各 Attachment（snapshot.attachments）| gate_id FK が段階 4 で確定済み。`UNIQUE(gate_id, sha256)` は段階 1 の DELETE でクリア済み |
+| 6 | `INSERT INTO external_review_audit_entries ...` | 各 AuditEntry（audit_trail）| gate_id FK が段階 4 で確定済み |
+| 7 | `INSERT INTO external_review_gate_criteria ...` | 各 AcceptanceCriterion（required_deliverable_criteria）| gate_id FK が段階 4 で確定済み。`order_index` で元の tuple 順序を保持。`UNIQUE(gate_id, order_index)` は段階 3 の DELETE でクリア済み |
 
-**段階 3 の UPSERT を DELETE 前に行わない理由**: UPSERT（ON CONFLICT DO UPDATE）は既存行を IN-PLACE 更新するため gate 行そのものは残る。しかし段階 4〜5 の INSERT で UNIQUE 制約衝突が発生しないよう、段階 1〜2 で子テーブルを先にクリアしてから UPSERT する正しい順序を守る。
+**段階 4 の UPSERT を DELETE 前に行わない理由**: UPSERT（ON CONFLICT DO UPDATE）は既存行を IN-PLACE 更新するため gate 行そのものは残る。しかし段階 5〜7 の INSERT で UNIQUE 制約衝突が発生しないよう、段階 1〜3 で子テーブルを先にクリアしてから UPSERT する正しい順序を守る。
 
 ### §確定 R1-C: `_from_rows` の子構造再組み立て
 
@@ -70,6 +72,7 @@ Gate Aggregate 復元時の `_from_rows()` 処理の確定ルール:
 |-------|-------------|------|
 | `deliverable_snapshot: Deliverable` | gate_row のスカラカラム（snapshot_stage_id / snapshot_body_markdown / snapshot_committed_by / snapshot_committed_at）+ `attach_rows` から `Attachment` リストを構築して `Deliverable(...)` を生成 | Deliverable VO は stage_id / body_markdown / attachments / committed_by / committed_at の 5 属性 |
 | `audit_trail: list[AuditEntry]` | `audit_rows` を `occurred_at ASC, id ASC` でソート済みで受け取り、`[AuditEntry(id=..., actor_id=..., action=AuditAction(r.action), comment=r.comment, occurred_at=r.occurred_at) for r in audit_rows]` | §確定 R1-H の ORDER BY 保証でリスト順序が Domain の append-only 不変条件に準拠 |
+| `required_deliverable_criteria: tuple[AcceptanceCriterion, ...]` | `criteria_rows` を `order_index ASC` でソート済みで受け取り、`tuple(AcceptanceCriterion(id=UUID(r.criterion_id), description=r.description, required=r.required) for r in criteria_rows)` として復元 | order_index が tuple 元の順序を保持（INSERT 時に `enumerate` で付与）。`AcceptanceCriterion` は Issue #115 実体化済み VO（frozen=True, extra='forbid'）|
 
 ### §確定 R1-E: CI 三層防衛の詳細実装仕様
 
@@ -107,11 +110,13 @@ parametrize に追加する 3 行:
 | `ix_external_review_gates_task_id_created` | `(external_review_gates.task_id, created_at)` | 非 UNIQUE | `find_by_task_id` の WHERE task_id フィルタ + ORDER BY created_at を一括最適化。task_id 単体 INDEX では ORDER BY ソートが追加コストになるため複合 INDEX で解決 |
 | `ix_external_review_gates_reviewer_decision` | `(external_review_gates.reviewer_id, decision)` | 非 UNIQUE | `find_pending_by_reviewer` の WHERE reviewer_id + decision フィルタ最適化（PENDING 絞り込みが主なユースケース）。decision 単体 INDEX では reviewer フィルタに効かない |
 | `ix_external_review_gates_decision` | `external_review_gates.decision` | 非 UNIQUE | `count_by_decision` の WHERE decision フィルタ最適化（`ix_external_review_gates_reviewer_decision` の prefix では COUNT(*) 全体には効かない場合があるため単体 INDEX も追加） |
+| `ix_external_review_gate_criteria_gate_id` | `external_review_gate_criteria.gate_id` | 非 UNIQUE | 子テーブル SELECT の `WHERE gate_id = :id` 最適化（Alembic 0014 で追加） |
 
 **INDEX を張らない判断（YAGNI）**:
 - `external_review_gates.id` 単体: PK のため自動 INDEX 済み
 - `external_review_gate_attachments.gate_id`: `find_by_id` 内の子テーブル SELECT で 1 gate_id による 1 クエリ。MVP スケールでは不要
 - `external_review_audit_entries.gate_id`: 同上
+- `external_review_gate_criteria.gate_id`: `ix_external_review_gate_criteria_gate_id` INDEX で対応済み（criteria はレビュアー提示のため検索頻度が高く、明示 INDEX が効果的）
 
 ## データ構造（永続化キー）
 
@@ -161,6 +166,20 @@ parametrize に追加する 3 行:
 
 **masking 対象カラム**: `comment`（MaskedText）。その他 5 カラムは masking 対象なし。
 
+### `external_review_gate_criteria` テーブル
+
+| カラム | 型 | 制約 | 意図 |
+|-------|----|----|-----|
+| `id` | `UUIDStr` | PK, NOT NULL | **内部識別子。save() ごとに uuid4() で再生成（DELETE-then-INSERT パターン）。外部参照禁止。ビジネスキーは UNIQUE(gate_id, order_index)** |
+| `gate_id` | `UUIDStr` | **FK → `external_review_gates.id` ON DELETE CASCADE, NOT NULL** | 親 Gate |
+| `criterion_id` | `UUIDStr` | NOT NULL | `AcceptanceCriterion.id`（Issue #115 の VO が持つ UUID。DB 上は参照のみ、FK なし — DeliverableTemplate Aggregate 境界） |
+| `description` | `Text` | NOT NULL（1〜500 文字）| AcceptanceCriterion.description（masking 不要 — `deliverable-template/feature-spec.md §13` で機密レベル「低」と業務判定済み、PR #137 `acceptance_criteria_json` 凍結と同一業務判断）|
+| `required` | `Boolean` | NOT NULL DEFAULT TRUE | AcceptanceCriterion.required |
+| `order_index` | `Integer` | NOT NULL（0-based）| 元の tuple 順序を保持（INSERT 時に `enumerate(gate.required_deliverable_criteria)` で付与）|
+| UNIQUE | `(gate_id, order_index)` | — | 同一 Gate 内での order_index 重複禁止 |
+
+**masking 対象カラム**: なし（全カラム masking 対象外。`description` の masking 不要根拠は `deliverable-template/feature-spec.md §13` 機密レベル「低」業務判定 + PR #137 `acceptance_criteria_json` 凍結と同一。REQ-ERGR-009 の CI 三層防衛 Layer 1/2 で過剰 masking を物理保証）。
+
 ### `0008_external_review_gate_aggregate.py`（Alembic revision 構造）
 
 | 操作 | 内容 |
@@ -170,6 +189,17 @@ parametrize に追加する 3 行:
 | `downgrade()` | 子テーブル 2 本 drop → external_review_gates drop（CASCADE FK により子が先に消える逆順）|
 | `revision` | `"0008_external_review_gate_aggregate"` |
 | `down_revision` | `"0007_task_aggregate"` |
+
+### `0014_external_review_gate_criteria.py`（Alembic revision 構造）
+
+| 操作 | 内容 |
+|---|---|
+| `upgrade()` — external_review_gate_criteria | `op.create_table('external_review_gate_criteria', ...)` + INDEX 1 件（`ix_external_review_gate_criteria_gate_id`） |
+| `downgrade()` | `op.drop_table('external_review_gate_criteria')` |
+| `revision` | `"0014_external_review_gate_criteria"` |
+| `down_revision` | `"0013_add_room_role_overrides"` |
+
+**INDEX の根拠**: `find_by_id` / `find_by_task_id` / `find_pending_by_reviewer` で子テーブル SELECT 時に `WHERE gate_id = :id` が発行されるため gate_id 単体 INDEX を追加（§確定 R1-K と同方針）。
 
 ## API エンドポイント詳細
 

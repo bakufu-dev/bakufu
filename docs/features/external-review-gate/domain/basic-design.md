@@ -1,19 +1,20 @@
 # 基本設計書 — external-review-gate / domain
 
 > feature: `external-review-gate` / sub-feature: `domain`
-> 親 spec: [../feature-spec.md](../feature-spec.md) §9 受入基準 1〜12
+> 親 spec: [../feature-spec.md](../feature-spec.md) §9 受入基準 1〜12, 16
 > 関連: [`docs/design/domain-model/aggregates.md`](../../../design/domain-model/aggregates.md) §ExternalReviewGate / [`../../task/`](../../task/) （PR #42 §確定 A-2 連携先）
 
 ## §モジュール契約（機能要件）
 
 | 要件ID | 概要 | 入力 | 処理 | 出力 | エラー時 | 親 spec 参照 |
 |--------|------|------|------|------|---------|-------------|
-| REQ-GT-001 | ExternalReviewGate 構築 | id / task_id / stage_id / deliverable_snapshot / reviewer_id / decision（既定 PENDING）/ feedback_text（既定 ''）/ audit_trail（既定 []）/ created_at / decided_at（既定 None） | Pydantic 型バリデーション → model_validator で 5 不変条件検査 | valid な ExternalReviewGate インスタンス | 型違反: `pydantic.ValidationError` / 不変条件違反: `ExternalReviewGateInvariantViolation` | §9 AC#1, 2 |
+| REQ-GT-001 | ExternalReviewGate 構築 | id / task_id / stage_id / deliverable_snapshot / reviewer_id / decision（既定 PENDING）/ feedback_text（既定 ''）/ audit_trail（既定 []）/ created_at / decided_at（既定 None）/ **required_deliverable_criteria（既定 ()）** | Pydantic 型バリデーション → model_validator で **6 不変条件**検査 | valid な ExternalReviewGate インスタンス | 型違反: `pydantic.ValidationError` / 不変条件違反: `ExternalReviewGateInvariantViolation` | §9 AC#1, 2, 16 |
 | REQ-GT-002 | approve | by_owner_id / comment（0〜10000 文字）/ decided_at（UTC） | state machine lookup（PENDING のみ許可）→ feedback_text NFC 正規化・range 検査 → audit_trail に APPROVED エントリ追加 → 新インスタンス返却 | 新 ExternalReviewGate（APPROVED） | `ExternalReviewGateInvariantViolation(kind='decision_already_decided' / 'feedback_text_range')` | §9 AC#3, 5, 10 |
 | REQ-GT-003 | reject | by_owner_id / comment / decided_at | approve と同処理、REJECTED 遷移 | 新 ExternalReviewGate（REJECTED） | 同上 | §9 AC#4, 5, 10 |
 | REQ-GT-004 | cancel | by_owner_id / reason / decided_at | approve と同処理、CANCELLED 遷移 | 新 ExternalReviewGate（CANCELLED） | 同上 | §9 AC#4, 5, 10 |
 | REQ-GT-005 | record_view | by_owner_id / viewed_at | state machine lookup（4 状態すべて自己遷移許可）→ audit_trail に VIEWED エントリ追加 | 新 ExternalReviewGate（decision 不変） | 該当なし（4 状態すべて許可） | §9 AC#6 |
-| REQ-GT-006 | 不変条件検査（5 種） | Gate の現状属性 | _validate_decided_at_consistency / _validate_feedback_text_range / _validate_audit_trail_append_only / _validate_snapshot_immutable / _validate_decision_immutable を順次実行 | 違反なしなら return | `ExternalReviewGateInvariantViolation`（kind で違反種別識別）| §9 AC#5, 7, 8, 9, 10 |
+| REQ-GT-006 | 不変条件検査（**6 種**） | Gate の現状属性 | _validate_decided_at_consistency / _validate_feedback_text_range / _validate_audit_trail_append_only / _validate_snapshot_immutable / _validate_decision_immutable / **_validate_criteria_immutable** を順次実行 | 違反なしなら return | `ExternalReviewGateInvariantViolation`（kind で違反種別識別）| §9 AC#5, 7, 8, 9, 10, 16 |
+| REQ-GT-007 | required_deliverable_criteria snapshot 不変条件 | 構築後の ExternalReviewGate インスタンス | `_validate_criteria_immutable` 検査（`_rebuild_with_state` で `required_deliverable_criteria` を渡さない契約で構造的に保証、§確定 R1-D と同パターン） | 違反なしなら return | `ExternalReviewGateInvariantViolation(kind='criteria_immutable')` | §9 AC#16 |
 
 ## 記述ルール（必ず守ること）
 
@@ -25,11 +26,12 @@
 
 | 機能 ID | モジュール | ディレクトリ | 責務 |
 |--------|----------|------------|------|
-| REQ-GT-001〜006 | `ExternalReviewGate` Aggregate Root | `backend/src/bakufu/domain/external_review_gate/external_review_gate.py` | Gate の属性・不変条件・ふるまい 4 種 |
-| REQ-GT-006 | 不変条件 helper | `backend/src/bakufu/domain/external_review_gate/aggregate_validators.py` | `_validate_decision_immutable` / `_validate_decided_at_consistency` / `_validate_snapshot_immutable` / `_validate_feedback_text_range` / `_validate_audit_trail_append_only` |
+| REQ-GT-001〜007 | `ExternalReviewGate` Aggregate Root | `backend/src/bakufu/domain/external_review_gate/external_review_gate.py` | Gate の属性・不変条件・ふるまい 4 種 |
+| REQ-GT-006〜007 | 不変条件 helper | `backend/src/bakufu/domain/external_review_gate/aggregate_validators.py` | `_validate_decision_immutable` / `_validate_decided_at_consistency` / `_validate_snapshot_immutable` / `_validate_feedback_text_range` / `_validate_audit_trail_append_only` / **`_validate_criteria_immutable`** |
 | REQ-GT-002〜005（state machine）| `state_machine.py` | `backend/src/bakufu/domain/external_review_gate/state_machine.py` | enum-based decision table（task #42 §確定 A-2 パターン継承）+ `lookup(decision, action) -> ReviewDecision` |
-| REQ-GT-001 | `ExternalReviewGateInvariantViolation` 例外 | `backend/src/bakufu/domain/exceptions.py`（既存ファイル更新）| webhook auto-mask 強制（6 兄弟と同パターン）|
+| REQ-GT-001 | `ExternalReviewGateInvariantViolation` 例外 | `backend/src/bakufu/domain/exceptions/review_gate.py`（既存ファイル更新: `'criteria_immutable'` を kind Literal に追加）| webhook auto-mask 強制（6 兄弟と同パターン）|
 | 共通 | `AuditEntry` VO + `ReviewDecision` / `AuditAction` enum | `backend/src/bakufu/domain/value_objects.py`（既存ファイル更新）| Pydantic v2 frozen + StrEnum |
+| 共通 | `AcceptanceCriterion` VO | `backend/src/bakufu/domain/value_objects/template_vos.py`（既存, Issue #115 で実体化済み）| frozen VO: id / description / required（Gate の criteria snapshot 要素として再利用）|
 | 公開 API | re-export | `backend/src/bakufu/domain/external_review_gate/__init__.py` | `ExternalReviewGate` / `ExternalReviewGateInvariantViolation` / `ReviewDecision` を re-export |
 
 ```
@@ -78,12 +80,19 @@ classDiagram
         +decision: ReviewDecision
         +feedback_text: str
         +audit_trail: list~AuditEntry~
+        +required_deliverable_criteria: tuple~AcceptanceCriterion~
         +created_at: datetime
         +decided_at: datetime | None
         +approve(by_owner_id, comment, decided_at) ExternalReviewGate
         +reject(by_owner_id, comment, decided_at) ExternalReviewGate
         +cancel(by_owner_id, reason, decided_at) ExternalReviewGate
         +record_view(by_owner_id, viewed_at) ExternalReviewGate
+    }
+    class AcceptanceCriterion {
+        <<VO（Issue #115 実体化済み）>>
+        +id: UUID
+        +description: str
+        +required: bool
     }
     class ReviewDecision {
         <<StrEnum>>
@@ -116,6 +125,7 @@ classDiagram
     ExternalReviewGate --> ReviewDecision : has
     ExternalReviewGate --> StateMachineTable : uses
     ExternalReviewGate --> AuditEntry : owns 0..N
+    ExternalReviewGate --> AcceptanceCriterion : snapshot 0..N
     AuditEntry --> AuditAction : has
     ExternalReviewGate ..> ExternalReviewGateInvariantViolation : raises
 ```
@@ -128,6 +138,7 @@ classDiagram
 - `_validate_*` helper 5 種は `aggregate_validators.py` で module-level 関数として独立
 - `task_id` / `stage_id` / `reviewer_id` 参照整合性は **application 層責務**（外部知識）
 - **Task method を一切 import しない**（Aggregate 境界保護、task #42 §確定 A-2 連携先として application 層 `GateService` が dispatch 担当）
+- `required_deliverable_criteria` は `AcceptanceCriterion` VO（Issue #115 `domain/value_objects/template_vos.py` で実体化済み）のタプル。Gate 生成時に application 層が引き込み渡す（Aggregate 自身は Stage や DeliverableTemplate を参照しない）
 
 ## 処理フロー
 
