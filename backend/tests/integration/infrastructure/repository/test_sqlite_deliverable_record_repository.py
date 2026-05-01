@@ -275,9 +275,7 @@ class TestTransactionRollback:
 
                 call_count = 0
 
-                async def _patched_execute(
-                    stmt: object, *args: object, **kwargs: object
-                ) -> object:
+                async def _patched_execute(stmt: object, *args: object, **kwargs: object) -> object:
                     nonlocal call_count
                     call_count += 1
                     # 3 回目の execute（deliverable_records INSERT）で失敗させる

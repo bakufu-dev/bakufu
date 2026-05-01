@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 
 from bakufu.domain.exceptions.llm_provider import (
     LLMProviderAuthError,
@@ -128,9 +129,7 @@ class CodexLLMClient:
         ]
 
         # §確定 CMD-EXEC: リスト形式、shell=False、env allow-list 管理
-        import os
-
-        allowed_keys = {"PATH", "HOME", "LANG"}
+        allowed_keys = {"PATH", "HOME", "LANG", "LC_ALL"}
         env = {k: v for k, v in os.environ.items() if k in allowed_keys or k.startswith("BAKUFU_")}
 
         process = await asyncio.create_subprocess_exec(

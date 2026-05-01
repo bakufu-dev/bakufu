@@ -12,7 +12,13 @@ import json
 from typing import TYPE_CHECKING
 
 from bakufu.domain.exceptions.deliverable_template import LLMValidationError
-from bakufu.domain.exceptions.llm_provider import LLMProviderError
+from bakufu.domain.exceptions.llm_provider import (
+    LLMProviderAuthError,
+    LLMProviderEmptyResponseError,
+    LLMProviderError,
+    LLMProviderProcessError,
+    LLMProviderTimeoutError,
+)
 from bakufu.domain.value_objects.deliverable_record_vos import CriterionValidationResult
 from bakufu.domain.value_objects.enums import ValidationStatus
 
@@ -190,13 +196,6 @@ class ValidationService:
     @staticmethod
     def _classify_llm_error(exc: LLMProviderError) -> str:
         """LLMProviderError サブクラスを llm_error_kind 文字列に変換する。"""
-        from bakufu.domain.exceptions.llm_provider import (
-            LLMProviderAuthError,
-            LLMProviderEmptyResponseError,
-            LLMProviderProcessError,
-            LLMProviderTimeoutError,
-        )
-
         if isinstance(exc, LLMProviderTimeoutError):
             return "timeout"
         if isinstance(exc, LLMProviderAuthError):
