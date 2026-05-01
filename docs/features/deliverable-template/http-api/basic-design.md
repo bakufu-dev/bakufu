@@ -20,9 +20,9 @@
 | 項目 | 内容 |
 |-----|-----|
 | 入力 | `DeliverableTemplateCreate`（name 1〜80文字 / description 0〜500文字 / type TemplateType / schema dict\|str / acceptance_criteria list[AcceptanceCriterionCreate] / version SemVerCreate(optional, default 0.1.0) / composition list[DeliverableTemplateRefCreate](optional, default [])） |
-| 処理 | `DeliverableTemplateService.create()` → ①各 composition ref の template_id が実在することを `DeliverableTemplateRepository.find_by_id` で確認 → ②composition の推移的 DAG 走査で循環参照を検出（application 層責務、R1-B）→ ③`DeliverableTemplate.model_validate({...})` で Aggregate 構築（自己参照チェック・不変条件 R1-A〜C 検査）→ `async with session.begin():` `DeliverableTemplateRepository.save(template)` |
+| 処理 | `DeliverableTemplateService.create()` → ①各 composition ref の template_id が実在することを `DeliverableTemplateRepository.find_by_id` で確認 → ②`DeliverableTemplate.model_validate({...})` で Aggregate 構築（domain invariant による自己参照チェック・不変条件 R1-A〜C 検査が先行）→ ③composition の推移的 DAG 走査を `_check_dag` で検出（application 層責務、R1-B。自己参照は domain invariant が ②で先行検出するため、③では推移的循環・深度超過・ノード超過のみを担当）→ `async with session.begin():` `DeliverableTemplateRepository.save(template)` |
 | 出力 | HTTP 201, `DeliverableTemplateResponse` |
-| エラー時 | ref template 不在 → `DeliverableTemplateNotFoundError`（MSG-DT-HTTP-002, 422, kind="composition_ref"）/ DAG 循環・上限超過 → `CompositionCycleError`（MSG-DT-HTTP-003a/003b/003c, 422）/ schema 形式不正（MSG-DT-001, domain raises）→ 422 / 自己参照（MSG-DT-002, domain raises）→ 422 / Pydantic 形式違反 → 422 |
+| エラー時 | ref template 不在 → `DeliverableTemplateNotFoundError`（MSG-DT-HTTP-002, 422, kind="composition_ref"）/ 自己参照（MSG-DT-002, domain raises: model_validate ②で先行検出）→ 422 / DAG 推移的循環・深度超過・ノード超過 → `CompositionCycleError`（MSG-DT-HTTP-003a/003b/003c, 422）/ schema 形式不正（MSG-DT-001, domain raises）→ 422 / Pydantic 形式違反 → 422 |
 | 親 spec 参照 | UC-DT-001, UC-DT-003 |
 
 ### REQ-DT-HTTP-002: DeliverableTemplate 一覧取得（GET /api/deliverable-templates）
@@ -50,7 +50,7 @@
 | 項目 | 内容 |
 |-----|-----|
 | 入力 | パスパラメータ `template_id: str` + `DeliverableTemplateUpdate`（name / description / type / schema / acceptance_criteria / version / composition 全フィールド必須） |
-| 処理 | `DeliverableTemplateService.update(template_id, ...)` → ①`find_by_id` で現状取得（不在なら 404）→ ②提供 version が現バージョン未満の場合は拒否（§確定 B、MSG-DT-HTTP-004, 422）→ ③version が現バージョン超の場合は `template.create_new_version(new_version)` で新インスタンス生成、同一の場合は `model_validate` で直接再構築 → ④composition の DAG 走査と各 ref 存在確認 → ⑤`async with session.begin():` `save(updated_template)` |
+| 処理 | `DeliverableTemplateService.update(template_id, ...)` → ①`find_by_id` で現状取得（不在なら 404）→ ②提供 version が現バージョン未満の場合は拒否（§確定 B、MSG-DT-HTTP-004, 422）→ ③全フィールドで `model_validate({id: existing_id, ...all_new_values})` にて新インスタンス生成（domain invariant による version_not_greater・自己参照・不変条件検査が先行）→ ④composition の DAG 走査と各 ref 存在確認（`_check_dag` で DFS + 経路スタック）→ ⑤`async with session.begin():` `save(updated_template)` |
 | 出力 | HTTP 200, 更新済み `DeliverableTemplateResponse` |
 | エラー時 | 不在 → 404（MSG-DT-HTTP-001, kind="primary"）/ version 降格 → 422（MSG-DT-HTTP-004）/ version_not_greater（MSG-DT-003, domain raises）→ 422 / composition 循環・上限超過 → 422（MSG-DT-HTTP-003a/003b/003c）/ ref 不在 → 422（MSG-DT-HTTP-002, kind="composition_ref"）|
 | 親 spec 参照 | UC-DT-002, UC-DT-003 |
@@ -294,8 +294,8 @@ classDiagram
 2. `get_deliverable_template_service()` DI で `DeliverableTemplateService` を取得
 3. `DeliverableTemplateService.create(name, description, type, schema, acceptance_criteria, version, composition)` 呼び出し
 4. composition の各 ref.template_id について `DeliverableTemplateRepository.find_by_id` で存在確認（MSG-DT-HTTP-002）
-5. `_check_dag(refs, root_id)` で推移的循環参照を BFS で検出（MSG-DT-HTTP-003）。`root_id` は新規生成 uuid を渡す（詳細は [detailed-design.md §確定 D](detailed-design.md)）
-6. `DeliverableTemplate.model_validate({id: uuid4(), ...})` で Aggregate 構築（domain 不変条件検査）
+5. `DeliverableTemplate.model_validate({id: uuid4(), ...})` で Aggregate 構築（domain invariant による自己参照検出・不変条件検査が先行）
+6. `_check_dag(refs, root_id)` で推移的循環参照を DFS + 経路スタックで検出（MSG-DT-HTTP-003。`root_id` は新規生成 uuid を渡す。詳細は [detailed-design.md §確定 D](detailed-design.md)）
 7. `async with session.begin():` `DeliverableTemplateRepository.save(template)`
 8. HTTP 201, `DeliverableTemplateResponse` を返す
 
@@ -303,11 +303,10 @@ classDiagram
 
 1. `DeliverableTemplateService.find_by_id(template_id)` → None なら `DeliverableTemplateNotFoundError` → 404
 2. 提供 version < 現 version: `DeliverableTemplateVersionDowngradeError`（MSG-DT-HTTP-004）→ 422
-3. 提供 version > 現 version: `template.create_new_version(new_version)` で中間インスタンス生成
-4. 全フィールドで `model_validate({id: existing_id, ...all_new_values})` にて最終インスタンス生成（不変条件再検査）
-5. composition の DAG 走査と各 ref 存在確認
-6. `async with session.begin():` `DeliverableTemplateRepository.save(updated_template)`
-7. HTTP 200, 更新済み `DeliverableTemplateResponse`
+3. 全フィールドで `model_validate({id: existing_id, ...all_new_values})` にて新インスタンス生成（domain invariant による version_not_greater・自己参照・不変条件検査が先行）
+4. composition の DAG 走査と各 ref 存在確認（`_check_dag` で推移的循環・深度超過・ノード超過を DFS + 経路スタックで検出）
+5. `async with session.begin():` `DeliverableTemplateRepository.save(updated_template)`
+6. HTTP 200, 更新済み `DeliverableTemplateResponse`
 
 ### ユースケース 3: RoleProfile upsert（PUT /api/empires/{empire_id}/role-profiles/{role}）
 
@@ -349,9 +348,9 @@ sequenceDiagram
     Service->>DTRepo: find_by_id(ref_A.template_id)
     DTRepo->>DB: SELECT
     DB-->>DTRepo: template_A
-    Service->>Service: _check_dag(refs=[ref_A], root_id=new_uuid) → 循環なし
     Service->>Domain: DeliverableTemplate.model_validate({id=new_uuid, ...})
-    Domain-->>Service: template
+    Domain-->>Service: template（domain invariant による不変条件検査済み）
+    Service->>Service: _check_dag(refs=[ref_A], root_id=new_uuid) → 循環なし
     Service->>DTRepo: save(template)
     DTRepo->>DB: INSERT ON CONFLICT DO UPDATE
     DB-->>DTRepo: ok

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Generic, Literal, TypeVar
+from typing import Any, Generic, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_serializer
 
 T = TypeVar("T")
 
@@ -14,6 +14,19 @@ class ErrorDetail(BaseModel):
 
     code: str
     message: str
+    detail: dict[str, object] | None = None
+
+    @model_serializer(mode="wrap")
+    def _exclude_none_detail(self, handler: Any) -> dict[str, Any]:
+        """``detail`` フィールドが ``None`` のときはシリアライズ結果から除外する。
+
+        既存の ``{"code": ..., "message": ...}`` 形式を維持しつつ、
+        新規追加した ``detail`` フィールドが ``None`` のときは後方互換性を保つ。
+        """
+        data = handler(self)
+        if data.get("detail") is None:
+            data.pop("detail", None)
+        return data
 
 
 class ErrorResponse(BaseModel):

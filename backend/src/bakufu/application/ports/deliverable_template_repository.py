@@ -52,5 +52,14 @@ class DeliverableTemplateRepository(Protocol):
         """
         ...
 
+    async def delete(self, template_id: DeliverableTemplateId) -> None:
+        """``DELETE FROM deliverable_templates WHERE id = :id``（§確定 E）。
+
+        対象行が存在しない場合は何もしない（no-op）。Service 層で事前に
+        ``find_by_id`` による存在確認を行う設計のため、Repository 側では
+        silent no-op を許容する。
+        """
+        ...
+
 
 __all__ = ["DeliverableTemplateRepository"]

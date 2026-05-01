@@ -1,6 +1,6 @@
 # 結合テストケース詳細 — DeliverableTemplate HTTP API
 
-> TC-IT-DTH-001〜021
+> TC-IT-DTH-001〜022
 > 関連: [`index.md`](index.md) / [`../basic-design.md §REQ-DT-HTTP`](../basic-design.md) / [`../detailed-design.md §MSG 確定文言`](../detailed-design.md)
 
 ## TC-IT-DTH-001: POST /api/deliverable-templates 正常系
@@ -43,7 +43,7 @@
 | 種別 | 異常系 |
 | 前提条件 | テンプレート B が先に作成済み。B の composition に A の ref を持たせるため A 作成後 B を PUT で更新する |
 | 操作 | A を POST 作成後、B の PUT で `composition: [ref_to_A]` を設定すると A→B→A 循環が完成する PUT が発火 |
-| 期待結果 | HTTP 422。`code == "composition_cycle"`。`response["error"]["detail"]["reason"] == "transitive_cycle"`。`response["error"]["detail"]["cycle_path"]` に A / B の UUID 文字列が含まれる |
+| 期待結果 | HTTP 422。`code == "composition_cycle"`。`response["error"]["detail"]["reason"] == "transitive_cycle"`。`cycle_path` はセキュリティ上の理由でレスポンスには含まれない（内部ログ専用）|
 
 ## TC-IT-DTH-005: POST — DAG 深度ガード（§確定 D / MSG-DT-HTTP-003b）
 
@@ -53,7 +53,7 @@
 | 種別 | 境界値 |
 | 前提条件 | 深度 10 以上の composition チェーン（T1 → T2 → ... → T11）を DB に構築済み |
 | 操作 | T12 を作成し `composition: [ref_to_T11]` を指定（深度 11）|
-| 期待結果 | HTTP 422。`code == "composition_cycle"`。`response["error"]["detail"]["reason"] == "depth_limit"` かつ `response["error"]["detail"]["cycle_path"] == []` |
+| 期待結果 | HTTP 422。`code == "composition_cycle"`。`response["error"]["detail"]["reason"] == "depth_limit"`。`cycle_path` はレスポンスに含まれない（内部ログ専用）|
 
 ## TC-IT-DTH-006: POST — name 空文字 → 422
 
@@ -198,6 +198,17 @@
 | 種別 | セキュリティ |
 | 操作 | 存在しない id で GET（404 が返る操作）|
 | 期待結果 | レスポンス body が `{"error": {"code": str, "message": str, "detail": ...}}` 構造を持つ。スタックトレースを含まない |
+
+## TC-IT-DTH-022: POST — 合法な菱形 DAG（diamond DAG）→ 201（DFS + 経路スタック正常系）
+
+| 項目 | 内容 |
+|---|---|
+| 対応 REQ | REQ-DT-HTTP-001 / §確定 D |
+| 種別 | 正常系（境界値）|
+| 前提条件 | テンプレート B / C が先に作成済み。B の composition に C への ref を持たせる（B→C）|
+| 操作 | A を POST 作成する際に `composition: [ref_to_B, ref_to_C]` を指定（A→B, A→C, B→C の菱形 DAG）|
+| 期待結果 | HTTP 201 Created。菱形 DAG は合法な DAG であり循環参照ではない。`code == "composition_cycle"` にならないこと |
+| 注記 | ヘルスバーグ・レビュー指摘（致命的欠陥 1）対応。BFS + `visited` のみによる誤検出を防ぐため `_check_dag` は DFS + 経路スタック方式に変更済み（§確定 D）。同一ノード C への複数経路（B 経由 / 直接）が存在しても `path`（祖先集合）に C が含まれない限り循環と判定しない |
 
 ## TC-IT-DTH-021: POST — acceptance_criteria 内 id 重複 → 422（§確定 H）
 

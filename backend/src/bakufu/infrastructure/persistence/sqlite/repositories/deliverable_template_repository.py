@@ -29,7 +29,7 @@ import json
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -97,6 +97,16 @@ class SqliteDeliverableTemplateRepository:
             },
         )
         await self._session.execute(upsert_stmt)
+
+    async def delete(self, template_id: DeliverableTemplateId) -> None:
+        """``DELETE FROM deliverable_templates WHERE id = :id``（§確定 E）。
+
+        対象行が存在しない場合は何もしない（no-op）。
+        """
+        await self._session.execute(
+            text("DELETE FROM deliverable_templates WHERE id = :id"),
+            {"id": str(template_id).replace("-", "")},
+        )
 
     # ---- private domain ↔ row converters (§確定 C) -------------------
     def _to_row(self, template: DeliverableTemplate) -> dict[str, Any]:
