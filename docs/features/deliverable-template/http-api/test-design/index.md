@@ -24,7 +24,7 @@
 
 | 番号帯 | 用途 |
 |---|---|
-| TC-IT-DTH-001〜021 | DeliverableTemplate HTTP API 結合テスト |
+| TC-IT-DTH-001〜022 | DeliverableTemplate HTTP API 結合テスト |
 | TC-IT-RPH-001〜013 | RoleProfile HTTP API 結合テスト |
 | TC-IT-DTR-021〜022 | DeliverableTemplateRepository.delete() 単体（§確定 E 物理確認）|
 | TC-IT-RPR-016〜017 | RoleProfileRepository.delete() 単体（§確定 E 物理確認）|
@@ -46,6 +46,7 @@
 | REQ-DT-HTTP-001 schema 型判別 | §確定I | TC-IT-DTH-018 | IT | 正常系 | `test_create.py::test_create_json_schema_type_returns_dict_schema` |
 | REQ-DT-HTTP-001 id 省略生成 | §確定H | TC-IT-DTH-019 | IT | 正常系 | `test_create.py::test_create_with_omitted_ac_id_generates_uuid` |
 | REQ-DT-HTTP-001 AC id 重複 | §確定H | TC-IT-DTH-021 | IT | 異常系 | `test_create.py::test_create_with_duplicate_ac_id_returns_422` |
+| REQ-DT-HTTP-001 合法菱形 DAG | §確定D（DFS+経路スタック）| TC-IT-DTH-022 | IT | 正常系 | `test_create.py::test_create_with_diamond_dag_succeeds` |
 | REQ-DT-HTTP-002 空リスト | — | TC-IT-DTH-007 | IT | 正常系 | `test_read.py::test_list_returns_200_with_empty_items` |
 | REQ-DT-HTTP-002 複数件昇順 | ORDER BY name ASC, id ASC | TC-IT-DTH-008 | IT | 正常系 | `test_read.py::test_list_returns_items_sorted_by_name_asc` |
 | REQ-DT-HTTP-003 正常系 | — | TC-IT-DTH-009 | IT | 正常系 | `test_read.py::test_get_returns_200_with_template` |
@@ -141,7 +142,7 @@
 ```
 backend/tests/
 ├── integration/
-│   ├── test_deliverable_template_http_api/       # TC-IT-DTH-001〜021
+│   ├── test_deliverable_template_http_api/       # TC-IT-DTH-001〜022
 │   │   ├── __init__.py
 │   │   ├── conftest.py                           # app fixture / ASGITransport / engine
 │   │   ├── test_create.py                        # TC-IT-DTH-001〜006 / 018 / 019 / 021
@@ -175,6 +176,7 @@ backend/tests/
 - 全 MSG-DT-HTTP / MSG-RP-HTTP（404 / 422 両方）の HTTP ステータスコードを結合テストで確認する
 - §確定 B（version 降格・同一・昇格 3 経路）/ §確定 C（冪等性・id 保持・refs 置換）/ §確定 D（深度・ノード上限）を物理確認する
 - §確定 D の DAG 循環 3 分岐（MSG-DT-HTTP-003a: `transitive_cycle` / MSG-DT-HTTP-003b: `depth_limit` / MSG-DT-HTTP-003c: `node_limit`）は HTTP IT または UT で各 `reason` を物理確認する
+- §確定 D の合法な菱形 DAG（TC-IT-DTH-022）が 201 で通過することを確認する（DFS + 経路スタック方式による誤検出なし）
 - §確定 G（エラーレスポンスフォーマット：`{"error": {"code", "message", "detail"}}`）を 1 件以上確認する
 - §確定 H（AcceptanceCriterion.id 省略時 UUID 生成 / 同一リクエスト内 id 重複 → 422）/ §確定 I（schema type 判別: JSON_SCHEMA/OPENAPI → dict、他 → str）を物理確認する
 - Service の業務ロジック（DAG 走査・version 比較・upsert id 継承）はユニットテストで独立して検証する
@@ -218,7 +220,7 @@ uv run pytest backend/tests/unit/test_deliverable_template_service.py backend/te
 
 | ファイル | 収録テストケース |
 |---|---|
-| [`it-deliverable-template-http.md`](it-deliverable-template-http.md) | TC-IT-DTH-001〜021（DeliverableTemplate HTTP API 結合テスト詳細）|
+| [`it-deliverable-template-http.md`](it-deliverable-template-http.md) | TC-IT-DTH-001〜022（DeliverableTemplate HTTP API 結合テスト詳細）|
 | [`it-role-profile-http.md`](it-role-profile-http.md) | TC-IT-RPH-006 / 007 / 010（RoleProfile HTTP API 主要ケース詳細）|
 | [`it-repository.md`](it-repository.md) | TC-IT-DTR-021/022 / TC-IT-RPR-016/017（Repository.delete() 単体）|
 | [`ut-service.md`](ut-service.md) | TC-UT-DTS-004〜009 / TC-UT-RPS-004（Service ユニットテスト詳細）|
