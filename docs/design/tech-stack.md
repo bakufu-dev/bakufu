@@ -66,10 +66,10 @@ bakufu には LLM 呼び出し基盤が 2 種類存在する。**どちらを使
 | **セッション管理** | なし（1 req = 1 resp）| あり（TTL 2h / 再接続 / 孤児 GC）|
 | **配置先（Port）** | `application/ports/llm_client.py`（`typing.Protocol`）| `application/ports/llm_provider_port.py`（将来実装）|
 | **配置先（Impl）** | `infrastructure/llm/`（Phase 1 実装済み）| `infrastructure/llm_provider/`（将来実装）|
-| **対応 feature** | `ai-validation` / 将来の評価・分類 feature | coding agent サブシステム（将来 Phase）|
-| **実装 Issue** | #144（本 Issue）| 将来 Issue（coding agent サブシステム設計時）|
+| **対応 feature** | 将来の評価・分類 feature（HTTP API 直接方式が必要なケースのみ）| `ai-validation` / coding agent サブシステム（CLIサブプロセス方式）|
+| **実装 Issue** | #144（本 Issue）| #123（`ai-validation`）/ 将来 Issue（coding agent サブシステム設計時）|
 
-**判断基準**: 「コード実行・長時間タスク・セッション継続が必要」→ `LLMProviderPort`、「テキスト評価・分類・数秒〜数十秒の処理」→ `AbstractLLMClient`
+**判断基準**: 「APIキー直接管理が許可・必要なケース、または HTTP API 直接が明示的に要求される場合」→ `AbstractLLMClient`、「CLIサブプロセス方式（Claude Code OAuth / Codex サブスク認証）、コード生成・長時間タスク・セッション継続、または APIキー不要での LLM 呼び出し」→ `LLMProviderPort`
 
 `AbstractLLMClient` は `docs/features/llm-client/` に設計を凍結（Issue #144）。
 
