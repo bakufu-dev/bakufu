@@ -1,6 +1,6 @@
-"""ExternalReviewGate Repository: 5 ステップ save() 物理検証。
+"""ExternalReviewGate Repository: save() 物理検証 + criteria round-trip。
 
-TC-UT-ERGR-005 / 005b / 005c — §確定 R1-B save() 5 段階の物理確認。
+TC-UT-ERGR-005 / 005b / 005c / 010 — §確定 R1-B save() 7 段階の物理確認 + criteria round-trip。
 
 テスト対象:
 * DELETE child tables (steps 1+2) が re-save で重複行を防止。
@@ -30,6 +30,7 @@ from tests.factories.external_review_gate import (
     make_approved_gate,
     make_audit_entry,
     make_gate,
+    make_gate_with_criteria,
 )
 from tests.factories.task import make_deliverable
 
@@ -37,6 +38,23 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 pytestmark = pytest.mark.asyncio
+
+
+async def _count_criteria(
+    session_factory: async_sessionmaker[AsyncSession],
+    gate_id: UUID,
+) -> int:
+    """gate_id 用 external_review_gate_criteria 行をカウント (raw SQL)。"""
+    async with session_factory() as session:
+        row = (
+            await session.execute(
+                text(
+                    "SELECT COUNT(*) FROM external_review_gate_criteria WHERE gate_id = :gate_id"
+                ),
+                {"gate_id": gate_id.hex},
+            )
+        ).first()
+    return row[0] if row else 0
 
 
 async def _count_attachments(
@@ -262,3 +280,150 @@ class TestEmptyToFullGateUpdate:
         assert restored.decision == ReviewDecision.APPROVED
         assert len(restored.audit_trail) == 1
         assert restored.audit_trail[0].action == AuditAction.APPROVED
+
+
+# ---------------------------------------------------------------------------
+# TC-UT-ERGR-010: criteria round-trip (§確定 R1-B 段階 3+7, 受入基準 #16)
+# ---------------------------------------------------------------------------
+class TestCriteriaRoundTrip:
+    """TC-UT-ERGR-010: required_deliverable_criteria の save → find_by_id round-trip。
+
+    §確定 R1-B 段階 3（DELETE criteria）+ 段階 7（INSERT criteria）の物理確認。
+    order_index で元の tuple 順序が保持されること、re-save 後も同一 criteria で
+    復元されること（domain 不変条件との整合）を検証する。
+    """
+
+    async def test_criteria_round_trip_count_matches(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        seeded_gate_context: tuple[UUID, UUID, UUID],
+    ) -> None:
+        """TC-UT-ERGR-010a: save 後 find_by_id で criteria 件数が一致する。"""
+        task_id, stage_id, reviewer_id = seeded_gate_context
+        gate = make_gate_with_criteria(task_id=task_id, stage_id=stage_id, reviewer_id=reviewer_id)
+        original_count = len(gate.required_deliverable_criteria)
+
+        async with session_factory() as session, session.begin():
+            await SqliteExternalReviewGateRepository(session).save(gate)
+
+        # raw SQL で criteria 行数を確認
+        db_count = await _count_criteria(session_factory, gate.id)
+        assert db_count == original_count, (
+            f"[FAIL] DB 内 criteria 行数 {db_count} ≠ 期待値 {original_count}"
+        )
+
+    async def test_criteria_round_trip_values_match(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        seeded_gate_context: tuple[UUID, UUID, UUID],
+    ) -> None:
+        """TC-UT-ERGR-010b: find_by_id で復元した criteria が元と完全一致する。"""
+        task_id, stage_id, reviewer_id = seeded_gate_context
+        gate = make_gate_with_criteria(task_id=task_id, stage_id=stage_id, reviewer_id=reviewer_id)
+        original_criteria = gate.required_deliverable_criteria
+
+        async with session_factory() as session, session.begin():
+            await SqliteExternalReviewGateRepository(session).save(gate)
+
+        async with session_factory() as session:
+            restored = await SqliteExternalReviewGateRepository(session).find_by_id(gate.id)
+
+        assert restored is not None
+        assert restored.required_deliverable_criteria == original_criteria, (
+            "[FAIL] find_by_id で復元した criteria が元と一致しない。"
+            f"expected={original_criteria}, got={restored.required_deliverable_criteria}"
+        )
+
+    async def test_criteria_round_trip_order_index_preserved(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        seeded_gate_context: tuple[UUID, UUID, UUID],
+    ) -> None:
+        """TC-UT-ERGR-010c: 復元した criteria の順序が元の tuple と一致する。"""
+        task_id, stage_id, reviewer_id = seeded_gate_context
+        gate = make_gate_with_criteria(task_id=task_id, stage_id=stage_id, reviewer_id=reviewer_id)
+        original_criteria = gate.required_deliverable_criteria
+
+        async with session_factory() as session, session.begin():
+            await SqliteExternalReviewGateRepository(session).save(gate)
+
+        async with session_factory() as session:
+            restored = await SqliteExternalReviewGateRepository(session).find_by_id(gate.id)
+
+        assert restored is not None
+        for i, (original, rebuilt) in enumerate(
+            zip(original_criteria, restored.required_deliverable_criteria)
+        ):
+            assert original.description == rebuilt.description, (
+                f"[FAIL] criterion[{i}].description: "
+                f"{original.description!r} → {rebuilt.description!r}"
+            )
+            assert original.required == rebuilt.required, (
+                f"[FAIL] criterion[{i}].required: {original.required} → {rebuilt.required}"
+            )
+
+    async def test_criteria_required_flags_preserved_in_db(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        seeded_gate_context: tuple[UUID, UUID, UUID],
+    ) -> None:
+        """TC-UT-ERGR-010d: required=True/False 混在が DB 往復後も保持される。"""
+        from bakufu.domain.value_objects import AcceptanceCriterion as _AC
+        from uuid import uuid4 as _uuid4
+
+        task_id, stage_id, reviewer_id = seeded_gate_context
+        criteria = (
+            _AC(id=_uuid4(), description="必須基準", required=True),
+            _AC(id=_uuid4(), description="任意基準", required=False),
+        )
+        gate = make_gate(
+            task_id=task_id,
+            stage_id=stage_id,
+            reviewer_id=reviewer_id,
+            required_deliverable_criteria=criteria,
+        )
+
+        async with session_factory() as session, session.begin():
+            await SqliteExternalReviewGateRepository(session).save(gate)
+
+        async with session_factory() as session:
+            restored = await SqliteExternalReviewGateRepository(session).find_by_id(gate.id)
+
+        assert restored is not None
+        assert restored.required_deliverable_criteria[0].required is True
+        assert restored.required_deliverable_criteria[1].required is False
+
+    async def test_criteria_preserved_after_resave_with_approve(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        seeded_gate_context: tuple[UUID, UUID, UUID],
+    ) -> None:
+        """TC-UT-ERGR-010e: approve 後 re-save でも criteria が同一タプルで復元される。
+
+        domain 不変条件（§確定 D'）と repository 実装の整合確認。
+        """
+        task_id, stage_id, reviewer_id = seeded_gate_context
+        gate = make_gate_with_criteria(task_id=task_id, stage_id=stage_id, reviewer_id=reviewer_id)
+        original_criteria = gate.required_deliverable_criteria
+
+        # 初期 save
+        async with session_factory() as session, session.begin():
+            await SqliteExternalReviewGateRepository(session).save(gate)
+
+        # approve して re-save（criteria は domain 不変条件で変化しない）
+        decided = datetime.now(UTC)
+        approved = gate.approve(reviewer_id, "ok", decided_at=decided)
+        async with session_factory() as session, session.begin():
+            await SqliteExternalReviewGateRepository(session).save(approved)
+
+        async with session_factory() as session:
+            restored = await SqliteExternalReviewGateRepository(session).find_by_id(gate.id)
+
+        assert restored is not None
+        assert restored.required_deliverable_criteria == original_criteria, (
+            "[FAIL] approve + re-save 後に criteria が変化した。"
+            f"expected={original_criteria}, got={restored.required_deliverable_criteria}"
+        )
+        # criteria テーブル行数も元と同じ（step 3 DELETE + step 7 INSERT の冪等性）
+        db_count = await _count_criteria(session_factory, gate.id)
+        assert db_count == len(original_criteria)

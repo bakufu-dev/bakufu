@@ -29,6 +29,7 @@ from weakref import WeakValueDictionary
 
 from bakufu.domain.external_review_gate import ExternalReviewGate
 from bakufu.domain.value_objects import (
+    AcceptanceCriterion,
     AuditAction,
     AuditEntry,
     Deliverable,
@@ -103,6 +104,7 @@ def make_gate(
     decision: ReviewDecision = ReviewDecision.PENDING,
     feedback_text: str = "",
     audit_trail: Sequence[AuditEntry] | None = None,
+    required_deliverable_criteria: tuple[AcceptanceCriterion, ...] | None = None,
     created_at: datetime | None = None,
     decided_at: datetime | None = None,
 ) -> ExternalReviewGate:
@@ -130,6 +132,11 @@ def make_gate(
             "decision": decision,
             "feedback_text": feedback_text,
             "audit_trail": list(audit_trail) if audit_trail is not None else [],
+            "required_deliverable_criteria": (
+                required_deliverable_criteria
+                if required_deliverable_criteria is not None
+                else ()
+            ),
             "created_at": created_at if created_at is not None else now,
             "decided_at": decided_at,
         }
@@ -204,11 +211,40 @@ def make_cancelled_gate(
     )
 
 
+def make_gate_with_criteria(
+    *,
+    criteria: tuple[AcceptanceCriterion, ...] | None = None,
+    **overrides: object,
+) -> ExternalReviewGate:
+    """criteria 付き :class:`ExternalReviewGate` を構築する（TC-UT-ERGR-010 用）。
+
+    デフォルトは ``required=True / False`` 混在の 3 件。DB round-trip テストで
+    ``order_index`` 順序保証を確認するため、異なる ``required`` フラグを持つ複数件を
+    生成する（``make_gate_with_criteria`` の ``criteria`` 引数で上書き可）。
+    """
+    if criteria is None:
+        c1 = AcceptanceCriterion(
+            id=uuid4(), description="受入基準 1: 設計書の要件を満たす", required=True
+        )
+        c2 = AcceptanceCriterion(
+            id=uuid4(), description="受入基準 2: テストケースが全て通過する", required=False
+        )
+        c3 = AcceptanceCriterion(
+            id=uuid4(), description="受入基準 3: レビュアーが承認する", required=True
+        )
+        criteria = (c1, c2, c3)
+    return make_gate(
+        required_deliverable_criteria=criteria,
+        **overrides,  # pyright: ignore[reportArgumentType]
+    )
+
+
 __all__ = [
     "is_synthetic",
     "make_approved_gate",
     "make_audit_entry",
     "make_cancelled_gate",
     "make_gate",
+    "make_gate_with_criteria",
     "make_rejected_gate",
 ]
