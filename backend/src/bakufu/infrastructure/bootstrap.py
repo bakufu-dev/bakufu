@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
+from bakufu.application.services.template_library import TemplateLibrarySeeder
 from bakufu.infrastructure.config import data_dir
 from bakufu.infrastructure.exceptions import (
     BakufuConfigError,
@@ -115,6 +116,7 @@ class Bootstrap:
             self._stage_1_resolve_data_dir()
             await self._stage_2_init_engine()
             await self._stage_3_migrate()
+            await self._stage_3b_seed_template_library()
             await self._stage_4_pid_gc()
             self._stage_5_attachments()
             await self._stage_6_dispatcher()
@@ -253,6 +255,47 @@ class Bootstrap:
                 "[INFO] Bootstrap stage 3/8: DB file mode audit: %s",
                 mode_results,
             )
+
+    # ------------------------------------------------------------------
+    # Stage 3b: template-library seed（Alembic 直後、PID GC 直前）。
+    # ------------------------------------------------------------------
+    async def _stage_3b_seed_template_library(self) -> None:
+        """WELL_KNOWN_TEMPLATES 12 件を UPSERT し、起動時に DB と定数を同期する。
+
+        Stage 3（Alembic migration）完了後に実行することで、スキーマ確定前の
+        write を防ぐ（REQ-TL-002）。session_factory が None の場合（Stage 2 未完）
+        はガードして返す。
+        """
+        if self._session_factory is None:  # pragma: no cover — stage ordering
+            return
+        from bakufu.application.services.template_library.definitions import (
+            WELL_KNOWN_TEMPLATES,
+        )
+
+        n = len(WELL_KNOWN_TEMPLATES)
+        logger.info(
+            "[INFO] Bootstrap stage 3b/8: seeding template-library (%d templates)...",
+            n,
+        )
+        try:
+            upserted = await TemplateLibrarySeeder()._seed_global_templates(self._session_factory)
+        except Exception as exc:
+            logger.error(
+                "[FAIL] Bootstrap stage 3b/8: template-library seed failed: %s: %s",
+                exc.__class__.__name__,
+                exc,
+            )
+            raise BakufuConfigError(
+                msg_id="MSG-PF-002",
+                message=(
+                    f"[FAIL] Bootstrap stage 3b/8: template-library seed failed:"
+                    f" {exc.__class__.__name__}: {exc}"
+                ),
+            ) from exc
+        logger.info(
+            "[INFO] Bootstrap stage 3b/8: template-library seed complete (upserted=%d)",
+            upserted,
+        )
 
     # ------------------------------------------------------------------
     # Stage 4: pid_registry オーファン GC（非致命）。
