@@ -1,8 +1,8 @@
 # 基本設計書 — deliverable-template / domain
 
 > feature: `deliverable-template` / sub-feature: `domain`
-> 親 spec: [../feature-spec.md](../feature-spec.md) §9 受入基準 1〜12
-> 関連: [`docs/design/domain-model/aggregates.md`](../../../design/domain-model/aggregates.md) §DeliverableTemplate / §RoleProfile / [`../../task/`](../../task/)（参照先 Aggregate）/ [`../../workflow/`](../../workflow/)（Role enum 参照元）
+> 親 spec: [../feature-spec.md](../feature-spec.md) §9 受入基準 1〜17
+> 関連: [`docs/design/domain-model/aggregates.md`](../../../design/domain-model/aggregates.md) §DeliverableTemplate / §RoleProfile / §DeliverableRecord（Issue #123 追加）/ [`../../task/`](../../task/)（参照先 Aggregate）/ [`../../workflow/`](../../workflow/)（Role enum 参照元）/ [`../ai-validation/`](../ai-validation/)（ai-validation sub-feature）
 
 ## §モジュール契約（機能要件）
 
@@ -14,6 +14,8 @@
 | REQ-DT-004 | RoleProfile 構築 | id / empire_id（EmpireId）/ role（Role StrEnum）/ deliverable_template_refs（tuple[DeliverableTemplateRef, ...]）| Pydantic 型バリデーション → model_validator で不変条件検査（①deliverable_template_refs 内の template_id 重複なし ②各 DeliverableTemplateRef の minimum_version が有効な SemVer）| valid な RoleProfile インスタンス | `RoleProfileInvariantViolation` | §9 AC#5 |
 | REQ-DT-005 | テンプレート参照追加・削除（add_template_ref / remove_template_ref）| add: RoleProfile + ref（DeliverableTemplateRef）/ remove: RoleProfile + template_id（DeliverableTemplateId）| add: ①既存 deliverable_template_refs に同一 template_id が存在しないことを検査 → refs に追加した新リストで RoleProfile 再構築 / remove: ①指定 template_id が deliverable_template_refs に存在することを検査 → 該当 ref を除いた新リストで RoleProfile 再構築 | 新 RoleProfile インスタンス | add: `RoleProfileInvariantViolation(kind='duplicate_template_ref')` / remove: `RoleProfileInvariantViolation(kind='template_ref_not_found')` | §9 AC#6, 7 |
 | REQ-DT-006 | 不変条件検査（各 Aggregate・VO 共通）| 各 Aggregate / VO の現状属性 | ①DeliverableTemplate: name 1〜80 文字 / description 0〜500 文字 / TemplateType=JSON_SCHEMA 時は schema が dict / SemVer 各フィールド非負整数 / AcceptanceCriterion.description 1〜500 文字 / AcceptanceCriterion.id 重複なし / composition の自己参照なし（`_validate_composition_no_self_ref`） ②RoleProfile: deliverable_template_refs の template_id 重複なし ③SemVer: major / minor / patch が 0 以上の整数 ④AcceptanceCriterion: description が 1 文字以上 500 文字以下 | None（検査通過） | `DeliverableTemplateInvariantViolation` または `RoleProfileInvariantViolation`（kind で違反種別識別） | §9 AC#2, 4, 5 |
+| REQ-DT-007 | DeliverableRecord 構築（Issue #123 ai-validation sub-feature で使用）| id / deliverable_id（DeliverableId — 評価対象 Task 成果物の参照 ID）/ template_ref（DeliverableTemplateRef）/ content（str, 0文字以上）/ task_id（TaskId）/ validation_status（ValidationStatus, デフォルト PENDING）/ criterion_results（tuple[CriterionValidationResult, ...], デフォルト空 tuple）/ produced_by（AgentId, optional）/ created_at（datetime UTC）| Pydantic 型バリデーション → model_validator で ① criterion_results 内の ValidationStatus が有効値であること ② validation_status が criterion_results と矛盾しないこと（PENDING かつ criterion_results 非空の場合は invalid）を検査 | valid な DeliverableRecord インスタンス | `pydantic.ValidationError` / `DeliverableRecordInvariantViolation` | §9 AC#16 |
+| REQ-DT-008 | AI 検証実行（validate_criteria ふるまい）| DeliverableRecord（self）+ criteria（tuple[AcceptanceCriterion, ...]）+ llm_port（AbstractLLMValidationPort）| 各 AcceptanceCriterion について `llm_port.evaluate(content, criterion)` を呼び CriterionValidationResult を収集 → §確定 R1-G のルールで overall ValidationStatus を導出 → 新 DeliverableRecord（criterion_results 更新、validation_status 更新、validated_at 設定）を返す（pre-validate 方式） | 新 DeliverableRecord インスタンス | `LLMValidationError`（infrastructure 層起源。ai-validation sub-feature で定義）| §9 AC#16, 17 |
 
 ## 記述ルール（必ず守ること）
 
@@ -30,6 +32,12 @@
 | REQ-DT-006 | 不変条件 helper | `backend/src/bakufu/domain/deliverable_template/invariant_validators.py` | DeliverableTemplate / RoleProfile 両 Aggregate の不変条件 helper 関数群（ExternalReviewGate 同パターン）|
 | REQ-DT-001, 004 | `DeliverableTemplateInvariantViolation` / `RoleProfileInvariantViolation` 例外 | `backend/src/bakufu/domain/exceptions.py`（既存ファイル更新）| 2 行エラー構造（6 兄弟と同パターン）|
 | 共通（型）| `TemplateType` StrEnum | `backend/src/bakufu/domain/value_objects/enums.py`（既存ファイル更新）| MARKDOWN / JSON_SCHEMA / OPENAPI / CODE_SKELETON / PROMPT の 5 値 |
+| REQ-DT-007 | `DeliverableRecord` Aggregate Root | `backend/src/bakufu/domain/deliverable_template/deliverable_record.py`（新規）| DeliverableRecord の属性・不変条件・validate_criteria ふるまい |
+| REQ-DT-007 | `DeliverableRecordId` | `backend/src/bakufu/domain/value_objects/identifiers.py`（既存ファイル更新）| UUID ラッパー ID 型 |
+| REQ-DT-007, 008 | `ValidationStatus` StrEnum | `backend/src/bakufu/domain/value_objects/enums.py`（既存ファイル更新）| PENDING / PASSED / FAILED / UNCERTAIN の 4 値 |
+| REQ-DT-007, 008 | `CriterionValidationResult` VO | `backend/src/bakufu/domain/value_objects/template_vos.py`（既存ファイル更新）| criterion_id / status / reason の frozen VO |
+| REQ-DT-007 | `DeliverableRecordInvariantViolation` 例外 | `backend/src/bakufu/domain/exceptions/deliverable_template.py`（既存ファイル更新）| 2 行エラー構造（既存兄弟例外と同パターン）|
+| REQ-DT-008 | `AbstractLLMValidationPort` | `backend/src/bakufu/domain/ports/llm_validation_port.py`（新規）| LLM 検証の domain port インターフェース（§確定 F、§確定 C の JSON Schema validator と同パターン）|
 | 共通（型）| `DeliverableTemplateId` / `RoleProfileId` | `backend/src/bakufu/domain/value_objects/identifiers.py`（既存ファイル更新）| UUID ラッパー ID 型（既存 ID 型と同パターン）|
 | 共通（VO）| `SemVer` / `DeliverableTemplateRef` / `AcceptanceCriterion` | `backend/src/bakufu/domain/value_objects/template_vos.py`（新規ファイル）| Pydantic v2 frozen VO 3 種 |
 | 公開 API | re-export | `backend/src/bakufu/domain/deliverable_template/__init__.py` | `DeliverableTemplate` / `RoleProfile` / `DeliverableTemplateInvariantViolation` / `RoleProfileInvariantViolation` / `TemplateType` / `SemVer` / `DeliverableTemplateRef` / `AcceptanceCriterion` を re-export |
@@ -161,6 +169,50 @@ classDiagram
     RoleProfile --> DeliverableTemplateRef : owns 0..N
     DeliverableTemplate ..> DeliverableTemplateInvariantViolation : raises
     RoleProfile ..> RoleProfileInvariantViolation : raises
+
+    class DeliverableRecord {
+        <<Aggregate Root>>
+        +id: DeliverableRecordId
+        +deliverable_id: DeliverableId
+        +template_ref: DeliverableTemplateRef
+        +content: str
+        +task_id: TaskId
+        +validation_status: ValidationStatus
+        +criterion_results: tuple~CriterionValidationResult~
+        +produced_by: AgentId
+        +created_at: datetime
+        +validated_at: datetime
+        +validate_criteria(criteria, llm_port) DeliverableRecord
+    }
+    class ValidationStatus {
+        <<StrEnum>>
+        PENDING
+        PASSED
+        FAILED
+        UNCERTAIN
+    }
+    class CriterionValidationResult {
+        <<Value Object, frozen>>
+        +criterion_id: UUID
+        +status: ValidationStatus
+        +reason: str
+    }
+    class AbstractLLMValidationPort {
+        <<interface>>
+        +evaluate(content: str, criterion: AcceptanceCriterion) CriterionValidationResult
+    }
+    class DeliverableRecordInvariantViolation {
+        +message: str
+        +detail: dict
+        +kind: str
+    }
+    DeliverableRecord --> DeliverableTemplateRef : template_ref
+    DeliverableRecord --> ValidationStatus : has
+    DeliverableRecord "1" --> "0..*" CriterionValidationResult : criterion_results
+    DeliverableRecord --> DeliverableRecordId : identified by
+    DeliverableRecord ..> AbstractLLMValidationPort : uses（validate_criteria）
+    DeliverableRecord ..> DeliverableRecordInvariantViolation : raises
+    CriterionValidationResult --> ValidationStatus : has
 ```
 
 **凝集のポイント**:
@@ -192,6 +244,7 @@ classDiagram
 |-------------|------|
 | `deliverable-template/repository`（将来 sub-feature）| Aggregate の永続化 |
 | `deliverable-template/http-api`（将来 sub-feature）| HTTP API エンドポイント |
+| `deliverable-template/ai-validation`（Issue #123）| `DeliverableRecord` / `ValidationStatus` / `AbstractLLMValidationPort` を使用 |
 | `task/domain`（参照のみ）| task が DeliverableTemplate を参照する場合の連携（application 層経由）|
 
 ## 処理フロー
@@ -303,6 +356,7 @@ sequenceDiagram
 | `DeliverableTemplateInvariantViolation(kind='version_not_greater')` | application 層で catch、422 にマッピング | MSG-DT-003 |
 | `RoleProfileInvariantViolation(kind='duplicate_template_ref')` | application 層で catch、409 Conflict | MSG-DT-004 |
 | `RoleProfileInvariantViolation(kind='template_ref_not_found')` | application 層で catch、404 Not Found | MSG-DT-005 |
+| `DeliverableRecordInvariantViolation(kind='invalid_validation_state')` | application 層で catch、500 Internal（構築時の矛盾は呼び元バグ）| MSG-DT-006 |
 | `pydantic.ValidationError` | application 層で catch、422 にマッピング | 汎用 Pydantic エラー |
 | その他 | 握り潰さない、application 層へ伝播 | 汎用エラーメッセージ |
 
@@ -319,6 +373,7 @@ sequenceDiagram
 | MSG-DT-003 | create_new_version で new_version が現バージョン以下 | `version_not_greater` | `DeliverableTemplateInvariantViolation` |
 | MSG-DT-004 | add_template_ref 重複参照違反 | `duplicate_template_ref` | `RoleProfileInvariantViolation` |
 | MSG-DT-005 | remove_template_ref 参照未発見 | `template_ref_not_found` | `RoleProfileInvariantViolation` |
+| MSG-DT-006 | DeliverableRecord 構築時の validation_status と criterion_results の矛盾 | `invalid_validation_state` | `DeliverableRecordInvariantViolation` |
 
 ## セキュリティ設計
 
@@ -346,7 +401,7 @@ sequenceDiagram
 | A07 | Auth Failures | 該当なし（domain 層。認証・認可は application 層責務）|
 | A08 | Data Integrity Failures | **適用**: frozen model / pre-validate / composition 自己参照・RoleProfile refs 重複・AcceptanceCriterion id 重複・型整合性の 5 種不変条件による多重防衛 |
 | A09 | Logging Failures | **適用**: `DeliverableTemplateInvariantViolation` / `RoleProfileInvariantViolation` の例外ログに secret が混入しないよう、acceptance_criteria.description 等は長さ情報のみを detail に含める（detailed-design.md で凍結）|
-| A10 | SSRF | 該当なし（domain 層は外部 HTTP リクエストを一切発行しない）|
+| A10 | SSRF | **適用（Issue #123 追加）**: `DeliverableRecord.validate_criteria` が `AbstractLLMValidationPort` 経由で外部 LLM API を呼ぶ。Port 自体は URL を受け取らず固定エンドポイントのみ。infrastructure `LLMValidationAdapter` が環境変数で事前設定されたエンドポイントのみ使用（ai-validation sub-feature §確定 C 参照）|
 
 ## ER 図
 
