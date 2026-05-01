@@ -2,7 +2,7 @@
 
 Issue: #123
 設計書: docs/features/deliverable-template/ai-validation/test-design.md §結合テストケース
-対応要件: REQ-AIVM-003（SqliteDeliverableRecordRepository.save 7 段階冪等）
+対応要件: REQ-AIVM-003（SqliteDeliverableRecordRepository.save 4 段階 delete-then-insert 冪等）
 
 DB: in-memory SQLite 実接続（create_all でスキーマ作成、Alembic なし）。
 """
