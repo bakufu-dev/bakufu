@@ -68,7 +68,9 @@ sequenceDiagram
     participant Boot as Bootstrap（自動）
 
     Boot->>Boot: 起動時 seed — WELL_KNOWN_TEMPLATES 12件 UPSERT
+    Note over Boot: Bootstrap が自動で seed_role_profiles_for_empire() を実行（現時点の動作）
     CEO->>API: POST /api/empires/{id}/seed-templates
+    Note over CEO,API: ※未実装（別PRで実装予定）。現時点はEmpire作成時に自動実行
     API-->>CEO: 4 RoleProfile 作成（skip 既存）
     CEO->>API: GET /api/deliverable-templates
     API-->>CEO: 12件のテンプレート一覧
