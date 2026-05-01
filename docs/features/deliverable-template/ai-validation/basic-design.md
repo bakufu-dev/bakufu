@@ -2,7 +2,7 @@
 
 > feature: `deliverable-template` / sub-feature: `ai-validation`
 > 親 spec: [`../feature-spec.md`](../feature-spec.md) §9 受入基準 16〜17 / §確定 R1-G
-> 関連: [`../domain/basic-design.md`](../domain/basic-design.md)（DeliverableRecord・derive_status 定義元）/ [`../../external-review-gate/domain/basic-design.md`](../../external-review-gate/domain/basic-design.md)（7 段階 save() パターン継承元）/ [`../../llm-client/infrastructure/basic-design.md`](../../llm-client/infrastructure/basic-design.md)（LLMProviderPort・ClaudeCodeLLMClient・CodexLLMClient 定義元）
+> 関連: [`../domain/basic-design.md`](../domain/basic-design.md)（DeliverableRecord・derive_status 定義元）/ [`../../llm-client/infrastructure/basic-design.md`](../../llm-client/infrastructure/basic-design.md)（LLMProviderPort・ClaudeCodeLLMClient・CodexLLMClient 定義元）
 
 ## 本書の役割
 
@@ -25,7 +25,7 @@ LLM 呼び出し方式は **CLIサブプロセス経由**（`ClaudeCodeLLMClient
 |--------|------|------|------|------|---------|-------------|
 | REQ-AIVM-001 | ValidationService.validate_deliverable（LLM 検証フロー orchestration）| `record: DeliverableRecord`（PENDING 状態）/ `criteria: tuple[AcceptanceCriterion, ...]` | ① 各 criterion について system プロンプト文字列と messages リストを構築 ② `LLMProviderPort.chat(messages=messages, system=system)` を呼び評価 ③ `result.response` を JSON パース → `CriterionValidationResult` を収集 ④ `record.derive_status(tuple(results))` で評価済み record を生成 ⑤ 評価済み record を `AbstractDeliverableRecordRepository.save(record)` で永続化 ⑥ updated record を返す | 評価済み `DeliverableRecord`（`validation_status` が PASSED / FAILED / UNCERTAIN に更新）| `LLMValidationError`: LLM 呼び出し失敗（MSG-AIVM-001）/ `LLMValidationError`: 応答パース失敗（MSG-AIVM-002）| §9 AC#16, 17 |
 | REQ-AIVM-002 | ValidationService 内プロンプト構築（構造化プロンプト生成）| `content: str`（DeliverableRecord.content）/ `criterion: AcceptanceCriterion` | system プロンプト（役割指示 + 出力フォーマット指定）と messages リスト（`[{"role": "user", "content": "<criterion block>\n--- BEGIN CONTENT ---\n{content}\n--- END CONTENT ---"}]`）を構築し `tuple[list[dict], str]` を返す | `tuple[list[dict], str]`（messages, system の 2 要素タプル）| 該当なし（純粋関数）| §9 AC#16, 17 |
-| REQ-AIVM-003 | SqliteDeliverableRecordRepository（3 method: save / find_by_id / find_by_deliverable_id）| save: `record: DeliverableRecord` / find_by_id: `record_id: DeliverableRecordId` / find_by_deliverable_id: `deliverable_id: DeliverableId` | save: 7 段階 save() パターン（ExternalReviewGate repository 踏襲）— ① BEGIN TRANSACTION ② SELECT FOR UPDATE（存在確認）③ DELETE 既存 criterion_validation_results ④ DELETE 既存 deliverable_records ⑤ INSERT deliverable_records ⑥ INSERT criterion_validation_results ⑦ COMMIT / find_by_id: `deliverable_records` + JOIN `criterion_validation_results` で 1 件取得、デシリアライズ / find_by_deliverable_id: deliverable_id で 1 件取得（最新評価結果）| save: `None` / find_by_id: `DeliverableRecord \| None` / find_by_deliverable_id: `DeliverableRecord \| None` | `sqlalchemy.exc.SQLAlchemyError` を `RepositoryError` にラップして伝播 | §9 AC#16 |
+| REQ-AIVM-003 | SqliteDeliverableRecordRepository（3 method: save / find_by_id / find_by_deliverable_id）| save: `record: DeliverableRecord` / find_by_id: `record_id: DeliverableRecordId` / find_by_deliverable_id: `deliverable_id: DeliverableId` | save: 4 段階 delete-then-insert パターン — ① DELETE 既存 criterion_validation_results ② DELETE 既存 deliverable_records ③ INSERT deliverable_records ④ INSERT criterion_validation_results。Tx 境界は呼び元が `async with session.begin():` で管理（SQLite は SELECT FOR UPDATE 非サポート / §確定D 参照）/ find_by_id: `deliverable_records` + JOIN `criterion_validation_results` で 1 件取得、デシリアライズ / find_by_deliverable_id: deliverable_id で 1 件取得（最新評価結果）| save: `None` / find_by_id: `DeliverableRecord \| None` / find_by_deliverable_id: `DeliverableRecord \| None` | `sqlalchemy.exc.SQLAlchemyError` を `RepositoryError` にラップして伝播 | §9 AC#16 |
 | REQ-AIVM-004 | Alembic migration 0015（deliverable_records + criterion_validation_results テーブル）| なし（マイグレーション実行コンテキスト）| `deliverable_records` テーブルと `criterion_validation_results` テーブルを新規作成。`down_revision="0014_external_review_gate_criteria"` | なし | Alembic 実行エラー（`alembic upgrade head` で検出）| §9 AC#16 |
 
 ## モジュール構成
@@ -35,7 +35,7 @@ LLM 呼び出し方式は **CLIサブプロセス経由**（`ClaudeCodeLLMClient
 | REQ-AIVM-001, 002 | `ValidationService` Application Service | `backend/src/bakufu/application/services/validation_service.py`（新規）| DeliverableRecord 評価フローの orchestration。プロンプト構築・LLM 呼び出し・応答パース・status 導出・永続化。DI: `LLMProviderPort` + `AbstractDeliverableRecordRepository` |
 | REQ-AIVM-001 | `LLMProviderPort` （利用のみ） | `backend/src/bakufu/application/ports/llm_provider_port.py`（llm-client feature が ClaudeCodeLLMClient / CodexLLMClient で実装）| `chat(messages, system, ...) -> ChatResult` を提供する Protocol。ValidationService が DI で受け取る |
 | REQ-AIVM-003 | `AbstractDeliverableRecordRepository` | `backend/src/bakufu/domain/ports/deliverable_record_repository.py`（新規）| Repository の domain port インターフェース（`save` / `find_by_id` / `find_by_deliverable_id`）|
-| REQ-AIVM-003 | `SqliteDeliverableRecordRepository` | `backend/src/bakufu/infrastructure/repository/sqlite_deliverable_record_repository.py`（新規）| SQLite + SQLAlchemy ORM による concrete repository 実装。7 段階 save() パターン |
+| REQ-AIVM-003 | `SqliteDeliverableRecordRepository` | `backend/src/bakufu/infrastructure/repository/sqlite_deliverable_record_repository.py`（新規）| SQLite + SQLAlchemy ORM による concrete repository 実装。4 段階 delete-then-insert パターン（§確定D）|
 | REQ-AIVM-003 | ORM テーブル定義 | `backend/src/bakufu/infrastructure/persistence/sqlite/tables/deliverable_records.py`（新規）/ `criterion_validation_results.py`（新規）| `deliverable_records` / `criterion_validation_results` の SQLAlchemy Table 定義（CI スキャン対象ディレクトリ）|
 | REQ-AIVM-004 | Alembic migration 0015 | `backend/migrations/versions/0015_deliverable_records.py`（新規）| `deliverable_records` + `criterion_validation_results` テーブル作成 |
 | REQ-AIVM-001〜003 | CI 三層防衛 | `backend/tests/application/services/test_validation_service.py` / `backend/tests/infrastructure/repository/test_sqlite_deliverable_record_repository.py`（新規）| UT: ValidationService / IT: SqliteDeliverableRecordRepository（SQLite in-memory）|
@@ -150,7 +150,7 @@ classDiagram
 - `ValidationService` が orchestration・プロンプト構築・応答パースを一元管理。LLM CLI 詳細・DB 詳細を知らない（依存方向: Application → Application Port ← Infrastructure）
 - `AbstractLLMValidationPort`（旧 domain port 2段階構造）は廃止。`LLMProviderPort` を ValidationService が直接 DI で受け取る 1段階 Port 設計
 - `DeliverableRecord.derive_status(criterion_results)` は純粋関数。domain Aggregate への infrastructure Port 注入（旧 `validate_criteria(criteria, llm_port)` パターン）を廃止し DDD 違反を解消
-- `SqliteDeliverableRecordRepository` は ExternalReviewGate repository と同一の 7 段階 save() パターン（一貫性）
+- `SqliteDeliverableRecordRepository` は 4 段階 delete-then-insert パターン（§確定D）。SQLite は `SELECT FOR UPDATE` を非サポートのため ExternalReviewGate repository の 7 段階パターンとは差異あり（Tx 境界は呼び元が管理）
 - ORM テーブル定義を `infrastructure/persistence/sqlite/tables/` に配置することで CI 自動スキャンの対象に含める（タブリーズ SEC-1 解消）
 
 ## 処理フロー
@@ -205,14 +205,12 @@ sequenceDiagram
     end
     VS->>DR: derive_status(tuple(results))
     DR-->>VS: new DeliverableRecord（§確定R1-G 適用済み）
+    Note over VS,DB: 呼び元が async with session.begin(): でTx管理（SQLite SELECT FOR UPDATE 非サポート / §確定D）
     VS->>Repo: save(new_record)
-    Repo->>DB: BEGIN TRANSACTION
-    Repo->>DB: SELECT FOR UPDATE（存在確認）
     Repo->>DB: DELETE criterion_validation_results WHERE record_id=...
     Repo->>DB: DELETE deliverable_records WHERE id=...
     Repo->>DB: INSERT deliverable_records
     Repo->>DB: INSERT criterion_validation_results (N 行)
-    Repo->>DB: COMMIT
     Repo-->>VS: None
     VS-->>Client: new DeliverableRecord
     Note over Client: UNCERTAIN/FAILED の場合 ExternalReviewGate 生成等は呼び出し元の責務（D-3確定）
@@ -290,7 +288,7 @@ sequenceDiagram
 | A05 | Security Misconfiguration | **適用**: llm-client feature の `LLMClientConfig` が一元管理。ai-validation は設定責務を持たない |
 | A06 | Vulnerable and Outdated Components | `anthropic` SDK / `openai` SDK への直接依存を廃止。CLIツールのバージョン管理は llm-client feature 責務 |
 | A07 | Auth Failures | 該当なし（認証・認可は application 層上位の責務）|
-| A08 | Data Integrity Failures | **適用**: 7 段階 save() / `derive_status` 純粋関数 / `model_validate` による不変条件再検査 |
+| A08 | Data Integrity Failures | **適用**: 4 段階 delete-then-insert（§確定D）/ 呼び元 Tx 境界による ACID 保証 / `derive_status` 純粋関数 / `model_validate` による不変条件再検査 |
 | A09 | Logging Failures | **適用**: `LLMValidationError` は typed フィールドのみ。機密情報をフィールドに含めない設計 |
 | A10 | SSRF | **適用**: CLIサブプロセスで外部 URL を直接指定しない。エンドポイントは CLI ツール固定 |
 

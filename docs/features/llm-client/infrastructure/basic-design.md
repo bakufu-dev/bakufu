@@ -38,7 +38,7 @@
 | 項目 | 内容 |
 |---|---|
 | 入力 | `messages: list[dict]`、`system: str`、`use_tools: bool`、`agent_name: str`、`session_id: str \| None`（`LLMClientConfig` DI 注入）|
-| 処理 | `asyncio.create_subprocess_exec` で `claude -p <prompt> --system-prompt <system> --model <model_name> --output-format stream-json --verbose --tools ""` を起動。`use_tools=True` の場合は `--permission-mode bypassPermissions` を追加し `--tools ""` は省略。セッション継続時は `--resume <session_id>`、新規時は `--session-id <new_uuid>`。stdout を JSONL で非同期読み込み。`event_type="result"` の `result` フィールドに最終テキスト。`asyncio.wait_for()` でタイムアウト制御 |
+| 処理 | `asyncio.create_subprocess_exec` で `claude -p <prompt> --system-prompt <system> --model <model_name> --output-format stream-json --verbose --tools ""` を起動。`use_tools=True` の場合は `--permission-mode bypassPermissions` を追加し `--tools ""` は省略。セッション継続時は `--resume <session_id>`、新規時は `--session-id <new_uuid>`。stdout を JSONL で非同期読み込み。`event_type="system"` かつ `subtype="compact"` のイベント検出時に `compacted=True` をセット（auto-compact 発生の通知）。`event_type="result"` の `result` フィールドに最終テキスト（`is_error=True` の場合は `LLMProviderProcessError` へ変換）。`asyncio.wait_for()` でタイムアウト制御 |
 | 出力 | `ChatResult(response=text, session_id=session_id, compacted=compacted)` |
 | 認証 | Claude Code OAuthトークン（`CLAUDE_HOME` 等で自動認証）。APIキー不要 |
 | エラー時 | `asyncio.TimeoutError` → `LLMProviderTimeoutError` / 非ゼロ終了コード + stderr に `"OAuth"` / `"unauthorized"` / `"authentication"` パターン → `LLMProviderAuthError` / 非ゼロ終了コード（その他）→ `LLMProviderProcessError` / 空応答 → `LLMProviderEmptyResponseError`（MSG-LC-006）|
