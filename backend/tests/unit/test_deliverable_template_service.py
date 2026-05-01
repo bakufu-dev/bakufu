@@ -38,15 +38,6 @@ def _make_mock_session() -> MagicMock:
     return mock_session
 
 
-def _make_service(mock_repo: AsyncMock) -> object:
-    """DeliverableTemplateService を AsyncMock repo + モック session で構築する。"""
-    from bakufu.application.services.deliverable_template_service import (
-        DeliverableTemplateService,
-    )
-
-    return DeliverableTemplateService(dt_repo=mock_repo, session=_make_mock_session())
-
-
 # ---------------------------------------------------------------------------
 # TC-UT-DTS-001: find_by_id → None → DeliverableTemplateNotFoundError
 # ---------------------------------------------------------------------------
@@ -114,9 +105,6 @@ class TestCheckDagTransitiveCycle:
         semver = SemVer(major=1, minor=0, patch=0)
 
         # B が A を参照（A→B→A 循環の B 側）
-        ref_to_a = DeliverableTemplateRef(template_id=id_a, minimum_version=semver)
-        template_b = make_deliverable_template(template_id=id_b)
-
         mock_repo = AsyncMock()
 
         async def _find_by_id(tid: object) -> object:
@@ -137,7 +125,7 @@ class TestCheckDagTransitiveCycle:
         ref_to_b = DeliverableTemplateRef(template_id=id_b, minimum_version=semver)
 
         with pytest.raises(CompositionCycleError) as exc_info:
-            await service._check_dag(refs=(ref_to_b,), root_id=id_a)
+            await service._check_dag(refs=(ref_to_b,), root_id=id_a)  # pyright: ignore[reportPrivateUsage]
         assert exc_info.value.reason == "transitive_cycle"
 
     async def test_transitive_cycle_path_is_non_empty(self) -> None:
@@ -170,7 +158,7 @@ class TestCheckDagTransitiveCycle:
         ref_to_b = DeliverableTemplateRef(template_id=id_b, minimum_version=semver)
 
         with pytest.raises(CompositionCycleError) as exc_info:
-            await service._check_dag(refs=(ref_to_b,), root_id=id_a)
+            await service._check_dag(refs=(ref_to_b,), root_id=id_a)  # pyright: ignore[reportPrivateUsage]
         assert len(exc_info.value.cycle_path) > 0
 
 
@@ -216,7 +204,7 @@ class TestCheckDagDepthLimit:
         root_ref = DeliverableTemplateRef(template_id=ids[0], minimum_version=semver)
 
         with pytest.raises(CompositionCycleError) as exc_info:
-            await service._check_dag(refs=(root_ref,), root_id=uuid4())
+            await service._check_dag(refs=(root_ref,), root_id=uuid4())  # pyright: ignore[reportPrivateUsage]
         assert exc_info.value.reason == "depth_limit"
 
     async def test_depth_limit_cycle_path_is_empty(self) -> None:
@@ -251,7 +239,7 @@ class TestCheckDagDepthLimit:
         root_ref = DeliverableTemplateRef(template_id=ids[0], minimum_version=semver)
 
         with pytest.raises(CompositionCycleError) as exc_info:
-            await service._check_dag(refs=(root_ref,), root_id=uuid4())
+            await service._check_dag(refs=(root_ref,), root_id=uuid4())  # pyright: ignore[reportPrivateUsage]
         assert exc_info.value.cycle_path == []
 
 
@@ -295,7 +283,7 @@ class TestCheckDagNodeLimit:
         service = DeliverableTemplateService(dt_repo=mock_repo, session=_make_mock_session())
 
         with pytest.raises(CompositionCycleError) as exc_info:
-            await service._check_dag(refs=refs, root_id=uuid4())
+            await service._check_dag(refs=refs, root_id=uuid4())  # pyright: ignore[reportPrivateUsage]
         assert exc_info.value.reason == "node_limit"
 
     async def test_node_limit_cycle_path_is_empty(self) -> None:
@@ -326,7 +314,7 @@ class TestCheckDagNodeLimit:
         service = DeliverableTemplateService(dt_repo=mock_repo, session=_make_mock_session())
 
         with pytest.raises(CompositionCycleError) as exc_info:
-            await service._check_dag(refs=refs, root_id=uuid4())
+            await service._check_dag(refs=refs, root_id=uuid4())  # pyright: ignore[reportPrivateUsage]
         assert exc_info.value.cycle_path == []
 
 

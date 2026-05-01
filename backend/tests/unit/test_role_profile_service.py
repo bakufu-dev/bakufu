@@ -113,7 +113,10 @@ class TestUpsertEmpireNotFound:
 # TC-UT-RPS-003: upsert → ref 不在 → DeliverableTemplateNotFoundError
 # ---------------------------------------------------------------------------
 class TestUpsertRefNotFound:
-    """TC-UT-RPS-003: dt_repo が None → DeliverableTemplateNotFoundError (kind=role_profile_ref)。"""
+    """TC-UT-RPS-003: dt_repo が None → DeliverableTemplateNotFoundError (kind=role_profile_ref)。
+
+    kind が "role_profile_ref" であることを検証する。
+    """
 
     async def test_upsert_raises_on_ref_not_found(self) -> None:
         from bakufu.application.exceptions.deliverable_template_exceptions import (
