@@ -31,7 +31,7 @@
 | 入力 | `config: LLMClientConfig` |
 | 処理 | `config.provider` に基づいて `ClaudeCodeLLMClient` / `CodexLLMClient` を選択して返す |
 | 出力 | `LLMProviderPort` を実装したインスタンス |
-| エラー時 | 未知のプロバイダ名 → `LLMConfigError`（MSG-LC-009）|
+| エラー時 | （防御的検査のみ）`config.provider` が `LLMProviderEnum` に存在しない場合 → `LLMConfigError`（MSG-LC-009）。通常は REQ-LC-013 が先行検出するため、ここには到達しない |
 
 ### REQ-LC-015: Claude Code CLI クライアントの実装
 
@@ -41,7 +41,7 @@
 | 処理 | `asyncio.create_subprocess_exec` で `claude -p <prompt> --system-prompt <system> --model <model_name> --output-format stream-json --verbose --tools ""` を起動。`use_tools=True` の場合は `--permission-mode bypassPermissions` を追加し `--tools ""` は省略。セッション継続時は `--resume <session_id>`、新規時は `--session-id <new_uuid>`。stdout を JSONL で非同期読み込み。`event_type="result"` の `result` フィールドに最終テキスト。`asyncio.wait_for()` でタイムアウト制御 |
 | 出力 | `ChatResult(response=text, session_id=session_id, compacted=compacted)` |
 | 認証 | Claude Code OAuthトークン（`CLAUDE_HOME` 等で自動認証）。APIキー不要 |
-| エラー時 | `asyncio.TimeoutError` → `LLMProviderTimeoutError` / 非ゼロ終了コード → `LLMProviderProcessError` / 空応答 → `LLMProviderEmptyResponseError`（MSG-LC-006）|
+| エラー時 | `asyncio.TimeoutError` → `LLMProviderTimeoutError` / 非ゼロ終了コード + stderr に `"OAuth"` / `"unauthorized"` / `"authentication"` パターン → `LLMProviderAuthError` / 非ゼロ終了コード（その他）→ `LLMProviderProcessError` / 空応答 → `LLMProviderEmptyResponseError`（MSG-LC-006）|
 
 ### REQ-LC-016: Codex CLI クライアントの実装
 
@@ -51,7 +51,7 @@
 | 処理 | `asyncio.create_subprocess_exec` で `codex exec --json --skip-git-repo-check --ephemeral --dangerously-bypass-approvals-and-sandbox <prompt>` を起動。stdout を JSONL で非同期読み込み。`item.type == "agent_message"` から応答テキスト抽出。`asyncio.wait_for()` でタイムアウト制御 |
 | 出力 | `ChatResult(response=text, session_id=None, compacted=False)` |
 | 認証 | OpenAIサブスクリプション認証（ローカルインストール済み Codex CLI が自動認証）。APIキー不要 |
-| エラー時 | `asyncio.TimeoutError` → `LLMProviderTimeoutError` / 非ゼロ終了コード → `LLMProviderProcessError` / 空応答 → `LLMProviderEmptyResponseError`（MSG-LC-006）|
+| エラー時 | `asyncio.TimeoutError` → `LLMProviderTimeoutError` / 非ゼロ終了コード + stderr に `"auth"` / `"unauthorized"` / `"subscription"` パターン → `LLMProviderAuthError` / 非ゼロ終了コード（その他）→ `LLMProviderProcessError` / 空応答 → `LLMProviderEmptyResponseError`（MSG-LC-006）/ セッション再開失敗 → 新規セッションでリトライ（Codex resume 失敗パターン対応）|
 | セキュリティ注記 | `--dangerously-bypass-approvals-and-sandbox` フラグの技術的根拠は §確定 SEC5 を参照 |
 
 ### REQ-LC-017: LLMProviderPort Protocol の定義
@@ -59,7 +59,7 @@
 | 項目 | 内容 |
 |---|---|
 | 入力 | — |
-| 処理 | CLI サブプロセス統合クライアントの共通インターフェースを Protocol として定義する |
+| 処理 | CLI サブプロセス統合クライアントの共通インターフェースを Protocol として定義する。定義責務は `llm-client/domain` sub-feature（`basic-design.md`）。本 sub-feature は infrastructure 実装のみ |
 | 出力 | `LLMProviderPort` Protocol（`provider: str` プロパティ + `async chat()` メソッド）|
 | エラー時 | — |
 
@@ -68,7 +68,7 @@
 | 項目 | 内容 |
 |---|---|
 | 入力 | `response: str`、`session_id: str \| None`、`compacted: bool`（デフォルト `False`）|
-| 処理 | `NamedTuple` として不変 VO を定義する |
+| 処理 | `NamedTuple` として不変 VO を定義する。定義責務は `llm-client/domain` sub-feature（`basic-design.md`）。本 sub-feature は infrastructure 実装のみ |
 | 出力 | `ChatResult` インスタンス |
 | エラー時 | — |
 
@@ -77,7 +77,7 @@
 | 項目 | 内容 |
 |---|---|
 | 入力 | `message: str`、`provider: str` |
-| 処理 | CLI サブプロセス呼び出し時の例外を `LLMProviderError` 基底クラスとサブクラス階層として定義する |
+| 処理 | CLI サブプロセス呼び出し時の例外を `LLMProviderError` 基底クラスとサブクラス階層として定義する。定義責務は `llm-client/domain` sub-feature（`basic-design.md`）。本 sub-feature は infrastructure 実装のみ |
 | 出力 | `LLMProviderError` + 4 サブクラス（Timeout / Auth / Process / EmptyResponse）|
 | エラー時 | — |
 
@@ -87,9 +87,9 @@
 
 | 機能 ID | モジュール | ディレクトリ | 責務 |
 |---|---|---|---|
-| REQ-LC-017 | `LLMProviderPort` | `backend/src/bakufu/application/ports/llm_provider_port.py` | CLI サブプロセス統合の Port（Protocol）。`provider: str` プロパティ + `chat()` メソッド |
-| REQ-LC-018 | `ChatResult` | `backend/src/bakufu/domain/value_objects.py`（追記）| LLM CLI 応答の値オブジェクト（NamedTuple）|
-| REQ-LC-019 | `LLMProviderError` 階層 | `backend/src/bakufu/domain/errors.py`（追記）| CLI サブプロセス例外の基底クラスとサブクラス |
+| REQ-LC-017 | `LLMProviderPort` | `backend/src/bakufu/application/ports/llm_provider_port.py` | CLI サブプロセス統合の Port（Protocol）。定義責務は **`llm-client/domain`** sub-feature。本 sub-feature は実装のみ参照 |
+| REQ-LC-018 | `ChatResult` | `backend/src/bakufu/domain/value_objects.py`（追記）| LLM CLI 応答の値オブジェクト（NamedTuple）。定義責務は **`llm-client/domain`** sub-feature。本 sub-feature は実装のみ参照 |
+| REQ-LC-019 | `LLMProviderError` 階層 | `backend/src/bakufu/domain/errors.py`（追記）| CLI サブプロセス例外の基底クラスとサブクラス。定義責務は **`llm-client/domain`** sub-feature。本 sub-feature は実装のみ参照 |
 | REQ-LC-015 | `ClaudeCodeLLMClient` | `backend/src/bakufu/infrastructure/llm/claude_code_llm_client.py` | Claude Code CLI サブプロセス統合。`LLMProviderPort` 実装 |
 | REQ-LC-016 | `CodexLLMClient` | `backend/src/bakufu/infrastructure/llm/codex_llm_client.py` | Codex CLI サブプロセス統合。`LLMProviderPort` 実装 |
 | REQ-LC-013 | `LLMClientConfig` | `backend/src/bakufu/infrastructure/llm/config.py` | 環境変数ベースの設定 VO（Pydantic BaseSettings）。APIキーフィールドなし |
@@ -136,8 +136,8 @@ backend/src/bakufu/
 | ランタイム | pydantic v2 + pydantic-settings | `backend/pyproject.toml` | `BaseSettings` 使用 |
 | 外部コマンド | `claude` CLI | システムインストール済み | Claude Code OAuthトークン認証。APIキー不要 |
 | 外部コマンド | `codex` CLI | システムインストール済み | OpenAIサブスクリプション認証。APIキー不要 |
-| 内部依存 | `LLMProviderPort` Port | `bakufu.application.ports.llm_provider_port` | 本 sub-feature で新規定義 |
-| 内部依存 | `ChatResult` / `LLMProviderError` 階層 | `bakufu.domain` | 本 sub-feature で追記 |
+| 内部依存 | `LLMProviderPort` Port | `bakufu.application.ports.llm_provider_port` | `llm-client/domain` sub-feature で定義。本 sub-feature は参照のみ |
+| 内部依存 | `ChatResult` / `LLMProviderError` 階層 | `bakufu.domain` | `llm-client/domain` sub-feature で定義。本 sub-feature は参照のみ |
 
 **注意**: `anthropic` SDK / `openai` SDK への依存は**一切ない**。全 LLM 呼び出しは CLI サブプロセス経由のみ。
 

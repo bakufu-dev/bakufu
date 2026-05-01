@@ -15,32 +15,32 @@
 
 本 sub-feature が満たすべき機能要件（入力 / 処理 / 出力 / エラー時）を凍結する。業務根拠は [`../feature-spec.md §9 受入基準`](../feature-spec.md) を参照。
 
-### REQ-LC-001: LLM へのテキスト補完要求
+### REQ-LC-001: LLMProviderPort 経由の LLM テキスト補完
 
 | 項目 | 内容 |
 |---|---|
-| 入力 | `messages: tuple[LLMMessage, ...]`（1 件以上）、`max_tokens: int`（1 以上）|
-| 処理 | `AbstractLLMClient` Protocol を実装した具体クライアントが LLM API を非同期呼び出しし、テキスト応答を返す |
-| 出力 | `LLMResponse`（`content: str`）|
-| エラー時 | タイムアウト → `LLMTimeoutError`（MSG-LC-001）/ レート制限 → `LLMRateLimitError`（MSG-LC-002）/ 認証失敗 → `LLMAuthError`（MSG-LC-003）/ その他 API エラー → `LLMAPIError`（MSG-LC-004）|
+| 入力 | `messages: list[dict]`（1 件以上）、`system: str`（評価者ロール指示）、`use_tools: bool`（デフォルト False）、`agent_name: str`（デフォルト ""）、`session_id: str \| None`（セッション継続 ID）|
+| 処理 | `LLMProviderPort` Protocol を実装した具体クライアントが CLI サブプロセスを起動し、テキスト応答を返す |
+| 出力 | `ChatResult`（`response: str`、`session_id: str \| None`、`compacted: bool`）|
+| エラー時 | タイムアウト → `LLMProviderTimeoutError`（MSG-LC-001）/ 認証失敗 → `LLMProviderAuthError`（MSG-LC-003）/ プロセスエラー → `LLMProviderProcessError`（MSG-LC-004）/ 空応答 → `LLMProviderEmptyResponseError`（MSG-LC-006）|
 
-### REQ-LC-002: LLMMessage 値オブジェクトの構築
-
-| 項目 | 内容 |
-|---|---|
-| 入力 | `role: MessageRole`（`system` / `user` / `assistant`）、`content: str`（1 文字以上）|
-| 処理 | Pydantic バリデーション → frozen モデルとしてインスタンス化 |
-| 出力 | `LLMMessage` インスタンス（不変）|
-| エラー時 | `content` 空文字 → `LLMMessageValidationError`（MSG-LC-005）|
-
-### REQ-LC-003: LLMResponse 値オブジェクトの構築
+### REQ-LC-002: ChatResult VO の定義
 
 | 項目 | 内容 |
 |---|---|
-| 入力 | `content: str`（具体クライアントが LLM から受け取った応答テキスト）|
-| 処理 | Pydantic バリデーション → frozen モデルとしてインスタンス化 |
-| 出力 | `LLMResponse` インスタンス（不変）|
-| エラー時 | `content` 空文字の場合は具体クライアントが警告ログを出力し、フォールバック文字列で `LLMResponse` を構築する（MSG-LC-006）|
+| 入力 | `response: str`（LLM 応答テキスト）、`session_id: str \| None`（CLI セッション ID）、`compacted: bool`（コンテキスト圧縮フラグ）|
+| 処理 | `NamedTuple` として不変 VO を定義する |
+| 出力 | `ChatResult` インスタンス |
+| エラー時 | 該当なし |
+
+### REQ-LC-003: LLMProviderError 階層の定義
+
+| 項目 | 内容 |
+|---|---|
+| 入力 | `message: str`（人間可読エラー説明）、`provider: str`（`"claude-code"` / `"codex"`）|
+| 処理 | CLI サブプロセス呼び出し時に発生する例外を `LLMProviderError` 基底クラスと 4 サブクラス（Timeout / Auth / Process / EmptyResponse）として定義する |
+| 出力 | 例外階層 |
+| エラー時 | 該当なし |
 
 ---
 
@@ -48,9 +48,9 @@
 
 | 機能 ID | モジュール | ディレクトリ | 責務 |
 |---|---|---|---|
-| REQ-LC-001 | `AbstractLLMClient` Protocol | `backend/src/bakufu/application/ports/llm_client.py` | LLM 呼び出し契約（Port）。全 feature が依存するインターフェース |
-| REQ-LC-002, 003 | `LLMMessage` / `LLMResponse` VO | `backend/src/bakufu/domain/value_objects.py`（既存ファイル追記）| LLM 通信の値オブジェクト |
-| REQ-LC-001〜004 | `LLMClientError` 階層 | `backend/src/bakufu/domain/errors.py`（既存ファイル追記）| LLM 呼び出し例外の基底クラスとサブクラス |
+| REQ-LC-001 | `LLMProviderPort` | `backend/src/bakufu/application/ports/llm_provider_port.py` | LLM CLI 呼び出し契約（Port）。全 feature が依存するインターフェース |
+| REQ-LC-002 | `ChatResult` VO | `backend/src/bakufu/domain/value_objects.py`（追記）| LLM CLI 応答の値オブジェクト（NamedTuple）|
+| REQ-LC-003 | `LLMProviderError` 階層 | `backend/src/bakufu/domain/errors.py`（追記）| LLM CLI 呼び出し例外の基底クラスとサブクラス |
 
 ```
 本 sub-feature で追加・変更されるファイル:
@@ -58,24 +58,22 @@
 backend/src/bakufu/
 ├── application/
 │   └── ports/
-│       └── llm_client.py               # 新規: AbstractLLMClient Protocol
+│       └── llm_provider_port.py         # 新規: LLMProviderPort Protocol
 └── domain/
-    ├── value_objects.py                 # 追記: LLMMessage / LLMResponse / MessageRole
-    └── errors.py                        # 追記: LLMClientError 例外階層
+    ├── value_objects.py                 # 追記: ChatResult VO
+    └── errors.py                        # 追記: LLMProviderError 例外階層
 ```
 
 ## ユーザー向けメッセージ一覧
 
 本 sub-feature は API / CLI からエンドユーザーに直接表示するメッセージを持たない。以下はログ出力・例外メッセージとして Application Service が利用する内部メッセージである。
 
-| ID | 種別 | メッセージ（要旨） | 表示条件 |
+| ID | 種別 | メッセージ（要旨）| 表示条件 |
 |---|---|---|---|
-| MSG-LC-001 | エラー | LLM API タイムアウト | `asyncio.TimeoutError` 発生時 |
-| MSG-LC-002 | エラー | レート制限超過 | HTTP 429 応答時 |
-| MSG-LC-003 | エラー | API 認証失敗 | HTTP 401 / 403 応答時 |
-| MSG-LC-004 | エラー | LLM API 汎用エラー | 上記以外の API エラー時 |
-| MSG-LC-005 | エラー | LLMMessage.content が空文字 | REQ-LC-002 バリデーション失敗時 |
-| MSG-LC-006 | 警告 | LLM 応答テキストが空 | LLM が text block を返さなかった時 |
+| MSG-LC-001 | エラー | LLM CLI タイムアウト | `asyncio.TimeoutError` 発生時 |
+| MSG-LC-003 | エラー | LLM CLI 認証失敗 | stderr 認証パターン検出時 |
+| MSG-LC-004 | エラー | LLM CLI プロセスエラー | 非ゼロ終了コード（非認証）時 |
+| MSG-LC-006 | 警告 | LLM CLI 空応答 | stdout から応答テキスト取得不可時 |
 
 各メッセージの確定文言は [`detailed-design.md §MSG 確定文言表`](detailed-design.md) で凍結する。
 
@@ -84,90 +82,59 @@ backend/src/bakufu/
 | 区分 | 依存 | バージョン方針 | 備考 |
 |---|---|---|---|
 | ランタイム | Python 3.12+ | `pyproject.toml` | 既存 |
-| ランタイム | pydantic v2 | `pyproject.toml` | 既存。frozen VO に使用 |
-| ランタイム | `anthropic` SDK | `backend/pyproject.toml` に追加 | Phase 1 採用。infrastructure sub-feature の依存だが port 定義層は SDK に依存しない |
-| ランタイム | `openai` SDK | 同上 | Phase 1 採用 |
+| ランタイム | pydantic v2 | `pyproject.toml` | 既存。domain VO で必要な場合に使用 |
 
-**注意**: `application/ports/llm_client.py`（本 sub-feature）は `anthropic` / `openai` SDK を **import しない**。SDK への依存は `infrastructure/` に封じ込める。本 sub-feature は純粋な型・Protocol 定義のみ。
+**注意**: `application/ports/llm_provider_port.py`（本 sub-feature）は `anthropic` / `openai` SDK を **import しない**。SDK への依存は `infrastructure/` に封じ込める。本 sub-feature は純粋な型・Protocol 定義のみ。CLI サブプロセスを利用するため Phase 1 では API キー不要。
 
 ## クラス設計（概要）
 
 ```mermaid
 classDiagram
-    class AbstractLLMClient {
-        <<Protocol>>
-        +complete(messages, max_tokens) LLMResponse
+    class LLMProviderPort {
+        <<Protocol, application/ports>>
+        +provider: str
+        +chat(messages, system, use_tools, agent_name, session_id) ChatResult
     }
-
-    class LLMMessage {
-        <<frozen VO>>
-        +role: MessageRole
-        +content: str
+    class ChatResult {
+        <<NamedTuple, domain/value_objects>>
+        +response: str
+        +session_id: str | None
+        +compacted: bool
     }
-
-    class LLMResponse {
-        <<frozen VO>>
-        +content: str
-    }
-
-    class MessageRole {
-        <<Enum>>
-        SYSTEM
-        USER
-        ASSISTANT
-    }
-
-    class LLMClientError {
-        <<Exception>>
+    class LLMProviderError {
+        <<Exception, domain/errors>>
         +message: str
         +provider: str
     }
-
-    class LLMTimeoutError {
-        <<Exception>>
-    }
-
-    class LLMRateLimitError {
-        <<Exception>>
-    }
-
-    class LLMAuthError {
-        <<Exception>>
-    }
-
-    class LLMAPIError {
-        <<Exception>>
-        +status_code: int | None
-    }
-
-    LLMMessage --> MessageRole
-    AbstractLLMClient ..> LLMMessage : uses
-    AbstractLLMClient ..> LLMResponse : returns
-    LLMTimeoutError --|> LLMClientError
-    LLMRateLimitError --|> LLMClientError
-    LLMAuthError --|> LLMClientError
-    LLMAPIError --|> LLMClientError
+    class LLMProviderTimeoutError { <<Exception>> }
+    class LLMProviderAuthError { <<Exception>> }
+    class LLMProviderProcessError { <<Exception>> }
+    class LLMProviderEmptyResponseError { <<Exception>> }
+    LLMProviderPort ..> ChatResult : returns
+    LLMProviderTimeoutError --|> LLMProviderError
+    LLMProviderAuthError --|> LLMProviderError
+    LLMProviderProcessError --|> LLMProviderError
+    LLMProviderEmptyResponseError --|> LLMProviderError
 ```
 
 **凝集のポイント**:
-- `AbstractLLMClient` は `application/ports/` に置き、SDK への依存ゼロを維持する。これにより protocol を消費する Application Service（`ValidationService` 等）が SDK に依存しない
-- `LLMClientError` 階層は `domain/errors.py` に置く。domain の例外は SDK 非依存であり、呼び出し元が `except LLMClientError` で一括捕捉または `except LLMTimeoutError` で個別捕捉できる
-- `LLMMessage` / `LLMResponse` は frozen Pydantic VO。変更不能により並行処理での意図しない状態変更を防ぐ
+- `LLMProviderPort` は `application/ports/` に置き、CLI ツールへの依存ゼロを維持する。これにより protocol を消費する Application Service（`ValidationService` 等）がサブプロセス実装に依存しない
+- `LLMProviderError` 階層は `domain/errors.py` に置く。domain の例外は CLI 実装非依存であり、呼び出し元が `except LLMProviderError` で一括捕捉または各サブクラスで個別捕捉できる
+- `ChatResult` は `NamedTuple` による不変 VO。`session_id` はセッション継続のために保持し、`compacted` はコンテキスト圧縮の発生を呼び出し元に通知する
 
 ## 処理フロー
 
 ### ユースケース 1: UC-LC-001 — LLM テキスト補完
 
-1. Application Service が `LLMMessage` を構築してタプルに積む
-2. Service が DI で注入された `AbstractLLMClient.complete(messages, max_tokens)` を呼ぶ
-3. 具体実装（`ClaudeCodeLLMClient` / `CodexLLMClient` 等）が `asyncio.wait_for()` でタイムアウト付き SDK 呼び出しを実行（処理は infrastructure sub-feature で定義）
-4. SDK が応答を返したら具体実装が `LLMResponse` を構築して返却
-5. SDK がエラーを返したら具体実装が `LLMClientError` サブクラスに変換して raise
-6. Service が `LLMResponse.content` を受け取り業務ロジックを継続
+1. Application Service が `_llm_provider.chat(messages, system, session_id=None)` を呼ぶ
+2. DI で注入された具体実装（`ClaudeCodeLLMClient` 等）が CLI サブプロセスを起動する（処理は infrastructure sub-feature で定義）
+3. CLI が JSONL 形式でストリーム応答を返したら具体実装が `ChatResult` を構築して返却
+4. CLI がエラーを返したら具体実装が `LLMProviderError` サブクラスに変換して raise
+5. Service が `result.response` を受け取り業務ロジックを継続
 
 ### ユースケース 2: UC-LC-003 — エラーハンドリング
 
-1. `complete()` が `LLMTimeoutError` / `LLMRateLimitError` / `LLMAuthError` / `LLMAPIError` を raise
+1. `chat()` が `LLMProviderTimeoutError` / `LLMProviderAuthError` / `LLMProviderProcessError` / `LLMProviderEmptyResponseError` を raise
 2. 呼び出し元 Service が catch して業務エラーに変換（例: `DeliverableRecordError`）
 3. リトライ戦略は呼び出し元 Service の責務（本 feature は raise するのみ）
 
@@ -176,41 +143,43 @@ classDiagram
 ```mermaid
 sequenceDiagram
     participant Svc as ApplicationService
-    participant Port as AbstractLLMClient
-    participant Impl as AnthropicLLMClient
-    participant SDK as Anthropic SDK
+    participant Port as LLMProviderPort
+    participant Impl as ClaudeCodeLLMClient
+    participant CLI as claude (subprocess)
 
-    Svc->>Port: complete(messages, max_tokens)
+    Svc->>Port: chat(messages, system, session_id=None)
     Port->>Impl: (DI で具体実装が呼ばれる)
-    Impl->>SDK: asyncio.wait_for(messages.create(...), timeout)
+    Impl->>CLI: asyncio.create_subprocess_exec(["claude", "-p", ...])
     alt 正常応答
-        SDK-->>Impl: Message response
-        Impl->>Impl: _extract_text(response)
-        Impl-->>Svc: LLMResponse(content=text)
+        CLI-->>Impl: stdout JSONL (stream-json)
+        Impl-->>Svc: ChatResult(response=text, session_id=...)
     else タイムアウト
-        SDK--xImpl: TimeoutError
-        Impl-->>Svc: raises LLMTimeoutError
-    else 429 Rate Limit
-        SDK--xImpl: RateLimitError
-        Impl-->>Svc: raises LLMRateLimitError
-    else 401/403 Auth
-        SDK--xImpl: AuthenticationError
-        Impl-->>Svc: raises LLMAuthError
+        CLI--xImpl: asyncio.TimeoutError
+        Impl-->>Svc: raises LLMProviderTimeoutError
+    else 認証失敗 (stderr: "OAuth"/"unauthorized")
+        CLI--xImpl: 非ゼロ終了 + 認証パターン
+        Impl-->>Svc: raises LLMProviderAuthError
+    else プロセスエラー（その他）
+        CLI--xImpl: 非ゼロ終了
+        Impl-->>Svc: raises LLMProviderProcessError
     end
 ```
 
 ## アーキテクチャへの影響
 
-- [`docs/design/domain-model.md`](../../../design/domain-model.md) への変更: `LLMMessage` / `LLMResponse` VO と `LLMClientError` 例外階層を §Value Object / §Domain Errors に追記
-- [`docs/design/tech-stack.md`](../../../design/tech-stack.md) への変更: §LLM Adapter に `AbstractLLMClient`（HTTP API）vs `LLMProviderPort`（CLI subprocess）の役割区分を明記（同一 PR で更新）
+- [`docs/design/domain-model.md`](../../../design/domain-model.md) への変更: `ChatResult` VO と `LLMProviderError` 例外階層を §Value Object / §Domain Errors に追記
+- [`docs/design/tech-stack.md`](../../../design/tech-stack.md) への変更: §LLM Adapter に `LLMProviderPort`（CLI subprocess）の役割区分を明記（同一 PR で更新）
 - 既存 feature への波及: `ai-validation`（Issue #123）は `LLMProviderPort`（CLI subprocess）を DI で受け取る設計に移行済み（PR #148）
+- `infrastructure` sub-feature は `LLMProviderPort` を実装する `ClaudeCodeLLMClient` / `CodexLLMClient` を提供する
 
 ## 外部連携
 
 | 連携先 | 目的 | プロトコル | 認証 | タイムアウト / リトライ |
 |---|---|---|---|---|
-| Anthropic API | テキスト補完（claude-3-5-sonnet 等）| HTTPS（anthropic SDK 経由）| API Key（SecretStr）| タイムアウト: `LLMClientConfig.timeout_seconds`（デフォルト 30s）/ リトライ: 呼び出し元 Service が責任 |
-| OpenAI API | テキスト補完（gpt-4o 等）| HTTPS（openai SDK 経由）| API Key（SecretStr）| 同上 |
+| `claude` CLI | テキスト補完（claude-code）| サブプロセス（stdin/stdout）| OAuth（API キー不要）| タイムアウト: infrastructure で設定 / リトライ: 呼び出し元 Service が責任 |
+| `codex` CLI | テキスト補完（codex）| サブプロセス（stdin/stdout）| サブスクリプション認証（API キー不要）| 同上 |
+
+**注意**: Anthropic API（HTTP）・OpenAI API（HTTP）は Phase 1 対象外。Phase 2 将来検討。
 
 ## UX 設計
 
@@ -222,10 +191,10 @@ sequenceDiagram
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |---|---|---|---|
-| **T1: 内部コード誤実装** | `LLMClientConfig.api_key` を `str()` で出力 | API キー平文漏洩 | `SecretStr` 採用（R1-2）。`str(config)` で `**********` を返す Pydantic 仕様で防護（Phase 2 HTTP API アプローチでのみ適用。Phase 1 CLI subprocess では API キー不要）|
-| **T2: SDK 依存の漏洩** | application/ports が SDK 固有例外を再 raise | 呼び出し元が SDK に依存 | `LLMClientError` 階層への変換（R1-3）。infrastructure が SDK 例外を catch して変換する責務を持つ |
+| **T1: 内部コード誤実装** | `provider: str` にクレデンシャルを埋め込む | 認証情報漏洩 | domain 型にクレデンシャルフィールドを持たせない設計。`provider` はプロバイダー名のみを保持する |
+| **T2: CLI 実装の漏洩** | infrastructure が CLI 固有例外を再 raise | 呼び出し元が実装詳細に依存 | `LLMProviderError` 階層への変換（R1-3）。infrastructure が CLI 例外を catch して変換する責務を持つ |
 
-詳細な信頼境界は [`docs/design/threat-model.md`](../../../design/threat-model.md)。
+詳細な信頼境界は [`docs/design/threat-model.md`](../../../design/threat-model.md)。サブプロセスセキュリティの確定 CMD-EXEC は [`../infrastructure/basic-design.md §確定 CMD-EXEC`](../infrastructure/basic-design.md) を参照。
 
 ## ER 図
 
@@ -235,8 +204,7 @@ sequenceDiagram
 
 | 例外種別 | 処理方針 | ユーザーへの通知 |
 |---|---|---|
-| `LLMTimeoutError` | 呼び出し元 Service が catch し、業務エラーに変換してログ出力 | MSG-LC-001（ログ）|
-| `LLMRateLimitError` | 同上。リトライ戦略は Service が決定 | MSG-LC-002（ログ）|
-| `LLMAuthError` | 同上。リトライしない。設定不備として扱う | MSG-LC-003（ログ）|
-| `LLMAPIError` | 同上 | MSG-LC-004（ログ）|
-| `LLMMessageValidationError` | Fail Fast。呼び出し元が空文字メッセージを渡した設計バグ | MSG-LC-005（例外 raise）|
+| `LLMProviderTimeoutError` | 呼び出し元 Service が catch し、業務エラーに変換してログ出力 | MSG-LC-001（ログ）|
+| `LLMProviderAuthError` | 同上。リトライしない。認証設定不備として扱う | MSG-LC-003（ログ）|
+| `LLMProviderProcessError` | 同上 | MSG-LC-004（ログ）|
+| `LLMProviderEmptyResponseError` | 同上。CLI が空応答を返した場合に警告 | MSG-LC-006（ログ）|
