@@ -50,7 +50,7 @@
 | 項目 | 内容 |
 |-----|-----|
 | 入力 | パスパラメータ `template_id: str` + `DeliverableTemplateUpdate`（name / description / type / schema / acceptance_criteria / version / composition 全フィールド必須） |
-| 処理 | `DeliverableTemplateService.update(template_id, ...)` → ①`find_by_id` で現状取得（不在なら 404）→ ②提供 version が現バージョン未満の場合は拒否（§確定 B、MSG-DT-HTTP-004, 422）→ ③version が現バージョン超の場合は `template.create_new_version(new_version)` で新インスタンス生成、同一の場合は `model_validate` で直接再構築 → ④composition の DAG 走査と各 ref 存在確認 → ⑤`async with session.begin():` `save(updated_template)` |
+| 処理 | `DeliverableTemplateService.update(template_id, ...)` → ①`find_by_id` で現状取得（不在なら 404）→ ②提供 version が現バージョン未満の場合は拒否（§確定 B、MSG-DT-HTTP-004, 422）→ ③全フィールドで `model_validate({id: existing_id, ...all_new_values})` にて新インスタンス生成（domain invariant による version_not_greater・自己参照・不変条件検査が先行）→ ④composition の DAG 走査と各 ref 存在確認（`_check_dag` で DFS + 経路スタック）→ ⑤`async with session.begin():` `save(updated_template)` |
 | 出力 | HTTP 200, 更新済み `DeliverableTemplateResponse` |
 | エラー時 | 不在 → 404（MSG-DT-HTTP-001, kind="primary"）/ version 降格 → 422（MSG-DT-HTTP-004）/ version_not_greater（MSG-DT-003, domain raises）→ 422 / composition 循環・上限超過 → 422（MSG-DT-HTTP-003a/003b/003c）/ ref 不在 → 422（MSG-DT-HTTP-002, kind="composition_ref"）|
 | 親 spec 参照 | UC-DT-002, UC-DT-003 |
