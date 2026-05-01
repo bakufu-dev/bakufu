@@ -125,7 +125,8 @@ classDiagram
 
 **凝集のポイント**:
 
-- `TemplateLibrarySeeder` は application 層に配置。`DeliverableTemplateRepository` / `RoleProfileRepository` の Protocol 経由で永続化し、infrastructure 実装に依存しない
+- `TemplateLibrarySeeder` は application 層に配置。`DeliverableTemplateRepository` / `RoleProfileRepository` の **Protocol 経由**で永続化し、infrastructure 実装に依存しない。Repository ファクトリ（`Callable[[AsyncSession], Repository]`）をコンストラクタで DI 注入として受け取る
+- Bootstrap がコンポジションルート。`TemplateLibrarySeeder` に具体実装（`SqliteDeliverableTemplateRepository` 等）を注入する唯一の箇所。application 層のコードは concrete 実装を import しない
 - `definitions.py` はデータ定数のみを保持する純粋なモジュール。副作用なし
 - Bootstrap の `_stage_3b_seed_template_library()` は `TemplateLibrarySeeder._seed_global_templates()` に委譲する（単一責任）
 - UUID5 算出ロジックは `TemplateLibrarySeeder` 内に閉じ、namespace 定数（`BAKUFU_TEMPLATE_NS` / `BAKUFU_ROLE_NS`）は `definitions.py` で一元管理
@@ -179,6 +180,8 @@ sequenceDiagram
     participant Sess as AsyncSession
     participant DB as SQLite
 
+    Note over Boot,Seed: Bootstrap がコンポジションルートとして DI 注入
+    Boot->>Seed: <<create>> TemplateLibrarySeeder(dt_repo_factory=SqliteXxxRepo, rp_repo_factory=SqliteXxxRepo)
     Boot->>Seed: _seed_global_templates(session_factory)
     Seed->>Sess: async with session.begin():
     loop WELL_KNOWN_TEMPLATES × 12件

@@ -14,6 +14,9 @@
 ```mermaid
 classDiagram
     class TemplateLibrarySeeder {
+        -_dt_repo_factory: Callable~AsyncSession, DeliverableTemplateRepository~
+        -_rp_repo_factory: Callable~AsyncSession, RoleProfileRepository~
+        +__init__(dt_repo_factory, rp_repo_factory) None
         -async _seed_global_templates(session_factory: async_sessionmaker) None
         +async seed_role_profiles_for_empire(empire_id: EmpireId, session_factory: async_sessionmaker) None
         -async _upsert_templates(session: AsyncSession, templates: list~DeliverableTemplate~) int
@@ -36,20 +39,21 @@ classDiagram
         +async save(role_profile: RoleProfile) None
     }
 
-    Bootstrap --> TemplateLibrarySeeder : delegates stage 3b
-    TemplateLibrarySeeder --> DeliverableTemplateRepository : save (UPSERT)
-    TemplateLibrarySeeder --> RoleProfileRepository : find + save
+    Bootstrap --> TemplateLibrarySeeder : constructs with concrete repo factories
+    TemplateLibrarySeeder --> DeliverableTemplateRepository : via _dt_repo_factory (Protocol)
+    TemplateLibrarySeeder --> RoleProfileRepository : via _rp_repo_factory (Protocol)
 ```
 
 ### Class: TemplateLibrarySeeder（`application/services/template_library/seeder.py`）
 
-**設計原則**: application 層のサービスクラス。Repository Protocol のみに依存し、具体的な SQLite 実装を知らない。コンストラクタは持たず、全メソッドが `session_factory` を受け取る（UoW 境界を外部に開放せず、自らで `async with session.begin():` を管理する）。
+**設計原則**: application 層のサービスクラス。Repository Protocol のみに依存し、具体的な SQLite 実装を知らない。コンストラクタ（`__init__`）で `DeliverableTemplateRepository` / `RoleProfileRepository` の Protocol ファクトリ（`Callable[[AsyncSession], Repository]`）を DI 注入として受け取る。Bootstrap がコンポジションルートとして具体実装（`SqliteDeliverableTemplateRepository` 等）を注入する。各メソッドは `session_factory` を受け取り、自らで `async with session.begin():` を管理する（UoW 境界を内部に閉じる）。
 
 | メソッド | 引数 | 戻り値 | 制約 |
 |----|----|----|----|
+| `__init__(dt_repo_factory, rp_repo_factory)` | `Callable[[AsyncSession], DeliverableTemplateRepository]`, `Callable[[AsyncSession], RoleProfileRepository]` | — | DI 注入を受け取る。Bootstrap がコンポジションルートとして呼ぶ |
 | `_seed_global_templates(session_factory)` | `async_sessionmaker[AsyncSession]` | `None` | `WELL_KNOWN_TEMPLATES` 全 12 件を 1 トランザクションで UPSERT。1 件でも失敗したら全ロールバック（§確定 E）|
 | `seed_role_profiles_for_empire(empire_id, session_factory)` | `EmpireId`, `async_sessionmaker[AsyncSession]` | `None` | LEADER / DEVELOPER / TESTER / REVIEWER の 4 件を処理。各 Role に対して `find_by_empire_and_role` で存在確認 → なければ save、あれば skip（§確定 F）|
-| `_upsert_templates(session, templates)` | `AsyncSession`, `list[DeliverableTemplate]` | `int`（upserted 件数） | 各テンプレートに対して `SqliteDeliverableTemplateRepository(session).save(t)` を呼ぶ |
+| `_upsert_templates(session, templates)` | `AsyncSession`, `list[DeliverableTemplate]` | `int`（upserted 件数） | 各テンプレートに対して `_dt_repo_factory(session).save(t)` を呼ぶ（`DeliverableTemplateRepository` Protocol 経由。具体実装に依存しない） |
 | `_upsert_role_profile_if_absent(session, empire_id, role, refs)` | `AsyncSession`, `EmpireId`, `Role`, `list[DeliverableTemplateRef]` | `bool`（True: saved / False: skipped） | 存在確認 → RoleProfile 構築 → save または skip |
 
 ### Module: definitions.py（`application/services/template_library/definitions.py`）
@@ -102,6 +106,7 @@ classDiagram
 |---|---|
 | メソッド追加 | `async _stage_3b_seed_template_library(self) -> None` を `_stage_3_migrate()` と `_stage_4_pid_gc()` の間に追加 |
 | `run()` 更新 | `await self._stage_3_migrate()` の直後に `await self._stage_3b_seed_template_library()` を挿入 |
+| DI 注入 | `_stage_3b_seed_template_library()` は Bootstrap がコンポジションルートとして `TemplateLibrarySeeder(dt_repo_factory=SqliteDeliverableTemplateRepository, rp_repo_factory=SqliteRoleProfileRepository)` を構築し、`_seed_global_templates(session_factory)` を呼ぶ。Bootstrap のみが concrete implementation を知る |
 | ログ形式 | `[INFO] Bootstrap stage 3b/8: seeding template-library (N templates)...` / `[INFO] Bootstrap stage 3b/8: template-library seed complete (upserted=N)` |
 | エラー時 | `TemplateLibrarySeeder` が raise した例外を `BakufuConfigError` でラップ（起動中断） |
 
