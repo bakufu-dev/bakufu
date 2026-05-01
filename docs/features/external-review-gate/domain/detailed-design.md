@@ -323,7 +323,8 @@ UI 側 / Repository 側でも入力時マスキング / 永続化前マスキン
 | `feedback_text` range | ✓（`_validate_feedback_text_range`）| ✗ |
 | `audit_trail` append-only | ✓（`_validate_audit_trail_append_only`）| ✗ |
 | `required_deliverable_criteria` 不変 | ✓（`_validate_criteria_immutable`）| ✗ |
-| `required_deliverable_criteria` 引き込み（Stage から収集）| ✗ | ✓（`GateService.create()` で Stage.required_deliverables → AcceptanceCriterion 収集）|
+| `required_deliverable_criteria` 引き込み（Stage から収集）| ✗ | ✓（`GateService.create()` で Stage.required_deliverables → AcceptanceCriterion 収集。dangling ref 時は silently skip、§確定 R1-J 参照）|
+| dangling ref（テンプレート不在）時の silently skip | ✗ | ✓（`GateService.create()` で `find_by_id` が `None` の場合はスキップして残りを収集。Issue #122 §dangling-ref 判断と整合、MVP では Fail Fast しない。`GateService.create()` の呼び出し統合は Issue #107-D で実装）|
 | `task_id` の Task 存在 | ✗ | ✓（`GateService.create()` で `TaskRepository.find_by_id`）|
 | `stage_id` の Stage 存在 + `kind == EXTERNAL_REVIEW` | ✗ | ✓（`GateService.create()` で `WorkflowRepository.find_by_id`）|
 | `reviewer_id` の Owner 存在 | ✗ | ✓（同上）|
