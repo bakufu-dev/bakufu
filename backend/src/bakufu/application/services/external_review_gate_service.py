@@ -3,18 +3,30 @@
 from __future__ import annotations
 
 from datetime import datetime
+from uuid import uuid4
 
 from bakufu.application.exceptions.gate_exceptions import (
     GateAlreadyDecidedError,
     GateAuthorizationError,
     GateNotFoundError,
 )
+from bakufu.application.ports.deliverable_template_repository import (
+    DeliverableTemplateRepository,
+)
 from bakufu.application.ports.external_review_gate_repository import (
     ExternalReviewGateRepository,
 )
 from bakufu.domain.exceptions import ExternalReviewGateInvariantViolation
 from bakufu.domain.external_review_gate.gate import ExternalReviewGate
-from bakufu.domain.value_objects import GateId, OwnerId, TaskId
+from bakufu.domain.value_objects import (
+    AcceptanceCriterion,
+    Deliverable,
+    DeliverableTemplateId,
+    GateId,
+    OwnerId,
+    StageId,
+    TaskId,
+)
 
 
 class ExternalReviewGateService:
@@ -25,10 +37,70 @@ class ExternalReviewGateService:
     GateAuthorizationError を raise する（basic-design.md §確定 UC4 参照）。
     save() はこのクラスに含めない。呼び出し元 router が UoW 内で管理する
     （detailed-design.md §確定E）。
+
+    criteria 収集責務（§確定 J、R1-J）: create() は Stage.required_deliverables
+    に紐づく各 DeliverableTemplate.acceptance_criteria を引き込み、
+    ``required_deliverable_criteria`` として Gate に渡す。
     """
 
-    def __init__(self, repo: ExternalReviewGateRepository) -> None:
+    def __init__(
+        self,
+        repo: ExternalReviewGateRepository,
+        template_repo: DeliverableTemplateRepository,
+    ) -> None:
         self._repo = repo
+        self._template_repo = template_repo
+
+    async def create(
+        self,
+        *,
+        task_id: TaskId,
+        stage_id: StageId,
+        deliverable_snapshot: Deliverable,
+        reviewer_id: OwnerId,
+        required_deliverable_template_ids: list[DeliverableTemplateId],
+        created_at: datetime,
+    ) -> ExternalReviewGate:
+        """PENDING の ExternalReviewGate を生成して返す（保存は呼び出し元の責務）。
+
+        Stage.required_deliverables に紐づく各 DeliverableTemplate の
+        acceptance_criteria を引き込み、``required_deliverable_criteria`` として
+        Gate に snapshot する（§確定 J、R1-J）。
+
+        Args:
+            task_id: 対象 Task の ID。
+            stage_id: EXTERNAL_REVIEW kind の Stage ID。
+            deliverable_snapshot: Gate 生成時の成果物スナップショット（§確定 D）。
+            reviewer_id: 人間レビュワー（CEO）の OwnerId。
+            required_deliverable_template_ids: Stage.required_deliverables から
+                収集した DeliverableTemplateId のリスト。各 template の
+                acceptance_criteria を収集するために使用する。
+            created_at: Gate 起票時刻（呼び出し元が datetime.now(UTC) で生成）。
+
+        Returns:
+            PENDING 状態の新規 ExternalReviewGate。呼び出し元が
+            ``async with session.begin():`` 内で ``save()`` する。
+        """
+        # Stage.required_deliverables から各 DeliverableTemplate の acceptance_criteria
+        # を収集する（§確定 J - GateService の責務）。
+        # 全 criteria をそのまま順序通り tuple に変換する（重複除去は行わない）。
+        # dangling ref（template が見つからない場合）は silently skip する（MVP 方針）。
+        all_criteria: list[AcceptanceCriterion] = []
+        for template_id in required_deliverable_template_ids:
+            template = await self._template_repo.find_by_id(template_id)
+            if template is None:
+                continue
+            all_criteria.extend(template.acceptance_criteria)
+
+        return ExternalReviewGate(
+            id=uuid4(),
+            task_id=task_id,
+            stage_id=stage_id,
+            deliverable_snapshot=deliverable_snapshot,
+            reviewer_id=reviewer_id,
+            required_deliverable_criteria=tuple(all_criteria),
+            created_at=created_at,
+        )
 
     async def find_by_id_or_raise(self, gate_id: GateId) -> ExternalReviewGate:
         """gate_id の Gate を返す。不在の場合は GateNotFoundError を raise。"""

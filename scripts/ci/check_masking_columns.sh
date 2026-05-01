@@ -113,6 +113,13 @@ readonly NO_MASK_FILES=(
     # categories. MaskedJSONEncoded / MaskedText are absent by design.
     "${TABLES_DIR}/deliverable_templates.py"
     "${TABLES_DIR}/role_profiles.py"
+    # ExternalReviewGate criteria (Issue #121, REQ-ERGR-009):
+    # external_review_gate_criteria carries no Schneier #6 secret semantics —
+    # description is classified as "low confidentiality" per
+    # deliverable-template/feature-spec.md §13 (same business judgment as
+    # acceptance_criteria_json in PR #137). MaskedText / MaskedJSONEncoded
+    # are absent by design. CI Layer 1/2 enforce no over-masking.
+    "${TABLES_DIR}/external_review_gate_criteria.py"
 )
 
 for file in "${NO_MASK_FILES[@]}"; do

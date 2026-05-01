@@ -4,7 +4,7 @@
 して直接呼べる — Norman / Steve が agent / room / directive / task の Aggregate
 バリデータで承認したのと同じテスタビリティ パターン。
 
-ヘルパ（5 つ、detailed-design.md §確定 J に対応）:
+ヘルパ（6 つ、detailed-design.md §確定 J に対応）:
 
 1. :func:`_validate_decided_at_consistency` — ``decision == PENDING`` ⇔
    ``decided_at is None``。他 4 状態は tz-aware decided_at を持たなければならない。
@@ -16,6 +16,10 @@
 3. :func:`_validate_feedback_text_range` — NFC コードポイント長 0〜10000。
 4. :func:`_validate_audit_trail_append_only` — rebuild 時に新リストを旧リストと
    比較してチェックする（§確定 C inputs/expectations 表）。
+5. :func:`_validate_criteria_immutable` — プレースホルダ。構造的ガードは
+   ``_rebuild_with_state`` の引数集合に ``required_deliverable_criteria`` を
+   含めないこと（§確定 D'）。本関数は snapshot_immutable と完全対称の構造で、
+   rebuild が万一 criteria を置き換えた場合に明確な失敗経路を提供する。
 
 決定の不変性不変条件（PENDING → 1 遷移のみ）は state machine ``lookup`` 経路で
 強制される。本モジュールはすべての ``model_validate`` で発火する構造的不変条件
@@ -31,7 +35,7 @@ from bakufu.domain.exceptions import ExternalReviewGateInvariantViolation
 from bakufu.domain.value_objects import ReviewDecision
 
 if TYPE_CHECKING:
-    from bakufu.domain.value_objects import AuditEntry, Deliverable
+    from bakufu.domain.value_objects import AcceptanceCriterion, AuditEntry, Deliverable
 
 # Confirmation F: feedback_text 長境界（NFC、strip 無し）。
 MIN_FEEDBACK_LENGTH: int = 0
@@ -170,10 +174,43 @@ def _validate_snapshot_immutable(
         )
 
 
+def _validate_criteria_immutable(
+    previous: tuple[AcceptanceCriterion, ...] | None,
+    current: tuple[AcceptanceCriterion, ...],
+) -> None:
+    """構築時の ``required_deliverable_criteria`` は置き換えられない（MSG-GT-008）。
+
+    構築時（``previous is None``）は任意のタプルを受理する — Aggregate の最初の
+    インスタンスは、アプリケーション サービスやリポジトリ水和が供給する
+    値をそのまま固定する。以降の ``_rebuild_with_state`` 呼び出しは異なる
+    criteria を渡しては **ならない**。実装コントラクト（§確定 D'）は
+    ``required_deliverable_criteria`` を rebuild の引数集合から完全に外し、値が
+    変更されないまま継承されるようにすること。本バリデータは、そのコントラクトが
+    万一漏れた場合の失敗経路セーフティ ネット（§確定 D の snapshot_immutable と
+    完全対称の構造）。
+    """
+    if previous is None:
+        return
+    if current != previous:
+        raise ExternalReviewGateInvariantViolation(
+            kind="criteria_immutable",
+            message=(
+                "[FAIL] Gate required_deliverable_criteria is immutable after construction\n"
+                "Next: required_deliverable_criteria is frozen at Gate creation; "
+                "do not pass it to _rebuild_with_state. "
+                "Issue a new Gate if criteria must change."
+            ),
+            detail={
+                "violation": "criteria_changed",
+            },
+        )
+
+
 __all__ = [
     "MAX_FEEDBACK_LENGTH",
     "MIN_FEEDBACK_LENGTH",
     "_validate_audit_trail_append_only",
+    "_validate_criteria_immutable",
     "_validate_decided_at_consistency",
     "_validate_feedback_text_range",
     "_validate_snapshot_immutable",

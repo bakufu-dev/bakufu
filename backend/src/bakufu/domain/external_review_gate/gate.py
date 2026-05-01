@@ -60,6 +60,7 @@ from pydantic import (
 from bakufu.domain.exceptions import ExternalReviewGateInvariantViolation
 from bakufu.domain.external_review_gate.aggregate_validators import (
     _validate_audit_trail_append_only,
+    _validate_criteria_immutable,
     _validate_decided_at_consistency,
     _validate_feedback_text_range,
     _validate_snapshot_immutable,
@@ -70,6 +71,7 @@ from bakufu.domain.external_review_gate.state_machine import (
     lookup,
 )
 from bakufu.domain.value_objects import (
+    AcceptanceCriterion,
     AuditAction,
     AuditEntry,
     Deliverable,
@@ -109,6 +111,9 @@ class ExternalReviewGate(BaseModel):
     decision: ReviewDecision = ReviewDecision.PENDING
     feedback_text: str = ""
     audit_trail: list[AuditEntry] = []
+    # required_deliverable_criteria: Gate 生成時に Stage.required_deliverables から
+    # 引き込んだ AcceptanceCriterion snapshot（空タプル可）。§確定 D' criteria_immutable。
+    required_deliverable_criteria: tuple[AcceptanceCriterion, ...] = ()
     created_at: datetime
     decided_at: datetime | None = None
 
@@ -155,9 +160,9 @@ class ExternalReviewGate(BaseModel):
         """構造的不変条件を実行する（§確定 J kinds 2 + 4）。
 
         ``decision_already_decided`` は state-machine ``lookup`` 経路で強制される
-        （このバリデータより前に送出される）。``snapshot_immutable`` は
-        :meth:`_rebuild_with_state` が snapshot 引数を受理しないことで構造的に
-        強制される。``audit_trail_append_only`` は :meth:`_rebuild_with_state`
+        （このバリデータより前に送出される）。``snapshot_immutable`` / ``criteria_immutable``
+        は :meth:`_rebuild_with_state` が snapshot / criteria 引数を���理しないことで
+        構造的に強制される。``audit_trail_append_only`` は :meth:`_rebuild_with_state`
         が新インスタンス構築前に旧 trail に対してバリデータを走らせて強制する。
         after-validator に残るのは、水和経路（リポジトリ往復）も満たさなければならない
         単一インスタンス不変条件のペア。
@@ -341,17 +346,20 @@ class ExternalReviewGate(BaseModel):
         if decided_at is not None:
             state["decided_at"] = decided_at
         state["audit_trail"] = [entry.model_dump() for entry in new_audit_trail]
-        # ``deliverable_snapshot`` は ``model_dump`` / ``model_validate`` を
-        # バイト単位で通過する: 構築時に固定したスナップショットが再構築された
-        # Gate にもそのまま継承される（§確定 D §不変条件）。
+        # ``deliverable_snapshot`` / ``required_deliverable_criteria`` は
+        # ``model_dump`` / ``model_validate`` をバイト単位で通過する: 構築時に
+        # 固定した値が再構築された Gate にもそのまま継承される
+        # （§確定 D snapshot_immutable / §確定 D' criteria_immutable）。
         rebuilt = ExternalReviewGate.model_validate(state)
-        # §確定 D 3 重防衛 セーフティ ネット: 上記のキーワード専用シグネチャが
-        # *構造的* 保証（rebuild 経路は新スナップショットを渡せない）であるが、
-        # Steve R-S1 はバリデータを **アクティブ** に保つことを要求するため、構造的
-        # 保証を破る将来のリファクタもここで捕捉される。構造的保証が機能している
-        # 限り、この呼び出しはハッピーパスでは no-op、それ以外では Fail-Fast —
-        # 多層防御セーフティ ネットの理想的な振る舞い。
+        # §確定 D 3 重防衛 セーフティ ネット（snapshot）: 上記のキーワード専用
+        # シグネチャが *構造的* 保証だが、Steve R-S1 はバリデータを **アクティブ**
+        # に保つことを要求するため、構造的保証を破る将来のリファクタもここで捕捉。
         _validate_snapshot_immutable(self.deliverable_snapshot, rebuilt.deliverable_snapshot)
+        # §確定 D' 3 重防衛 セーフティ ネット（criteria）: snapshot と同形。
+        _validate_criteria_immutable(
+            self.required_deliverable_criteria,
+            rebuilt.required_deliverable_criteria,
+        )
         return rebuilt
 
 

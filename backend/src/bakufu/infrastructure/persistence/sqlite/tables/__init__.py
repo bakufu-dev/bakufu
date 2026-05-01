@@ -85,6 +85,11 @@ ExternalReviewGate Aggregate（PR #36）:
   は ``MaskedText``（§確定 R1-E 実適用）。CI 3 層防御の *partial-mask* コントラクト
   に登録され、マスク対象カラムを厳密に 1 つ固定する。PK はドメイン側で割り当てられた
   値（AuditEntry.id、再生成しない）。
+* :mod:`...tables.external_review_gate_criteria` — AcceptanceCriterion snapshot
+  子行（マスク無し、§確定 R1-E REQ-ERGR-009）。Gate 生成時の
+  Stage.required_deliverables から引き込んだ criteria を order_index 付きで保持。
+  PK は保存内部（save() ごとに uuid4() を再生成）。``UNIQUE(gate_id, order_index)``
+  は同一 Gate 内での order_index 重複を禁止し tuple 順序の一意性を保証する。
 
 注意: ``conversations`` / ``conversation_messages`` テーブルは除外
 （§BUG-TR-002 凍結済み）。Task ドメインが ``conversations: list[Conversation]``
@@ -124,6 +129,7 @@ from bakufu.infrastructure.persistence.sqlite.tables import (
     empires,
     external_review_audit_entries,
     external_review_gate_attachments,
+    external_review_gate_criteria,
     external_review_gates,
     outbox,
     pid_registry,
@@ -152,6 +158,7 @@ __all__ = [
     "empires",
     "external_review_audit_entries",
     "external_review_gate_attachments",
+    "external_review_gate_criteria",
     "external_review_gates",
     "outbox",
     "pid_registry",

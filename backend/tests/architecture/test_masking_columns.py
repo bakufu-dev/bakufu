@@ -48,6 +48,7 @@ from bakufu.infrastructure.persistence.sqlite.tables import (
     empires,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     external_review_audit_entries,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     external_review_gate_attachments,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    external_review_gate_criteria,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     external_review_gates,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     outbox,  # noqa: F401  # pyright: ignore[reportUnusedImport]
     pid_registry,  # noqa: F401  # pyright: ignore[reportUnusedImport]
@@ -136,6 +137,11 @@ _NO_MASK_TABLES: list[str] = [
     # secret カテゴリに該当しない。
     "deliverable_templates",
     "role_profiles",
+    # ExternalReviewGate criteria (Issue #121, REQ-ERGR-009):
+    # external_review_gate_criteria は secret セマンティクスを持たない ──
+    # description は deliverable-template §13 で機密レベル「低」と業務判定済み
+    # （PR #137 acceptance_criteria_json 凍結と同一業務判断）。
+    "external_review_gate_criteria",
 ]
 
 # Partial-mask contract: **ちょうど 1 列**だけ masking されているテーブル。

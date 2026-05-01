@@ -63,12 +63,13 @@ type ExternalReviewGateViolationKind = Literal[
     "snapshot_immutable",
     "feedback_text_range",
     "audit_trail_append_only",
+    "criteria_immutable",
 ]
 """external-review-gate 詳細設計 §確定 I に対応する
-:class:`ExternalReviewGateInvariantViolation` の判別子。5 種類で閉じた集合で、
-state-machine バイパス（PENDING 限定の decision 遷移）、4 つの
-``model_validator(mode='after')`` 構造的不変条件、そして audit-trail 追記専用
-コントラクトを網羅する。型・必須フィールド違反は
+:class:`ExternalReviewGateInvariantViolation` の判別子。6 種類で閉じた集合で、
+state-machine バイパス（PENDING 限定の decision 遷移）、5 つの
+``model_validator(mode='after')`` 構造的不変条件（§確定 D' ``criteria_immutable``
+を含む）、そして audit-trail 追記専用コントラクトを網羅する。型・必須フィールド違反は
 :class:`pydantic.ValidationError`（MSG-GT-006）として表面化するため、本判別子
 名前空間には漏れ出さない。"""
 

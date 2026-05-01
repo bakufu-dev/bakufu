@@ -49,6 +49,27 @@ class GateCancel(BaseModel):
 # ── レスポンスモデル ────────────────────────────────────────────────────
 
 
+class AcceptanceCriterionResponse(BaseModel):
+    """Gate 生成時に凍結された受入基準 snapshot の 1 項目（§確定 D'、REQ-ERGR-009）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    description: str
+    required: bool
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_domain(cls, data: Any) -> Any:
+        if not hasattr(data, "id"):
+            return data
+        return {
+            "id": str(data.id),
+            "description": data.description,
+            "required": data.required,
+        }
+
+
 class AuditEntryResponse(BaseModel):
     """audit_trail の 1 エントリ。"""
 
@@ -169,6 +190,9 @@ class GateDetailResponse(BaseModel):
     feedback_text: str
     deliverable_snapshot: DeliverableSnapshotResponse
     audit_trail: list[AuditEntryResponse]
+    # required_deliverable_criteria: Gate 生成時の受入基準 snapshot（空配列可）。
+    # order_index ASC 順（domain の tuple 元順序を保持、§確定 D' / REQ-ERGR-009）。
+    required_deliverable_criteria: list[AcceptanceCriterionResponse]
     created_at: str
     decided_at: str | None
 
@@ -187,6 +211,7 @@ class GateDetailResponse(BaseModel):
             "feedback_text": data.feedback_text,
             "deliverable_snapshot": data.deliverable_snapshot,
             "audit_trail": list(data.audit_trail),
+            "required_deliverable_criteria": list(data.required_deliverable_criteria),
             "created_at": _format_dt(data.created_at),
             "decided_at": _format_dt(decided_at) if decided_at is not None else None,
         }
@@ -202,6 +227,7 @@ class GateListResponse(BaseModel):
 
 
 __all__ = [
+    "AcceptanceCriterionResponse",
     "AttachmentResponse",
     "AuditEntryResponse",
     "DeliverableSnapshotResponse",

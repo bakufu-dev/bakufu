@@ -1,4 +1,4 @@
-"""Alembic 第 8 リビジョンテスト ── ExternalReviewGate アグリゲート (TC-IT-ERGR-001〜008)。
+"""Alembic リビジョンテスト ── ExternalReviewGate アグリゲート (TC-IT-ERGR-001〜010)。
 
 RQ-ERGR-007 / §確定 R1-B / §確定 R1-K / §設計決定 ERGR-001.
 
@@ -402,4 +402,70 @@ class TestAggregrateBoundaryNoForeignKeys:
             f"[FAIL] external_review_gates FKs expected: {{tasks}}, got: {referenced_tables}.\n"
             f"§設計決定 ERGR-001: Only task_id carries an FK (ON DELETE CASCADE).\n"
             f"All FK entries: {fk_list}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# TC-IT-ERGR-009: 0014 creates external_review_gate_criteria table (Issue #121)
+# ---------------------------------------------------------------------------
+class TestCriteriaTablePresent:
+    """TC-IT-ERGR-009: upgrade head が external_review_gate_criteria テーブルを作成する。"""
+
+    async def test_criteria_table_present_after_upgrade(
+        self,
+        empty_engine: AsyncEngine,
+    ) -> None:
+        """TC-IT-ERGR-009: upgrade head 後に external_review_gate_criteria が存在する。"""
+        await run_upgrade_head(empty_engine)
+        async with empty_engine.connect() as conn:
+            result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
+            tables = {row[0] for row in result}
+
+        assert "external_review_gate_criteria" in tables, (
+            f"[FAIL] external_review_gate_criteria table missing after upgrade head.\n"
+            f"Tables found: {tables}\n"
+            f"Next: Check alembic/versions/0014_external_review_gate_criteria.py"
+        )
+
+    async def test_criteria_table_has_gate_id_index(
+        self,
+        empty_engine: AsyncEngine,
+    ) -> None:
+        """TC-IT-ERGR-009: ix_external_review_gate_criteria_gate_id INDEX が存在する。"""
+        await run_upgrade_head(empty_engine)
+        async with empty_engine.connect() as conn:
+            result = await conn.execute(
+                text(
+                    "SELECT name FROM sqlite_master"
+                    " WHERE type='index'"
+                    " AND tbl_name='external_review_gate_criteria'"
+                )
+            )
+            index_names = {row[0] for row in result}
+
+        assert "ix_external_review_gate_criteria_gate_id" in index_names, (
+            f"[FAIL] ix_external_review_gate_criteria_gate_id missing.\n"
+            f"Indexes found: {index_names}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# TC-IT-ERGR-010: 0014.down_revision == "0013_add_room_role_overrides" (Issue #121)
+# ---------------------------------------------------------------------------
+class TestAlembicCriteriaDownRevision:
+    """TC-IT-ERGR-010: 0014 の down_revision が 0013_add_room_role_overrides を指す。"""
+
+    def test_0014_down_revision_is_0013(self) -> None:
+        """TC-IT-ERGR-010: チェーンは 0013 → 0014_external_review_gate_criteria。"""
+        cfg = _alembic_config()
+        script_dir = ScriptDirectory.from_config(cfg)
+        rev = script_dir.get_revision("0014_external_review_gate_criteria")
+        assert rev is not None, (
+            "[FAIL] Revision 0014_external_review_gate_criteria not found.\n"
+            "Next: Check alembic/versions/ for the 0014 migration file."
+        )
+        assert rev.down_revision == "0013_add_room_role_overrides", (
+            f"[FAIL] 0014.down_revision = {rev.down_revision!r},"
+            f" expected '0013_add_room_role_overrides'.\n"
+            f"Chain 0013→0014 is broken."
         )
