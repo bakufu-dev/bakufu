@@ -1,0 +1,30 @@
+{
+  "_meta": {
+    "captured_at": "2026-05-01T00:00:00Z",
+    "endpoint": "https://api.openai.com/v1/chat/completions",
+    "api_version": "v1",
+    "sdk_version": "openai>=1.30.0",
+    "note": "Synthetic fixture based on SDK type structure. Replace with real captured data when BAKUFU_OPENAI_API_KEY is available."
+  },
+  "id": "chatcmpl_characterization_success_001",
+  "object": "chat.completion",
+  "created": 1746124800,
+  "model": "gpt-4o-mini",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "LLMクライアント基盤の動作確認テスト応答です。",
+        "refusal": null
+      },
+      "finish_reason": "stop",
+      "logprobs": null
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 10,
+    "completion_tokens": 25,
+    "total_tokens": 35
+  }
+}

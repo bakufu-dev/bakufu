@@ -1,0 +1,30 @@
+{
+  "_meta": {
+    "captured_at": "2026-05-01T00:00:00Z",
+    "endpoint": "https://api.openai.com/v1/chat/completions",
+    "api_version": "v1",
+    "sdk_version": "openai>=1.30.0",
+    "note": "Synthetic fixture: null content response, triggers empty_response."
+  },
+  "id": "chatcmpl_characterization_null_001",
+  "object": "chat.completion",
+  "created": 1746124800,
+  "model": "gpt-4o-mini",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "refusal": null
+      },
+      "finish_reason": "stop",
+      "logprobs": null
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 10,
+    "completion_tokens": 0,
+    "total_tokens": 10
+  }
+}

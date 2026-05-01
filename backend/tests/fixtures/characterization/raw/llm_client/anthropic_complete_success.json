@@ -1,0 +1,28 @@
+{
+  "_meta": {
+    "captured_at": "2026-05-01T00:00:00Z",
+    "endpoint": "https://api.anthropic.com/v1/messages",
+    "api_version": "2023-06-01",
+    "sdk_version": "anthropic>=0.40.0",
+    "note": "Synthetic fixture based on SDK type structure. Replace with real captured data when BAKUFU_ANTHROPIC_API_KEY is available."
+  },
+  "id": "msg_characterization_success_001",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "text",
+      "text": "LLMクライアント基盤の動作確認テスト応答です。",
+      "citations": null
+    }
+  ],
+  "model": "claude-3-5-sonnet-20241022",
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "usage": {
+    "input_tokens": 15,
+    "output_tokens": 32,
+    "cache_creation_input_tokens": null,
+    "cache_read_input_tokens": null
+  }
+}

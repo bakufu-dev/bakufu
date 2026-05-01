@@ -1,0 +1,15 @@
+{
+  "_meta": {
+    "captured_at": "2026-05-01T00:00:00Z",
+    "endpoint": "https://api.anthropic.com/v1/messages",
+    "api_version": "2023-06-01",
+    "sdk_version": "anthropic>=0.40.0",
+    "error_class": "anthropic.RateLimitError",
+    "status_code": 429,
+    "retry_after_seconds": 60.0
+  },
+  "error": {
+    "type": "rate_limit_error",
+    "message": "Rate limit exceeded. Please retry after 60 seconds."
+  }
+}

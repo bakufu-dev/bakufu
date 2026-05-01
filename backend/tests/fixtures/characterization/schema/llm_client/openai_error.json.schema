@@ -1,0 +1,12 @@
+{
+  "_meta": {"schema_for": "openai_error_*.json", "created_at": "2026-05-01T00:00:00Z"},
+  "type": "object",
+  "required": ["_meta", "error"],
+  "properties": {
+    "_meta": {"type": "object", "required": ["error_class", "status_code"]},
+    "error": {"type": "object", "required": ["type", "message"]}
+  },
+  "statistics": {
+    "observed_error_classes": ["openai.RateLimitError", "openai.AuthenticationError", "openai.InternalServerError"]
+  }
+}
