@@ -1,0 +1,14 @@
+{
+  "_meta": {
+    "captured_at": "2026-05-01T00:00:00Z",
+    "endpoint": "https://api.openai.com/v1/chat/completions",
+    "api_version": "v1",
+    "sdk_version": "openai>=1.30.0",
+    "error_class": "openai.AuthenticationError",
+    "status_code": 401
+  },
+  "error": {
+    "type": "invalid_api_key",
+    "message": "Incorrect API key provided."
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "_meta": {
+    "captured_at": "2026-05-01T00:00:00Z",
+    "endpoint": "https://api.anthropic.com/v1/messages",
+    "api_version": "2023-06-01",
+    "sdk_version": "anthropic>=0.40.0",
+    "note": "Synthetic fixture: tool_use response with no TextBlock, triggers empty_response."
+  },
+  "id": "msg_characterization_no_text_001",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "tool_use",
+      "id": "tool_call_characterization_001",
+      "name": "some_tool",
+      "input": { "key": "value" }
+    }
+  ],
+  "model": "claude-3-5-sonnet-20241022",
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {
+    "input_tokens": 15,
+    "output_tokens": 10,
+    "cache_creation_input_tokens": null,
+    "cache_read_input_tokens": null
+  }
+}

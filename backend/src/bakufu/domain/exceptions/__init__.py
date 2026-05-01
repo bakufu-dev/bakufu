@@ -14,6 +14,7 @@
   :class:`ExternalReviewGateInvariantViolation`
 * :mod:`.deliverable_template` — :class:`DeliverableTemplateInvariantViolation`,
   :class:`RoleProfileInvariantViolation`
+* :mod:`.llm_client` — :class:`LLMClientError` 階層（Issue #144）
 
 すべてのシンボルはここから ``from bakufu.domain.exceptions import XYZ`` で
 インポートできる（後方互換維持）。
@@ -28,6 +29,15 @@ from bakufu.domain.exceptions.deliverable_template import (
 )
 from bakufu.domain.exceptions.directive import DirectiveInvariantViolation, DirectiveViolationKind
 from bakufu.domain.exceptions.empire import EmpireInvariantViolation, EmpireViolationKind
+from bakufu.domain.exceptions.llm_client import (
+    LLMAPIError,
+    LLMAuthError,
+    LLMClientError,
+    LLMMessagesEmptyError,
+    LLMMessageValidationError,
+    LLMRateLimitError,
+    LLMTimeoutError,
+)
 from bakufu.domain.exceptions.review_gate import (
     ExternalReviewGateInvariantViolation,
     ExternalReviewGateViolationKind,
@@ -61,6 +71,13 @@ __all__ = [
     "ExternalReviewGateViolationKind",
     "InternalReviewGateInvariantViolation",
     "InternalReviewGateViolationKind",
+    "LLMAPIError",
+    "LLMAuthError",
+    "LLMClientError",
+    "LLMMessageValidationError",
+    "LLMMessagesEmptyError",
+    "LLMRateLimitError",
+    "LLMTimeoutError",
     "RoleProfileInvariantViolation",
     "RoleProfileViolationKind",
     "RoomInvariantViolation",

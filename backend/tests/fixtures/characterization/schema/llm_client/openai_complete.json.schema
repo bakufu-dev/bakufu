@@ -1,0 +1,16 @@
+{
+  "_meta": {"schema_for": "openai_complete_success.json", "created_at": "2026-05-01T00:00:00Z"},
+  "type": "object",
+  "required": ["id", "object", "created", "model", "choices", "usage"],
+  "properties": {
+    "id": {"type": "string"},
+    "object": {"type": "string", "const": "chat.completion"},
+    "choices": {"type": "array", "minItems": 1},
+    "usage": {"type": "object", "required": ["prompt_tokens", "completion_tokens", "total_tokens"]}
+  },
+  "statistics": {
+    "finish_reason_frequencies": {"stop": 0.90, "length": 0.10},
+    "content_length_mean": 200,
+    "content_length_stddev": 100
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "_meta": {
+    "captured_at": "2026-05-01T00:00:00Z",
+    "endpoint": "https://api.openai.com/v1/chat/completions",
+    "api_version": "v1",
+    "sdk_version": "openai>=1.30.0",
+    "error_class": "openai.RateLimitError",
+    "status_code": 429,
+    "retry_after_seconds": 60.0
+  },
+  "error": {
+    "type": "requests",
+    "message": "Rate limit exceeded. Please retry after 60 seconds."
+  }
+}

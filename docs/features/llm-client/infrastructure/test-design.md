@@ -4,9 +4,16 @@
 <!-- 配置先: docs/features/llm-client/infrastructure/test-design.md -->
 <!-- 対象範囲: REQ-LC-011〜014 / AnthropicLLMClient / OpenAILLMClient / LLMClientConfig / llm_client_factory / MSG-LC-007〜009 + MSG-LC-001〜006（再掲）-->
 
-本 sub-feature は `AnthropicLLMClient` / `OpenAILLMClient` / `LLMClientConfig` / `llm_client_factory` の infrastructure 実装群を対象とする。**外部 LLM API（Anthropic / OpenAI）** への HTTP 呼び出しが外部 I/O の核心であり、テスト実装着手前に **characterization fixture の取得を必須** とする。
+本 sub-feature は `AnthropicLLMClient` / `OpenAILLMClient` / `LLMClientConfig` / `llm_client_factory` の infrastructure 実装群を対象とする。**外部 LLM API（Anthropic / OpenAI）** への HTTP 呼び出しが外部 I/O の核心であり、テスト実装着手前に **characterization fixture の取得（または合成）を必須** とする。
 
-**Characterization 先行ルール**: `AnthropicLLMClient` / `OpenAILLMClient` が依存する LLM API の raw fixture が `tests/fixtures/characterization/raw/llm_client/` に存在しない状態でユニット / 結合テストの実装に着手することを禁止する。先に §Characterization 計画の task を完了させること。
+**Characterization 先行ルール**: `AnthropicLLMClient` / `OpenAILLMClient` が依存する LLM API の raw fixture が `tests/fixtures/characterization/raw/llm_client/` に存在しない状態でユニット / 結合テストの実装に着手することを禁止する。
+
+**合成 fixture 容認方針**（PR #146 での決定）: 有効な API キーが利用できない環境では、実 SDK 型構造（`anthropic.types.Message.model_dump()` / `openai.types.chat.ChatCompletion.model_dump()` 形式）に忠実な合成 fixture（`_meta.synthetic: true`）を使用することを容認する。ただし以下の条件を満たすこと:
+
+- 合成 fixture は実 SDK 型構造と完全に整合すること（`model_validate()` によるラウンドトリップ検証必須）
+- `_meta.captured_at` / `_meta.endpoint` / `_meta.sdk_version` を含む（`synthetic: true` を `_meta` に追記）
+- 実 API キーが入手可能になった時点で実データへの置き換えを優先する
+- `characterization/test_llm_client_characterization.py` は実 API キー取得後に実行できるよう維持する
 
 ## テストマトリクス
 
@@ -58,10 +65,10 @@
 
 | 外部 I/O | 用途 | raw fixture | factory | characterization 状態 |
 |--------|-----|------------|---------|---------------------|
-| **Anthropic API** (`anthropic.AsyncAnthropic.messages.create`)| `AnthropicLLMClient.complete` — 正常応答 | `tests/fixtures/characterization/raw/llm_client/anthropic_complete_success.json` | `AnthropicSDKResponseFactory.build(content='...')` | **要起票** — §未決課題 #1 参照。raw + schema 取得前に UT/IT 実装着手禁止 |
-| **Anthropic API**（エラー応答）| 同上 — RateLimitError / AuthenticationError / APIError 応答形式の確認 | `tests/fixtures/characterization/raw/llm_client/anthropic_error_rate_limit.json` / `anthropic_error_auth.json` / `anthropic_error_api.json` | `AnthropicSDKResponseFactory.build_error(kind='rate_limit' / 'auth' / 'api')` | **要起票** |
-| **OpenAI API** (`openai.AsyncOpenAI.chat.completions.create`)| `OpenAILLMClient.complete` — 正常応答 | `tests/fixtures/characterization/raw/llm_client/openai_complete_success.json` | `OpenAISDKResponseFactory.build(content='...')` | **要起票** |
-| **OpenAI API**（エラー応答）| 同上 — RateLimitError / AuthenticationError / APIError 応答形式の確認 | `tests/fixtures/characterization/raw/llm_client/openai_error_rate_limit.json` / `openai_error_auth.json` / `openai_error_api.json` | `OpenAISDKResponseFactory.build_error(kind='rate_limit' / 'auth' / 'api')` | **要起票** |
+| **Anthropic API** (`anthropic.AsyncAnthropic.messages.create`)| `AnthropicLLMClient.complete` — 正常応答 | `tests/fixtures/characterization/raw/llm_client/anthropic_complete_success.json` | `AnthropicSDKResponseFactory.build(content='...')` | **済（合成 fixture）** — PR #146 で実 SDK 型構造忠実な合成 fixture を配置済み。`model_validate()` ラウンドトリップ検証通過。実 API キー取得時に実データへ置換 |
+| **Anthropic API**（エラー応答）| 同上 — RateLimitError / AuthenticationError / APIError 応答形式の確認 | `tests/fixtures/characterization/raw/llm_client/anthropic_error_rate_limit.json` / `anthropic_error_auth.json` / `anthropic_error_api.json` | `AnthropicSDKResponseFactory` の `AsyncMock.side_effect` パターン | **済（合成 fixture）** |
+| **OpenAI API** (`openai.AsyncOpenAI.chat.completions.create`)| `OpenAILLMClient.complete` — 正常応答 | `tests/fixtures/characterization/raw/llm_client/openai_complete_success.json` | `OpenAISDKResponseFactory.build(content='...')` | **済（合成 fixture）** |
+| **OpenAI API**（エラー応答）| 同上 — RateLimitError / AuthenticationError / APIError 応答形式の確認 | `tests/fixtures/characterization/raw/llm_client/openai_error_rate_limit.json` / `openai_error_auth.json` / `openai_error_api.json` | `OpenAISDKResponseFactory` の `AsyncMock.side_effect` パターン | **済（合成 fixture）** |
 | **環境変数** (`BAKUFU_LLM_PROVIDER` 等)| `LLMClientConfig` 構築 | — | `monkeypatch.setenv` で制御 | **不要** |
 
 **ユニットテストでのモック方針**: 全ての SDK 呼び出し（`AsyncAnthropic.messages.create` / `AsyncOpenAI.chat.completions.create`）は `AsyncMock` でスタブ化。返却値は `AnthropicSDKResponseFactory` / `OpenAISDKResponseFactory`（schema 由来）を使用。インライン辞書リテラルは禁止。
@@ -76,11 +83,12 @@ LLM API（Anthropic / OpenAI）の raw fixture を取得する。`RUN_CHARACTERI
 
 | 項目 | 内容 |
 |---|---|
-| 責任主体 | 実装 PR 担当エンジニア（infrastructure sub-feature 実装者）。実装 PR 着手前に fixture 取得タスクを完了し、fixture ファイルを PR に含める |
-| 取得方法 | `RUN_CHARACTERIZATION=1` を設定して `pytest tests/characterization/` を実行（本流 CI から除外）。取得には有効な API キー（`BAKUFU_ANTHROPIC_API_KEY` / `BAKUFU_OPENAI_API_KEY`）が必要。API キーは bakufu オーナー（まこちゃん）が提供 |
+| 責任主体 | 実装 PR 担当エンジニア（infrastructure sub-feature 実装者）。実装 PR 着手前に fixture 取得または合成タスクを完了し、fixture ファイルを PR に含める |
+| 取得方法（推奨）| `RUN_CHARACTERIZATION=1` を設定して `pytest tests/characterization/` を実行（本流 CI から除外）。実 API キー（`BAKUFU_ANTHROPIC_API_KEY` / `BAKUFU_OPENAI_API_KEY`）が必要。API キーは bakufu オーナー（まこちゃん）が提供 |
+| 代替方法（合成 fixture）| API キーが利用不可の場合、実 SDK 型構造（`model_dump()` 形式）忠実な合成 fixture を作成する。`model_validate()` ラウンドトリップ検証と `_meta.synthetic: true` が必須条件 |
 | fixture 配置先 | `tests/fixtures/characterization/raw/llm_client/`（リポジトリにコミット）|
-| 更新タイミング | ① SDK メジャーバージョン更新時（anthropic 0.x → 1.x 等）② API レスポンス形式変更時（既存 schema ファイルとの差分が出たとき）③ 既存 fixture が stale であることが判明したとき（テスト失敗等）|
-| 未取得でのテスト実装禁止 | 本 test-design.md 冒頭「Characterization 先行ルール」参照。`RUN_CHARACTERIZATION=1` の fixture 取得前に UT/IT 実装に着手することは禁止 |
+| 更新タイミング | ① 実 API キー取得時に合成 fixture を実データへ置換 ② SDK メジャーバージョン更新時（anthropic 0.x → 1.x 等）③ API レスポンス形式変更時（既存 schema との差分が出たとき）|
+| 未配置でのテスト実装禁止 | 合成 fixture を含め fixture が未配置の状態で UT/IT 実装に着手することは禁止 |
 
 ### 取得対象 raw fixture
 
@@ -159,7 +167,7 @@ SDK は `AsyncMock` でスタブ化。返却値は factory 由来のみ。
 | TC-UT-AC-008 | `_convert_messages` — system + user → system 引数に分離 | 正常系 | `(SYSTEM:'評価者役割指示', USER:'成果物テキスト')` | `system == '評価者役割指示'` かつ `messages == [{'role': 'user', 'content': '成果物テキスト'}]` |
 | TC-UT-AC-009 | `_convert_messages` — system メッセージ 2 件 → 改行 `\n\n` で結合 | 境界値 | `(SYSTEM:'指示1', SYSTEM:'指示2', USER:'内容')` | `system == '指示1\n\n指示2'` かつ `messages` に system なし |
 | TC-UT-AC-010 | `_convert_messages` — system なし → system パラメータ渡さない | 正常系 | `(USER:'内容のみ',)` | `system is None` かつ `messages == [{'role': 'user', 'content': '内容のみ'}]` |
-| TC-UT-AC-011 | `_convert_messages` — system のみ（user なし）→ Fail Fast | 異常系 | `(SYSTEM:'指示のみ',)` | `LLMMessageValidationError`（system 除外後に messages リストが空になるため Fail Fast） |
+| TC-UT-AC-011 | `_convert_messages` — system のみ（user なし）→ Fail Fast | 異常系 | `(SYSTEM:'指示のみ',)` | `LLMMessagesEmptyError`（system 除外後に messages リストが空になるため Fail Fast。`LLMMessageValidationError` ではない — §確定F 実装確認済み）|
 
 #### R1-5 物理確認（max_tokens 固定値禁止）
 
@@ -177,7 +185,7 @@ SDK は `AsyncMock` でスタブ化。返却値は factory 由来のみ。
 | TC-UT-OC-004 | `openai.AuthenticationError` → `LLMAuthError` | 異常系 | SDK mock が `openai.AuthenticationError` を raise | 同上 | `LLMAuthError(provider='openai')` |
 | TC-UT-OC-005 | その他 `openai.APIError` → `LLMAPIError` | 異常系 | SDK mock が `openai.APIError(status_code=500)` を raise | 同上 | `LLMAPIError(status_code=500, provider='openai')` |
 | TC-UT-OC-006 | `_extract_text` — `choices[0].message.content` あり | 正常系 | `OpenAISDKResponseFactory.build(content='結果テキスト')` | `'結果テキスト'` が返る |
-| TC-UT-OC-007 | `_extract_text` — content が None → フォールバック | 境界値 | `OpenAISDKResponseFactory.build_null_content()` | `LLM_FALLBACK_RESPONSE_TEXT` が返る。MSG-LC-006 がログ出力される |
+| TC-UT-OC-007 | `_extract_text` — content が None → Fail Fast（§確定D）| 境界値 | `OpenAISDKResponseFactory.build_null_content()` | `LLMAPIError(kind='empty_response', provider='openai')` が raise される。`LLM_FALLBACK_RESPONSE_TEXT` フォールバックは §確定D で廃止済み |
 | TC-UT-OC-008 | `_convert_messages` — system role を messages に含めてよい（OpenAI 仕様）| 正常系 | `(SYSTEM:'指示', USER:'内容')` | `messages == [{'role': 'system', 'content': '指示'}, {'role': 'user', 'content': '内容'}]`（Anthropic とは異なり system 分離しない）|
 
 ### LLMClientConfig（test_config.py）
@@ -255,20 +263,22 @@ backend/
       characterization/
         raw/
           llm_client/
-            anthropic_complete_success.json   # 要起票
-            anthropic_error_rate_limit.json
-            anthropic_error_auth.json
-            anthropic_error_api.json
-            openai_complete_success.json      # 要起票
-            openai_error_rate_limit.json
-            openai_error_auth.json
-            openai_error_api.json
+            anthropic_complete_success.json   # 済（合成 fixture / PR #146）
+            anthropic_complete_no_text.json   # 済（合成 fixture）
+            anthropic_error_rate_limit.json   # 済（合成 fixture）
+            anthropic_error_auth.json         # 済（合成 fixture）
+            anthropic_error_api.json          # 済（合成 fixture）
+            openai_complete_success.json      # 済（合成 fixture / PR #146）
+            openai_complete_null_content.json # 済（合成 fixture）
+            openai_error_rate_limit.json      # 済（合成 fixture）
+            openai_error_auth.json            # 済（合成 fixture）
+            openai_error_api.json             # 済（合成 fixture）
         schema/
           llm_client/
-            anthropic_complete.json.schema    # 要起票
-            anthropic_error.json.schema
-            openai_complete.json.schema       # 要起票
-            openai_error.json.schema
+            anthropic_complete.json.schema    # 済（PR #146）
+            anthropic_error.json.schema       # 済（PR #146）
+            openai_complete.json.schema       # 済（PR #146）
+            openai_error.json.schema          # 済（PR #146）
     characterization/
       test_llm_client_characterization.py    # RUN_CHARACTERIZATION=1 で実行。本流 CI 除外
     unit/
@@ -293,7 +303,7 @@ backend/
 
 | # | タスク | 優先度 | 着手条件 | 備考 |
 |---|-------|-------|---------|------|
-| #1 | **LLM Client Characterization fixture 取得**（最優先・ブロッカー）| **最優先** | `BAKUFU_ANTHROPIC_API_KEY` および `BAKUFU_OPENAI_API_KEY` が利用可能な環境 | Anthropic + OpenAI 両プロバイダ × 正常 + エラー 4 種 = 計 8 raw fixture + 4 schema を `RUN_CHARACTERIZATION=1 pytest tests/characterization/test_llm_client_characterization.py` で取得。取得前に UT / IT の実装を開始してはならない |
+| #1 | **LLM Client Characterization fixture 実データ置換**（PR #146 で合成 fixture を配置済み。実 API キー取得後に実データへ置換）| 中（ブロッカー解除済み）| `BAKUFU_ANTHROPIC_API_KEY` および `BAKUFU_OPENAI_API_KEY` が利用可能な環境 | `RUN_CHARACTERIZATION=1 pytest tests/characterization/test_llm_client_characterization.py` を実行して実データ fixture に置換する。合成 fixture は `_meta.synthetic: true` で識別可能 |
 | #2 | `masking.mask_secrets()` の仕様確認 — `LLMAPIError.raw_error` に API キーが含まれる前提で `mask_secrets()` がどの文字列をマスクするかを確認し、TC-UT-SEC-001〜002 の assert 条件を確定させる | 高 | UT 実装前 | `bakufu.infrastructure.security.masking` モジュールが存在しない場合は先に起票 |
 | #3 | `BAKUFU_LLM_MODEL_NAME` 未設定時のデフォルト値選択ロジック確認 — `provider=anthropic` 時は `claude-3-5-sonnet-20241022`、`provider=openai` 時は `gpt-4o-mini` を返すべきかを実装前に確定させる（TC-UT-CONF-008 の前提）| 中 | UT 実装前 | `LLMClientConfig.model_name` のデフォルト値が provider によって異なる場合、factory 側での制御か config 側での制御かを確定すること |
 
