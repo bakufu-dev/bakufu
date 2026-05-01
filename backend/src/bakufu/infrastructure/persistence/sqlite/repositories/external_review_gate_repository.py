@@ -1,24 +1,30 @@
 """:class:`bakufu.application.ports.ExternalReviewGateRepository` の SQLite アダプタ。
 
-§確定 R1-B の 5 ステップ保存フローを 3 つのテーブル
+§確定 R1-B の 7 ステップ保存フローを 4 つのテーブル
 （``external_review_gates`` / ``external_review_gate_attachments`` /
-``external_review_audit_entries``）に対して実装する:
+``external_review_audit_entries`` / ``external_review_gate_criteria``）に対して実装する:
 
 1. ``DELETE FROM external_review_gate_attachments WHERE gate_id = :id`` —
    CASCADE 親無し、直接 DELETE。新規 Gate では 0 行（no-op）。
 2. ``DELETE FROM external_review_audit_entries WHERE gate_id = :id`` —
    同様。直接 DELETE、CASCADE 親無し。
-3. ``external_review_gates`` UPSERT（id 衝突時に変更可能フィールドを更新。
+3. ``DELETE FROM external_review_gate_criteria WHERE gate_id = :id`` —
+   同様。criteria は domain 不変条件で内容変化なし（冪等）。一貫性のため
+   他子テーブルと同パターン。
+4. ``external_review_gates`` UPSERT（id 衝突時に変更可能フィールドを更新。
    ``task_id``、``stage_id``、``reviewer_id``、``created_at``、および全 ``snapshot_*``
    カラムは意図的に **更新しない** — Gate の起源、レビュアー アサイン、成果物スナップ
    ショットは作成後に不変）。
-4. ``INSERT INTO external_review_gate_attachments`` —
+5. ``INSERT INTO external_review_gate_attachments`` —
    ``gate.deliverable_snapshot.attachments`` の :class:`Attachment` ごとに 1 行。
    保存ごとに各行で新しい ``uuid4()`` PK を生成する（DELETE-then-INSERT パターンが
    PK 衝突しないことを保証する）。ビジネス キーは引き続き ``UNIQUE(gate_id, sha256)``。
-5. ``INSERT INTO external_review_audit_entries`` — ``gate.audit_trail`` の
+6. ``INSERT INTO external_review_audit_entries`` — ``gate.audit_trail`` の
    :class:`AuditEntry` ごとに 1 行。PK は ``AuditEntry.id`` から直接取得する
    （ドメイン側で割り当てられた UUID、再生成しない）。
+7. ``INSERT INTO external_review_gate_criteria`` — ``gate.required_deliverable_criteria``
+   の :class:`AcceptanceCriterion` ごとに 1 行。``order_index`` で元の tuple 順序を保持
+   （enumerate で付与）。保存ごとに各行で新しい ``uuid4()`` PK を生成する。
 
 リポジトリは ``session.commit()`` / ``session.rollback()`` を **決して** 呼ばない。
 呼び元のサービスが ``async with session.begin():`` を実行することで、5 ステップ全てを
@@ -51,6 +57,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bakufu.domain.external_review_gate.gate import ExternalReviewGate
 from bakufu.domain.value_objects import (
+    AcceptanceCriterion,
     Attachment,
     AuditAction,
     AuditEntry,
@@ -65,6 +72,9 @@ from bakufu.infrastructure.persistence.sqlite.tables.external_review_audit_entri
 )
 from bakufu.infrastructure.persistence.sqlite.tables.external_review_gate_attachments import (
     ExternalReviewGateAttachmentRow,
+)
+from bakufu.infrastructure.persistence.sqlite.tables.external_review_gate_criteria import (
+    ExternalReviewGateCriterionRow,
 )
 from bakufu.infrastructure.persistence.sqlite.tables.external_review_gates import (
     ExternalReviewGateRow,
@@ -104,13 +114,13 @@ class SqliteExternalReviewGateRepository:
         ).scalar_one()
 
     async def save(self, gate: ExternalReviewGate) -> None:
-        """§確定 R1-B の 5 ステップ delete-then-insert で ``gate`` を永続化する。
+        """§確定 R1-B の 7 ステップ delete-then-insert で ``gate`` を永続化する。
 
         外側の ``async with session.begin():`` ブロックは呼び元の責任。失敗はそのまま
         伝播するため、アプリケーション サービスの Unit-of-Work 境界はクリーンに
         ロールバックできる（empire-repo §確定 B 踏襲）。
         """
-        gate_row, attach_rows, audit_rows = self._to_rows(gate)
+        gate_row, attach_rows, audit_rows, criteria_rows = self._to_rows(gate)
 
         # Step 1: DELETE external_review_gate_attachments（CASCADE 無し、直接）。
         await self._session.execute(
@@ -126,9 +136,18 @@ class SqliteExternalReviewGateRepository:
             )
         )
 
-        # Step 3: external_review_gates UPSERT。
+        # Step 3: DELETE external_review_gate_criteria（CASCADE 無し、直接）。
+        # criteria は domain 不変条件で内容変化なし（§確定 D'）。冪等に DELETE して
+        # Step 7 で再 INSERT — 他子テーブルと一貫したパターン。
+        await self._session.execute(
+            delete(ExternalReviewGateCriterionRow).where(
+                ExternalReviewGateCriterionRow.gate_id == gate.id
+            )
+        )
+
+        # Step 4: external_review_gates UPSERT。
         # 不変フィールドは DO UPDATE から除外 — Gate の起源、レビュアー アサイン、
-        # 成果物スナップショットは作成後に変化しない。
+        # 成果物スナップショット、criteria は作成後に変化しない。
         upsert_stmt = sqlite_insert(ExternalReviewGateRow).values(gate_row)
         upsert_stmt = upsert_stmt.on_conflict_do_update(
             index_elements=["id"],
@@ -140,13 +159,18 @@ class SqliteExternalReviewGateRepository:
         )
         await self._session.execute(upsert_stmt)
 
-        # Step 4: INSERT external_review_gate_attachments。
+        # Step 5: INSERT external_review_gate_attachments。
         if attach_rows:
             await self._session.execute(insert(ExternalReviewGateAttachmentRow), attach_rows)
 
-        # Step 5: INSERT external_review_audit_entries。
+        # Step 6: INSERT external_review_audit_entries。
         if audit_rows:
             await self._session.execute(insert(ExternalReviewAuditEntryRow), audit_rows)
+
+        # Step 7: INSERT external_review_gate_criteria。
+        # gate_id FK が Step 4 で確定済み。order_index で元の tuple 順序を保持。
+        if criteria_rows:
+            await self._session.execute(insert(ExternalReviewGateCriterionRow), criteria_rows)
 
     async def find_pending_by_reviewer(self, reviewer_id: OwnerId) -> list[ExternalReviewGate]:
         """``reviewer_id`` の全 PENDING Gate を ``created_at DESC, id DESC`` 順で返す。
@@ -262,7 +286,20 @@ class SqliteExternalReviewGateRepository:
             .all()
         )
 
-        return self._from_rows(gate_row, attach_rows, audit_rows)
+        # §確定 R1-C: ORDER BY order_index ASC（元の tuple 順序を復元）。
+        criteria_rows = list(
+            (
+                await self._session.execute(
+                    select(ExternalReviewGateCriterionRow)
+                    .where(ExternalReviewGateCriterionRow.gate_id == gate_row.id)
+                    .order_by(ExternalReviewGateCriterionRow.order_index.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        return self._from_rows(gate_row, attach_rows, audit_rows, criteria_rows)
 
     def _to_rows(
         self,
@@ -271,8 +308,9 @@ class SqliteExternalReviewGateRepository:
         dict[str, Any],
         list[dict[str, Any]],
         list[dict[str, Any]],
+        list[dict[str, Any]],
     ]:
-        """``gate`` を ``(gate_row, attach_rows, audit_rows)`` に変換する。
+        """``gate`` を ``(gate_row, attach_rows, audit_rows, criteria_rows)`` に変換する。
 
         ドメイン層が SQLAlchemy の型階層に偶発的に依存しないよう、SQLAlchemy ``Row``
         オブジェクトは使わない。
@@ -286,11 +324,16 @@ class SqliteExternalReviewGateRepository:
         Attachment の PK: ``external_review_gate_attachments.id`` はドメインレベルの
         アイデンティティを持たない（ビジネス キーは ``UNIQUE(gate_id, sha256)``）。
         保存ごとに各 attachment 行で新しい ``uuid4()`` を生成する。step 1 の DELETE
-        と step 4 の INSERT により PK 衝突は起きない。
+        と step 5 の INSERT により PK 衝突は起きない。
 
         Audit entry の PK: ``external_review_audit_entries.id`` は ``AuditEntry.id``
-        から直接取得（ドメイン側で割り当てられた UUID）。step 2+5 の DELETE-then-INSERT
+        から直接取得（ドメイン側で割り当てられた UUID）。step 2+6 の DELETE-then-INSERT
         フローにより、証跡が伸びても PK 衝突は起きない。
+
+        Criteria の PK: ``external_review_gate_criteria.id`` はドメインレベルの
+        アイデンティティを持たない（ビジネス キーは ``UNIQUE(gate_id, order_index)``）。
+        保存ごとに各 criterion 行で新しい ``uuid4()`` を生成する。step 3 の DELETE
+        と step 7 の INSERT により PK 衝突は起きない。
         """
         gate_row: dict[str, Any] = {
             "id": gate.id,
@@ -337,13 +380,28 @@ class SqliteExternalReviewGateRepository:
             for entry in gate.audit_trail
         ]
 
-        return gate_row, attach_rows, audit_rows
+        criteria_rows: list[dict[str, Any]] = [
+            {
+                # 新規 UUID PK — ビジネス キーは UNIQUE(gate_id, order_index)。
+                "id": _uuid.uuid4(),
+                "gate_id": gate.id,
+                "criterion_id": criterion.id,
+                "description": criterion.description,
+                "required": criterion.required,
+                # order_index: 元の tuple 順序を保持（0-based）。
+                "order_index": idx,
+            }
+            for idx, criterion in enumerate(gate.required_deliverable_criteria)
+        ]
+
+        return gate_row, attach_rows, audit_rows, criteria_rows
 
     def _from_rows(
         self,
         gate_row: ExternalReviewGateRow,
         attach_rows: list[ExternalReviewGateAttachmentRow],
         audit_rows: list[ExternalReviewAuditEntryRow],
+        criteria_rows: list[ExternalReviewGateCriterionRow],
     ) -> ExternalReviewGate:
         """行型から :class:`ExternalReviewGate` を水和する。
 
@@ -395,6 +453,18 @@ class SqliteExternalReviewGateRepository:
             for r in audit_rows
         ]
 
+        # §確定 R1-C: criteria_rows を order_index ASC でソート済みで受け取り、
+        # tuple[AcceptanceCriterion, ...] に変換する（TypeDecorator-trust: UUIDStr は
+        # process_result_value で UUID インスタンスを返すため UUID() ラッピング不要）。
+        required_deliverable_criteria = tuple(
+            AcceptanceCriterion(
+                id=r.criterion_id,
+                description=r.description,
+                required=r.required,
+            )
+            for r in criteria_rows
+        )
+
         return ExternalReviewGate(
             id=gate_row.id,
             task_id=gate_row.task_id,
@@ -404,6 +474,7 @@ class SqliteExternalReviewGateRepository:
             decision=ReviewDecision(gate_row.decision),
             feedback_text=gate_row.feedback_text,
             audit_trail=audit_trail,
+            required_deliverable_criteria=required_deliverable_criteria,
             created_at=gate_row.created_at,
             decided_at=gate_row.decided_at,
         )

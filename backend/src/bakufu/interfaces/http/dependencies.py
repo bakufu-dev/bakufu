@@ -280,12 +280,16 @@ async def get_external_review_gate_service(
     # 遅延 import: interfaces → infrastructure の直接依存を避けるため
     # モジュールロード時の循環参照リスクを回避し、
     # 依存方向 interfaces → application → infrastructure を遵守する
+    from bakufu.infrastructure.persistence.sqlite.repositories.deliverable_template_repository import (  # noqa: E501
+        SqliteDeliverableTemplateRepository,
+    )
     from bakufu.infrastructure.persistence.sqlite.repositories.external_review_gate_repository import (  # noqa: E501
         SqliteExternalReviewGateRepository,
     )
 
     repo = SqliteExternalReviewGateRepository(session)
-    return ExternalReviewGateService(repo)
+    template_repo = SqliteDeliverableTemplateRepository(session)
+    return ExternalReviewGateService(repo, template_repo)
 
 
 GateServiceDep = Annotated[ExternalReviewGateService, Depends(get_external_review_gate_service)]
