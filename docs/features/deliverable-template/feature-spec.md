@@ -310,8 +310,11 @@ DeliverableRecord は DeliverableTemplate に紐づく AcceptanceCriteria を LL
 | 15 | composition を持つ DeliverableTemplate を永続化し、再起動後に復元した場合、composition メンバーへの参照（template_id + minimum_version）が保全されており、union 後の AcceptanceCriteria が再起動前と構造的等価である | UC-DT-005 | TC-E2E-DT-002 |
 | 16 | Agent が成果物を生成した後、ValidationService が DeliverableRecord を生成し、AcceptanceCriterion 単位で LLM 評価が実行される。各 criterion の結果（PASSED / FAILED / UNCERTAIN）が `criterion_results` に記録される（業務ルール R1-G） | UC-DT-001〜003 | TC-UT-AIVM-001〜（[`ai-validation/test-design.md`](ai-validation/test-design.md)）|
 | 17 | `required=true` の AcceptanceCriterion が 1 件でも FAILED の場合、DeliverableRecord.validation_status が FAILED になる。required=true の基準に UNCERTAIN があり FAILED がない場合は UNCERTAIN。全必須基準が PASSED なら PASSED（業務ルール R1-G） | UC-DT-001〜003 | TC-UT-AIVM-002（status 導出ロジック全パターン）|
+| 18 | bakufu 起動時に ai-team 5 ロール対応の既定 DeliverableTemplate 12 件が `deliverable_templates` テーブルに UPSERT され、起動後すぐに HTTP API で取得できる（startup event + upsert、OQ-4 確定） | UC-DT-001, UC-DT-005 | TC-IT-TL-001（[`template-library/test-design.md`](template-library/test-design.md)）|
+| 19 | bakufu を複数回再起動しても、既定テンプレート（AC-18）の DB レコード数が 12 件を超えない（固定 UUID5 + UPSERT による冪等性保証） | UC-DT-005 | TC-IT-TL-002 |
+| 20 | `seed_role_profiles_for_empire(empire_id)` を呼び出すと、指定 Empire に LEADER / DEVELOPER / TESTER / REVIEWER の 4 RoleProfile がプリセット値で作成される。既に RoleProfile が存在する Role は skip され上書きされない | UC-DT-004 | TC-IT-TL-004, TC-IT-TL-006 |
 
-E2E（受入基準 14〜15）は [`system-test-design.md`](system-test-design.md) で詳細凍結。受入基準 1〜13 は domain sub-feature の IT / UT で検証（[`domain/test-design.md`](domain/test-design.md)）。
+E2E（受入基準 14〜15）は [`system-test-design.md`](system-test-design.md) で詳細凍結。受入基準 1〜13 は domain sub-feature の IT / UT で検証（[`domain/test-design.md`](domain/test-design.md)）。受入基準 18〜20 は `template-library/` sub-feature の IT / UT で検証（[`template-library/test-design.md`](template-library/test-design.md)）。
 
 **注**: 推移的な循環参照検証（R1-B の推移的循環禁止）は、domain 単体では全グラフが不可視なため application 層が責務を持つ。domain 層は直接循環（自己参照）のみを Fail Fast で検証する。
 
@@ -327,7 +330,7 @@ E2E（受入基準 14〜15）は [`system-test-design.md`](system-test-design.md
 |---|------|-----------|----------------|
 | OQ-2 | DeliverableRecord（Stage 完了成果物 Aggregate）の設計・命名は本 feature に含めるか別 Issue か | 設計決定③として命名のみ凍結（DeliverableRecord）。実装 Issue は別途起票予定 | 未起票 |
 | OQ-3 | ~~ai-validation（Issue #123）の PASS / FAIL 判定結果を DeliverableTemplate / AcceptanceCriterion に書き込むか、別 Aggregate（DeliverableRecord 等）に保持するか~~ **【確定】** DeliverableRecord は DeliverableTemplate / AcceptanceCriterion とは独立した新規 Aggregate Root（設計決定③の延長）。PASS / FAIL / UNCERTAIN 結果は `DeliverableRecord.criterion_results: tuple[CriterionValidationResult, ...]` に保持し、DeliverableTemplate / AcceptanceCriterion は変更しない。理由: DeliverableTemplate は不変な「定義」であり、実行時の評価結果で汚染すべきでない（DDD: 定義とインスタンスの分離）。評価結果は DeliverableRecord という独立した運用エンティティが保持する（Issue #123 ai-validation sub-feature で実装） | **確定済み**（Issue #123 設計 D-1）|
-| OQ-4 | template-library（Issue #124）のバンドルテンプレートを DB seed として提供するか、アプリ起動時の自動生成として提供するか | 未決定。template-library sub-feature の設計で確定する | template-library（#124） |
+| OQ-4 | ~~template-library（Issue #124）のバンドルテンプレートを DB seed として提供するか、アプリ起動時の自動生成として提供するか~~ **【確定】** **アプリ起動時自動生成（startup event + upsert）** を採用。理由: (1) テンプレート定義はアプリ設定に近い性質でコード管理が正（Git 追跡・PR レビューで変更可視化）、(2) Alembic migration 完了後に seed を実行するため DB スキーマとの整合が常に保たれる、(3) Alembic data migration 肥大化を回避、(4) UPSERT（固定 UUID5）により再起動で冪等性が保証される。Bootstrap `_stage_3b_seed_template_library()` として実装（`template-library/basic-design.md` REQ-TL-001〜002 参照）。 | **確定済み**（Issue #124 / template-library sub-feature 設計）|
 
 ## 12. sub-feature 一覧とマイルストーン
 
