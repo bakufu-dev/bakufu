@@ -204,11 +204,11 @@ class ClaudeCodeLLMClient:
             if event_type == "result":
                 response_text = str(event.get("result", ""))
                 result_session_id = event.get("session_id") or result_session_id
-                compacted = bool(event.get("is_error", False) is False and event.get("num_turns"))
             elif event_type == "system":
                 result_session_id = event.get("session_id") or result_session_id
-                if event.get("subtype") == "init":
-                    result_session_id = event.get("session_id") or result_session_id
+                # REQ-LC-015: subtype="compact" イベントでコンテキスト圧縮を検出する。
+                if event.get("subtype") == "compact":
+                    compacted = True
 
         return response_text, result_session_id, compacted
 
