@@ -20,7 +20,7 @@
 
 | 対象モジュール | テスト観点 | テスト種別 | TC ID |
 |---|---|---|---|
-| `definitions.py` | `WELL_KNOWN_TEMPLATES` 12 件全件の不変条件（UUID5 一意性・type=MARKDOWN・version=1.0.0） | UT | TC-UT-TL-001 |
+| `definitions.py` | `WELL_KNOWN_TEMPLATES` 12 件全件の不変条件（UUID5 一意性・type=MARKDOWN・version=1.0.0・description 非空・schema 非空） | UT | TC-UT-TL-001 |
 | `definitions.py` | `PRESET_ROLE_TEMPLATE_MAP` 4 Role × DeliverableTemplateRef の整合（各 ref が WELL_KNOWN_TEMPLATES 内の UUID を参照） | UT | TC-UT-TL-002 |
 | `TemplateLibrarySeeder` | `seed_global_templates()` 初回起動で 12 件全件が DB に保存される | IT | TC-IT-TL-001 |
 | `TemplateLibrarySeeder` | `seed_global_templates()` 2 回実行（再起動模倣）で DB レコード件数が 12 件のまま変わらない（冪等性） | IT | TC-IT-TL-002 |
@@ -29,7 +29,8 @@
 | `TemplateLibrarySeeder` | `seed_role_profiles_for_empire()` 2 回呼び出しで RoleProfile 件数が増えない（skip 戦略） | IT | TC-IT-TL-005 |
 | `TemplateLibrarySeeder` | `seed_role_profiles_for_empire()` で CEO が手動設定した RoleProfile（DEVELOPER）が skip され上書きされない | IT | TC-IT-TL-006 |
 | `Bootstrap._stage_3b_seed_template_library()` | Bootstrap.run() で Stage 3b が Stage 3（Alembic）後、Stage 4（pid_gc）前に実行される | IT | TC-IT-TL-007 |
-| `TemplateLibrarySeeder` | `seed_global_templates()` で 1 件の UPSERT が失敗した場合、全件ロールバック（all-or-nothing 保証）| IT | TC-IT-TL-008 |
+| `TemplateLibrarySeeder` | `seed_global_templates()` で 1 件の UPSERT が失敗した場合、全件ロールバック（all-or-nothing 保証）・`SQLAlchemyError` が呼び出し元に伝播する | IT | TC-IT-TL-008 |
+| `TemplateLibrarySeeder` | `seed_global_templates()` で手動編集済みテンプレートが再 seed 後に definitions.py 定義で上書きされる（§確定 D）| IT | TC-IT-TL-009 |
 
 ## テストケース詳細
 
@@ -39,9 +40,9 @@
 |---|---|
 | 目的 | definitions.py import 時に全テンプレートが有効な DeliverableTemplate Aggregate として構築できることを確認 |
 | 前提条件 | DB 不要（UT） |
-| 手順 | `from bakufu.application.services.template_library.definitions import WELL_KNOWN_TEMPLATES` → 件数・各テンプレートの属性を assert |
-| 期待結果 | (1) `len(WELL_KNOWN_TEMPLATES) == 12` (2) 各テンプレートの `type == TemplateType.MARKDOWN` (3) 各テンプレートの `version == SemVer(1, 0, 0)` (4) `id` が全件 `UUID5(BAKUFU_TEMPLATE_NS, slug)` と一致 (5) `id` が全 12 件で一意 |
-| カバー要件 | §確定 A / §確定 C |
+| 手順 | `from bakufu.application.services.template_library.definitions import WELL_KNOWN_TEMPLATES, BAKUFU_TEMPLATE_NS` → 件数・各テンプレートの属性を assert |
+| 期待結果 | (1) `len(WELL_KNOWN_TEMPLATES) == 12` (2) 各テンプレートの `type == TemplateType.MARKDOWN` (3) 各テンプレートの `version == SemVer(1, 0, 0)` (4) `id` が全件 `UUID5(BAKUFU_TEMPLATE_NS, slug)` と一致 (5) `id` が全 12 件で一意 (6) 各テンプレートの `description` が非空文字列 (7) 各テンプレートの `schema` が非空文字列（MARKDOWN ガイドライン文字列）|
+| カバー要件 | §確定 A / §確定 C / §確定 G |
 
 ### TC-UT-TL-002: PRESET_ROLE_TEMPLATE_MAP の整合
 
@@ -118,9 +119,9 @@
 | 項目 | 内容 |
 |---|---|
 | 目的 | Bootstrap の Stage 3（Alembic）完了後、Stage 4（pid_gc）前に seed が実行されることを確認 |
-| 前提条件 | Bootstrap テスト用 fixture（minimal 設定） |
-| 手順 | `Bootstrap.run()` をテストモードで実行 → Stage 実行ログの順序を確認 |
-| 期待結果 | ログ順: `...stage 3/8: schema at head...` → `...stage 3b/8: template-library seed complete...` → `...stage 4/8: GC complete...` |
+| 前提条件 | 既存 Bootstrap テストで使用している in-memory SQLite + `async_sessionmaker` fixture を流用。`TemplateLibrarySeeder.seed_global_templates` を `AsyncMock` でスタブ化（実際の DB 書き込みは本 TC の関心外） |
+| 手順 | `Bootstrap.run()` を実行し、`_stage_3_migrate` / `_stage_3b_seed_template_library` / `_stage_4_pid_gc` の呼び出し順を `unittest.mock.patch` + `call_args_list` または caplog で確認する |
+| 期待結果 | (1) `_stage_3b_seed_template_library` が `_stage_3_migrate` の完了後に呼ばれる (2) `_stage_3b_seed_template_library` が `_stage_4_pid_gc` の完了前に呼ばれる (3) Bootstrap ログに `stage 3b` の文字列が含まれる |
 | カバー要件 | REQ-TL-002 |
 
 ### TC-IT-TL-008: seed 失敗時の全件ロールバック（all-or-nothing）
@@ -128,25 +129,63 @@
 | 項目 | 内容 |
 |---|---|
 | 目的 | UPSERT 途中でエラーが発生した場合に全件ロールバックされ、DB が中途半端な状態にならないことを確認 |
-| 前提条件 | 空の DB。`SqliteDeliverableTemplateRepository.save()` を 7 件目でエラーになるようにモック |
-| 手順 | `seed_global_templates(session_factory)` を呼ぶ（例外を期待）→ `find_all()` で件数確認 |
-| 期待結果 | 例外が raise される。`len(find_all()) == 0`（ロールバックで全件消える）|
+| 前提条件 | 空の in-memory SQLite DB。`patch.object(session, "execute", side_effect=...)` で 7 回目の `session.execute` 呼び出しで `SQLAlchemyError` を強制 raise（TC-IT-REPO-007 と同パターン） |
+| 手順 | `TemplateLibrarySeeder().seed_global_templates(session_factory)` を呼ぶ（例外を期待）→ `find_all()` で件数確認 |
+| 期待結果 | (1) `SQLAlchemyError` が raise される（`BakufuConfigError` ラップは Bootstrap レイヤーの責務のため UT レベルでは `SQLAlchemyError` を期待）(2) `len(find_all()) == 0`（ロールバックで全件消える）|
 | カバー要件 | §確定 E |
+
+### TC-IT-TL-009: §確定 D — 再 seed で手動編集内容が上書きされる
+
+| 項目 | 内容 |
+|---|---|
+| 目的 | CEO が well-known テンプレートを直接編集した後、再 seed（再起動）すると definitions.py 定義で上書きされることを物理確認する（§確定 D の核心：バージョンアップ時 DB 同期） |
+| 前提条件 | `seed_global_templates()` を 1 回実行済み（12 件保存済み DB）|
+| 手順 | (1) `find_by_id(WELL_KNOWN_TEMPLATES[0].id)` で取得 → `name` / `schema` を手動で書き換えて `save()`（DB 直接編集） (2) `seed_global_templates(session_factory)` を再度呼ぶ (3) `find_by_id(WELL_KNOWN_TEMPLATES[0].id)` で再取得 |
+| 期待結果 | 再取得したテンプレートの `name` / `schema` が `WELL_KNOWN_TEMPLATES[0]` の定義値に戻っている（手動編集が上書きされる）|
+| カバー要件 | §確定 D |
+
+## 外部 I/O 依存マップ
+
+| 外部 I/O | 用途 | テスト方法 | 備考 |
+|---------|------|----------|------|
+| **SQLite DB** (`sqlalchemy.ext.asyncio.AsyncSession`) | `TemplateLibrarySeeder.seed_global_templates` / `seed_role_profiles_for_empire` | テスト用 in-memory SQLite（`:memory:`）実接続。pytest の `session`-scoped fixture でスキーマ作成済み DB を提供 | raw fixture 不要 |
+| **Bootstrap** (既存 `_stage_3_migrate`, `_stage_4_pid_gc`) | TC-IT-TL-007 の実行順序確認 | `AsyncMock` でスタブ化 | Bootstrap 実体（Alembic 等）は本 TC の関心外 |
+
+characterization fixture（raw / schema）は不要：外部 SaaS API を呼ばず、in-memory SQLite 実接続で完結する。
 
 ## カバレッジ基準
 
-| 対象 | 目標 | 備考 |
+| 対象 | 目標 | カバーする TC |
 |---|---|---|
-| `application/services/template_library/seeder.py` | 90% 以上 | TC-IT-TL-001〜008 で主要パスをカバー |
-| `application/services/template_library/definitions.py` | 100% | TC-UT-TL-001〜002 で全定数を検証 |
+| `application/services/template_library/seeder.py` | 90% 以上 | TC-IT-TL-001〜009 で主要パスをカバー |
+| `application/services/template_library/definitions.py` | 100% | TC-UT-TL-001〜002 で全定数（UUID5・type・version・description・schema・dangling ref）を検証 |
 | `infrastructure/bootstrap.py`（Stage 3b 追加部分） | 90% 以上 | TC-IT-TL-007 + 既存 Bootstrap テストで確認 |
+
+**トレーサビリティ充足確認**:
+
+| §確定 | カバー TC |
+|---|---|
+| §確定 A（12 件定義）| TC-UT-TL-001, TC-IT-TL-001, TC-IT-TL-003 |
+| §確定 B（PRESET_ROLE_PROFILES 4 件）| TC-UT-TL-002, TC-IT-TL-004 |
+| §確定 C（固定 UUID5 名前空間）| TC-UT-TL-001 |
+| §確定 D（UPSERT は definitions.py 定義で上書き）| **TC-IT-TL-009** |
+| §確定 E（all-or-nothing Tx）| TC-IT-TL-008 |
+| §確定 F（skip 戦略）| TC-IT-TL-005, TC-IT-TL-006 |
+| §確定 G（全件 MARKDOWN）| TC-UT-TL-001 |
+| §確定 H（Bootstrap のみが呼ぶ）| 設計制約（実行時制約なし）— テスト不要 |
+| REQ-TL-001 | TC-IT-TL-001 |
+| REQ-TL-002 | TC-IT-TL-007 |
+| REQ-TL-003 | TC-IT-TL-004, TC-IT-TL-005, TC-IT-TL-006 |
+| REQ-TL-004 | TC-IT-TL-002 |
 
 ## レビュー観点
 
 | # | 観点 | 確認方法 |
 |---|------|---------|
-| R1 | `WELL_KNOWN_TEMPLATES` の 12 件が全件一意な UUID5 を持つ（衝突なし） | TC-UT-TL-001 |
+| R1 | `WELL_KNOWN_TEMPLATES` の 12 件が全件一意な UUID5 を持つ（衝突なし）| TC-UT-TL-001 |
 | R2 | PRESET_ROLE_TEMPLATE_MAP の参照が dangling reference を含まない | TC-UT-TL-002 |
 | R3 | 再起動後に DB レコード数が 12 件を超えない（冪等性） | TC-IT-TL-002 |
 | R4 | CEO 手動設定 RoleProfile が上書きされない | TC-IT-TL-006 |
 | R5 | 部分失敗時に全件ロールバックされる（all-or-nothing） | TC-IT-TL-008 |
+| R6 | 手動編集済みテンプレートが再 seed で definitions.py 定義に戻る（§確定 D）| TC-IT-TL-009 |
+| R7 | description / schema が全 12 件で非空（§確定 A / §確定 G）| TC-UT-TL-001 |
