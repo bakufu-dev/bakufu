@@ -529,6 +529,18 @@ async def role_profile_invariant_violation_handler(
     return _error_response(VALIDATION_ERROR, cleaned, 422)
 
 
+async def invalid_enum_value_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``ValueError``（StrEnum 不正値）→ HTTP 422 / validation_error。
+
+    ``role_profile`` エンドポイントのパスパラメータ ``role`` に不正な文字列が渡された際に
+    ``Role(role)`` が送出する ``ValueError`` を 422 に変換する（BUG-002 修正）。
+    router コメント §「不正値は Pydantic / ValueError が 422 を返す」の設計意図を実現する。
+    """
+    if not isinstance(exc, ValueError):
+        raise TypeError(f"Expected ValueError, got {type(exc).__name__}")
+    return _error_response(VALIDATION_ERROR, f"Invalid value: {exc}", 422)
+
+
 async def deliverable_template_version_downgrade_handler(
     request: Request, exc: Exception
 ) -> JSONResponse:

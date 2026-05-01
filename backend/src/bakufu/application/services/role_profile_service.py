@@ -137,43 +137,45 @@ class RoleProfileService:
         role_enum = Role(role)
         ref_tuple = tuple(self._to_ref(r) for r in refs)
 
-        # Empire 存在確認
-        empire = await self._empire_repo.find_by_id(empire_id)
-        if empire is None:
-            raise EmpireNotFoundError(str(empire_id))
-
-        # 各 ref の参照整合性確認
-        for ref in ref_tuple:
-            existing_template = await self._dt_repo.find_by_id(ref.template_id)
-            if existing_template is None:
-                raise DeliverableTemplateNotFoundError(
-                    str(ref.template_id), kind="role_profile_ref"
-                )
-
-        # 既存 RoleProfile を検索（冪等性のため id を引き継ぐ）
-        existing_profile = await self._rp_repo.find_by_empire_and_role(empire_id, role_enum)
-        profile_id = existing_profile.id if existing_profile is not None else uuid4()
-
-        profile = RoleProfile.model_validate(
-            {
-                "id": profile_id,
-                "empire_id": empire_id,
-                "role": role_enum,
-                "deliverable_template_refs": [
-                    {
-                        "template_id": ref.template_id,
-                        "minimum_version": {
-                            "major": ref.minimum_version.major,
-                            "minor": ref.minimum_version.minor,
-                            "patch": ref.minimum_version.patch,
-                        },
-                    }
-                    for ref in ref_tuple
-                ],
-            }
-        )
-
+        # BUG-001: read も含め全操作を単一の begin() 内で完結させる (EmpireService パターン)。
+        # empire_repo / dt_repo / rp_repo の各 find が autobegin を起動したあとに
+        # begin() を呼ぶと "InvalidRequestError: A transaction is already begun" が発生するため。
         async with self._session.begin():
+            # Empire 存在確認
+            empire = await self._empire_repo.find_by_id(empire_id)
+            if empire is None:
+                raise EmpireNotFoundError(str(empire_id))
+
+            # 各 ref の参照整合性確認
+            for ref in ref_tuple:
+                existing_template = await self._dt_repo.find_by_id(ref.template_id)
+                if existing_template is None:
+                    raise DeliverableTemplateNotFoundError(
+                        str(ref.template_id), kind="role_profile_ref"
+                    )
+
+            # 既存 RoleProfile を検索（冪等性のため id を引き継ぐ）
+            existing_profile = await self._rp_repo.find_by_empire_and_role(empire_id, role_enum)
+            profile_id = existing_profile.id if existing_profile is not None else uuid4()
+
+            profile = RoleProfile.model_validate(
+                {
+                    "id": profile_id,
+                    "empire_id": empire_id,
+                    "role": role_enum,
+                    "deliverable_template_refs": [
+                        {
+                            "template_id": ref.template_id,
+                            "minimum_version": {
+                                "major": ref.minimum_version.major,
+                                "minor": ref.minimum_version.minor,
+                                "patch": ref.minimum_version.patch,
+                            },
+                        }
+                        for ref in ref_tuple
+                    ],
+                }
+            )
             await self._rp_repo.save(profile)
         return profile
 
@@ -188,8 +190,11 @@ class RoleProfileService:
             RoleProfileNotFoundError: 対象 RoleProfile が存在しない場合（Fail Fast）。
         """
         role_enum = Role(role)
-        profile = await self.find_by_empire_and_role(empire_id, role_enum)
+        # BUG-001: Fail Fast + delete を単一の begin() 内で完結させる (EmpireService パターン)。
         async with self._session.begin():
+            profile = await self._rp_repo.find_by_empire_and_role(empire_id, role_enum)
+            if profile is None:
+                raise RoleProfileNotFoundError(str(empire_id), role_enum.value)
             await self._rp_repo.delete(profile.id)
 
     @staticmethod

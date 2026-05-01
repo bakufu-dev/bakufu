@@ -146,50 +146,54 @@ class DeliverableTemplateService:
         ac_tuple = tuple(_build_acceptance_criterion(ac) for ac in acceptance_criteria)
         ref_tuple = tuple(_build_ref(r) for r in composition)
 
-        # composition ref の存在確認
-        for ref in ref_tuple:
-            existing = await self._dt_repo.find_by_id(ref.template_id)
-            if existing is None:
-                raise DeliverableTemplateNotFoundError(str(ref.template_id), kind="composition_ref")
-
-        # DAG 走査
-        await self._check_dag(ref_tuple, root_id=new_id)
-
-        template = DeliverableTemplate.model_validate(
-            {
-                "id": new_id,
-                "name": name,
-                "description": description,
-                "type": template_type,
-                "schema": schema,
-                "acceptance_criteria": [
-                    {
-                        "id": ac.id,
-                        "description": ac.description,
-                        "required": ac.required,
-                    }
-                    for ac in ac_tuple
-                ],
-                "version": {
-                    "major": semver.major,
-                    "minor": semver.minor,
-                    "patch": semver.patch,
-                },
-                "composition": [
-                    {
-                        "template_id": ref.template_id,
-                        "minimum_version": {
-                            "major": ref.minimum_version.major,
-                            "minor": ref.minimum_version.minor,
-                            "patch": ref.minimum_version.patch,
-                        },
-                    }
-                    for ref in ref_tuple
-                ],
-            }
-        )
-
+        # BUG-001: read も含め全操作を単一の begin() 内で完結させる (EmpireService パターン)。
+        # composition ref の存在確認 / _check_dag が autobegin を起動したあとに
+        # begin() を呼ぶと "InvalidRequestError: A transaction is already begun" が発生するため。
         async with self._session.begin():
+            # composition ref の存在確認
+            for ref in ref_tuple:
+                existing = await self._dt_repo.find_by_id(ref.template_id)
+                if existing is None:
+                    raise DeliverableTemplateNotFoundError(
+                        str(ref.template_id), kind="composition_ref"
+                    )
+
+            # DAG 走査
+            await self._check_dag(ref_tuple, root_id=new_id)
+
+            template = DeliverableTemplate.model_validate(
+                {
+                    "id": new_id,
+                    "name": name,
+                    "description": description,
+                    "type": template_type,
+                    "schema": schema,
+                    "acceptance_criteria": [
+                        {
+                            "id": ac.id,
+                            "description": ac.description,
+                            "required": ac.required,
+                        }
+                        for ac in ac_tuple
+                    ],
+                    "version": {
+                        "major": semver.major,
+                        "minor": semver.minor,
+                        "patch": semver.patch,
+                    },
+                    "composition": [
+                        {
+                            "template_id": ref.template_id,
+                            "minimum_version": {
+                                "major": ref.minimum_version.major,
+                                "minor": ref.minimum_version.minor,
+                                "patch": ref.minimum_version.patch,
+                            },
+                        }
+                        for ref in ref_tuple
+                    ],
+                }
+            )
             await self._dt_repo.save(template)
         return template
 
@@ -253,74 +257,79 @@ class DeliverableTemplateService:
             CompositionCycleError: DAG 走査で循環参照または上限超過を検出した場合。
             DeliverableTemplateInvariantViolation: ドメイン不変条件違反の場合。
         """
-        existing = await self.find_by_id(template_id)
         template_type = TemplateType(type_)
         new_semver = _build_semver(version)
         ac_tuple = tuple(_build_acceptance_criterion(ac) for ac in acceptance_criteria)
         ref_tuple = tuple(_build_ref(r) for r in composition)
 
-        # §確定 B: version チェック
-        current_tuple = (
-            existing.version.major,
-            existing.version.minor,
-            existing.version.patch,
-        )
-        new_tuple = (new_semver.major, new_semver.minor, new_semver.patch)
-        if new_tuple < current_tuple:
-            raise DeliverableTemplateVersionDowngradeError(
-                current_version=str(existing.version),
-                provided_version=str(new_semver),
-            )
-
-        # composition ref の存在確認
-        for ref in ref_tuple:
-            ref_template = await self._dt_repo.find_by_id(ref.template_id)
-            if ref_template is None:
-                raise DeliverableTemplateNotFoundError(str(ref.template_id), kind="composition_ref")
-
-        # DAG 走査（既存 id を root として循環検出）
-        await self._check_dag(ref_tuple, root_id=template_id)
-
-        # version が現 version より大きい場合は create_new_version 経由でドメイン不変条件を通す
-        if new_tuple > current_tuple:
-            existing = existing.create_new_version(new_semver)
-
-        # 全フィールド再構築
-        template = DeliverableTemplate.model_validate(
-            {
-                "id": template_id,
-                "name": name,
-                "description": description,
-                "type": template_type,
-                "schema": schema,
-                "acceptance_criteria": [
-                    {
-                        "id": ac.id,
-                        "description": ac.description,
-                        "required": ac.required,
-                    }
-                    for ac in ac_tuple
-                ],
-                "version": {
-                    "major": new_semver.major,
-                    "minor": new_semver.minor,
-                    "patch": new_semver.patch,
-                },
-                "composition": [
-                    {
-                        "template_id": ref.template_id,
-                        "minimum_version": {
-                            "major": ref.minimum_version.major,
-                            "minor": ref.minimum_version.minor,
-                            "patch": ref.minimum_version.patch,
-                        },
-                    }
-                    for ref in ref_tuple
-                ],
-            }
-        )
-
+        # BUG-001: read も含め全操作を単一の begin() 内で完結させる (EmpireService パターン)。
         async with self._session.begin():
+            existing = await self._dt_repo.find_by_id(template_id)
+            if existing is None:
+                raise DeliverableTemplateNotFoundError(str(template_id), kind="primary")
+
+            # §確定 B: version チェック
+            current_tuple = (
+                existing.version.major,
+                existing.version.minor,
+                existing.version.patch,
+            )
+            new_tuple = (new_semver.major, new_semver.minor, new_semver.patch)
+            if new_tuple < current_tuple:
+                raise DeliverableTemplateVersionDowngradeError(
+                    current_version=str(existing.version),
+                    provided_version=str(new_semver),
+                )
+
+            # composition ref の存在確認
+            for ref in ref_tuple:
+                ref_template = await self._dt_repo.find_by_id(ref.template_id)
+                if ref_template is None:
+                    raise DeliverableTemplateNotFoundError(
+                        str(ref.template_id), kind="composition_ref"
+                    )
+
+            # DAG 走査（既存 id を root として循環検出）
+            await self._check_dag(ref_tuple, root_id=template_id)
+
+            # version が現 version より大きい場合は create_new_version 経由でドメイン不変条件を通す
+            if new_tuple > current_tuple:
+                existing = existing.create_new_version(new_semver)
+
+            # 全フィールド再構築
+            template = DeliverableTemplate.model_validate(
+                {
+                    "id": template_id,
+                    "name": name,
+                    "description": description,
+                    "type": template_type,
+                    "schema": schema,
+                    "acceptance_criteria": [
+                        {
+                            "id": ac.id,
+                            "description": ac.description,
+                            "required": ac.required,
+                        }
+                        for ac in ac_tuple
+                    ],
+                    "version": {
+                        "major": new_semver.major,
+                        "minor": new_semver.minor,
+                        "patch": new_semver.patch,
+                    },
+                    "composition": [
+                        {
+                            "template_id": ref.template_id,
+                            "minimum_version": {
+                                "major": ref.minimum_version.major,
+                                "minor": ref.minimum_version.minor,
+                                "patch": ref.minimum_version.patch,
+                            },
+                        }
+                        for ref in ref_tuple
+                    ],
+                }
+            )
             await self._dt_repo.save(template)
         return template
 
@@ -334,9 +343,13 @@ class DeliverableTemplateService:
             DeliverableTemplateNotFoundError: ``template_id`` の DeliverableTemplate が
                 存在しない場合（Fail Fast）。
         """
-        # Fail Fast: 存在しない場合は 404 相当で即時 raise
-        await self.find_by_id(template_id)
+        # BUG-001: Fail Fast + delete を単一の begin() 内で完結させる (EmpireService パターン)。
+        # find_by_id が autobegin を起動したあとに begin() を呼ぶと
+        # "InvalidRequestError: A transaction is already begun" が発生するため。
         async with self._session.begin():
+            existing = await self._dt_repo.find_by_id(template_id)
+            if existing is None:
+                raise DeliverableTemplateNotFoundError(str(template_id), kind="primary")
             await self._dt_repo.delete(template_id)
 
     async def _check_dag(
