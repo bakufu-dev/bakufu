@@ -4,6 +4,7 @@ schema を元に合成データを生成する。unit test 専用。
 integration test では raw fixture を使用すること（テスト戦略ガイド参照）。
 本モジュールは本番コードから import してはならない。
 """
+
 from __future__ import annotations
 
 import anthropic

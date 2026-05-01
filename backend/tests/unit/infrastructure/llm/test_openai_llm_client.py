@@ -2,6 +2,7 @@
 
 Issue: #144
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -84,8 +85,9 @@ class TestErrorConversion:
         mock_resp = httpx.Response(429, headers={"retry-after": "60"}, request=mock_req)
         sdk_mock.chat.completions.create = AsyncMock(
             side_effect=openai.RateLimitError(
-                message="rate limit", response=mock_resp,
-                body={"error": {"type": "requests", "message": "rate limit exceeded"}}
+                message="rate limit",
+                response=mock_resp,
+                body={"error": {"type": "requests", "message": "rate limit exceeded"}},
             )
         )
 
@@ -102,8 +104,9 @@ class TestErrorConversion:
         mock_resp = httpx.Response(401, request=mock_req)
         sdk_mock.chat.completions.create = AsyncMock(
             side_effect=openai.AuthenticationError(
-                message="invalid auth", response=mock_resp,
-                body={"error": {"type": "invalid_api_key"}}
+                message="invalid auth",
+                response=mock_resp,
+                body={"error": {"type": "invalid_api_key"}},
             )
         )
 
@@ -115,6 +118,7 @@ class TestErrorConversion:
     async def test_api_error_converted(self) -> None:
         """TC-UT-OC-005: openai.APIError → LLMAPIError。"""
         from bakufu.infrastructure.security import masking
+
         masking.init()
 
         client, sdk_mock = _make_client()
@@ -122,8 +126,7 @@ class TestErrorConversion:
         mock_resp = httpx.Response(500, request=mock_req)
         sdk_mock.chat.completions.create = AsyncMock(
             side_effect=openai.InternalServerError(
-                message="server error", response=mock_resp,
-                body={"error": {"type": "server_error"}}
+                message="server error", response=mock_resp, body={"error": {"type": "server_error"}}
             )
         )
 

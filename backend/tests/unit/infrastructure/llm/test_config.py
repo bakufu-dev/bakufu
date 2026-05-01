@@ -2,6 +2,7 @@
 
 Issue: #144
 """
+
 from __future__ import annotations
 
 import pytest

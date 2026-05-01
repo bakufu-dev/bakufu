@@ -4,6 +4,7 @@ TC-UT-LM-001〜006, TC-UT-RESP-001〜004, TC-UT-ROLE-001〜003
 
 Issue: #144
 """
+
 from __future__ import annotations
 
 import pydantic

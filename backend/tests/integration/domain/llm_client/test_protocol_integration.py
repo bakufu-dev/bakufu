@@ -3,6 +3,7 @@
 Issue: #144
 stub + VO 連携 + lifecycle 完走シナリオ。外部 I/O ゼロ。
 """
+
 from __future__ import annotations
 
 import pytest

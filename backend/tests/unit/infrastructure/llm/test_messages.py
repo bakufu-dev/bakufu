@@ -2,6 +2,7 @@
 
 Issue: #144
 """
+
 from __future__ import annotations
 
 import pytest
@@ -9,8 +10,13 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _clear_llm_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[reportUnusedFunction]
-    for var in ["BAKUFU_LLM_PROVIDER", "BAKUFU_ANTHROPIC_API_KEY", "BAKUFU_OPENAI_API_KEY",
-                "BAKUFU_ANTHROPIC_MODEL_NAME", "BAKUFU_OPENAI_MODEL_NAME"]:
+    for var in [
+        "BAKUFU_LLM_PROVIDER",
+        "BAKUFU_ANTHROPIC_API_KEY",
+        "BAKUFU_OPENAI_API_KEY",
+        "BAKUFU_ANTHROPIC_MODEL_NAME",
+        "BAKUFU_OPENAI_MODEL_NAME",
+    ]:
         monkeypatch.delenv(var, raising=False)
 
 

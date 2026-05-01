@@ -2,6 +2,7 @@
 
 Issue: #144
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -129,6 +130,7 @@ class TestErrorConversion:
     async def test_api_error_converted_with_status_code(self) -> None:
         """TC-UT-AC-005: anthropic.APIError → LLMAPIError（raw_error はマスキング済み）。"""
         from bakufu.infrastructure.security import masking
+
         masking.init()
 
         client, sdk_mock = _make_client()

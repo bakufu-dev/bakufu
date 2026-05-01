@@ -3,6 +3,7 @@
 Issue: #144
 domain 層の例外クラスに直接メッセージを設定してプレフィックス・プレースホルダを検証する。
 """
+
 from __future__ import annotations
 
 from bakufu.domain.exceptions.llm_client import (
@@ -89,6 +90,7 @@ class TestMsgPrefixes:
         from pathlib import Path
 
         import bakufu.infrastructure.llm.anthropic_llm_client as _ac_mod
+
         src = Path(_ac_mod.__file__).read_text(encoding="utf-8")
         # _MSG_LC_006 テンプレートが [FAIL] で始まることを物理確認
         assert "[FAIL] LLM returned no text content" in src

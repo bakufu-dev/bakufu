@@ -4,6 +4,7 @@ Issue: #144
 raw fixture を SDK mock の return_value に設定して factory → client → complete のフローを検証する。
 ユニットテストとの違い: factory 由来合成データは使わない。raw fixture のみ使用。
 """
+
 from __future__ import annotations
 
 import json
@@ -33,8 +34,12 @@ class TestAnthropicIntegration:
 
     async def test_complete_with_raw_fixture(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """TC-IT-LC-001: raw fixture から SDK オブジェクトを再構築して complete を検証。"""
-        for var in ["BAKUFU_LLM_PROVIDER", "BAKUFU_ANTHROPIC_API_KEY",
-                    "BAKUFU_ANTHROPIC_MODEL_NAME", "BAKUFU_OPENAI_API_KEY"]:
+        for var in [
+            "BAKUFU_LLM_PROVIDER",
+            "BAKUFU_ANTHROPIC_API_KEY",
+            "BAKUFU_ANTHROPIC_MODEL_NAME",
+            "BAKUFU_OPENAI_API_KEY",
+        ]:
             monkeypatch.delenv(var, raising=False)
 
         monkeypatch.setenv("BAKUFU_LLM_PROVIDER", "anthropic")
@@ -70,8 +75,12 @@ class TestOpenAIIntegration:
 
     async def test_complete_with_raw_fixture(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """TC-IT-LC-002: raw fixture から SDK オブジェクトを再構築して complete を検証。"""
-        for var in ["BAKUFU_LLM_PROVIDER", "BAKUFU_ANTHROPIC_API_KEY",
-                    "BAKUFU_OPENAI_API_KEY", "BAKUFU_OPENAI_MODEL_NAME"]:
+        for var in [
+            "BAKUFU_LLM_PROVIDER",
+            "BAKUFU_ANTHROPIC_API_KEY",
+            "BAKUFU_OPENAI_API_KEY",
+            "BAKUFU_OPENAI_MODEL_NAME",
+        ]:
             monkeypatch.delenv(var, raising=False)
 
         monkeypatch.setenv("BAKUFU_LLM_PROVIDER", "openai")
@@ -111,9 +120,14 @@ class TestProviderSwitching:
         from bakufu.infrastructure.llm.factory import llm_client_factory
         from bakufu.infrastructure.llm.openai_llm_client import OpenAILLMClient
 
-        for var in ["BAKUFU_LLM_PROVIDER", "BAKUFU_ANTHROPIC_API_KEY",
-                    "BAKUFU_OPENAI_API_KEY", "BAKUFU_ANTHROPIC_MODEL_NAME",
-                    "BAKUFU_OPENAI_MODEL_NAME", "BAKUFU_LLM_TIMEOUT_SECONDS"]:
+        for var in [
+            "BAKUFU_LLM_PROVIDER",
+            "BAKUFU_ANTHROPIC_API_KEY",
+            "BAKUFU_OPENAI_API_KEY",
+            "BAKUFU_ANTHROPIC_MODEL_NAME",
+            "BAKUFU_OPENAI_MODEL_NAME",
+            "BAKUFU_LLM_TIMEOUT_SECONDS",
+        ]:
             monkeypatch.delenv(var, raising=False)
 
         monkeypatch.setenv("BAKUFU_LLM_PROVIDER", "anthropic")

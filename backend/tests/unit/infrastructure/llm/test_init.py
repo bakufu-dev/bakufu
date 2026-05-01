@@ -2,6 +2,7 @@
 
 Issue: #144
 """
+
 from __future__ import annotations
 
 import pytest
@@ -16,16 +17,19 @@ class TestPublicApiRestriction:
     def test_anthropic_client_not_exported_from_init(self) -> None:
         """TC-UT-INIT-001a: AnthropicLLMClient は bakufu.infrastructure.llm から import 不可。"""
         from bakufu.infrastructure.llm import __all__ as llm_all
+
         assert "AnthropicLLMClient" not in llm_all
 
     def test_openai_client_not_exported_from_init(self) -> None:
         """TC-UT-INIT-001b: OpenAILLMClient は bakufu.infrastructure.llm から import 不可。"""
         from bakufu.infrastructure.llm import __all__ as llm_all
+
         assert "OpenAILLMClient" not in llm_all
 
     def test_only_factory_config_provider_exported(self) -> None:
         """TC-UT-INIT-001c: __all__ は設計書で確定した 3 シンボルのみ。"""
         from bakufu.infrastructure.llm import __all__ as llm_all
+
         expected = {"LLMClientConfig", "LLMProviderEnum", "llm_client_factory"}
         assert set(llm_all) == expected
 

@@ -2,6 +2,7 @@
 
 本モジュールは本番コードから import してはならない。
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock

@@ -11,6 +11,7 @@ Usage:
     BAKUFU_OPENAI_API_KEY=sk-xxx \\
     pytest tests/characterization/test_llm_client_characterization.py -v
 """
+
 from __future__ import annotations
 
 import json

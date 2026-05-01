@@ -6,6 +6,7 @@ Covers:
   TC-UT-PROTO-002  complete() シグネチャ検証
   TC-UT-PROTO-003  application/ports/llm_client.py が anthropic/openai を import しない (R1-2)
 """
+
 from __future__ import annotations
 
 import ast
@@ -58,12 +59,7 @@ class TestSDKNonDependency:
     def test_llm_client_port_does_not_import_anthropic_or_openai(self) -> None:
         """TC-UT-PROTO-003: llm_client.py が anthropic / openai を import していない。"""
         src_path = (
-            Path(__file__).parents[4]
-            / "src"
-            / "bakufu"
-            / "application"
-            / "ports"
-            / "llm_client.py"
+            Path(__file__).parents[4] / "src" / "bakufu" / "application" / "ports" / "llm_client.py"
         )
         assert src_path.exists(), f"llm_client.py が見つからない: {src_path}"
 
@@ -76,11 +72,15 @@ class TestSDKNonDependency:
                 for alias in node.names:
                     if alias.name in ("anthropic", "openai"):
                         sdk_imports.append(alias.name)
-            elif isinstance(node, ast.ImportFrom) and node.module and (
-                node.module == "anthropic"
-                or node.module.startswith("anthropic.")
-                or node.module == "openai"
-                or node.module.startswith("openai.")
+            elif (
+                isinstance(node, ast.ImportFrom)
+                and node.module
+                and (
+                    node.module == "anthropic"
+                    or node.module.startswith("anthropic.")
+                    or node.module == "openai"
+                    or node.module.startswith("openai.")
+                )
             ):
                 sdk_imports.append(node.module)
 
