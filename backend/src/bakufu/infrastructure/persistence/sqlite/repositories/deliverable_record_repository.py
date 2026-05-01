@@ -198,6 +198,8 @@ class SqliteDeliverableRecordRepository:
                 "criterion_id": result.criterion_id,
                 "status": result.status.value,
                 "reason": result.reason,
+                # required: §確定 R1-G の overall status 導出に必要なスナップショット。
+                "required": result.required,
                 "created_at": result_created_at,
             }
             for result in record.criterion_results
@@ -244,6 +246,8 @@ class SqliteDeliverableRecordRepository:
                 criterion_id=r.criterion_id,
                 status=ValidationStatus(r.status),
                 reason=r.reason,
+                # required: §確定 R1-G のスナップショットを復元する。
+                required=r.required,
             )
             for r in result_rows
         )

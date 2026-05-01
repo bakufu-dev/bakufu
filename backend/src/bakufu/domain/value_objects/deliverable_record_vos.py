@@ -21,6 +21,9 @@ class CriterionValidationResult(BaseModel):
         criterion_id: 対応する AcceptanceCriterion の UUID。
         status: LLM による判定結果（PASSED / FAILED / UNCERTAIN。PENDING は不可）。
         reason: LLM が提供する判定根拠（0〜1000 文字）。
+        required: 対応する AcceptanceCriterion.required の値。
+            True の場合のみ overall ValidationStatus の導出対象となる（§確定 R1-G）。
+            False の場合は参考情報として criterion_results には含むが overall status に影響しない。
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=False)
@@ -28,6 +31,7 @@ class CriterionValidationResult(BaseModel):
     criterion_id: UUID
     status: ValidationStatus
     reason: str = Field(max_length=1000)
+    required: bool = True
 
 
 __all__ = ["CriterionValidationResult"]

@@ -93,6 +93,9 @@ def upgrade() -> None:
         sa.Column("status", sa.String(20), nullable=False),
         # reason: LLM 評価根拠（0〜1000 文字）。masking 対象なし（業務判定済み）。
         sa.Column("reason", sa.Text, nullable=False),
+        # required: AcceptanceCriterion.required のスナップショット（§確定 R1-G）。
+        # True の場合のみ DeliverableRecord.derive_status() の overall status 計算に使用。
+        sa.Column("required", sa.Boolean, nullable=False, server_default=sa.true()),
         sa.Column("created_at", sa.Text, nullable=False),
     )
     # §確定 R1-K: 子テーブル SELECT の WHERE deliverable_record_id = :id を最適化。

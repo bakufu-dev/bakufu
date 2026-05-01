@@ -79,22 +79,28 @@ class DeliverableRecord(BaseModel):
         """criterion_results から overall status を導出した新インスタンスを返す（純粋関数）。
 
         §確定 R1-G 導出規則:
-        1. required=True の criterion は template_ref から取得できないため、
-           criterion_results の全結果を対象に status を導出する。
-        2. FAILED が 1 件以上 → FAILED
-        3. UNCERTAIN が 1 件以上かつ FAILED が 0 件 → UNCERTAIN
-        4. 全件 PASSED または results が空 → PASSED
+        1. required=True の criterion のみを overall status 計算の対象とする。
+           required=False の criterion は参考情報として criterion_results に含めるが
+           overall status に影響しない。
+        2. required=True の criterion に FAILED が 1 件以上 → FAILED
+        3. required=True の criterion に UNCERTAIN が 1 件以上かつ FAILED が 0 件 → UNCERTAIN
+        4. required=True の criterion が全件 PASSED、または required=True が 0 件 → PASSED
 
         Args:
             criterion_results: 評価済み CriterionValidationResult のタプル。
+                各要素の required フィールドが overall status 導出の対象かを示す。
 
         Returns:
             validation_status / criterion_results / validated_at を更新した新インスタンス。
         """
-        if not criterion_results:
+        # §確定 R1-G: required=True の結果のみを overall status 計算に使用する。
+        required_results = tuple(r for r in criterion_results if r.required)
+
+        if not required_results:
+            # required=True の criterion がない（全件 required=False または criteria 空）→ PASSED。
             overall = ValidationStatus.PASSED
         else:
-            statuses = {r.status for r in criterion_results}
+            statuses = {r.status for r in required_results}
             if ValidationStatus.FAILED in statuses:
                 overall = ValidationStatus.FAILED
             elif ValidationStatus.UNCERTAIN in statuses:
@@ -109,6 +115,7 @@ class DeliverableRecord(BaseModel):
                 "criterion_id": r.criterion_id,
                 "status": r.status,
                 "reason": r.reason,
+                "required": r.required,
             }
             for r in criterion_results
         ]

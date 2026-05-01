@@ -28,7 +28,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import ForeignKey, Index, String, Text
+from sqlalchemy import Boolean, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from bakufu.infrastructure.persistence.sqlite.base import (
@@ -56,6 +56,9 @@ class CriterionValidationResultRow(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     # reason: LLM が出力した評価根拠（0〜1000 文字）。masking 対象なし（業務判定済み）。
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+    # required: AcceptanceCriterion.required のスナップショット（§確定 R1-G）。
+    # True の場合のみ DeliverableRecord.derive_status() の overall status 計算に使用。
+    required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
 
     __table_args__ = (

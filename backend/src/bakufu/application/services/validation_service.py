@@ -111,6 +111,8 @@ class ValidationService:
                     criterion_id=criterion.id,
                     status=status,
                     reason=reason,
+                    # §確定 R1-G: required を VO に伝達し derive_status() が判別できるようにする。
+                    required=criterion.required,
                 )
             )
 
