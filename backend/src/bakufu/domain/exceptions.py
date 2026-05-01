@@ -547,6 +547,44 @@ class RoleProfileInvariantViolation(Exception):  # noqa: N818
         self.detail: dict[str, object] = dict(detail) if detail else {}
 
 
+type RoomRoleOverrideViolationKind = Literal["duplicate_template_id",]
+"""RoomRoleOverride 詳細設計 §確定 に対応する
+:class:`RoomRoleOverrideInvariantViolation` の判別子。"""
+
+
+# DDD: "Violation" は不変条件違反を表現するもので、プログラミングのバグではない。
+# そのため N818 "Error suffix" ルールは適用しない。
+class RoomRoleOverrideInvariantViolation(Exception):  # noqa: N818
+    """:class:`RoomRoleOverride` VO の不変条件違反時に送出される。
+
+    形（``kind`` + ``message`` + ``detail`` + detail の不変コピー）は
+    :class:`RoleProfileInvariantViolation` と同一。
+    RoomRoleOverride のフィールドには Discord webhook URL が含まれないため、
+    本層ではシークレット マスキングを適用しない。
+
+    Attributes:
+        kind: :data:`RoomRoleOverrideViolationKind` の正式な違反判別子の
+            いずれか。テストや HTTP API マッパーが使う安定した文字列値であり、
+            ローカライズしない。
+        message: room-matching 詳細設計 §MSG に対応する完全な
+            ``[FAIL] ...`` 形式のユーザ向け文字列。
+        detail: 診断・監査ログ向けの構造化コンテキスト。
+            呼び出し側から見て例外が不変であるよう、新しい ``dict`` コピーとして格納する。
+    """
+
+    def __init__(
+        self,
+        *,
+        kind: RoomRoleOverrideViolationKind,
+        message: str,
+        detail: Mapping[str, object] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.kind: RoomRoleOverrideViolationKind = kind
+        self.message: str = message
+        self.detail: dict[str, object] = dict(detail) if detail else {}
+
+
 __all__ = [
     "AgentInvariantViolation",
     "AgentViolationKind",
@@ -563,6 +601,8 @@ __all__ = [
     "RoleProfileInvariantViolation",
     "RoleProfileViolationKind",
     "RoomInvariantViolation",
+    "RoomRoleOverrideInvariantViolation",
+    "RoomRoleOverrideViolationKind",
     "RoomViolationKind",
     "StageInvariantViolation",
     "StageViolationKind",

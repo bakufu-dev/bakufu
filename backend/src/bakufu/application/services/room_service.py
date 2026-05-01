@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,6 +32,7 @@ from bakufu.application.exceptions.empire_exceptions import EmpireNotFoundError
 from bakufu.application.exceptions.room_exceptions import (
     AgentNotFoundError,
     RoomArchivedError,
+    RoomDeliverableMatchingError,
     RoomNameAlreadyExistsError,
     RoomNotFoundError,
     WorkflowNotFoundError,
@@ -38,11 +40,20 @@ from bakufu.application.exceptions.room_exceptions import (
 from bakufu.application.ports.agent_repository import AgentRepository
 from bakufu.application.ports.empire_repository import EmpireRepository
 from bakufu.application.ports.room_repository import RoomRepository
+from bakufu.application.ports.room_role_override_repository import RoomRoleOverrideRepository
 from bakufu.application.ports.workflow_repository import WorkflowRepository
+from bakufu.application.services.room_matching_service import RoomMatchingService
 from bakufu.domain.exceptions import RoomInvariantViolation
 from bakufu.domain.room.room import Room
-from bakufu.domain.room.value_objects import AgentMembership, PromptKit
-from bakufu.domain.value_objects import AgentId, EmpireId, Role, RoomId, WorkflowId
+from bakufu.domain.room.value_objects import AgentMembership, PromptKit, RoomRoleOverride
+from bakufu.domain.value_objects import (
+    AgentId,
+    DeliverableTemplateRef,
+    EmpireId,
+    Role,
+    RoomId,
+    WorkflowId,
+)
 
 
 class RoomService:
@@ -59,12 +70,16 @@ class RoomService:
         workflow_repo: WorkflowRepository,
         agent_repo: AgentRepository,
         session: AsyncSession,
+        matching_svc: RoomMatchingService | None = None,
+        override_repo: RoomRoleOverrideRepository | None = None,
     ) -> None:
         self._room_repo = room_repo
         self._empire_repo = empire_repo
         self._workflow_repo = workflow_repo
         self._agent_repo = agent_repo
         self._session = session
+        self._matching_svc = matching_svc
+        self._override_repo = override_repo
 
     async def create(
         self,
@@ -205,6 +220,7 @@ class RoomService:
         room_id: RoomId,
         agent_id: AgentId,
         role: str,
+        custom_refs: list[dict[str, Any]] | None = None,
     ) -> Room:
         """Room に Agent を割り当てる (REQ-RM-HTTP-006).
 
@@ -212,9 +228,17 @@ class RoomService:
             RoomNotFoundError: Room が存在しない場合。
             RoomArchivedError: Room がアーカイブ済みの場合 (R1-5)。
             AgentNotFoundError: Agent が存在しない場合。
+            RoomDeliverableMatchingError: deliverable coverage チェック失敗 (§確定 G)。
             RoomInvariantViolation: (agent_id, role) 重複 / capacity 超過。
         """
         role_enum = Role(role)  # AgentAssignRequest.role の _validate_role で事前検証済み
+
+        # dict → domain VO への変換（router は domain 型を import しない Q-3 遵守）
+        custom_refs_domain: tuple[DeliverableTemplateRef, ...] | None = None
+        if custom_refs is not None:
+            custom_refs_domain = tuple(
+                DeliverableTemplateRef.model_validate(d) for d in custom_refs
+            )
 
         async with self._session.begin():
             room = await self._room_repo.find_by_id(room_id)
@@ -231,6 +255,17 @@ class RoomService:
             if empire_id is None:  # pragma: no cover — 直前の find_by_id で存在確認済み
                 raise RoomNotFoundError(str(room_id))
 
+            # §確定 G: deliverable coverage チェック（matching_svc が注入された場合のみ）
+            if self._matching_svc is not None:
+                workflow = await self._workflow_repo.find_by_id(room.workflow_id)
+                effective_refs = await self._matching_svc.resolve_effective_refs(
+                    room_id, empire_id, role_enum, custom_refs_domain
+                )
+                if workflow is not None:
+                    missing = self._matching_svc.validate_coverage(workflow, effective_refs)
+                    if missing:
+                        raise RoomDeliverableMatchingError(str(room_id), str(role_enum), missing)
+
             membership = AgentMembership(
                 agent_id=agent_id,
                 role=role_enum,
@@ -238,6 +273,16 @@ class RoomService:
             )
             updated_room = room.add_member(membership)
             await self._room_repo.save(updated_room, empire_id)
+
+            # §確定 G ステップ 9: custom_refs が指定された場合 RoomRoleOverride を同一 Tx 内で保存
+            if custom_refs_domain is not None and self._override_repo is not None:
+                await self._override_repo.save(
+                    RoomRoleOverride(
+                        room_id=room_id,
+                        role=role_enum,
+                        deliverable_template_refs=custom_refs_domain,
+                    )
+                )
         return updated_room
 
     async def unassign_agent(

@@ -21,6 +21,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from bakufu.interfaces.http.schemas.deliverable_template import (
+    DeliverableTemplateRefCreate,
+    DeliverableTemplateRefResponse,
+)
+
 # ---------------------------------------------------------------------------
 # 有効な Role 値（domain import なし — Q-3 interfaces→domain 直接依存禁止）
 # 値は bakufu.domain.value_objects.enums.Role StrEnum の確定文言。
@@ -105,6 +110,7 @@ class AgentAssignRequest(BaseModel):
 
     agent_id: UUID
     role: str = Field(min_length=1, max_length=50)
+    custom_refs: list[DeliverableTemplateRefCreate] | None = Field(default=None, max_length=50)
 
     @field_validator("role", mode="before")
     @classmethod
@@ -171,11 +177,59 @@ class RoomListResponse(BaseModel):
     total: int
 
 
+class RoomRoleOverrideRequest(BaseModel):
+    """PUT /api/rooms/{room_id}/role-overrides/{role} リクエスト Body。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    deliverable_template_refs: list[DeliverableTemplateRefCreate]
+
+
+class RoomRoleOverrideResponse(BaseModel):
+    """RoomRoleOverride 単件レスポンス。
+
+    ``from_attributes=True`` で domain ``RoomRoleOverride`` VO から
+    ``model_validate(override)`` で直接変換する。
+    ``room_id: RoomId (UUID)`` / ``role: Role (StrEnum)`` を str にフラット化するため
+    ``model_validator(mode='before')`` が前処理する。domain import はゼロ (Q-3)。
+    """
+
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    room_id: str
+    role: str
+    deliverable_template_refs: list[DeliverableTemplateRefResponse]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _flatten_override(cls, data: Any) -> Any:
+        """domain RoomRoleOverride → flat dict 変換 (Q-3: domain import なし)。"""
+        if hasattr(data, "room_id"):
+            return {
+                "room_id": str(data.room_id),
+                "role": str(data.role),
+                "deliverable_template_refs": list(data.deliverable_template_refs),
+            }
+        return data
+
+
+class RoomRoleOverrideListResponse(BaseModel):
+    """GET /api/rooms/{room_id}/role-overrides レスポンス。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[RoomRoleOverrideResponse]
+    total: int
+
+
 __all__ = [
     "AgentAssignRequest",
     "MemberResponse",
     "RoomCreate",
     "RoomListResponse",
     "RoomResponse",
+    "RoomRoleOverrideListResponse",
+    "RoomRoleOverrideRequest",
+    "RoomRoleOverrideResponse",
     "RoomUpdate",
 ]

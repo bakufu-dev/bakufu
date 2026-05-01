@@ -36,9 +36,11 @@ from bakufu.interfaces.http.error_handlers import (
     role_profile_invariant_violation_handler,
     role_profile_not_found_handler,
     room_archived_handler,
+    room_deliverable_matching_error_handler,
     room_invariant_violation_handler,
     room_name_already_exists_handler,
     room_not_found_handler,
+    room_role_override_invariant_violation_handler,
     task_authorization_error_handler,
     task_invariant_violation_handler,
     task_not_found_handler,
@@ -145,6 +147,7 @@ def create_app() -> FastAPI:
     )
     from bakufu.application.exceptions.room_exceptions import (
         RoomArchivedError,
+        RoomDeliverableMatchingError,
         RoomNameAlreadyExistsError,
         RoomNotFoundError,
     )
@@ -166,6 +169,7 @@ def create_app() -> FastAPI:
         EmpireInvariantViolation,
         RoleProfileInvariantViolation,
         RoomInvariantViolation,
+        RoomRoleOverrideInvariantViolation,
         TaskInvariantViolation,
         WorkflowInvariantViolation,
     )
@@ -178,6 +182,11 @@ def create_app() -> FastAPI:
     app.add_exception_handler(RoomNotFoundError, room_not_found_handler)
     app.add_exception_handler(RoomNameAlreadyExistsError, room_name_already_exists_handler)
     app.add_exception_handler(RoomArchivedError, room_archived_handler)
+    app.add_exception_handler(RoomDeliverableMatchingError, room_deliverable_matching_error_handler)
+    app.add_exception_handler(
+        RoomRoleOverrideInvariantViolation,
+        room_role_override_invariant_violation_handler,
+    )
     app.add_exception_handler(WorkflowNotFoundError, workflow_not_found_handler)
     app.add_exception_handler(WorkflowArchivedError, workflow_archived_handler)
     app.add_exception_handler(WorkflowIrreversibleError, workflow_irreversible_handler)
