@@ -15,7 +15,7 @@ from bakufu.infrastructure.security import masking
 
 
 @pytest.fixture(autouse=True)
-def _init_masking(monkeypatch: pytest.MonkeyPatch) -> None:
+def _init_masking(monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[reportUnusedFunction]
     """masking を初期化してテスト内で mask() が機能するようにする。"""
     _ant_key = "sk-ant-api03-REALKEYVALUE12345678901234567890123456789012"
     _oai_key = "sk-REALKEYVALUE123456789012345678901234567890"
@@ -42,8 +42,8 @@ class TestApiKeyNotLeakedInRawError:
         config.timeout_seconds = 30.0
 
         client = AnthropicLLMClient(config)
-        sdk_mock = MagicMock()
-        client._client = sdk_mock
+        sdk_mock: MagicMock = MagicMock()
+        client._client = sdk_mock  # type: ignore[reportPrivateUsage]
 
         mock_req = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
         mock_resp = httpx.Response(500, request=mock_req)
@@ -77,8 +77,8 @@ class TestApiKeyNotLeakedInRawError:
         config.timeout_seconds = 30.0
 
         client = OpenAILLMClient(config)
-        sdk_mock = MagicMock()
-        client._client = sdk_mock
+        sdk_mock: MagicMock = MagicMock()
+        client._client = sdk_mock  # type: ignore[reportPrivateUsage]
 
         mock_req = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
         mock_resp = httpx.Response(500, request=mock_req)

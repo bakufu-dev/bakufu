@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import anthropic.types
@@ -18,10 +19,10 @@ from bakufu.domain.value_objects.llm import LLMMessage, LLMResponse, MessageRole
 _FIXTURES_DIR = Path(__file__).parents[3] / "fixtures" / "characterization" / "raw" / "llm_client"
 
 
-def _load_fixture(name: str) -> dict:
+def _load_fixture(name: str) -> dict[str, Any]:
     path = _FIXTURES_DIR / name
     assert path.exists(), f"Raw fixture が存在しない: {path}"
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
     assert "_meta" in data, f"_meta キーが欠落: {path}"
     return data
 
@@ -42,12 +43,12 @@ class TestAnthropicIntegration:
         from bakufu.infrastructure.llm.config import LLMClientConfig
         from bakufu.infrastructure.llm.factory import llm_client_factory
 
-        config = LLMClientConfig()
+        config = LLMClientConfig()  # type: ignore[call-arg]
         client = llm_client_factory(config)
 
         # raw fixture から SDK オブジェクトを再構築（_meta を除いた部分で model_validate）
-        raw = _load_fixture("anthropic_complete_success.json")
-        sdk_data = {k: v for k, v in raw.items() if k != "_meta"}
+        raw: dict[str, Any] = _load_fixture("anthropic_complete_success.json")
+        sdk_data: dict[str, Any] = {k: v for k, v in raw.items() if k != "_meta"}
         sdk_response = anthropic.types.Message.model_validate(sdk_data)
 
         # SDK client を mock に差し替え
@@ -79,11 +80,11 @@ class TestOpenAIIntegration:
         from bakufu.infrastructure.llm.config import LLMClientConfig
         from bakufu.infrastructure.llm.factory import llm_client_factory
 
-        config = LLMClientConfig()
+        config = LLMClientConfig()  # type: ignore[call-arg]
         client = llm_client_factory(config)
 
-        raw = _load_fixture("openai_complete_success.json")
-        sdk_data = {k: v for k, v in raw.items() if k != "_meta"}
+        raw: dict[str, Any] = _load_fixture("openai_complete_success.json")
+        sdk_data: dict[str, Any] = {k: v for k, v in raw.items() if k != "_meta"}
         sdk_response = openai.types.chat.ChatCompletion.model_validate(sdk_data)
 
         sdk_mock = MagicMock()
@@ -118,11 +119,11 @@ class TestProviderSwitching:
         monkeypatch.setenv("BAKUFU_LLM_PROVIDER", "anthropic")
         monkeypatch.setenv("BAKUFU_ANTHROPIC_API_KEY", "sk-ant-test")
         monkeypatch.setenv("BAKUFU_OPENAI_API_KEY", "sk-test")
-        config_ant = LLMClientConfig()
+        config_ant = LLMClientConfig()  # type: ignore[call-arg]
         client_ant = llm_client_factory(config_ant)
         assert isinstance(client_ant, AnthropicLLMClient)
 
         monkeypatch.setenv("BAKUFU_LLM_PROVIDER", "openai")
-        config_oai = LLMClientConfig()
+        config_oai = LLMClientConfig()  # type: ignore[call-arg]
         client_oai = llm_client_factory(config_oai)
         assert isinstance(client_oai, OpenAILLMClient)

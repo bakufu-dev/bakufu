@@ -4,13 +4,13 @@ Issue: #144
 """
 from __future__ import annotations
 
-import asyncio
+import inspect
 
 import pytest
 
 
 @pytest.fixture(autouse=True)
-def _clear_llm_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
+def _clear_llm_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[reportUnusedFunction]
     for var in [
         "BAKUFU_LLM_PROVIDER",
         "BAKUFU_ANTHROPIC_API_KEY",
@@ -34,7 +34,7 @@ class TestFactoryProviderSelection:
 
         monkeypatch.setenv("BAKUFU_LLM_PROVIDER", "anthropic")
         monkeypatch.setenv("BAKUFU_ANTHROPIC_API_KEY", "sk-ant-test-key")
-        config = LLMClientConfig()
+        config = LLMClientConfig()  # type: ignore[call-arg]
         client = llm_client_factory(config)
         assert type(client).__name__ == "AnthropicLLMClient"
 
@@ -45,7 +45,7 @@ class TestFactoryProviderSelection:
 
         monkeypatch.setenv("BAKUFU_LLM_PROVIDER", "openai")
         monkeypatch.setenv("BAKUFU_OPENAI_API_KEY", "sk-test-openai-key")
-        config = LLMClientConfig()
+        config = LLMClientConfig()  # type: ignore[call-arg]
         client = llm_client_factory(config)
         assert type(client).__name__ == "OpenAILLMClient"
 
@@ -66,7 +66,7 @@ class TestUnknownProvider:
         config.provider.value = "gemini"  # ANTHROPIC / OPENAI どちらにも一致しない
 
         with pytest.raises(LLMConfigError) as exc_info:
-            llm_client_factory(config)
+            llm_client_factory(config)  # type: ignore[arg-type]
         assert "[FAIL]" in exc_info.value.message
         assert "gemini" in exc_info.value.message
 
@@ -83,8 +83,8 @@ class TestProtocolConformance:
 
         monkeypatch.setenv("BAKUFU_LLM_PROVIDER", "anthropic")
         monkeypatch.setenv("BAKUFU_ANTHROPIC_API_KEY", "sk-ant-test")
-        config = LLMClientConfig()
+        config = LLMClientConfig()  # type: ignore[call-arg]
         client = llm_client_factory(config)
 
         assert hasattr(client, "complete")
-        assert asyncio.iscoroutinefunction(client.complete)
+        assert inspect.iscoroutinefunction(client.complete)

@@ -8,7 +8,7 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def _clear_llm_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
+def _clear_llm_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[reportUnusedFunction]
     for var in ["BAKUFU_LLM_PROVIDER", "BAKUFU_ANTHROPIC_API_KEY", "BAKUFU_OPENAI_API_KEY",
                 "BAKUFU_ANTHROPIC_MODEL_NAME", "BAKUFU_OPENAI_MODEL_NAME"]:
         monkeypatch.delenv(var, raising=False)
@@ -28,7 +28,7 @@ class TestMsgLc007:
 
         # pydantic-settings は BAKUFU_LLM_PROVIDER が未設定だと ValidationError を投げる
         try:
-            LLMClientConfig()
+            LLMClientConfig()  # type: ignore[call-arg]
             pytest.fail("Expected ValidationError or LLMConfigError")
         except Exception as exc:
             # pydantic ValidationError の場合、メッセージに 'bakufu_llm_provider' が含まれる
@@ -46,7 +46,7 @@ class TestMsgLc008:
         monkeypatch.setenv("BAKUFU_LLM_PROVIDER", "anthropic")
 
         try:
-            LLMClientConfig()
+            LLMClientConfig()  # type: ignore[call-arg]
             pytest.fail("Expected LLMConfigError")
         except Exception as exc:
             # pydantic ValidationError でラップされている可能性
@@ -72,7 +72,7 @@ class TestMsgLc009:
         config.provider.value = "gemini"  # 未知のプロバイダ（.value が必要）
 
         with pytest.raises(LLMConfigError) as exc_info:
-            llm_client_factory(config)
+            llm_client_factory(config)  # type: ignore[arg-type]
 
         assert "[FAIL]" in exc_info.value.message
         assert "anthropic" in exc_info.value.message

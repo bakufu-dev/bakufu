@@ -8,7 +8,7 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def _clear_llm_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
+def _clear_llm_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[reportUnusedFunction]
     """各テストの前に LLM 関連の環境変数をクリアする。"""
     for var in [
         "BAKUFU_LLM_PROVIDER",
@@ -30,7 +30,7 @@ class TestNormalConstruction:
 
         monkeypatch.setenv("BAKUFU_LLM_PROVIDER", "anthropic")
         monkeypatch.setenv("BAKUFU_ANTHROPIC_API_KEY", "sk-ant-test-key")
-        config = LLMClientConfig()
+        config = LLMClientConfig()  # type: ignore[call-arg]
         assert config.provider == LLMProviderEnum.ANTHROPIC
 
     def test_openai_provider_constructs(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -39,7 +39,7 @@ class TestNormalConstruction:
 
         monkeypatch.setenv("BAKUFU_LLM_PROVIDER", "openai")
         monkeypatch.setenv("BAKUFU_OPENAI_API_KEY", "sk-test-openai-key")
-        config = LLMClientConfig()
+        config = LLMClientConfig()  # type: ignore[call-arg]
         assert config.provider == LLMProviderEnum.OPENAI
 
 
@@ -52,7 +52,7 @@ class TestFailFast:
         from bakufu.infrastructure.llm.config import LLMClientConfig
 
         with pytest.raises((pydantic.ValidationError, Exception)):
-            LLMClientConfig()
+            LLMClientConfig()  # type: ignore[call-arg]
 
     def test_anthropic_without_api_key_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """TC-UT-CONF-004: provider=anthropic + ANTHROPIC_API_KEY 未設定 → LLMConfigError。"""
@@ -62,7 +62,7 @@ class TestFailFast:
         # BAKUFU_ANTHROPIC_API_KEY は設定しない
 
         with pytest.raises(Exception) as exc_info:
-            LLMClientConfig()
+            LLMClientConfig()  # type: ignore[call-arg]
         # LLMConfigError または pydantic の ValidationError で包まれた LLMConfigError
         assert isinstance(exc_info.value, (LLMConfigError, Exception))
 
@@ -75,7 +75,7 @@ class TestFailFast:
         # BAKUFU_OPENAI_API_KEY は設定しない
 
         with pytest.raises((LLMConfigError, pydantic.ValidationError)):
-            LLMClientConfig()
+            LLMClientConfig()  # type: ignore[call-arg]
 
 
 class TestSecretStrMasking:
@@ -87,7 +87,7 @@ class TestSecretStrMasking:
 
         monkeypatch.setenv("BAKUFU_LLM_PROVIDER", "anthropic")
         monkeypatch.setenv("BAKUFU_ANTHROPIC_API_KEY", "sk-ant-realkey-secret123")
-        config = LLMClientConfig()
+        config = LLMClientConfig()  # type: ignore[call-arg]
 
         config_str = str(config)
         assert "sk-ant-realkey-secret123" not in config_str
@@ -104,7 +104,7 @@ class TestDefaults:
 
         monkeypatch.setenv("BAKUFU_LLM_PROVIDER", "anthropic")
         monkeypatch.setenv("BAKUFU_ANTHROPIC_API_KEY", "sk-ant-test")
-        config = LLMClientConfig()
+        config = LLMClientConfig()  # type: ignore[call-arg]
         assert config.timeout_seconds == 30.0
 
     def test_anthropic_model_name_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -113,5 +113,5 @@ class TestDefaults:
 
         monkeypatch.setenv("BAKUFU_LLM_PROVIDER", "anthropic")
         monkeypatch.setenv("BAKUFU_ANTHROPIC_API_KEY", "sk-ant-test")
-        config = LLMClientConfig()
+        config = LLMClientConfig()  # type: ignore[call-arg]
         assert config.anthropic_model_name == "claude-3-5-sonnet-20241022"

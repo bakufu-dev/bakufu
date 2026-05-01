@@ -4,6 +4,7 @@ Issue: #144
 """
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -18,7 +19,7 @@ from bakufu.domain.exceptions.llm_client import (
 from bakufu.domain.value_objects.llm import LLMMessage, LLMResponse, MessageRole
 
 
-def _make_client(timeout_seconds: float = 30.0) -> tuple:
+def _make_client(timeout_seconds: float = 30.0) -> tuple[Any, MagicMock]:
     """OpenAILLMClient インスタンスと SDK mock を返す。"""
     from bakufu.infrastructure.llm.openai_llm_client import OpenAILLMClient
 
@@ -28,8 +29,8 @@ def _make_client(timeout_seconds: float = 30.0) -> tuple:
     config.timeout_seconds = timeout_seconds
 
     client = OpenAILLMClient(config)
-    sdk_mock = MagicMock()
-    client._client = sdk_mock
+    sdk_mock: MagicMock = MagicMock()
+    client._client = sdk_mock  # type: ignore[reportPrivateUsage]
     return client, sdk_mock
 
 
@@ -142,7 +143,7 @@ class TestExtractText:
 
         client, _ = _make_client()
         response = OpenAISDKResponseFactory.build(content="結果テキスト")
-        result = client._extract_text(response)
+        result: str = client._extract_text(response)  # type: ignore[reportPrivateUsage]
         assert result == "結果テキスト"
 
     def test_extract_text_null_content_raises_api_error(self) -> None:
@@ -157,7 +158,7 @@ class TestExtractText:
         client, _ = _make_client()
         response = OpenAISDKResponseFactory.build_null_content()
         with pytest.raises(LLMAPIError) as exc_info:
-            client._extract_text(response)
+            client._extract_text(response)  # type: ignore[reportPrivateUsage]
         assert exc_info.value.kind == "empty_response"
         assert exc_info.value.provider == "openai"
 
@@ -172,7 +173,7 @@ class TestConvertMessages:
             LLMMessage(role=MessageRole.SYSTEM, content="指示"),
             LLMMessage(role=MessageRole.USER, content="内容"),
         )
-        result = client._convert_messages(msgs)
+        result: list[dict[str, str]] = client._convert_messages(msgs)  # type: ignore[reportPrivateUsage]
         assert result == [
             {"role": "system", "content": "指示"},
             {"role": "user", "content": "内容"},

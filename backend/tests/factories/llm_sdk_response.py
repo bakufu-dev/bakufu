@@ -12,6 +12,7 @@ import openai
 import openai.types
 import openai.types.chat
 import openai.types.chat.chat_completion as cc
+from openai.types.chat import ChatCompletionMessage
 
 
 class AnthropicSDKResponseFactory:
@@ -67,7 +68,7 @@ class OpenAISDKResponseFactory:
             choices=[
                 cc.Choice(
                     index=0,
-                    message=cc.ChatCompletionMessage(role="assistant", content=content),
+                    message=ChatCompletionMessage(role="assistant", content=content),
                     finish_reason="stop",
                     logprobs=None,
                 )
@@ -88,7 +89,7 @@ class OpenAISDKResponseFactory:
             choices=[
                 cc.Choice(
                     index=0,
-                    message=cc.ChatCompletionMessage(role="assistant", content=None),
+                    message=ChatCompletionMessage(role="assistant", content=None),
                     finish_reason="stop",
                     logprobs=None,
                 )

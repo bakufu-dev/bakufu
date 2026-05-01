@@ -37,4 +37,4 @@ class TestPublicApiRestriction:
         import bakufu.infrastructure.llm as _llm_pkg
 
         with pytest.raises(AttributeError):
-            _ = _llm_pkg.AnthropicLLMClient
+            _ = _llm_pkg.AnthropicLLMClient  # type: ignore[attr-defined]

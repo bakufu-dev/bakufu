@@ -4,6 +4,7 @@ Issue: #144
 """
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import anthropic
@@ -20,7 +21,9 @@ from bakufu.domain.exceptions.llm_client import (
 from bakufu.domain.value_objects.llm import LLMMessage, LLMResponse, MessageRole
 
 
-def _make_client(timeout_seconds: float = 30.0, model: str = "claude-3-5-sonnet-20241022") -> tuple:
+def _make_client(
+    timeout_seconds: float = 30.0, model: str = "claude-3-5-sonnet-20241022"
+) -> tuple[Any, MagicMock]:
     """AnthropicLLMClient インスタンスと SDK mock を返す。
 
     _client を直接 MagicMock で差し替えて SDK 呼び出しを制御する。
@@ -33,8 +36,8 @@ def _make_client(timeout_seconds: float = 30.0, model: str = "claude-3-5-sonnet-
     config.timeout_seconds = timeout_seconds
 
     client = AnthropicLLMClient(config)
-    sdk_mock = MagicMock()
-    client._client = sdk_mock
+    sdk_mock: MagicMock = MagicMock()
+    client._client = sdk_mock  # type: ignore[reportPrivateUsage]
     return client, sdk_mock
 
 
@@ -46,7 +49,7 @@ def _make_user_message(content: str = "テスト入力") -> LLMMessage:
     return LLMMessage(role=MessageRole.USER, content=content)
 
 
-def _make_system_message(content: str = "システムプロンプト") -> LLMMessage:
+def _make_system_message(content: str = "システムプロンプト") -> LLMMessage:  # type: ignore[reportUnusedFunction]
     return LLMMessage(role=MessageRole.SYSTEM, content=content)
 
 
@@ -155,7 +158,7 @@ class TestExtractText:
 
         client, _ = _make_client()
         response = AnthropicSDKResponseFactory.build(content="テキスト応答")
-        result = client._extract_text(response)
+        result: str = client._extract_text(response)  # type: ignore[reportPrivateUsage]
         assert result == "テキスト応答"
 
     def test_extract_text_no_text_block_raises_api_error(self) -> None:
@@ -165,7 +168,7 @@ class TestExtractText:
         client, _ = _make_client()
         response = AnthropicSDKResponseFactory.build_no_text_block()
         with pytest.raises(LLMAPIError) as exc_info:
-            client._extract_text(response)
+            client._extract_text(response)  # type: ignore[reportPrivateUsage]
         assert exc_info.value.kind == "empty_response"
         assert isinstance(exc_info.value, LLMClientError)
 
@@ -180,7 +183,9 @@ class TestConvertMessages:
             LLMMessage(role=MessageRole.SYSTEM, content="評価者役割指示"),
             LLMMessage(role=MessageRole.USER, content="成果物テキスト"),
         )
-        api_messages, system_str = client._convert_messages(msgs)
+        api_messages: list[dict[str, str]]
+        system_str: str | None
+        api_messages, system_str = client._convert_messages(msgs)  # type: ignore[reportPrivateUsage]
         assert system_str == "評価者役割指示"
         assert api_messages == [{"role": "user", "content": "成果物テキスト"}]
 
@@ -192,7 +197,9 @@ class TestConvertMessages:
             LLMMessage(role=MessageRole.SYSTEM, content="指示2"),
             LLMMessage(role=MessageRole.USER, content="内容"),
         )
-        api_messages, system_str = client._convert_messages(msgs)
+        api_messages: list[dict[str, str]]
+        system_str: str | None
+        api_messages, system_str = client._convert_messages(msgs)  # type: ignore[reportPrivateUsage]
         assert system_str == "指示1\n\n指示2"
         assert all(m["role"] != "system" for m in api_messages)
 
@@ -200,7 +207,9 @@ class TestConvertMessages:
         """TC-UT-AC-010: SYSTEM なし → system_str is None。"""
         client, _ = _make_client()
         msgs = (LLMMessage(role=MessageRole.USER, content="内容のみ"),)
-        api_messages, system_str = client._convert_messages(msgs)
+        api_messages: list[dict[str, str]]
+        system_str: str | None
+        api_messages, system_str = client._convert_messages(msgs)  # type: ignore[reportPrivateUsage]
         assert system_str is None
         assert api_messages == [{"role": "user", "content": "内容のみ"}]
 
@@ -213,7 +222,7 @@ class TestConvertMessages:
         client, _ = _make_client()
         msgs = (LLMMessage(role=MessageRole.SYSTEM, content="指示のみ"),)
         with pytest.raises(LLMMessagesEmptyError):
-            client._convert_messages(msgs)
+            client._convert_messages(msgs)  # type: ignore[reportPrivateUsage]
 
 
 @pytest.mark.asyncio
