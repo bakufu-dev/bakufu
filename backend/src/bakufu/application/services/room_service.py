@@ -70,8 +70,8 @@ class RoomService:
         workflow_repo: WorkflowRepository,
         agent_repo: AgentRepository,
         session: AsyncSession,
-        matching_svc: RoomMatchingService | None = None,
-        override_repo: RoomRoleOverrideRepository | None = None,
+        matching_svc: RoomMatchingService,
+        override_repo: RoomRoleOverrideRepository,
     ) -> None:
         self._room_repo = room_repo
         self._empire_repo = empire_repo
@@ -255,16 +255,16 @@ class RoomService:
             if empire_id is None:  # pragma: no cover — 直前の find_by_id で存在確認済み
                 raise RoomNotFoundError(str(room_id))
 
-            # §確定 G: deliverable coverage チェック（matching_svc が注入された場合のみ）
-            if self._matching_svc is not None:
-                workflow = await self._workflow_repo.find_by_id(room.workflow_id)
-                effective_refs = await self._matching_svc.resolve_effective_refs(
-                    room_id, empire_id, role_enum, custom_refs_domain
-                )
-                if workflow is not None:
-                    missing = self._matching_svc.validate_coverage(workflow, effective_refs)
-                    if missing:
-                        raise RoomDeliverableMatchingError(str(room_id), str(role_enum), missing)
+            # §確定 G: deliverable coverage チェック（業務ルール R1-11 必須）
+            workflow = await self._workflow_repo.find_by_id(room.workflow_id)
+            if workflow is None:
+                raise WorkflowNotFoundError(str(room.workflow_id))
+            effective_refs = await self._matching_svc.resolve_effective_refs(
+                room_id, empire_id, role_enum, custom_refs_domain
+            )
+            missing = self._matching_svc.validate_coverage(workflow, effective_refs)
+            if missing:
+                raise RoomDeliverableMatchingError(str(room_id), str(role_enum), missing)
 
             membership = AgentMembership(
                 agent_id=agent_id,
@@ -275,7 +275,7 @@ class RoomService:
             await self._room_repo.save(updated_room, empire_id)
 
             # §確定 G ステップ 9: custom_refs が指定された場合 RoomRoleOverride を同一 Tx 内で保存
-            if custom_refs_domain is not None and self._override_repo is not None:
+            if custom_refs_domain is not None:
                 await self._override_repo.save(
                     RoomRoleOverride(
                         room_id=room_id,
