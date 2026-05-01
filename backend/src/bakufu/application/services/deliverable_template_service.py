@@ -7,8 +7,8 @@
 * **UoW 境界**: write 操作（``create`` / ``update`` / ``delete``）は
   単一の ``async with self._session.begin():`` ブロック内で完結させる。
 * ``find_all`` / ``find_by_id`` は read-only。明示的な ``begin()`` は不要。
-* **DAG 走査**: ``_check_dag`` は BFS で composition refs を走査し、
-  循環参照・深度上限（10）・ノード数上限（100）を検出する（§確定 D）。
+* **DAG 走査**: ``_check_dag`` は DFS + 祖先集合（ancestors）で composition refs を走査し、
+  循環参照・深度上限（10）・ユニークノード数上限（100）を検出する（§確定 D）。
 * **version チェック**: PUT で提供 version < 現 version なら
   ``DeliverableTemplateVersionDowngradeError`` を raise（§確定 B）。
 * **interfaces 層との境界**: router が domain 型を import しないよう、
@@ -157,11 +157,12 @@ class DeliverableTemplateService:
                         str(ref.template_id), kind="composition_ref"
                     )
 
-            # BUG-003: domain invariant（自己参照チェック）を _check_dag より先に発火させる。
+            # domain invariant（自己参照チェック）を _check_dag より先に発火させる。
             # model_validate() → DeliverableTemplate._validate_composition_no_self_ref が
             # 自己参照を DeliverableTemplateInvariantViolation として検出する。
-            # _check_dag を先に実行すると root_id == visited で CompositionCycleError が
-            # raise され error.code が "composition_cycle" になってしまう（仕様違反）。
+            # _check_dag を先に実行すると root_id が initial_ancestors に含まれるため
+            # CompositionCycleError(reason="transitive_cycle") が raise されてしまい
+            # error.code が "composition_cycle" になる（仕様違反）。
             template = DeliverableTemplate.model_validate(
                 {
                     "id": new_id,
@@ -294,11 +295,12 @@ class DeliverableTemplateService:
                         str(ref.template_id), kind="composition_ref"
                     )
 
-            # BUG-003: domain invariant（自己参照チェック）を _check_dag より先に発火させる。
+            # domain invariant（自己参照チェック）を _check_dag より先に発火させる。
             # model_validate() → DeliverableTemplate._validate_composition_no_self_ref が
             # 自己参照を DeliverableTemplateInvariantViolation として検出する。
-            # _check_dag を先に実行すると root_id == visited で CompositionCycleError が
-            # raise され error.code が "composition_cycle" になってしまう（仕様違反）。
+            # _check_dag を先に実行すると root_id が initial_ancestors に含まれるため
+            # CompositionCycleError(reason="transitive_cycle") が raise されてしまい
+            # error.code が "composition_cycle" になる（仕様違反）。
             template = DeliverableTemplate.model_validate(
                 {
                     "id": template_id,
@@ -390,7 +392,8 @@ class DeliverableTemplateService:
         """
         # 完全処理済みノード（黒）: 別経路で循環なし確認済み → 再訪問をスキップ
         visited: set[DeliverableTemplateId] = set()
-        # root 自身を 1 ノードとしてカウントして開始する（node_limit = 100 は root 含む総ノード数）
+        # root 自身を 1 ノードとしてカウントして開始する
+        # （node_limit = 100 は root 含む総ユニークノード数）
         node_count: int = 1
 
         async def _dfs(
@@ -410,13 +413,15 @@ class DeliverableTemplateService:
             if depth > _DAG_MAX_DEPTH:
                 raise CompositionCycleError(reason="depth_limit")
 
+            # 既に別経路で完全処理済み（循環なし確認済み）ならスキップ
+            # node_count は visited check 後にインクリメントし、ユニークノード数を計上する
+            # （diamond DAG の収束点を重複カウントしない）
+            if template_id in visited:
+                return
+
             node_count += 1
             if node_count > _DAG_MAX_NODES:
                 raise CompositionCycleError(reason="node_limit")
-
-            # 既に別経路で完全処理済み（循環なし確認済み）ならスキップ
-            if template_id in visited:
-                return
 
             child_template = await self._dt_repo.find_by_id(template_id)
             new_ancestors = ancestors | {template_id}
