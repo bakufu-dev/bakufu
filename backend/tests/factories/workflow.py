@@ -32,8 +32,10 @@ from weakref import WeakValueDictionary
 from bakufu.domain.value_objects import (
     CompletionPolicy,
     DeliverableRequirement,
+    DeliverableTemplateRef,
     NotifyChannel,
     Role,
+    SemVer,
     StageId,
     StageKind,
     TransitionCondition,
@@ -88,6 +90,31 @@ def make_notify_channel(
     channel = NotifyChannel(kind="discord", target=target)
     _register(channel)
     return channel
+
+
+# ---------------------------------------------------------------------------
+# DeliverableRequirement
+# ---------------------------------------------------------------------------
+def make_deliverable_requirement(
+    *,
+    template_id: UUID | None = None,
+    optional: bool = False,
+) -> DeliverableRequirement:
+    """妥当な :class:`DeliverableRequirement` を構築する。
+
+    TC-UT-RMS-001〜007 の validate_coverage テストで Stage.required_deliverables
+    に含める成果物要件 VO を生成する。
+    ``template_id`` 省略時は乱数 UUID を割り当てる（ユニークな要件のデフォルト）。
+    ``optional=True`` を渡すと §確定 E（省略可能成果物は検証対象外）の境界値テストに
+    使用できる。
+    """
+    ref = DeliverableTemplateRef(
+        template_id=template_id if template_id is not None else uuid4(),
+        minimum_version=SemVer(major=1, minor=0, patch=0),
+    )
+    dr = DeliverableRequirement(template_ref=ref, optional=optional)
+    _register(dr)
+    return dr
 
 
 # ---------------------------------------------------------------------------
@@ -283,6 +310,7 @@ __all__ = [
     "build_v_model_payload",
     "is_synthetic",
     "make_completion_policy",
+    "make_deliverable_requirement",
     "make_notify_channel",
     "make_stage",
     "make_transition",
