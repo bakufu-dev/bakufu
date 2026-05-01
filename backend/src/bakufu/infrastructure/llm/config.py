@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import SecretStr, model_validator
+from pydantic import SecretStr, ValidationError, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -107,6 +107,25 @@ class LLMClientConfig(BaseSettings):
     def timeout_seconds(self) -> float:
         """タイムアウト秒数のショートカット。"""
         return self.bakufu_llm_timeout_seconds
+
+    @classmethod
+    def load(cls) -> LLMClientConfig:
+        """環境変数から設定を読み込み LLMClientConfig を生成する。
+
+        BAKUFU_LLM_PROVIDER が未設定の場合は pydantic.ValidationError を
+        LLMConfigError(MSG-LC-007) に変換して raise する（Fail Fast）。
+        それ以外の ValidationError は呼び出し元に伝播する。
+        """
+        try:
+            return cls()  # type: ignore[call-arg]  # pydantic-settings reads required fields from env vars
+        except ValidationError as exc:
+            for error in exc.errors():
+                if error.get("loc") == ("bakufu_llm_provider",):
+                    raise LLMConfigError(
+                        message=_MSG_LC_007,
+                        field="bakufu_llm_provider",
+                    ) from exc
+            raise
 
     @model_validator(mode="after")
     def _validate_api_key_for_provider(self) -> LLMClientConfig:

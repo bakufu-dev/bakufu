@@ -27,6 +27,7 @@ from bakufu.domain.exceptions.llm_client import (
     LLMTimeoutError,
 )
 from bakufu.domain.value_objects.llm import LLMMessage, LLMResponse, MessageRole
+from bakufu.infrastructure.llm.config import LLMConfigError
 from bakufu.infrastructure.security import masking
 
 if TYPE_CHECKING:
@@ -71,8 +72,13 @@ class AnthropicLLMClient:
     """
 
     def __init__(self, config: LLMClientConfig) -> None:
-        assert config.anthropic_api_key is not None, "AnthropicLLMClient requires anthropic_api_key"
-        self._client = anthropic.AsyncAnthropic(api_key=config.anthropic_api_key.get_secret_value())
+        api_key = config.anthropic_api_key
+        if api_key is None:
+            raise LLMConfigError(
+                message="AnthropicLLMClient requires anthropic_api_key",
+                field="bakufu_anthropic_api_key",
+            )
+        self._client = anthropic.AsyncAnthropic(api_key=api_key.get_secret_value())
         self._model_name = config.anthropic_model_name
         self._timeout_seconds = config.timeout_seconds
 
@@ -176,7 +182,7 @@ class AnthropicLLMClient:
             if msg.role == MessageRole.SYSTEM:
                 system_parts.append(msg.content)
             else:
-                api_messages.append({"role": msg.role.value, "content": msg.content})
+                api_messages.append({"role": msg.role, "content": msg.content})
 
         if not api_messages:
             context = "all messages are system role for Anthropic"

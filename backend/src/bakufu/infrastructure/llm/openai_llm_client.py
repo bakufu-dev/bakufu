@@ -13,10 +13,10 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import openai
-from openai.types.chat import ChatCompletion
+from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
 
 from bakufu.domain.exceptions.llm_client import (
     LLMAPIError,
@@ -25,6 +25,7 @@ from bakufu.domain.exceptions.llm_client import (
     LLMTimeoutError,
 )
 from bakufu.domain.value_objects.llm import LLMMessage, LLMResponse
+from bakufu.infrastructure.llm.config import LLMConfigError
 from bakufu.infrastructure.security import masking
 
 if TYPE_CHECKING:
@@ -65,8 +66,13 @@ class OpenAILLMClient:
     """
 
     def __init__(self, config: LLMClientConfig) -> None:
-        assert config.openai_api_key is not None, "OpenAILLMClient requires openai_api_key"
-        self._client = openai.AsyncOpenAI(api_key=config.openai_api_key.get_secret_value())
+        api_key = config.openai_api_key
+        if api_key is None:
+            raise LLMConfigError(
+                message="OpenAILLMClient requires openai_api_key",
+                field="bakufu_openai_api_key",
+            )
+        self._client = openai.AsyncOpenAI(api_key=api_key.get_secret_value())
         self._model_name = config.openai_model_name
         self._timeout_seconds = config.timeout_seconds
 
@@ -81,12 +87,13 @@ class OpenAILLMClient:
         タイムアウトを制御する。max_completion_tokens パラメータを使用する。
         """
         api_messages = self._convert_messages(messages)
+        messages_param = cast(list[ChatCompletionMessageParam], api_messages)
         try:
             response = await asyncio.wait_for(
                 self._client.chat.completions.create(
                     model=self._model_name,
                     max_completion_tokens=max_tokens,
-                    messages=api_messages,  # type: ignore[arg-type]
+                    messages=messages_param,
                 ),
                 timeout=self._timeout_seconds,
             )
@@ -151,7 +158,7 @@ class OpenAILLMClient:
         OpenAI は system role を messages リストに含めて送信できる。
         全ロールをそのまま変換する。
         """
-        return [{"role": msg.role.value, "content": msg.content} for msg in messages]
+        return [{"role": msg.role, "content": msg.content} for msg in messages]
 
     def _extract_text(self, response: ChatCompletion) -> str:
         """OpenAI レスポンスからテキストを抽出する。
