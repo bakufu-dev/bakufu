@@ -98,13 +98,16 @@ classDiagram
 
     class AbstractLLMValidationPort {
         <<interface, domain port>>
-        +evaluate(content: str, criterion: AcceptanceCriterion) CriterionValidationResult
+        +evaluate(content: str, criterion: AcceptanceCriterion) Coroutine~CriterionValidationResult~
     }
 
     class LLMValidationAdapter {
         <<infrastructure>>
         -config: LLMValidationConfig
-        +evaluate(content: str, criterion: AcceptanceCriterion) CriterionValidationResult
+        +evaluate(content: str, criterion: AcceptanceCriterion) Coroutine~CriterionValidationResult~
+        -_build_messages(content: str, criterion: AcceptanceCriterion) tuple~str, list~dict~~
+        -_extract_text(response) str
+        -_parse_response(raw: str) tuple~ValidationStatus, str~
     }
 
     class LLMValidationConfig {
@@ -147,7 +150,9 @@ classDiagram
 **凝集のポイント**:
 
 - `ValidationService` は orchestration のみ担当。LLM API 詳細・DB 詳細を知らない（依存方向: Application → Domain Port ← Infrastructure）
-- `LLMValidationAdapter` は `AbstractLLMValidationPort` を満たす唯一の concrete 実装（MVP）。将来 OpenAI / Gemini 切替は Adapter 差し替えで対応（§確定 F, domain/detailed-design.md）
+- `AbstractLLMValidationPort.evaluate()` は `async def`。`LLMValidationAdapter` は `anthropic.AsyncAnthropic` / `openai.AsyncOpenAI` を使い `asyncio.wait_for()` でタイムアウト制御する（`kkm-horikawa/ai-team` `AnthropicClient` の実証済みパターン）
+- `LLMValidationAdapter._extract_text(response)` で SDK 応答から text block を抽出し、その後 JSON decode する 2 段階パース（ai-team `_extract_text()` パターン踏襲）
+- `LLMValidationAdapter` は `AbstractLLMValidationPort` を満たす唯一の concrete 実装（MVP）。将来 Gemini 追加は `google-genai` SDK を使い Adapter 内部分岐で対応（`ai-team` `GeminiClient` が実証済み）
 - `SqliteDeliverableRecordRepository` は ExternalReviewGate repository と同一の 7 段階 save() パターン（一貫性）
 - `LLMValidationConfig` は起動時に環境変数を検証（Fail Fast）。API Key 未設定は起動エラーで即検出
 - `LLMValidationError` は LLM API 呼び出し失敗・応答パース失敗の両方を表現する共通例外型（kind で区別）
@@ -235,8 +240,9 @@ sequenceDiagram
 | ランタイム | Python 3.12+ | `pyproject.toml` | 既存 |
 | ランタイム | `pydantic` v2 | `pyproject.toml` | 既存。`LLMValidationConfig` / `CriterionValidationResult` に使用 |
 | ランタイム | `pydantic-settings` v2 | `pyproject.toml` | 既存。`LLMValidationConfig` の環境変数読み込みに使用 |
-| 外部ライブラリ | `anthropic` SDK | `pyproject.toml`（新規追加）| LLMValidationAdapter の Anthropic Claude 呼び出し（provider=`anthropic` 時）|
-| 外部ライブラリ | `openai` SDK | `pyproject.toml`（新規追加）| LLMValidationAdapter の OpenAI 呼び出し（provider=`openai` 時）|
+| 外部ライブラリ | `anthropic` SDK（`anthropic.AsyncAnthropic`）| `pyproject.toml`（新規追加）| LLMValidationAdapter の Anthropic Claude 非同期呼び出し（provider=`anthropic` 時）。`ai-team` `AnthropicClient` で実証済み |
+| 外部ライブラリ | `openai` SDK（`openai.AsyncOpenAI`）| `pyproject.toml`（新規追加）| LLMValidationAdapter の OpenAI 非同期呼び出し（provider=`openai` 時）|
+| ランタイム | `asyncio`（標準ライブラリ）| Python 3.12 標準 | `asyncio.wait_for()` によるタイムアウト制御。`asyncio.TimeoutError` をエラーラップ |
 | ランタイム | `sqlalchemy` v2 | `pyproject.toml` | 既存。SqliteDeliverableRecordRepository に使用 |
 | ランタイム | `alembic` | `pyproject.toml` | 既存。migration 0015 に使用 |
 | 環境変数 | `BAKUFU_LLM_VALIDATION_PROVIDER` | 必須（`anthropic` / `openai`）| LLM プロバイダ選択 |
@@ -326,10 +332,10 @@ erDiagram
 
 ## エラーハンドリング方針
 
-| 例外種別 | 処理方針 | ユーザーへの通知 |
-|---------|---------|----------------|
-| `LLMValidationError(kind='llm_call_failed')` | `ValidationService` で catch → ログ（API Key マスク）→ 再 raise。呼び出し元が処理中断 | MSG-AIVM-001 |
-| `LLMValidationError(kind='parse_failed')` | 同上（LLM 応答の JSON 構造不正）| MSG-AIVM-002 |
-| `pydantic.ValidationError`（DeliverableRecord 再構築）| application 層で catch、500 Internal にマッピング（domain 不変条件違反は呼び元バグ）| 汎用エラーメッセージ |
-| `sqlalchemy.exc.SQLAlchemyError` | `RepositoryError` にラップして伝播。トランザクションロールバック | 汎用エラーメッセージ |
-| その他未捕捉例外 | 握り潰さない、application 層へ伝播（Fail Fast 原則）| 汎用エラーメッセージ |
+| 例外種別 | 起源 | 処理方針 | ユーザーへの通知 |
+|---------|------|---------|----------------|
+| `LLMValidationError(kind='llm_call_failed')`（`asyncio.TimeoutError` / `anthropic.APIError` / `openai.APIError` をラップ）| `LLMValidationAdapter.evaluate()` | `LLMValidationAdapter` で catch → `LLMValidationError` に変換。`ValidationService` がログ（API Key マスク）→ 再 raise。呼び出し元が処理中断 | MSG-AIVM-001 |
+| `LLMValidationError(kind='parse_failed')`（`json.JSONDecodeError` / LLM 応答に text block 不在をラップ）| `LLMValidationAdapter._parse_response()` | 同上（JSON 構造不正。`_extract_text()` が空文字を返した場合も含む）| MSG-AIVM-002 |
+| `pydantic.ValidationError`（DeliverableRecord 再構築）| `DeliverableRecord.validate_criteria()` | application 層で catch、500 Internal にマッピング（domain 不変条件違反は呼び元バグ）| 汎用エラーメッセージ |
+| `sqlalchemy.exc.SQLAlchemyError` | `SqliteDeliverableRecordRepository.save()` | `RepositoryError` にラップして伝播。トランザクションロールバック | 汎用エラーメッセージ |
+| その他未捕捉例外 | — | 握り潰さない、application 層へ伝播（Fail Fast 原則）| 汎用エラーメッセージ |
