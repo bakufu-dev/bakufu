@@ -90,6 +90,21 @@ class CompositionCycleError(Exception):
         self.cycle_path: list[str] = cycle_path if cycle_path is not None else []
 
 
+class InvalidRoleError(Exception):
+    """``role`` パスパラメータに不正な Role 文字列が渡されたときに送出される。
+
+    ``role_profile`` エンドポイントで ``Role(role)`` が ``ValueError`` を raise した場合に
+    service 層が本例外に変換する。interfaces 層では HTTP 422 / ``validation_error`` に変換される。
+
+    Attributes:
+        value: 不正な role 文字列。
+    """
+
+    def __init__(self, value: str) -> None:
+        super().__init__(f"Invalid role value: {value!r}")
+        self.value: str = value
+
+
 class DeliverableTemplateVersionDowngradeError(Exception):
     """PUT で提供された version が現在の version より小さいときに送出される。
 
@@ -112,5 +127,6 @@ __all__ = [
     "CompositionCycleError",
     "DeliverableTemplateNotFoundError",
     "DeliverableTemplateVersionDowngradeError",
+    "InvalidRoleError",
     "RoleProfileNotFoundError",
 ]

@@ -19,7 +19,6 @@
 
 from __future__ import annotations
 
-from collections import deque
 from typing import TypedDict
 from uuid import UUID, uuid4
 
@@ -295,10 +294,6 @@ class DeliverableTemplateService:
                         str(ref.template_id), kind="composition_ref"
                     )
 
-            # version が現 version より大きい場合は create_new_version 経由でドメイン不変条件を通す
-            if new_tuple > current_tuple:
-                existing = existing.create_new_version(new_semver)
-
             # BUG-003: domain invariant（自己参照チェック）を _check_dag より先に発火させる。
             # model_validate() → DeliverableTemplate._validate_composition_no_self_ref が
             # 自己参照を DeliverableTemplateInvariantViolation として検出する。
@@ -368,15 +363,24 @@ class DeliverableTemplateService:
         refs: tuple[DeliverableTemplateRef, ...],
         root_id: DeliverableTemplateId,
     ) -> None:
-        """BFS で composition refs が DAG であることを検証する（§確定 D）。
+        """DFS + 経路スタックで composition refs が DAG であることを検証する（§確定 D）。
 
-        深度上限 = 10、ノード数上限 = 100。``root_id`` は「作成 / 更新中のテンプレート
-        自身の id」であり、BFS の開始前から ``visited`` に追加して自己参照を防ぐ。
+        **アルゴリズム**: DFS で各ノードを探索し「祖先集合（ancestors）」を引数として
+        再帰的に渡す。``ancestors`` は現在の DFS 経路上に存在するノードの集合であり、
+        ``ancestors`` に含まれるノードが子として出現したときのみ循環として検出する。
+
+        これにより、菱形 DAG（A→B, A→C, B→C）のような合法的なダイヤモンド構造が
+        誤って循環と判定されることを防ぐ（BFS での ``visited`` 兼用方式の欠陥を修正）。
+
+        ``visited`` は「完全に処理済みのノード」を保持し、同一ノードへの
+        N+1 クエリを防ぐメモ化として機能する。
 
         Args:
             refs: 直接の composition refs タプル。
-            root_id: 循環検出の起点となる UUID（新規作成時は生成済み uuid、
-                更新時は既存 template_id）。
+            root_id: 循環検出の起点 UUID（新規作成時は生成済み uuid、
+                更新時は既存 template_id）。自己参照は model_validate() が
+                先行検出するため、root_id を ancestors に含めて DFS の
+                対称性を保つ。
 
         Raises:
             CompositionCycleError:
@@ -384,32 +388,46 @@ class DeliverableTemplateService:
                 - ``reason="depth_limit"``: 深度が 10 を超えた。
                 - ``reason="node_limit"``: 訪問ノード数が 100 を超えた。
         """
-        visited: set[DeliverableTemplateId] = {root_id}
-        # queue 要素: (ref, depth)
-        queue: deque[tuple[DeliverableTemplateRef, int]] = deque((ref, 1) for ref in refs)
+        # 完全処理済みノード（黒）: 別経路で循環なし確認済み → 再訪問をスキップ
+        visited: set[DeliverableTemplateId] = set()
+        node_count: int = 0
 
-        while queue:
-            ref, depth = queue.popleft()
+        async def _dfs(
+            template_id: DeliverableTemplateId,
+            ancestors: frozenset[DeliverableTemplateId],
+            depth: int,
+        ) -> None:
+            nonlocal node_count
 
-            if ref.template_id in visited:
+            # 祖先経路上に既に存在するなら推移的循環
+            if template_id in ancestors:
                 raise CompositionCycleError(
                     reason="transitive_cycle",
-                    cycle_path=[str(tid) for tid in visited] + [str(ref.template_id)],
+                    cycle_path=[str(tid) for tid in ancestors] + [str(template_id)],
                 )
 
             if depth > _DAG_MAX_DEPTH:
                 raise CompositionCycleError(reason="depth_limit")
 
-            visited.add(ref.template_id)
-
-            if len(visited) > _DAG_MAX_NODES:
+            node_count += 1
+            if node_count > _DAG_MAX_NODES:
                 raise CompositionCycleError(reason="node_limit")
 
-            # 子ノードの refs を取得して BFS キューに追加
-            child_template = await self._dt_repo.find_by_id(ref.template_id)
+            # 既に別経路で完全処理済み（循環なし確認済み）ならスキップ
+            if template_id in visited:
+                return
+
+            child_template = await self._dt_repo.find_by_id(template_id)
+            new_ancestors = ancestors | {template_id}
             if child_template is not None:
                 for child_ref in child_template.composition:
-                    queue.append((child_ref, depth + 1))
+                    await _dfs(child_ref.template_id, new_ancestors, depth + 1)
+
+            visited.add(template_id)
+
+        initial_ancestors: frozenset[DeliverableTemplateId] = frozenset({root_id})
+        for ref in refs:
+            await _dfs(ref.template_id, initial_ancestors, 1)
 
 
 __all__ = [

@@ -31,7 +31,7 @@ from bakufu.interfaces.http.error_handlers import (
     gate_not_found_handler,
     http_exception_handler,
     internal_error_handler,
-    invalid_enum_value_handler,
+    invalid_role_handler,
     pydantic_validation_error_handler,
     role_profile_invariant_violation_handler,
     role_profile_not_found_handler,
@@ -130,6 +130,7 @@ def create_app() -> FastAPI:
         CompositionCycleError,
         DeliverableTemplateNotFoundError,
         DeliverableTemplateVersionDowngradeError,
+        InvalidRoleError,
         RoleProfileNotFoundError,
     )
     from bakufu.application.exceptions.empire_exceptions import (
@@ -215,7 +216,8 @@ def create_app() -> FastAPI:
         RoleProfileInvariantViolation,
         role_profile_invariant_violation_handler,
     )
-    app.add_exception_handler(ValueError, invalid_enum_value_handler)
+    # InvalidRoleError: role パスパラメータの不正値を 422 に変換（スコープ限定の専用例外）
+    app.add_exception_handler(InvalidRoleError, invalid_role_handler)
     app.add_exception_handler(ValidationError, pydantic_validation_error_handler)
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_error_handler)

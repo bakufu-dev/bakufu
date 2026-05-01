@@ -10,6 +10,9 @@
 * **interfaces 層との境界**: router が domain 型を import しないよう、
   ``upsert`` は ``DeliverableTemplateRefDict`` / ``str`` 形式で受け取り、
   service 内部で domain VO へ変換する。
+* **role 文字列変換**: ``_parse_role`` が ``ValueError`` を ``InvalidRoleError``
+  （application 例外）に変換することで、グローバルな ``ValueError`` ハンドラを
+  設置せずに済む。interfaces 層は ``InvalidRoleError`` だけを捕捉して 422 を返す。
 """
 
 from __future__ import annotations
@@ -20,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bakufu.application.exceptions.deliverable_template_exceptions import (
     DeliverableTemplateNotFoundError,
+    InvalidRoleError,
     RoleProfileNotFoundError,
 )
 from bakufu.application.exceptions.empire_exceptions import EmpireNotFoundError
@@ -103,10 +107,10 @@ class RoleProfileService:
             RoleProfile。
 
         Raises:
-            ValueError: ``role`` が不正な Role 値の場合。
+            InvalidRoleError: ``role`` が不正な Role 値の場合。
             RoleProfileNotFoundError: 対象 RoleProfile が存在しない場合。
         """
-        role_enum = Role(role)
+        role_enum = self._parse_role(role)
         return await self.find_by_empire_and_role(empire_id, role_enum)
 
     async def upsert(
@@ -129,12 +133,13 @@ class RoleProfileService:
             Upsert 後の RoleProfile。
 
         Raises:
+            InvalidRoleError: ``role`` が不正な Role 値の場合。
             EmpireNotFoundError: Empire が存在しない場合。
             DeliverableTemplateNotFoundError: refs に存在しない template_id が
                 含まれる場合（kind="role_profile_ref"）。
             RoleProfileInvariantViolation: 重複参照がある場合。
         """
-        role_enum = Role(role)
+        role_enum = self._parse_role(role)
         ref_tuple = tuple(self._to_ref(r) for r in refs)
 
         # BUG-001: read も含め全操作を単一の begin() 内で完結させる (EmpireService パターン)。
@@ -187,15 +192,36 @@ class RoleProfileService:
             role: 対象 Role 文字列（``Role`` StrEnum 値）。
 
         Raises:
+            InvalidRoleError: ``role`` が不正な Role 値の場合。
             RoleProfileNotFoundError: 対象 RoleProfile が存在しない場合（Fail Fast）。
         """
-        role_enum = Role(role)
+        role_enum = self._parse_role(role)
         # BUG-001: Fail Fast + delete を単一の begin() 内で完結させる (EmpireService パターン)。
         async with self._session.begin():
             profile = await self._rp_repo.find_by_empire_and_role(empire_id, role_enum)
             if profile is None:
                 raise RoleProfileNotFoundError(str(empire_id), role_enum.value)
             await self._rp_repo.delete(profile.id)
+
+    @staticmethod
+    def _parse_role(role_str: str) -> Role:
+        """role 文字列を Role enum に変換する。
+
+        Args:
+            role_str: Role StrEnum の文字列値。
+
+        Returns:
+            対応する ``Role`` 列挙子。
+
+        Raises:
+            InvalidRoleError: ``role_str`` が有効な ``Role`` 値でない場合。
+                グローバルな ``ValueError`` ハンドラを設置せずに済むよう、
+                application 層の専用例外に変換して送出する。
+        """
+        try:
+            return Role(role_str)
+        except ValueError as exc:
+            raise InvalidRoleError(role_str) from exc
 
     @staticmethod
     def _to_ref(d: DeliverableTemplateRefDict) -> DeliverableTemplateRef:
