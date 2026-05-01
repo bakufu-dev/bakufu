@@ -78,7 +78,7 @@
 | REQ-RM-MATCH-001〜005 | `RoomRoleOverrideRepository` Port | `backend/src/bakufu/application/ports/room_role_override_repository.py`（新規）| `find_by_room_and_role` / `find_all_by_room` / `save` / `delete` |
 | REQ-RM-MATCH-001 | `RoomDeliverableMatchingError` | `backend/src/bakufu/application/exceptions/room_exceptions.py`（既存追記）| マッチング失敗例外。`missing: list[RoomDeliverableMismatch]` を保持 |
 | REQ-RM-MATCH-001 | `RoomDeliverableMismatch` | 同上 | `(stage_id: str, stage_name: str, template_id: str)` — 不足情報の単位 |
-| REQ-RM-MATCH-003 | `RoomRoleOverrideInvariantViolation` | `backend/src/bakufu/domain/room/exceptions.py`（既存追記）| `RoomRoleOverride` VO の不変条件違反（template_id 重複）を表すドメイン例外。`RoleProfileInvariantViolation` と対称の新規クラス。既存 `room_invariant_violation_handler` を拡張して HTTP 422 に変換する |
+| REQ-RM-MATCH-003 | `RoomRoleOverrideInvariantViolation` | `backend/src/bakufu/domain/exceptions.py`（既存追記）| `RoomRoleOverride` VO の不変条件違反（template_id 重複）を表すドメイン例外。`RoomInvariantViolation` / `RoleProfileInvariantViolation` と同ファイルに並列追加。既存 `room_invariant_violation_handler` を拡張して HTTP 422 に変換する |
 | 横断 | `SqliteRoomRoleOverrideRepository` | `backend/src/bakufu/infrastructure/persistence/sqlite/repositories/room_role_override_repository.py`（新規）| `room_role_overrides` テーブルへの UPSERT / SELECT / DELETE |
 | 横断 | Alembic migration | `backend/alembic/versions/{rev}_add_room_role_overrides.py`（新規）| `room_role_overrides` テーブル追加（§確定 D）|
 | 連携更新 | `RoomService.assign_agent` | `backend/src/bakufu/application/services/room_service.py`（既存更新）| Agent 割り当て前に `RoomMatchingService.validate_coverage` を呼び出す。`custom_refs` パラメータと `_override_repo: RoomRoleOverrideRepository` 依存を追加（§確定 G ステップ 9 で直接 UPSERT）|
