@@ -12,6 +12,7 @@ from bakufu.interfaces.http.error_handlers._common import (
     clean_domain_message,
     error_response,
 )
+from bakufu.interfaces.http.schemas.common import ErrorDetail, ErrorResponse
 
 # ── Empire ───────────────────────────────────────────────────────────────────
 
@@ -201,4 +202,51 @@ async def directive_invariant_violation_handler(request: Request, exc: Exception
 
     if not isinstance(exc, DirectiveInvariantViolation):
         raise TypeError(f"Expected DirectiveInvariantViolation, got {type(exc).__name__}")
+    return error_response(VALIDATION_ERROR, clean_domain_message(str(exc)), 422)
+
+
+# ── Room Matching ─────────────────────────────────────────────────────────────
+
+
+async def room_deliverable_matching_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    """``RoomDeliverableMatchingError`` → HTTP 422 / deliverable_matching_failed。
+
+    MSG-RM-MATCH-001 対応。detail.missing に不足 deliverable 全件を含む。
+    """
+    from bakufu.application.exceptions.room_exceptions import RoomDeliverableMatchingError
+
+    if not isinstance(exc, RoomDeliverableMatchingError):
+        raise TypeError(f"Expected RoomDeliverableMatchingError, got {type(exc).__name__}")
+
+    first_line = exc.message.split("\n")[0]
+    detail: dict[str, object] = {
+        "room_id": exc.room_id,
+        "role": exc.role,
+        "missing": [
+            {
+                "stage_id": m.stage_id,
+                "stage_name": m.stage_name,
+                "template_id": m.template_id,
+            }
+            for m in exc.missing
+        ],
+    }
+    body = ErrorResponse(
+        error=ErrorDetail(
+            code="deliverable_matching_failed",
+            message=first_line,
+            detail=detail,
+        )
+    )
+    return JSONResponse(content=body.model_dump(), status_code=422)
+
+
+async def room_role_override_invariant_violation_handler(
+    request: Request, exc: Exception
+) -> JSONResponse:
+    """``RoomRoleOverrideInvariantViolation`` → HTTP 422 / validation_error。"""
+    from bakufu.domain.exceptions import RoomRoleOverrideInvariantViolation
+
+    if not isinstance(exc, RoomRoleOverrideInvariantViolation):
+        raise TypeError(f"Expected RoomRoleOverrideInvariantViolation, got {type(exc).__name__}")
     return error_response(VALIDATION_ERROR, clean_domain_message(str(exc)), 422)

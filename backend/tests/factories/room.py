@@ -26,7 +26,8 @@ from bakufu.domain.room import (
     PromptKit,
     Room,
 )
-from bakufu.domain.value_objects import Role
+from bakufu.domain.room.value_objects import RoomRoleOverride
+from bakufu.domain.value_objects import DeliverableTemplateRef, Role
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
@@ -161,6 +162,30 @@ def make_populated_room(
     )
 
 
+# ---------------------------------------------------------------------------
+# RoomRoleOverride
+# ---------------------------------------------------------------------------
+def make_room_role_override(
+    *,
+    room_id: UUID | None = None,
+    role: Role = Role.DEVELOPER,
+    deliverable_template_refs: tuple[DeliverableTemplateRef, ...] = (),
+) -> RoomRoleOverride:
+    """妥当な :class:`RoomRoleOverride` VO を構築する。
+
+    TC-UT-RMS-010/013/016 など `resolve_effective_refs` / `upsert_override` の
+    ユニットテストで AsyncMock の return_value として使用する。
+    ``deliverable_template_refs`` 省略時は空タプル（「提供なし」明示宣言と同値）。
+    """
+    override = RoomRoleOverride(
+        room_id=room_id if room_id is not None else uuid4(),
+        role=role,
+        deliverable_template_refs=deliverable_template_refs,
+    )
+    _register(override)
+    return override
+
+
 def make_room_with_secret_prompt_kit(
     *,
     room_id: UUID | None = None,
@@ -193,5 +218,6 @@ __all__ = [
     "make_populated_room",
     "make_prompt_kit",
     "make_room",
+    "make_room_role_override",
     "make_room_with_secret_prompt_kit",
 ]

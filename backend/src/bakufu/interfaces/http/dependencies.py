@@ -27,6 +27,8 @@ from bakufu.application.services.external_review_gate_service import (
     ExternalReviewGateService,
 )
 from bakufu.application.services.role_profile_service import RoleProfileService
+from bakufu.application.services.room_matching_service import RoomMatchingService
+from bakufu.application.services.room_role_override_service import RoomRoleOverrideService
 from bakufu.application.services.room_service import RoomService
 from bakufu.application.services.task_service import TaskService
 from bakufu.application.services.workflow_service import WorkflowService
@@ -42,7 +44,9 @@ __all__ = [
     "ExternalReviewGateRepository",
     "GateServiceDep",
     "RoleProfileService",
+    "RoomMatchingService",
     "RoomRepository",
+    "RoomRoleOverrideService",
     "SessionDep",
     "TaskRepository",
     "TaskServiceDep",
@@ -53,6 +57,8 @@ __all__ = [
     "get_empire_service",
     "get_external_review_gate_service",
     "get_role_profile_service",
+    "get_room_matching_service",
+    "get_room_role_override_service",
     "get_room_service",
     "get_session",
     "get_task_service",
@@ -88,6 +94,41 @@ async def get_empire_service(session: SessionDep) -> EmpireService:
     return EmpireService(repo, session)
 
 
+async def get_room_matching_service(session: SessionDep) -> RoomMatchingService:
+    """RoomMatchingService を DI 注入する。"""
+    from bakufu.infrastructure.persistence.sqlite.repositories.role_profile_repository import (
+        SqliteRoleProfileRepository,
+    )
+    from bakufu.infrastructure.persistence.sqlite.repositories.room_role_override_repository import (  # noqa: E501
+        SqliteRoomRoleOverrideRepository,
+    )
+
+    override_repo = SqliteRoomRoleOverrideRepository(session)
+    role_profile_repo = SqliteRoleProfileRepository(session)
+    return RoomMatchingService(
+        override_repo=override_repo,
+        role_profile_repo=role_profile_repo,
+    )
+
+
+async def get_room_role_override_service(session: SessionDep) -> RoomRoleOverrideService:
+    """RoomRoleOverrideService を DI 注入する。"""
+    from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
+        SqliteRoomRepository,
+    )
+    from bakufu.infrastructure.persistence.sqlite.repositories.room_role_override_repository import (  # noqa: E501
+        SqliteRoomRoleOverrideRepository,
+    )
+
+    room_repo = SqliteRoomRepository(session)
+    override_repo = SqliteRoomRoleOverrideRepository(session)
+    return RoomRoleOverrideService(
+        room_repo=room_repo,
+        override_repo=override_repo,
+        session=session,
+    )
+
+
 async def get_room_service(session: SessionDep) -> RoomService:
     """RoomService を DI 注入する (確定 D)。
 
@@ -103,8 +144,14 @@ async def get_room_service(session: SessionDep) -> RoomService:
     from bakufu.infrastructure.persistence.sqlite.repositories.empire_repository import (
         SqliteEmpireRepository,
     )
+    from bakufu.infrastructure.persistence.sqlite.repositories.role_profile_repository import (
+        SqliteRoleProfileRepository,
+    )
     from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
         SqliteRoomRepository,
+    )
+    from bakufu.infrastructure.persistence.sqlite.repositories.room_role_override_repository import (  # noqa: E501
+        SqliteRoomRoleOverrideRepository,
     )
     from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
         SqliteWorkflowRepository,
@@ -114,12 +161,20 @@ async def get_room_service(session: SessionDep) -> RoomService:
     empire_repo = SqliteEmpireRepository(session)
     workflow_repo = SqliteWorkflowRepository(session)
     agent_repo = SqliteAgentRepository(session)
+    override_repo = SqliteRoomRoleOverrideRepository(session)
+    role_profile_repo = SqliteRoleProfileRepository(session)
+    matching_svc = RoomMatchingService(
+        override_repo=override_repo,
+        role_profile_repo=role_profile_repo,
+    )
     return RoomService(
         room_repo=room_repo,
         empire_repo=empire_repo,
         workflow_repo=workflow_repo,
         agent_repo=agent_repo,
         session=session,
+        matching_svc=matching_svc,
+        override_repo=override_repo,
     )
 
 

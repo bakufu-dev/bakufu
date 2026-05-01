@@ -19,7 +19,8 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from bakufu.domain.value_objects import AgentId, Role
+from bakufu.domain.exceptions import RoomRoleOverrideInvariantViolation
+from bakufu.domain.value_objects import AgentId, DeliverableTemplateRef, Role, RoomId
 
 # ---------------------------------------------------------------------------
 # AgentMembership（Room §確定 F — (agent_id, role) 対が一意キー）
@@ -108,8 +109,44 @@ class PromptKit(BaseModel):
         return self
 
 
+class RoomRoleOverride(BaseModel):
+    """Room スコープのロール別 DeliverableTemplate オーバーライド VO。
+
+    (room_id, role) をキーとして、Room 内でこの Role が提供する
+    DeliverableTemplate refs を上書き定義する。空タプルは「このロールは
+    Room 内でテンプレを提供しない」の明示的宣言として有効。
+
+    不変条件: deliverable_template_refs 内の template_id は一意でなければならない。
+    重複がある場合はコンストラクタ内で RoomRoleOverrideInvariantViolation を raise する。
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=False)
+
+    room_id: RoomId
+    role: Role
+    deliverable_template_refs: tuple[DeliverableTemplateRef, ...] = ()
+
+    @model_validator(mode="after")
+    def _check_template_id_unique(self) -> Self:
+        seen: set[object] = set()
+        for ref in self.deliverable_template_refs:
+            if ref.template_id in seen:
+                raise RoomRoleOverrideInvariantViolation(
+                    kind="duplicate_template_id",
+                    message=(
+                        f"[FAIL] RoomRoleOverride template_id must be unique: "
+                        f"duplicate {ref.template_id!r}\n"
+                        f"Next: Remove duplicate template_id from deliverable_template_refs."
+                    ),
+                    detail={"template_id": str(ref.template_id)},
+                )
+            seen.add(ref.template_id)
+        return self
+
+
 __all__ = [
     "PROMPT_KIT_PREFIX_MAX",
     "AgentMembership",
     "PromptKit",
+    "RoomRoleOverride",
 ]
