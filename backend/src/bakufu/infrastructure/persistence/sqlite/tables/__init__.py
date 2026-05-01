@@ -91,6 +91,16 @@ ExternalReviewGate Aggregate（PR #36）:
   PK は保存内部（save() ごとに uuid4() を再生成）。``UNIQUE(gate_id, order_index)``
   は同一 Gate 内での order_index 重複を禁止し tuple 順序の一意性を保証する。
 
+DeliverableRecord Aggregate（Issue #123）:
+
+* :mod:`...tables.deliverable_records` — DeliverableRecord ルート行。``content`` カラムは
+  ``MaskedText``（Agent 出力に secret 混入の可能性、ai-validation §確定 E 実適用）。
+  本テーブルは CI 三層防衛の *partial-mask* コントラクトに登録され、
+  マスク対象カラムを ``content`` 1 つに固定する。
+* :mod:`...tables.criterion_validation_results` — CriterionValidationResult 子行（マスク無し）。
+  ``deliverable_record_id`` は ``deliverable_records.id`` への FK（ON DELETE CASCADE）。
+  ``reason`` は LLM 評価根拠であり business judgment で masking 対象外。
+
 注意: ``conversations`` / ``conversation_messages`` テーブルは除外
 （§BUG-TR-002 凍結済み）。Task ドメインが ``conversations: list[Conversation]``
 属性を獲得した時点でここに登録される。
@@ -120,7 +130,9 @@ from bakufu.infrastructure.persistence.sqlite.tables import (
     agent_skills,
     agents,
     audit_log,
+    criterion_validation_results,
     deliverable_attachments,
+    deliverable_records,
     deliverable_templates,
     deliverables,
     directives,
@@ -149,7 +161,9 @@ __all__ = [
     "agent_skills",
     "agents",
     "audit_log",
+    "criterion_validation_results",
     "deliverable_attachments",
+    "deliverable_records",
     "deliverable_templates",
     "deliverables",
     "directives",

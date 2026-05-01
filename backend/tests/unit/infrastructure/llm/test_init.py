@@ -27,10 +27,23 @@ class TestPublicApiRestriction:
         assert "OpenAILLMClient" not in llm_all
 
     def test_only_factory_config_provider_exported(self) -> None:
-        """TC-UT-INIT-001c: __all__ は設計書で確定した 3 シンボルのみ。"""
+        """TC-UT-INIT-001c: __all__ は設計書で確定したシンボルのみ。
+
+        Issue #144 で確定した 3 シンボル（API Key ベース）+
+        Issue #123 で追加した 3 シンボル（CLI サブプロセス方式）の計 6 シンボル。
+        """
         from bakufu.infrastructure.llm import __all__ as llm_all
 
-        expected = {"LLMClientConfig", "LLMProviderEnum", "llm_client_factory"}
+        expected = {
+            # Issue #144: API Key ベース LLM クライアント
+            "LLMClientConfig",
+            "LLMProviderEnum",
+            "llm_client_factory",
+            # Issue #123: CLI サブプロセス方式 LLM クライアント
+            "LLMCliConfig",
+            "LLMCliProviderEnum",
+            "llm_provider_factory",
+        }
         assert set(llm_all) == expected
 
     def test_anthropic_client_import_raises_error(self) -> None:
