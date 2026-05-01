@@ -299,3 +299,48 @@ class TestRoleProfileTxBoundary:
             "[FAIL] Rollback 経路で role_profile 行が残存。"
             "Repository は session.commit() を呼ばないこと (§確定 B)。"
         )
+
+
+# ---------------------------------------------------------------------------
+# TC-IT-RPR-016/017: Repository.delete() 物理確認 (§確定E)
+# ---------------------------------------------------------------------------
+class TestDeleteMethod:
+    """TC-IT-RPR-016 / 017: SqliteRoleProfileRepository.delete() (§確定E)。"""
+
+    async def test_delete_removes_existing_profile(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """TC-IT-RPR-016: 存在する id を delete → find_by_empire_and_role が None を返す。"""
+        empire_id = uuid4()
+        await _seed_empire(session_factory, empire_id)
+        profile = make_role_profile(empire_id=empire_id, role=Role.DEVELOPER)
+
+        # INSERT
+        async with session_factory() as session, session.begin():
+            await SqliteRoleProfileRepository(session).save(profile)
+
+        # DELETE
+        async with session_factory() as session, session.begin():
+            await SqliteRoleProfileRepository(session).delete(profile.id)
+
+        # 物理削除確認
+        async with session_factory() as session:
+            result = await SqliteRoleProfileRepository(session).find_by_empire_and_role(
+                empire_id, profile.role
+            )
+        assert result is None, (
+            "[FAIL] delete() 後も role_profile 行が残存。物理削除が機能していない (§確定 E)。"
+        )
+
+    async def test_delete_noop_on_unknown_id(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """TC-IT-RPR-017: 存在しない id を delete → 例外なし（no-op）。"""
+        unknown_id = uuid4()
+
+        # 存在しない id に対して delete → 例外が発生してはならない
+        async with session_factory() as session, session.begin():
+            await SqliteRoleProfileRepository(session).delete(unknown_id)
+        # 到達できれば no-op が正常に機能している

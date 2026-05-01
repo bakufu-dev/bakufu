@@ -235,3 +235,44 @@ class TestTxBoundary:
             "[FAIL] 暗黙 commit で template 行が永続化された。"
             "Repository は session.commit() を呼ばないこと (§確定 B)。"
         )
+
+
+# ---------------------------------------------------------------------------
+# TC-IT-DTR-021/022: Repository.delete() 物理確認 (§確定E)
+# ---------------------------------------------------------------------------
+class TestDeleteMethod:
+    """TC-IT-DTR-021 / 022: SqliteDeliverableTemplateRepository.delete() (§確定E)。"""
+
+    async def test_delete_removes_existing_template(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """TC-IT-DTR-021: 存在する id を delete → find_by_id が None を返す。"""
+        template = make_deliverable_template()
+
+        # INSERT
+        async with session_factory() as session, session.begin():
+            await SqliteDeliverableTemplateRepository(session).save(template)
+
+        # DELETE
+        async with session_factory() as session, session.begin():
+            await SqliteDeliverableTemplateRepository(session).delete(template.id)
+
+        # 物理削除確認
+        async with session_factory() as session:
+            result = await SqliteDeliverableTemplateRepository(session).find_by_id(template.id)
+        assert result is None, (
+            "[FAIL] delete() 後も template 行が残存。物理削除が機能していない (§確定 E)。"
+        )
+
+    async def test_delete_noop_on_unknown_id(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """TC-IT-DTR-022: 存在しない id を delete → 例外なし（no-op）。"""
+        unknown_id = uuid4()
+
+        # 存在しない id に対して delete → 例外が発生してはならない
+        async with session_factory() as session, session.begin():
+            await SqliteDeliverableTemplateRepository(session).delete(unknown_id)
+        # 到達できれば no-op が正常に機能している
