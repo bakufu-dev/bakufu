@@ -303,11 +303,10 @@ classDiagram
 
 1. `DeliverableTemplateService.find_by_id(template_id)` → None なら `DeliverableTemplateNotFoundError` → 404
 2. 提供 version < 現 version: `DeliverableTemplateVersionDowngradeError`（MSG-DT-HTTP-004）→ 422
-3. 提供 version > 現 version: `template.create_new_version(new_version)` で中間インスタンス生成
-4. 全フィールドで `model_validate({id: existing_id, ...all_new_values})` にて最終インスタンス生成（不変条件再検査）
-5. composition の DAG 走査と各 ref 存在確認
-6. `async with session.begin():` `DeliverableTemplateRepository.save(updated_template)`
-7. HTTP 200, 更新済み `DeliverableTemplateResponse`
+3. 全フィールドで `model_validate({id: existing_id, ...all_new_values})` にて新インスタンス生成（domain invariant による version_not_greater・自己参照・不変条件検査が先行）
+4. composition の DAG 走査と各 ref 存在確認（`_check_dag` で推移的循環・深度超過・ノード超過を DFS + 経路スタックで検出）
+5. `async with session.begin():` `DeliverableTemplateRepository.save(updated_template)`
+6. HTTP 200, 更新済み `DeliverableTemplateResponse`
 
 ### ユースケース 3: RoleProfile upsert（PUT /api/empires/{empire_id}/role-profiles/{role}）
 
@@ -349,9 +348,9 @@ sequenceDiagram
     Service->>DTRepo: find_by_id(ref_A.template_id)
     DTRepo->>DB: SELECT
     DB-->>DTRepo: template_A
-    Service->>Service: _check_dag(refs=[ref_A], root_id=new_uuid) → 循環なし
     Service->>Domain: DeliverableTemplate.model_validate({id=new_uuid, ...})
-    Domain-->>Service: template
+    Domain-->>Service: template（domain invariant による不変条件検査済み）
+    Service->>Service: _check_dag(refs=[ref_A], root_id=new_uuid) → 循環なし
     Service->>DTRepo: save(template)
     DTRepo->>DB: INSERT ON CONFLICT DO UPDATE
     DB-->>DTRepo: ok
