@@ -19,7 +19,8 @@
 |--------|----------|------------|------|
 | REQ-RM-HTTP-001〜010 | `room_router` | `backend/src/bakufu/interfaces/http/routers/rooms.py` | Room CRUD + Agent 割り当て/解除 + Role オーバーライド CRUD エンドポイント（10 本）|
 | REQ-RM-HTTP-001〜007 | `RoomService` | `backend/src/bakufu/application/services/room_service.py` | 全 CRUD メソッド + `assign_agent` に `custom_refs` パラメータ追加・マッチング検証呼び出しを統合 |
-| REQ-RM-HTTP-008〜010 | `RoomMatchingService` | `backend/src/bakufu/application/services/room_matching_service.py`（新規）| オーバーライド CRUD + マッチング検証ロジック（[`../../deliverable-template/room-matching/basic-design.md`](../../deliverable-template/room-matching/basic-design.md) 参照）|
+| REQ-RM-HTTP-006（内部）| `RoomMatchingService` | `backend/src/bakufu/application/services/room_matching_service.py`（新規）| マッチング検証ロジック（`validate_coverage` / `resolve_effective_refs`）。`RoomService.assign_agent` から内部呼び出し。[`../../deliverable-template/room-matching/basic-design.md`](../../deliverable-template/room-matching/basic-design.md) 参照 |
+| REQ-RM-HTTP-008〜010 | `RoomRoleOverrideService` | `backend/src/bakufu/application/services/room_role_override_service.py`（新規）| オーバーライド CRUD（`upsert_override` / `delete_override` / `find_overrides`）。[`../../deliverable-template/room-matching/basic-design.md`](../../deliverable-template/room-matching/basic-design.md) 参照 |
 | REQ-RM-HTTP-001〜010 | `RoomSchemas` | `backend/src/bakufu/interfaces/http/schemas/room.py` | Pydantic v2 リクエスト / レスポンスモデル。`AgentAssignRequest` に `custom_refs` 追加、`RoomRoleOverrideRequest` / `RoomRoleOverrideResponse` / `RoomRoleOverrideListResponse` を追加 |
 | 横断 | `room 例外ハンドラ群` | `backend/src/bakufu/interfaces/http/error_handlers/room.py`（既存追記）| `RoomDeliverableMatchingError` → `ErrorResponse(code="deliverable_matching_failed", detail.missing=[...])` 422 変換を追加 |
 | REQ-RM-HTTP-002 | `RoomRepository.find_all_by_empire` 拡張 | `backend/src/bakufu/application/ports/room_repository.py`（既存）| `find_all_by_empire(empire_id) → list[Room]` メソッド（確定済み）|
@@ -101,7 +102,7 @@ backend/
 | 項目 | 内容 |
 |---|---|
 | 入力 | パスパラメータ `room_id: UUID` + リクエスト Body `AgentAssignRequest(agent_id: UUID, role: str, custom_refs: list[DeliverableTemplateRefCreate] \| None = None)` |
-| 処理 | `RoomService.assign_agent(room_id, agent_id, role, custom_refs)` → 1) Room 存在確認・archived 確認 2) Agent 存在確認（不在 → `AgentNotFoundError` 404）3) `empire_id` 取得（`find_empire_id_by_room_id`）4) Workflow 取得（`workflow_repo.find_by_id(room.workflow_id)`）5) `RoomMatchingService.resolve_effective_refs(room_id, empire_id, role, custom_refs)` で有効 refs 決定（优先順位: custom_refs → RoomRoleOverride → RoleProfile → 空）6) `RoomMatchingService.validate_coverage(workflow, role, effective_refs)` でマッチング検証（失敗 → `RoomDeliverableMatchingError` 422）7) `room.add_member(membership)` （`(agent_id, role)` 重複 → `RoomInvariantViolation` 422 / capacity 超過 → 422）8) `async with session.begin(): RoomRepository.save(updated_room, empire_id)` + `if custom_refs is not None: RoomRoleOverrideRepository.save(override)` を同一トランザクションで実行 |
+| 処理 | `RoomService.assign_agent(room_id, agent_id, role, custom_refs)` → **`async with session.begin():` ブロック内**で以下を一括実行: 1) Room 存在確認・archived 確認 2) Agent 存在確認（不在 → `AgentNotFoundError` 404）3) `empire_id` 取得（`find_empire_id_by_room_id`）4) Workflow 取得（`workflow_repo.find_by_id(room.workflow_id)`）5) `RoomMatchingService.resolve_effective_refs(room_id, empire_id, role, custom_refs)` で有効 refs 決定（優先順位: custom_refs → RoomRoleOverride → RoleProfile → 空）6) `missing = RoomMatchingService.validate_coverage(workflow, effective_refs)` → `if missing: raise RoomDeliverableMatchingError(room_id, role, missing)` 7) `room.add_member(membership)` （`(agent_id, role)` 重複 → `RoomInvariantViolation` 422 / capacity 超過 → 422）8) `RoomRepository.save(updated_room, empire_id)` + `if custom_refs is not None: RoomRoleOverrideRepository.save(override)` を同一トランザクションで実行。全 async I/O を単一 `begin()` に包み BUG-001（autobegin 競合）を防止する |
 | 出力 | HTTP 201, 更新済み `RoomResponse` |
 | エラー時 | Room 不在 → 404 / Room アーカイブ済み → 409 (MSG-RM-HTTP-003) / Agent 不在 → 404 (MSG-RM-HTTP-004) / マッチング失敗 → 422 (MSG-RM-HTTP-008) / `(agent_id, role)` 重複 → 422 / capacity 超過 → 422 / 不正 UUID → 422 |
 | 親 spec 参照 | UC-RM-013, UC-RM-015 |
@@ -120,9 +121,9 @@ backend/
 | 項目 | 内容 |
 |---|---|
 | 入力 | パスパラメータ `room_id: UUID` / `role: str`（Role enum 値） + リクエスト Body `RoomRoleOverrideRequest(deliverable_template_refs: list[DeliverableTemplateRefCreate])` |
-| 処理 | `RoomMatchingService.upsert_override(room_id, role, refs)` → Room 存在確認 → archived 確認 → UPSERT |
+| 処理 | `RoomRoleOverrideService.upsert_override(room_id, role, refs)` → Room 存在確認 → archived 確認 → UPSERT |
 | 出力 | HTTP 200, `RoomRoleOverrideResponse(room_id, role, deliverable_template_refs)` |
-| エラー時 | Room 不在 → 404 / アーカイブ済み → 409 / 不正 UUID → 422 |
+| エラー時 | Room 不在 → 404 / アーカイブ済み → 409 / 不正 UUID → 422 / 不正 role 文字列 → 422 / validation_error（`InvalidRoleError` 経由）|
 | 親 spec 参照 | UC-RM-016 |
 
 ### REQ-RM-HTTP-009: Room レベル RoleProfile オーバーライド削除（DELETE /api/rooms/{room_id}/role-overrides/{role}）
@@ -130,9 +131,9 @@ backend/
 | 項目 | 内容 |
 |---|---|
 | 入力 | パスパラメータ `room_id: UUID` / `role: str` |
-| 処理 | `RoomMatchingService.delete_override(room_id, role)` → Room 存在確認 → delete（不在は no-op） |
+| 処理 | `RoomRoleOverrideService.delete_override(room_id, role)` → Room 存在確認 → delete（不在は no-op） |
 | 出力 | HTTP 204 No Content |
-| エラー時 | Room 不在 → 404 / アーカイブ済み → 409 / 不正 UUID → 422 |
+| エラー時 | Room 不在 → 404 / アーカイブ済み → 409 / 不正 UUID → 422 / 不正 role 文字列 → 422 / validation_error（`InvalidRoleError` 経由）|
 | 親 spec 参照 | UC-RM-016 |
 
 ### REQ-RM-HTTP-010: Room レベル RoleProfile オーバーライド一覧取得（GET /api/rooms/{room_id}/role-overrides）
@@ -140,7 +141,7 @@ backend/
 | 項目 | 内容 |
 |---|---|
 | 入力 | パスパラメータ `room_id: UUID` |
-| 処理 | `RoomMatchingService.find_overrides(room_id)` → Room 存在確認 → 全件取得（ORDER BY role ASC）|
+| 処理 | `RoomRoleOverrideService.find_overrides(room_id)` → Room 存在確認 → 全件取得（ORDER BY role ASC）|
 | 出力 | HTTP 200, `RoomRoleOverrideListResponse(items: list[RoomRoleOverrideResponse], total: int)` |
 | エラー時 | Room 不在 → 404 / 不正 UUID → 422 |
 | 親 spec 参照 | UC-RM-017 |
@@ -166,9 +167,9 @@ backend/
 |---|---|---|---|
 | ランタイム | Python 3.12+ | pyproject.toml | 既存 |
 | HTTP フレームワーク | FastAPI / Pydantic v2 / httpx | pyproject.toml | http-api-foundation で確定済み |
-| DI パターン | `get_session()` / `get_room_service()` / `get_room_matching_service()` | http-api-foundation 確定E | `dependencies.py` に各 factory を追記（`RoomMatchingService` は Issue #120 で追加）|
+| DI パターン | `get_session()` / `get_room_service()` / `get_room_matching_service()` / `get_room_role_override_service()` | http-api-foundation 確定E | `dependencies.py` に各 factory を追記（`RoomMatchingService` / `RoomRoleOverrideService` は Issue #120 で追加）|
 | application 例外 | `RoomNotFoundError` / `RoomNameAlreadyExistsError` / `RoomArchivedError` / `WorkflowNotFoundError` / `AgentNotFoundError` / `RoomDeliverableMatchingError` | #57 + #120 で定義 | `application/exceptions/room_exceptions.py`（#120 で `RoomDeliverableMatchingError` 追記）|
-| room-matching | `RoomMatchingService` / `RoomRoleOverrideRepository` / `RoomRoleOverride` VO | Issue #120 で新規追加 | [`deliverable-template/room-matching/basic-design.md`](../../deliverable-template/room-matching/basic-design.md) 参照 |
+| room-matching | `RoomMatchingService` / `RoomRoleOverrideService` / `RoomRoleOverrideRepository` / `RoomRoleOverride` VO | Issue #120 で新規追加 | [`deliverable-template/room-matching/basic-design.md`](../../deliverable-template/room-matching/basic-design.md) 参照 |
 | domain | `Room` / `RoomId` / `RoomInvariantViolation` / `AgentMembership` / `PromptKit` / `Role` | M1 確定 | room domain sub-feature（Issue #18）|
 | repository | `RoomRepository` Protocol / `SqliteRoomRepository` | M2 確定 + 本 PR で `find_all_by_empire` 追記 | room repository sub-feature（Issue #33）|
 | 基盤 | http-api-foundation（ErrorResponse / lifespan / CSRF / CORS）| M3-A 確定（Issue #55）| 全 error handler / app.state.session_factory を引き継ぐ |
@@ -271,9 +272,9 @@ classDiagram
     }
 
     RoomRouter --> RoomService : uses (DI)
-    RoomRouter --> RoomMatchingService : uses (DI, override endpoints)
+    RoomRouter --> RoomRoleOverrideService : uses (DI, override endpoints)
     RoomService --> RoomRepository : uses (Port)
-    RoomService --> RoomMatchingService : uses (matching validation)
+    RoomService --> RoomMatchingService : uses (matching validation, internal)
     RoomRouter ..> RoomCreate : deserializes
     RoomRouter ..> RoomUpdate : deserializes
     RoomRouter ..> AgentAssignRequest : deserializes

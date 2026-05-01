@@ -20,10 +20,10 @@
 
 | 項目 | 内容 |
 |-----|-----|
-| 入力 | `workflow: Workflow`（Room に採用済み Workflow）/ `role: Role`（割り当て対象 Role）/ `effective_refs: tuple[DeliverableTemplateRef, ...]`（有効 ref 集合 — Room オーバーライドまたは Empire RoleProfile から導出済み。空タプルは「このロールがテンプレを提供しない」と等価） |
-| 処理 | 全 Stage を走査し、各 Stage の `required_deliverables` のうち `optional=False` のものについて、`req.template_ref.template_id` が `effective_refs` の `template_id` 集合に含まれるかを検査する。不足している (`template_id`, `stage_id`, `stage_name`) のすべてを収集し、1 件でも不足があれば一括で `RoomDeliverableMatchingError` を raise（Fail Fast 原則）。全 Stage で充足されていれば正常返却（None） |
-| 出力 | None（検証通過） |
-| エラー時 | カバレッジ不足 → `RoomDeliverableMatchingError`（MSG-RM-MATCH-001, 422。`missing` リストに不足 Stage / template を詳細列挙） |
+| 入力 | `workflow: Workflow`（Room に採用済み Workflow）/ `effective_refs: tuple[DeliverableTemplateRef, ...]`（有効 ref 集合 — Room オーバーライドまたは Empire RoleProfile から導出済み。空タプルは「このロールがテンプレを提供しない」と等価） |
+| 処理 | 全 Stage を走査し、各 Stage の `required_deliverables` のうち `optional=False` のものについて、`req.template_ref.template_id` が `effective_refs` の `template_id` 集合に含まれるかを検査する。不足している (`template_id`, `stage_id`, `stage_name`) のすべてを収集して返却する（Fail Fast 原則 §確定 C）。全 Stage で充足されていれば空リストを返す。純粋関数（I/O なし） |
+| 出力 | `list[RoomDeliverableMismatch]`（空リストは充足を示す） |
+| エラー時 | 該当なし。呼び出し元（`RoomService.assign_agent`）が不足リストから `RoomDeliverableMatchingError(room_id, role, missing)` を構築して raise する |
 | 親 spec 参照 | UC-RM-015, R1-11 |
 
 ### REQ-RM-MATCH-002: 有効 refs 解決（effective refs 取得）
@@ -41,9 +41,9 @@
 | 項目 | 内容 |
 |-----|-----|
 | 入力 | `room_id: RoomId` / `role: Role` / `deliverable_template_refs: tuple[DeliverableTemplateRef, ...]`（空タプルは「このロールは Room 内でテンプレを提供しない」を明示的に宣言する有効値） |
-| 処理 | ①`RoomRepository.find_by_id` で Room 存在確認（不在 → `RoomNotFoundError`）② `archived` 確認（archived → `RoomArchivedError`）③ `RoomRoleOverride(room_id, role, deliverable_template_refs)` を構築 → `async with session.begin(): RoomRoleOverrideRepository.save(override)` |
+| 処理 | ①`RoomRepository.find_by_id` で Room 存在確認（不在 → `RoomNotFoundError`）② `archived` 確認（archived → `RoomArchivedError`）③ `RoomRoleOverride(room_id, role, deliverable_template_refs)` を構築（template_id 重複時 → `RoomRoleOverrideInvariantViolation`）→ `async with session.begin(): RoomRoleOverrideRepository.save(override)` |
 | 出力 | `RoomRoleOverride`（保存済みオーバーライド） |
-| エラー時 | Room 不在 → 404 / アーカイブ済み → 409 |
+| エラー時 | Room 不在 → 404 / アーカイブ済み → 409 / template_id 重複 → 422 |
 | 親 spec 参照 | UC-RM-016 |
 
 ### REQ-RM-MATCH-004: Room レベル RoleProfile オーバーライド削除
@@ -73,8 +73,8 @@
 | 機能 ID | モジュール | ディレクトリ | 責務 |
 |--------|----------|------------|------|
 | REQ-RM-MATCH-001〜002 | `RoomMatchingService` | `backend/src/bakufu/application/services/room_matching_service.py`（新規）| マッチング検証ロジック（`validate_coverage` / `resolve_effective_refs`）|
-| REQ-RM-MATCH-003〜005 | `RoomMatchingService`（継続）| 同上 | オーバーライド CRUD（`upsert_override` / `delete_override` / `find_overrides`）|
-| REQ-RM-MATCH-001〜005 | `RoomRoleOverride` VO | `backend/src/bakufu/domain/room/value_objects.py`（既存追記）| `(room_id, role, deliverable_template_refs)` の不変 VO |
+| REQ-RM-MATCH-003〜005 | `RoomRoleOverrideService` | `backend/src/bakufu/application/services/room_role_override_service.py`（新規）| オーバーライド CRUD（`upsert_override` / `delete_override` / `find_overrides`）|
+| REQ-RM-MATCH-001〜005 | `RoomRoleOverride` VO | `backend/src/bakufu/domain/room/value_objects.py`（既存追記）| `(room_id, role, deliverable_template_refs)` の不変 VO。template_id 重複不変条件を持つ |
 | REQ-RM-MATCH-001〜005 | `RoomRoleOverrideRepository` Port | `backend/src/bakufu/application/ports/room_role_override_repository.py`（新規）| `find_by_room_and_role` / `find_all_by_room` / `save` / `delete` |
 | REQ-RM-MATCH-001 | `RoomDeliverableMatchingError` | `backend/src/bakufu/application/exceptions/room_exceptions.py`（既存追記）| マッチング失敗例外。`missing: list[RoomDeliverableMismatch]` を保持 |
 | REQ-RM-MATCH-001 | `RoomDeliverableMismatch` | 同上 | `(stage_id: str, stage_name: str, template_id: str)` — 不足情報の単位 |
@@ -89,14 +89,15 @@ backend/
 └── src/bakufu/
     ├── domain/
     │   └── room/
-    │       └── value_objects.py             # 既存追記: RoomRoleOverride VO 追加
+    │       └── value_objects.py             # 既存追記: RoomRoleOverride VO 追加（template_id 重複不変条件含む）
     ├── application/
     │   ├── ports/
     │   │   └── room_role_override_repository.py  # 新規: RoomRoleOverrideRepository Protocol
     │   ├── exceptions/
     │   │   └── room_exceptions.py           # 既存追記: RoomDeliverableMatchingError / RoomDeliverableMismatch
     │   └── services/
-    │       ├── room_matching_service.py     # 新規: RoomMatchingService
+    │       ├── room_matching_service.py     # 新規: RoomMatchingService（validate_coverage / resolve_effective_refs）
+    │       ├── room_role_override_service.py  # 新規: RoomRoleOverrideService（upsert_override / delete_override / find_overrides）
     │       └── room_service.py              # 既存更新: assign_agent に custom_refs + matching check を追加
     └── infrastructure/persistence/sqlite/
         ├── repositories/
@@ -110,7 +111,10 @@ backend/alembic/versions/
 docs/features/deliverable-template/room-matching/
 ├── basic-design.md                          # 本ファイル
 ├── detailed-design.md                       # 詳細設計
-└── test-design.md                           # IT / UT
+└── test-design/                             # テスト設計（IT / UT）
+    ├── index.md
+    ├── it.md
+    └── ut.md
 ```
 
 ## クラス設計（概要）
@@ -118,13 +122,15 @@ docs/features/deliverable-template/room-matching/
 ```mermaid
 classDiagram
     class RoomMatchingService {
-        -_room_repo: RoomRepository
-        -_workflow_repo: WorkflowRepository
+        -_override_repo: RoomRoleOverrideRepository
         -_role_profile_repo: RoleProfileRepository
+        +validate_coverage(workflow: Workflow, effective_refs: tuple~DeliverableTemplateRef~) list~RoomDeliverableMismatch~
+        +resolve_effective_refs(room_id: RoomId, empire_id: EmpireId, role: Role, custom_refs: tuple~DeliverableTemplateRef~ | None) tuple~DeliverableTemplateRef~
+    }
+    class RoomRoleOverrideService {
+        -_room_repo: RoomRepository
         -_override_repo: RoomRoleOverrideRepository
         -_session: AsyncSession
-        +validate_coverage(workflow: Workflow, role: Role, effective_refs: tuple~DeliverableTemplateRef~) None
-        +resolve_effective_refs(room_id: RoomId, empire_id: EmpireId, role: Role, custom_refs: tuple~DeliverableTemplateRef~ | None) tuple~DeliverableTemplateRef~
         +upsert_override(room_id: RoomId, role: Role, refs: tuple~DeliverableTemplateRef~) RoomRoleOverride
         +delete_override(room_id: RoomId, role: Role) None
         +find_overrides(room_id: RoomId) list~RoomRoleOverride~
@@ -156,16 +162,17 @@ classDiagram
         +assign_agent(room_id: RoomId, agent_id: AgentId, role: str, custom_refs: tuple~DeliverableTemplateRef~ | None) Room
     }
     RoomMatchingService --> RoomRoleOverrideRepository
-    RoomMatchingService --> RoomDeliverableMatchingError
+    RoomRoleOverrideService --> RoomRoleOverrideRepository
     RoomDeliverableMatchingError "1" --> "1..*" RoomDeliverableMismatch
-    RoomService ..> RoomMatchingService : 呼び出し
+    RoomService ..> RoomMatchingService : 呼び出し（assign_agent 内）
+    RoomService ..> RoomDeliverableMatchingError : 構築・raise
 ```
 
 ## 依存関係
 
 | 区分 | 依存 | バージョン方針 | 備考 |
 |---|---|---|---|
-| domain | `RoomRoleOverride` VO（`room/value_objects.py` 追記） | M1 確定済み + 本 PR 追記 | `DeliverableTemplateRef` / `Role` は既存 VO |
+| domain | `RoomRoleOverride` VO（`room/value_objects.py` 追記） | M1 確定済み + 本 PR 追記 | `DeliverableTemplateRef` / `Role` は既存 VO。template_id 重複不変条件を追加 |
 | application port | `RoomRoleOverrideRepository` Protocol（新規） | 本 PR 新規 | `SqliteRoomRoleOverrideRepository` が実装 |
 | application port | `RoleProfileRepository`（既存） | #122 PR で確定済み | empire-level RoleProfile 取得に使用 |
 | application port | `WorkflowRepository`（既存） | workflow M2 確定済み | Workflow.stages 取得に使用 |
@@ -173,3 +180,11 @@ classDiagram
 | domain exception | `RoomDeliverableMatchingError`（room_exceptions.py 追記） | 本 PR 新規 | http-api error_handler が 422 に変換 |
 | infrastructure | `SqliteRoomRoleOverrideRepository`（新規） | 本 PR 新規 | Alembic migration と同時追加 |
 | infrastructure | Alembic migration（新規） | 本 PR 新規 | `room_role_overrides` テーブル追加 |
+
+## セキュリティ設計
+
+| 脅威 | 説明 | 対策 |
+|------|------|------|
+| **T1: custom_refs 肥大化による DoS** | `AgentAssignRequest.custom_refs` に無制限の要素を送信し、マッチング処理の走査コストを過負荷にする | `AgentAssignRequest` の Pydantic モデルで `custom_refs` の最大要素数を制限する（`Field(max_length=N)`）。超過時は FastAPI が 422 を返し application 層に到達しない |
+| **T2: ON DELETE CASCADE の波及削除** | 将来の Room 物理削除実装時に `room_role_overrides` テーブルが連鎖削除され、意図しないデータ消失が起きる | MVP では Room は論理削除（`archived=True`）のみのため cascade は現時点で発火しない。物理削除を実装する際は cascade 影響範囲を必須レビュー項目とする（§確定 D に明記）|
+| **T3: 不正 role 文字列の永続化** | パスパラメータまたはリクエスト Body の `role` に `Role` StrEnum 外の文字列を送信し、不正なデータを `room_role_overrides` テーブルに書き込む | http-api endpoint で `role: str` を受け取った直後に `Role(role)` 変換を試みる。変換失敗時は `InvalidRoleError` → 422 を返し永続化しない（[`../../room/http-api/basic-design.md §REQ-RM-HTTP-008/009`](../../room/http-api/basic-design.md) でエラーテーブルに明記）|

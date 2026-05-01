@@ -19,13 +19,15 @@
 ```mermaid
 classDiagram
     class RoomMatchingService {
-        -_room_repo: RoomRepository
-        -_workflow_repo: WorkflowRepository
+        -_override_repo: RoomRoleOverrideRepository
         -_role_profile_repo: RoleProfileRepository
+        +validate_coverage(workflow: Workflow, effective_refs: tuple~DeliverableTemplateRef~) list~RoomDeliverableMismatch~
+        +resolve_effective_refs(room_id: RoomId, empire_id: EmpireId, role: Role, custom_refs: tuple~DeliverableTemplateRef~ | None) tuple~DeliverableTemplateRef~
+    }
+    class RoomRoleOverrideService {
+        -_room_repo: RoomRepository
         -_override_repo: RoomRoleOverrideRepository
         -_session: AsyncSession
-        +validate_coverage(workflow: Workflow, role: Role, effective_refs: tuple~DeliverableTemplateRef~) None
-        +resolve_effective_refs(room_id: RoomId, empire_id: EmpireId, role: Role, custom_refs: tuple~DeliverableTemplateRef~ | None) tuple~DeliverableTemplateRef~
         +upsert_override(room_id: RoomId, role: Role, refs: tuple~DeliverableTemplateRef~) RoomRoleOverride
         +delete_override(room_id: RoomId, role: Role) None
         +find_overrides(room_id: RoomId) list~RoomRoleOverride~
@@ -35,6 +37,7 @@ classDiagram
         +room_id: RoomId
         +role: Role
         +deliverable_template_refs: tuple~DeliverableTemplateRef~
+        +__post_init__() RoomRoleOverrideInvariantViolation if duplicate template_id
     }
     class RoomDeliverableMatchingError {
         +room_id: str
@@ -52,23 +55,23 @@ classDiagram
 
 ### Service: `RoomMatchingService`
 
+**責務**: マッチング検証（純粋関数）と effective_refs 解決（読み取り専用 I/O）。write 操作を持たず `_session` 不要。
+
 | 属性 | 型 | 制約 | 意図 |
 |-----|---|------|------|
-| `_room_repo` | `RoomRepository` | コンストラクタで注入 | Room 存在確認 + empire_id 取得 |
-| `_workflow_repo` | `WorkflowRepository` | コンストラクタで注入 | Workflow.stages 取得 |
 | `_role_profile_repo` | `RoleProfileRepository` | コンストラクタで注入 | empire-level RoleProfile 参照 |
 | `_override_repo` | `RoomRoleOverrideRepository` | コンストラクタで注入 | Room-level オーバーライド参照 |
-| `_session` | `AsyncSession` | コンストラクタで注入 | write 操作の Unit-of-Work 境界 |
 
 **ふるまい:**
 
-`validate_coverage(workflow, role, effective_refs)`:
+`validate_coverage(workflow, effective_refs)`:
 - 全 `workflow.stages` を順次走査する
 - 各 Stage について `required_deliverables` の中から `optional=False` のものを抽出する（§確定 E）
 - 各必須 deliverable について `req.template_ref.template_id` が `effective_refs` の template_id セットに含まれるかを判定する（§確定 A）
 - 不足を発見しても即時 raise せず、全 Stage を走査し **すべての不足** を収集する（§確定 C: Fail Fast は即時失敗ではなく全不足の一括報告）
-- 不足が 1 件以上あれば `RoomDeliverableMatchingError(room_id=..., role=..., missing=[...])` を raise
+- `list[RoomDeliverableMismatch]` を返す（空リストは充足を示す）
 - 純粋関数（I/O なし）— テスト容易性のため非同期にしない
+- **`role` は引数として受け取らない**。`RoomDeliverableMatchingError(room_id, role, missing)` の構築は呼び出し元（`RoomService.assign_agent`）の責務。これにより `validate_coverage` の責務を「不足の検出」のみに絞り、エラーオブジェクトへの文脈付与は呼び出し元に委ねる（Tell, Don't Ask 原則 + 純粋関数の維持）
 
 `resolve_effective_refs(room_id, empire_id, role, custom_refs)`:
 - §確定 B の優先順位に従い effective refs を非同期で取得する
@@ -77,18 +80,33 @@ classDiagram
 - 不在の場合: `_role_profile_repo.find_by_empire_and_role` → ヒットすればその `deliverable_template_refs` を返す
 - それも不在の場合: 空タプル `()` を返す（§確定 B）
 
+### Service: `RoomRoleOverrideService`
+
+**責務**: オーバーライドの CRUD。write 操作を持つため `_session` を注入し、UoW 境界（`async with self._session.begin():`）を管理する。
+
+| 属性 | 型 | 制約 | 意図 |
+|-----|---|------|------|
+| `_room_repo` | `RoomRepository` | コンストラクタで注入 | Room 存在確認 + archived 確認 |
+| `_override_repo` | `RoomRoleOverrideRepository` | コンストラクタで注入 | Room-level オーバーライド参照 |
+| `_session` | `AsyncSession` | コンストラクタで注入 | write 操作の Unit-of-Work 境界 |
+
+**ふるまい:**
+
 `upsert_override(room_id, role, refs)`:
+- `async with self._session.begin():` ブロック内で以下を実行
 - Room 存在確認（不在 → `RoomNotFoundError`）/ archived 確認（→ `RoomArchivedError`）
-- `RoomRoleOverride(room_id=room_id, role=role, deliverable_template_refs=refs)` を構築
-- `async with self._session.begin(): _override_repo.save(override)` で UPSERT
+- `RoomRoleOverride(room_id=room_id, role=role, deliverable_template_refs=refs)` を構築（template_id 重複時 → `RoomRoleOverrideInvariantViolation` 422）
+- `_override_repo.save(override)` で UPSERT
 - 保存済み `RoomRoleOverride` を返す
 
 `delete_override(room_id, role)`:
-- Room 存在確認 → `async with self._session.begin(): _override_repo.delete(room_id, role)`
+- `async with self._session.begin():` ブロック内で以下を実行
+- Room 存在確認 → `_override_repo.delete(room_id, role)`
 - 存在しないオーバーライドへの delete は no-op（エラーなし）
 
 `find_overrides(room_id)`:
-- Room 存在確認 → `_override_repo.find_all_by_room(room_id)` を返す（read-only、begin 不要）
+- Room 存在確認 → `_override_repo.find_all_by_room(room_id)` を返す（read-only）
+- 読み取り専用のため `async with session.begin():` 不要
 
 ### Domain VO: `RoomRoleOverride`
 
@@ -98,8 +116,11 @@ classDiagram
 | `role` | `Role` | 必須（StrEnum 値）| オーバーライド対象ロール |
 | `deliverable_template_refs` | `tuple[DeliverableTemplateRef, ...]` | 空タプル可（明示的な「提供なし」を表現）| この Room 内でこの Role が提供する template refs |
 
-**配置**: `backend/src/bakufu/domain/room/value_objects.py` に `AgentMembership` / `PromptKit` と並列追記する。
-**設計根拠**: `RoomRoleOverride` は Room bounded context に属する VO。複雑な不変条件を持たない（`deliverable_template_refs` 内の `template_id` 重複チェックはしない — 空リストも合法な意図的宣言であり、不整合は後続タスクで検出）。frozen Pydantic モデルとして実装する。
+**不変条件**: `deliverable_template_refs` 内の `template_id` は一意でなければならない（重複禁止）。重複がある場合はコンストラクタ内で `RoomRoleOverrideInvariantViolation` を raise する。
+
+**設計根拠**: `RoleProfile.deliverable_template_refs` は同一制約を持つ（deliverable-template domain §確定）。`RoomRoleOverride` がこの制約を持たない場合、`RoleProfile` との非対称性が生まれ、override 値が永続化された後にマッチング結果が不定（同一 template_id が複数カバレッジとしてカウントされる等）になる可能性がある。Fail Fast 原則に従い構築時点で弾く。
+
+**配置**: `backend/src/bakufu/domain/room/value_objects.py` に `AgentMembership` / `PromptKit` と並列追記する。frozen Pydantic モデルとして実装する。
 
 ### Application Exception: `RoomDeliverableMatchingError`
 
@@ -148,7 +169,7 @@ classDiagram
 
 ### §確定 C: Fail Fast 詳細報告（全不足を一括収集）
 
-`validate_coverage` は第一の不足を発見した時点で即時 raise しない。全 Stage の全 required_deliverable（optional=False）を走査し、不足しているもの全件を `missing: list[RoomDeliverableMismatch]` に収集してから `RoomDeliverableMatchingError` を raise する。
+`validate_coverage` は第一の不足を発見した時点で即時 raise しない。全 Stage の全 required_deliverable（optional=False）を走査し、不足しているもの全件を `list[RoomDeliverableMismatch]` に収集して呼び出し元に返す。呼び出し元は不足リストが空でない場合に `RoomDeliverableMatchingError` を構築して raise する。
 
 **理由**: Stage が複数ある場合（典型的な Vモデル開発室は 13 Stage）、1 件ずつ修正 → エラー確認のサイクルを繰り返すことは CEO にとって非効率。全不足を一括で提示することで、RoleProfile の修正方針を1回で把握できる。
 
@@ -164,7 +185,9 @@ classDiagram
 
 **PRIMARY KEY**: `(room_id, role)`（`UNIQUE(room_id, role)` で UPSERT 対象）
 
-**外部キー設計**: `rooms.id` に対して `ON DELETE CASCADE` を設定し、Room アーカイブ後の物理削除が発生した場合（将来）にオーバーライドが孤立しないようにする。現 MVP では Room は論理削除のみのため cascade は保険的設計。
+**updated_at の更新**: SQLite には `ON UPDATE CURRENT_TIMESTAMP` トリガー構文がない。`SqliteRoomRoleOverrideRepository.save` の UPSERT 文では `updated_at = :now`（実行時刻）を明示的に SET すること。`DEFAULT CURRENT_TIMESTAMP` は INSERT 時のみ有効であり、UPDATE 時は自動更新されない点に注意する。
+
+**外部キー設計**: `rooms.id` に対して `ON DELETE CASCADE` を設定し、Room アーカイブ後の物理削除が発生した場合（将来）にオーバーライドが孤立しないようにする。現 MVP では Room は論理削除のみのため cascade は保険的設計。物理削除実装時は cascade 影響範囲を必須レビュー項目とする。
 
 **serialization 方針**: `deliverable_template_refs_json` は `[{"template_id": "<uuid>", "minimum_version": {"major": N, "minor": N, "patch": N}}, ...]` の JSON 文字列。既存の `composition_json` / `deliverable_template_refs_json`（role_profiles テーブル）と同一の serialization 規約に従う（deliverable-template repository §確定 B 踏襲）。
 
@@ -189,6 +212,7 @@ HTTP レスポンス形式（error_handler 経由）:
     "code": "deliverable_matching_failed",
     "message": "<MSG-RM-MATCH-001 の 1 行目>",
     "detail": {
+      "room_id": "<uuid>",
       "role": "<role>",
       "missing": [
         {"stage_id": "<uuid>", "stage_name": "<name>", "template_id": "<uuid>"},
@@ -199,32 +223,35 @@ HTTP レスポンス形式（error_handler 経由）:
 }
 ```
 
-**注**: `missing` の詳細（stage_id / stage_name / template_id）は HTTP レスポンスに含める。これらは参照整合性の観点でセキュリティリスクを持つ内部 UUID だが、Room 編成は認証済み CEO のみがアクセスできるエンドポイントであるため（http-api-foundation §認証方針）、CEO が修正に必要な情報を提示する利益がリスクを上回る判断とする。
+**セキュリティ注記**: MVP はシングルユーザーローカルアプリケーション（loopback 127.0.0.1:8000 バインド + CSRF Origin 検証）として運用する。`missing` の内容（stage_id / stage_name / template_id）はユーザー自身が設定した Workflow ステージ・テンプレート情報であり、外部攻撃者から秘匿すべき機密データではないため、修正に必要な情報を提示する。
 
 ### §確定 G: `RoomService.assign_agent` への integration
 
-`RoomService.assign_agent(room_id, agent_id, role, custom_refs=None)` の処理フローに以下の 2 ステップを追加する:
+`RoomService.assign_agent(room_id, agent_id, role, custom_refs=None)` の処理フローを以下のとおり変更する。
 
 | 変更 | 場所 | 内容 |
 |-----|------|------|
-| ステップ追加 | Agent 存在確認の直後（Room.add_member 呼び出しの前）| `empire_id = await _room_repo.find_empire_id_by_room_id(room_id)` → `workflow = await _workflow_repo.find_by_id(room.workflow_id)` → `effective_refs = await matching_svc.resolve_effective_refs(room_id, empire_id, role_enum, custom_refs)` → `matching_svc.validate_coverage(workflow, role_enum, effective_refs)` |
 | パラメータ追加 | `assign_agent` シグネチャ | `custom_refs: tuple[DeliverableTemplateRef, ...] \| None = None` を末尾に追加 |
-| オーバーライド保存 | `RoomRepository.save` の直後 | `if custom_refs is not None: await _override_repo.save(RoomRoleOverride(room_id, role_enum, custom_refs))` — UoW 内で同一トランザクションに含める |
+| UoW 統一 | `assign_agent` の全処理 | **全 async I/O（読み取り + 書き込み）を単一 `async with self._session.begin():` ブロックに包む**。以下の順序で実行する: 1) Room 存在確認・archived 確認 2) Agent 存在確認（`AgentRepository.find_by_id`）3) `empire_id = await _room_repo.find_empire_id_by_room_id(room_id)` 4) `workflow = await _workflow_repo.find_by_id(room.workflow_id)` 5) `effective_refs = await matching_svc.resolve_effective_refs(room_id, empire_id, role_enum, custom_refs)` — 内部で `_override_repo` / `_role_profile_repo` を呼ぶが `begin()` 内なので autobegin 競合なし 6) `missing = matching_svc.validate_coverage(workflow, effective_refs)` → `if missing: raise RoomDeliverableMatchingError(room_id, role_enum, missing)` 7) `room.add_member(membership)` 8) `RoomRepository.save(updated_room, empire_id)` 9) `if custom_refs is not None: RoomRoleOverrideRepository.save(RoomRoleOverride(room_id, role_enum, custom_refs))` |
 
-**UoW 境界**: Room save + RoomRoleOverride save は同一 `async with self._session.begin():` ブロック内に含める。どちらか一方のみが永続化された不整合状態を防ぐ。
+**UoW 境界の理由**: SQLAlchemy の autobegin により、repository メソッド（SELECT）を `async with session.begin():` の外側で呼び出すと暗黙的なトランザクションが開始される。その後 explicit な `begin()` を呼び出すと `InvalidRequestError: A transaction is already begun on this Session.` が発生する（BUG-001 パターン）。`EmpireService` / `RoomService` の既存パターンと同様に、全 async I/O を単一 `begin()` ブロックに包む方針を採用する。
 
-### §確定 H: `RoomMatchingService` の DI 配線
+### §確定 H: `RoomMatchingService` / `RoomRoleOverrideService` の DI 配線
 
-`get_room_matching_service(session: SessionDep)` ファクトリを `interfaces/http/dependencies.py` に追加する。以下の 4 Repository を注入する:
-- `SqliteRoomRepository(session)`
-- `SqliteWorkflowRepository(session)`
+`get_room_matching_service(session: SessionDep)` ファクトリを `interfaces/http/dependencies.py` に追加する。以下の 2 Repository を注入する:
+- `SqliteRoomRoleOverrideRepository(session)`
 - `SqliteRoleProfileRepository(session)`
+
+`get_room_role_override_service(session: SessionDep)` ファクトリを同ファイルに追加する。以下を注入する:
+- `SqliteRoomRepository(session)`
 - `SqliteRoomRoleOverrideRepository(session)`
 
-`RoomService` は `assign_agent` 内で `RoomMatchingService` を使用するため、`RoomService` の DI ファクトリ（`get_room_service`）に `RoomMatchingService` への依存を追加する。または、`RoomService.assign_agent` の内部で `RoomMatchingService` の logic を直接呼ぶかは detailed-design 実装者の判断に委ねる（§確定 G で十分な情報を与えている）。
+`RoomService.__init__` のコンストラクタパラメータとして `matching_svc: RoomMatchingService` を追加する。`get_room_service` DI ファクトリは `get_room_matching_service(session)` で生成した `RoomMatchingService` インスタンスを `RoomService` コンストラクタに注入する（Composition over Inheritance / 明示的 DI 原則）。
+
+`RoomRouter` は override CRUD エンドポイント（REQ-RM-HTTP-008〜010）で `RoomRoleOverrideService` を DI で受け取る。`RoomMatchingService` は `RoomService` 内部で使用するため Router が直接受け取らない。
 
 ## ユーザー向けメッセージ確定文言
 
 | ID | HTTP ステータス | 確定文言（要点）| 発火条件 |
 |---|--------------|-------------|---------|
-| MSG-RM-MATCH-001 | 422 | `deliverable_matching_failed` — 不足 stage/template リスト付き | validate_coverage が missing >= 1 を検出 |
+| MSG-RM-MATCH-001 | 422 | `deliverable_matching_failed` — 不足 stage/template リスト付き | validate_coverage が missing >= 1 を返し、RoomService.assign_agent が RoomDeliverableMatchingError を raise |
