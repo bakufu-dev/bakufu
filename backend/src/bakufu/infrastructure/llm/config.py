@@ -155,7 +155,80 @@ class LLMClientConfig(BaseSettings):
         return self
 
 
+# MSG-LC-009 CLI variant: 未知の CLI プロバイダ
+_MSG_LC_009_CLI_TMPL = (
+    "[FAIL] Unknown LLM provider: {provider}. Supported: claude-code, codex.\n"
+    "Next: Set BAKUFU_LLM_PROVIDER=claude-code or BAKUFU_LLM_PROVIDER=codex."
+)
+
+
+class LLMCliProviderEnum(StrEnum):
+    """CLI サブプロセス方式の LLM プロバイダ種別（REQ-LC-013）。
+
+    Phase 1: claude-code / codex の 2 値に閉じる（APIキー不要）。
+    """
+
+    CLAUDE_CODE = "claude-code"
+    CODEX = "codex"
+
+
+class LLMCliConfig(BaseSettings):
+    """CLI サブプロセス方式 LLM クライアント設定（REQ-LC-013）。
+
+    環境変数から設定を読み込む。APIキーフィールドなし（CLI 認証に委任）。
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    bakufu_llm_provider: LLMCliProviderEnum
+    bakufu_llm_cli_model: str = "claude-3-5-sonnet-20241022"
+    bakufu_llm_timeout_seconds: float = 3600.0
+
+    @property
+    def provider(self) -> LLMCliProviderEnum:
+        """プロバイダ種別のショートカット。"""
+        return self.bakufu_llm_provider
+
+    @property
+    def cli_model_name(self) -> str:
+        """CLI モデル名のショートカット。"""
+        return self.bakufu_llm_cli_model
+
+    @property
+    def timeout_seconds(self) -> float:
+        """タイムアウト秒数のショートカット。"""
+        return self.bakufu_llm_timeout_seconds
+
+    @classmethod
+    def load(cls) -> LLMCliConfig:
+        """環境変数から設定を読み込み LLMCliConfig を生成する。
+
+        BAKUFU_LLM_PROVIDER が未設定の場合は pydantic.ValidationError を
+        LLMConfigError(MSG-LC-007) に変換して raise する（Fail Fast）。
+        """
+        try:
+            return cls()  # type: ignore[call-arg]
+        except ValidationError as exc:
+            for error in exc.errors():
+                if error.get("loc") == ("bakufu_llm_provider",):
+                    raise LLMConfigError(
+                        message=(
+                            "[FAIL] BAKUFU_LLM_PROVIDER is not set.\n"
+                            "Next: Set BAKUFU_LLM_PROVIDER=claude-code"
+                            " or BAKUFU_LLM_PROVIDER=codex."
+                        ),
+                        field="bakufu_llm_provider",
+                    ) from exc
+            raise
+
+
 __all__ = [
+    "LLMCliConfig",
+    "LLMCliProviderEnum",
     "LLMClientConfig",
     "LLMConfigError",
     "LLMProviderEnum",

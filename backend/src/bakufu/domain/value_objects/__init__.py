@@ -21,6 +21,8 @@ ID 型は概念的に区別される UUIDv4 値である。表面を最小に保
 from __future__ import annotations
 
 from bakufu.domain.value_objects.attachments import Attachment, Deliverable
+from bakufu.domain.value_objects.chat_result import ChatResult
+from bakufu.domain.value_objects.deliverable_record_vos import CriterionValidationResult
 from bakufu.domain.value_objects.enums import (
     AuditAction,
     GateDecision,
@@ -32,6 +34,7 @@ from bakufu.domain.value_objects.enums import (
     TaskStatus,
     TemplateType,
     TransitionCondition,
+    ValidationStatus,
     VerdictDecision,
 )
 from bakufu.domain.value_objects.gate_role import GateRole
@@ -44,6 +47,8 @@ from bakufu.domain.value_objects.helpers import (
 )
 from bakufu.domain.value_objects.identifiers import (
     AgentId,
+    DeliverableId,
+    DeliverableRecordId,
     DeliverableTemplateId,
     DirectiveId,
     EmpireId,
@@ -87,9 +92,13 @@ __all__ = [
     "Attachment",
     "AuditAction",
     "AuditEntry",
+    "ChatResult",
     "CompletionPolicy",
     "CompletionPolicyKind",
+    "CriterionValidationResult",
     "Deliverable",
+    "DeliverableId",
+    "DeliverableRecordId",
     "DeliverableRequirement",
     "DeliverableTemplateId",
     "DeliverableTemplateRef",
@@ -123,6 +132,7 @@ __all__ = [
     "TemplateType",
     "TransitionCondition",
     "TransitionId",
+    "ValidationStatus",
     "Verdict",
     "VerdictDecision",
     "WorkflowId",

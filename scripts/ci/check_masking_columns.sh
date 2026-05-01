@@ -120,6 +120,12 @@ readonly NO_MASK_FILES=(
     # acceptance_criteria_json in PR #137). MaskedText / MaskedJSONEncoded
     # are absent by design. CI Layer 1/2 enforce no over-masking.
     "${TABLES_DIR}/external_review_gate_criteria.py"
+    # DeliverableRecord Repository (Issue #123, ai-validation §確定 E):
+    # criterion_validation_results carries no Schneier #6 secret semantics —
+    # reason is LLM evaluation rationale text, classified as no-mask per
+    # ai-validation detailed-design §データ構造. MaskedText / MaskedJSONEncoded
+    # are absent by design. CI Layer 1/2 enforce no over-masking.
+    "${TABLES_DIR}/criterion_validation_results.py"
 )
 
 for file in "${NO_MASK_FILES[@]}"; do
@@ -189,6 +195,11 @@ readonly PARTIAL_MASK_FILES=(
     # external_review_audit_entries.comment だけが MaskedText（CEO 入力経路）、
     # 他カラムは UUIDStr / String / UTCDateTime に閉じる。
     "${TABLES_DIR}/external_review_audit_entries.py:comment:MaskedText"
+    # DeliverableRecord Repository (Issue #123, ai-validation §確定 E):
+    # deliverable_records.content だけが MaskedText（Agent 出力に secret 混入の可能性、
+    # Schneier 申し送り #3 実適用）、他カラムは UUIDStr / Integer / String / UTCDateTime
+    # に閉じる。
+    "${TABLES_DIR}/deliverable_records.py:content:MaskedText"
 )
 
 # Collect unique file paths from PARTIAL_MASK_FILES.

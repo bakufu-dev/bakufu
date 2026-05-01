@@ -89,9 +89,65 @@ class RoleProfileInvariantViolation(Exception):  # noqa: N818
         self.detail: dict[str, object] = dict(detail) if detail else {}
 
 
+type DeliverableRecordViolationKind = Literal["invalid_validation_state",]
+"""DeliverableRecord 不変条件違反の判別子。"""
+
+
+# DDD: "Violation" は不変条件違反を表現するもので、プログラミングのバグではない。
+# そのため N818 "Error suffix" ルールは適用しない。
+class DeliverableRecordInvariantViolation(Exception):  # noqa: N818
+    """DeliverableRecord 集約の不変条件違反時に送出される。
+
+    Attributes:
+        kind: 違反判別子。
+        message: ユーザー向けエラー文言。
+    """
+
+    def __init__(
+        self,
+        *,
+        kind: DeliverableRecordViolationKind,
+        message: str,
+    ) -> None:
+        super().__init__(message)
+        self.kind: DeliverableRecordViolationKind = kind
+        self.message: str = message
+
+
+class LLMValidationError(Exception):
+    """LLM 検証失敗例外。
+
+    ValidationService が LLMProviderError または JSON パース失敗を検出した際に raise される。
+    typed フィールドのみ保持し、機密情報（APIキー・トークン）は含めない（T2 セキュリティ設計）。
+
+    Attributes:
+        message: 人間可読エラーメッセージ（MSG-AIVM-001 / MSG-AIVM-002）。
+        kind: "llm_call_failed" または "parse_failed"。
+        llm_error_kind: LLMProviderError サブクラス識別。parse_failed 時は ""。
+        provider: プロバイダ識別子（"claude-code" / "codex"）。
+    """
+
+    def __init__(
+        self,
+        *,
+        message: str,
+        kind: Literal["llm_call_failed", "parse_failed"],
+        llm_error_kind: str,
+        provider: str,
+    ) -> None:
+        super().__init__(message)
+        self.message: str = message
+        self.kind: Literal["llm_call_failed", "parse_failed"] = kind
+        self.llm_error_kind: str = llm_error_kind
+        self.provider: str = provider
+
+
 __all__ = [
+    "DeliverableRecordInvariantViolation",
+    "DeliverableRecordViolationKind",
     "DeliverableTemplateInvariantViolation",
     "DeliverableTemplateViolationKind",
+    "LLMValidationError",
     "RoleProfileInvariantViolation",
     "RoleProfileViolationKind",
 ]

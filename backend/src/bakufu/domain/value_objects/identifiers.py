@@ -67,9 +67,17 @@ type DeliverableTemplateId = UUID
 type RoleProfileId = UUID
 """RoleProfile Aggregate 識別子（UUIDv4）。"""
 
+type DeliverableRecordId = UUID
+"""DeliverableRecord Aggregate 識別子（UUIDv4）。"""
+
+type DeliverableId = UUID
+"""Task Deliverable 識別子（Task feature の deliverables テーブル参照）。"""
+
 
 __all__ = [
     "AgentId",
+    "DeliverableId",
+    "DeliverableRecordId",
     "DeliverableTemplateId",
     "DirectiveId",
     "EmpireId",

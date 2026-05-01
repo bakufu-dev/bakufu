@@ -180,6 +180,21 @@ class TemplateType(StrEnum):
     PROMPT = "PROMPT"
 
 
+class ValidationStatus(StrEnum):
+    """DeliverableRecord の検証状態（§確定 R1-G）。
+
+    PENDING: 未評価（初期状態）。
+    PASSED: 全必須 criterion が PASSED。
+    FAILED: 必須 criterion に FAILED が 1 件以上。
+    UNCERTAIN: 必須 criterion に UNCERTAIN が 1 件以上かつ FAILED が 0 件。
+    """
+
+    PENDING = "PENDING"
+    PASSED = "PASSED"
+    FAILED = "FAILED"
+    UNCERTAIN = "UNCERTAIN"
+
+
 __all__ = [
     "AuditAction",
     "GateDecision",
@@ -191,5 +206,6 @@ __all__ = [
     "TaskStatus",
     "TemplateType",
     "TransitionCondition",
+    "ValidationStatus",
     "VerdictDecision",
 ]

@@ -8,11 +8,19 @@
 設計書: docs/features/llm-client/infrastructure/basic-design.md
 """
 
-from bakufu.infrastructure.llm.config import LLMClientConfig, LLMProviderEnum
-from bakufu.infrastructure.llm.factory import llm_client_factory
+from bakufu.infrastructure.llm.config import (
+    LLMCliConfig,
+    LLMClientConfig,
+    LLMCliProviderEnum,
+    LLMProviderEnum,
+)
+from bakufu.infrastructure.llm.factory import llm_client_factory, llm_provider_factory
 
 __all__ = [
+    "LLMCliConfig",
+    "LLMCliProviderEnum",
     "LLMClientConfig",
     "LLMProviderEnum",
     "llm_client_factory",
+    "llm_provider_factory",
 ]
