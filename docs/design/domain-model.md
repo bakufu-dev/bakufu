@@ -210,7 +210,8 @@ backend/src/bakufu/
 │   ├── outbox_dispatcher.py     # Outbox polling / dispatch
 │   └── ports/                   # ポート（Repository / LLMProvider 等の抽象）
 │       ├── repositories.py
-│       ├── llm_provider.py
+│       ├── llm_provider.py          # 将来: coding agent CLI subprocess Port（LLMProviderPort）
+│       ├── llm_client.py            # Issue #144: HTTP API 直接呼び出し Port（AbstractLLMClient）
 │       ├── notifier.py
 │       └── attachment_store.py  # 添付ファイルストレージの抽象
 ├── infrastructure/              # 外部接続層
@@ -218,11 +219,14 @@ backend/src/bakufu/
 │   │   ├── sqlite/              # SQLAlchemy mappers / repositories
 │   │   └── memory/              # テスト用インメモリ Repository
 │   ├── llm/
-│   │   ├── claude_code_client.py    # ai-team から切り出し
-│   │   ├── codex_cli_client.py
-│   │   ├── gemini_client.py
-│   │   ├── anthropic_api_client.py
-│   │   └── pid_registry.py      # subprocess pidfile 管理
+│   │   ├── anthropic_llm_client.py  # Issue #144: AnthropicLLMClient（AbstractLLMClient 実装）
+│   │   ├── openai_llm_client.py     # Issue #144: OpenAILLMClient（AbstractLLMClient 実装）
+│   │   ├── config.py                # Issue #144: LLMClientConfig + LLMProviderEnum + LLMConfigError
+│   │   ├── factory.py               # Issue #144: llm_client_factory()
+│   │   ├── claude_code_client.py    # ai-team から切り出し（LLMProviderPort 実装、将来）
+│   │   ├── codex_cli_client.py      # 同上
+│   │   ├── gemini_client.py         # 同上
+│   │   └── pid_registry.py          # subprocess pidfile 管理（LLMProviderPort 専用）
 │   ├── notifier/
 │   │   ├── discord.py
 │   │   └── slack.py

@@ -64,10 +64,17 @@ classDiagram
         <<Exception>>
         +status_code: int | None
         +raw_error: str
+        +kind: str | None
     }
 
     class LLMMessageValidationError {
         <<Exception>>
+        +field: str
+    }
+
+    class LLMMessagesEmptyError {
+        <<Exception>>
+        +context: str
     }
 
     LLMMessage --> MessageRole
@@ -78,7 +85,13 @@ classDiagram
     LLMAuthError --|> LLMClientError
     LLMAPIError --|> LLMClientError
     LLMMessageValidationError --|> LLMClientError
+    LLMMessagesEmptyError --|> LLMClientError
 ```
+
+**注記 — `LLMConfigError` は本 sub-feature（domain/errors.py）に存在しない**:
+`LLMConfigError` は設定不備を表すインフラ例外であり `infrastructure/llm/config.py` に定義する。`LLMClientError`（LLM API 呼び出し失敗）とは別系統（直接 `Exception` を継承）。呼び出し元は `except LLMClientError` では catch できない。詳細は [`../infrastructure/detailed-design.md §LLMConfigError`](../infrastructure/detailed-design.md)。
+
+---
 
 ### Protocol: AbstractLLMClient
 
@@ -109,7 +122,7 @@ classDiagram
 | 属性 | 型 | 制約 | 意図 |
 |---|---|---|---|
 | `role` | `MessageRole` | required | system / user / assistant のいずれか |
-| `content` | `str` | 1 文字以上（`min_length=1`）| メッセージ本文。空文字は `LLMMessageValidationError` |
+| `content` | `str` | `min_length=1`（空文字禁止）| メッセージ本文。空文字は `LLMMessageValidationError` |
 
 **不変条件**:
 - `frozen=True`（Pydantic `model_config`）。インスタンス生成後の属性変更は禁止
@@ -123,11 +136,15 @@ classDiagram
 
 | 属性 | 型 | 制約 | 意図 |
 |---|---|---|---|
-| `content` | `str` | 空文字許容（フォールバック文字列が入る場合あり）| LLM から返ってきたテキスト応答 |
+| `content` | `str` | `min_length=1`（空文字禁止）| LLM から返ってきたテキスト応答 |
 
 **不変条件**:
 - `frozen=True`
-- `content` が空文字の場合は `infrastructure` 側でフォールバック文字列（MSG-LC-006 の文言）に置換して渡す。`LLMResponse` 自体は空文字を拒否しない（防御的コンストラクタではなく infrastructure が責任を持つ）
+- `content` が空文字の場合は infrastructure 側が `LLMAPIError(kind='empty_response')` を raise して `LLMResponse` を構築しない（Fail Fast）。空 `LLMResponse` は型システム上存在できない
+
+**設計意図（なぜ `min_length=1` か）**:
+- LLM が空応答を返すのは失敗ケース（API policy 拒否 / token 枯渇 / safety filter）。silently フォールバック文字列に置換すると、呼び出し元 Service がフォールバックと本物の応答を区別できなくなり `if "no text response" in content:` のような fragile な分岐が業務ロジックに散在する（ヘルスバーグ §致命的欠陥 3 の教訓）
+- Fail Fast 原則: 不正な状態を引きずらず即 raise する
 
 **設計意図（なぜ `ChatResult` NamedTuple ではなく Pydantic VO か）**:
 - ai-team の `ChatResult(response, session_id, compacted)` は session 管理フィールドを含む。本 feature は 1 req = 1 resp（R1-4）でセッション管理不要のため `session_id` / `compacted` は持たない
@@ -159,7 +176,7 @@ classDiagram
 
 | 属性 | 型 | 制約 | 意図 |
 |---|---|---|---|
-| `message` | `str` | required | 人間可読エラー説明 |
+| `message` | `str` | required | 人間可読エラー説明（MSG-LC-NNN の確定文言）|
 | `provider` | `str` | required | エラー発生プロバイダ名（`"anthropic"` / `"openai"`）|
 
 #### LLMTimeoutError（LLMClientError のサブクラス）
@@ -189,21 +206,38 @@ classDiagram
 | 属性 | 型 | 制約 | 意図 |
 |---|---|---|---|
 | `status_code` | `int \| None` | optional | HTTP ステータスコード。不明な場合は None |
-| `raw_error` | `str` | required | SDK 例外の `str()` 表現（デバッグ用。API キー等はマスキング済みであること）|
+| `raw_error` | `str` | required | SDK 例外の `str()` 表現（デバッグ用。`masking.mask()` 適用後のみ格納可）|
+| `kind` | `str \| None` | optional, default `None` | エラーの種別識別子。`"empty_response"` は LLM が空テキストを返した場合のみ使用 |
 
-**変換条件**: 上記 3 種以外の SDK 例外・API エラー
+**変換条件**: 上記 3 種以外の SDK 例外・API エラー。および LLM が空応答を返したとき（`kind='empty_response'`）
 
 **設計意図（`raw_error` をなぜ含めるか）**:
 - 本 feature が予期しない API エラーを握り潰さないように `str(sdk_error)` を保持する
-- `raw_error` にはマスキング後の文字列のみ入れる（API キーが含まれる可能性がある SDK エラーメッセージをそのまま格納することは禁止）
+- `raw_error` には `masking.mask()` 適用後の文字列のみ格納する（API キー平文格納は禁止）
+
+**設計意図（`kind='empty_response'` を LLMAPIError で表現する理由）**:
+- 空応答は新たな例外クラスを追加するほどの独立した概念ではなく、`LLMAPIError` の特殊ケース
+- `kind` フィールドにより呼び出し元が `except LLMAPIError as e: if e.kind == 'empty_response':` で選択的にハンドリングできる
 
 #### LLMMessageValidationError（LLMClientError のサブクラス）
 
 | 属性 | 型 | 制約 | 意図 |
 |---|---|---|---|
-| `field` | `str` | required | バリデーション失敗したフィールド名（`"content"` 等）|
+| `field` | `str` | required | バリデーション失敗したフィールド名（`"content"` 固定）|
 
-**変換条件**: `LLMMessage` 構築時に `content` が空文字
+**変換条件**: `LLMMessage` 構築時に `content` が空文字（Pydantic `min_length=1` 違反）
+
+**責務**: 単一メッセージの `content` 空文字のみ。`messages` リスト全体が空になるケースは `LLMMessagesEmptyError` で処理する。
+
+#### LLMMessagesEmptyError（LLMClientError のサブクラス）
+
+| 属性 | 型 | 制約 | 意図 |
+|---|---|---|---|
+| `context` | `str` | required | 空になった経緯の説明（例: `"all messages are system role for Anthropic"`）|
+
+**変換条件**: Anthropic `_convert_messages` で system role を除外した結果 `messages` リストが空になったとき
+
+**責務**: `LLMMessageValidationError`（個別メッセージの content 問題）との責務分離。`LLMMessagesEmptyError` は「呼び出し元が system role のみ渡した」という設計上の誤り（Fail Fast）。
 
 ---
 
@@ -217,7 +251,7 @@ classDiagram
 1. 既存 Repository Port 10 ファイルが全て `application/ports/` に存在する（`AgentRepository` 〜 `WorkflowRepository`）
 2. `domain/ports/` は `json_schema_validator.py` のみ（domain invariant 検査専用として機能分離）
 3. `AbstractLLMClient` は Application Service が DI で消費する I/O Port → `application/ports/` が自然
-4. `domain/ports/` に混在させると将来エンジニアが「Repository は application/ports なのに LLM は domain/ports」で迷う（ヘルスバーグ指摘 §問題3 の教訓）
+4. `domain/ports/` に混在させると将来エンジニアが「Repository は application/ports なのに LLM は domain/ports」で迷う（ヘルスバーグ 旧 PR #143 §問題3 の教訓）
 
 ### 確定 B: LLMResponse は session_id / compacted フィールドを持たない
 
@@ -235,11 +269,17 @@ ai-team の `MAX_TOKENS = 4096` 固定値は採用しない。
 
 **根拠**: [`../feature-spec.md §7 R1-5`](../feature-spec.md)。評価タスク（512）とチャットタスク（4096）で必要なトークン数が異なる。factory や config にデフォルト値を持たせることは禁止。呼び出し元 Service がタスクの性質に応じて指定する責務を持つ。
 
-### 確定 E: `raw_error` はマスキング後文字列のみ格納
+### 確定 E: `raw_error` は `masking.mask()` 適用後文字列のみ格納
 
-`LLMAPIError.raw_error` に SDK 例外の `str()` 表現を格納する際、API キーを含む可能性がある文字列をそのまま格納することは禁止。
+`LLMAPIError.raw_error` に SDK 例外の `str()` 表現を格納する際、API キーを含む可能性がある文字列をそのまま格納することは禁止。infrastructure が `masking.mask(str(sdk_error))` を呼び出した結果のみを格納する。
 
-**根拠**: [`docs/design/tech-stack.md §subprocess の出力保全とマスキング`](../../../design/tech-stack.md) の方針を HTTP API 版に適用。infrastructure が `str(sdk_error)` を格納する前に masking.py を通す必要がある。
+**根拠**: [`docs/design/threat-model.md §主要資産`](../../../design/threat-model.md)「`BAKUFU_ANTHROPIC_API_KEY` / `BAKUFU_OPENAI_API_KEY`」行の機密性（高）対策。Tabriz セキュリティレビュー BUG-SEC-1 にて `masking.mask_secrets()` は存在しないことが確認済み。正しい関数名は `masking.mask()`（`backend/src/bakufu/infrastructure/security/masking.py` の `__all__` 参照）。
+
+### 確定 F: LLMResponse.content は min_length=1（空文字禁止、Fail Fast）
+
+LLM が空応答を返したとき infrastructure が `LLMAPIError(kind='empty_response')` を raise し、空の `LLMResponse` を構築しない。フォールバック文字列への silently 置換は禁止。
+
+**根拠**: ヘルスバーグ §致命的欠陥 3 の教訓。呼び出し元 Service が `LLMResponse.content` に常に意味あるテキストが存在することを前提にできる。fragile な `if "no text response" in content:` 分岐が業務ロジックに散在するのを防ぐ。
 
 ---
 
@@ -257,6 +297,13 @@ ai-team の `MAX_TOKENS = 4096` 固定値は採用しない。
 - `LLMClientError` は「LLM 呼び出し基盤の設計上の不変条件違反または外部 I/O 失敗」であり、application layer の業務ロジックエラーではない
 - infrastructure が raise し、application が catch するエラーの型が `application/` に置かれていると依存方向が逆転する（infrastructure → application の import が発生）
 
+### なぜ `LLMConfigError` は `domain/errors.py` に含まないか
+
+- `LLMConfigError` はアプリ起動時の設定不備（env var 欠如等）を表す。これは「LLM API 呼び出し失敗」ではなくインフラ設定エラーであり、`LLMClientError` の is-a 関係が成立しない
+- 配置先: `infrastructure/llm/config.py`（`LLMClientConfig` と同居）
+- 継承: `Exception` を直接継承（`LLMClientError` は継承しない）
+- 呼び出し元は `except LLMClientError:` では catch できない。アプリ起動時に Fail Fast するため通常の業務ロジックが catch する必要はない
+
 ---
 
 ## ユーザー向けメッセージの確定文言
@@ -268,20 +315,20 @@ ai-team の `MAX_TOKENS = 4096` 固定値は採用しない。
 | プレフィックス | 意味 |
 |---|---|
 | `[FAIL]` | 処理中止を伴う失敗 |
-| `[WARN]` | 警告（処理は継続）|
 
 ### MSG 確定文言表
 
-| ID | 出力先 | 文言 |
+| ID | 出力先 | 文言（2行構造）|
 |---|---|---|
-| MSG-LC-001 | `logger.warning` + `LLMTimeoutError.message` | `[FAIL] LLM API call timed out after {timeout_seconds}s (provider={provider})` |
-| MSG-LC-002 | `logger.warning` + `LLMRateLimitError.message` | `[FAIL] LLM API rate limit exceeded (provider={provider}, retry_after={retry_after}s)` |
-| MSG-LC-003 | `logger.error` + `LLMAuthError.message` | `[FAIL] LLM API authentication failed (provider={provider}). Check API key configuration.` |
-| MSG-LC-004 | `logger.error` + `LLMAPIError.message` | `[FAIL] LLM API error (provider={provider}, status={status_code})` |
-| MSG-LC-005 | `LLMMessageValidationError.message` | `[FAIL] LLMMessage.{field} must not be empty.` |
-| MSG-LC-006 | `logger.warning` | `[WARN] LLM response contained no text blocks (provider={provider}). Using fallback response.` |
+| MSG-LC-001 | `logger.warning` + `LLMTimeoutError.message` | `[FAIL] LLM API call timed out after {timeout_seconds}s (provider={provider})` `Next: Retry with exponential backoff, or increase BAKUFU_LLM_TIMEOUT_SECONDS.` |
+| MSG-LC-002 | `logger.warning` + `LLMRateLimitError.message` | `[FAIL] LLM API rate limit exceeded (provider={provider}, retry_after={retry_after}s)` `Next: Wait {retry_after}s before retrying, or reduce request frequency.` |
+| MSG-LC-003 | `logger.error` + `LLMAuthError.message` | `[FAIL] LLM API authentication failed (provider={provider})` `Next: Set BAKUFU_{PROVIDER}_API_KEY to a valid API key and restart.` |
+| MSG-LC-004 | `logger.error` + `LLMAPIError.message` | `[FAIL] LLM API error (provider={provider}, status={status_code})` `Next: Check provider status page and inspect raw_error for details.` |
+| MSG-LC-005 | `LLMMessageValidationError.message` | `[FAIL] LLMMessage.{field} must not be empty.` `Next: Provide a non-empty {field} when constructing LLMMessage.` |
+| MSG-LC-006 | `logger.error` + `LLMAPIError.message`（kind='empty_response'）| `[FAIL] LLM returned no text content (provider={provider}, kind=empty_response)` `Next: Retry the request or inspect the LLM provider status for content filtering.` |
+| MSG-LC-010 | `logger.error` + `LLMMessagesEmptyError.message` | `[FAIL] No user/assistant messages remain after system role filtering (provider={provider})` `Next: Include at least one user or assistant message in addition to system messages.` |
 
-**MSG-LC-006 のフォールバック文字列**: `"(LLM returned no text response)"` — LLMResponse.content に格納する固定文字列。
+**MSG-LC-003 / MSG-LC-008 の `{PROVIDER}` プレースホルダ**: `provider.upper()` で展開すること（例: `anthropic` → `ANTHROPIC`）。これにより実際の環境変数名 `BAKUFU_ANTHROPIC_API_KEY` と一致する（Tabriz ADV-1 対応）。
 
 ---
 

@@ -72,6 +72,16 @@
 
 LLM API（Anthropic / OpenAI）の raw fixture を取得する。`RUN_CHARACTERIZATION=1` 環境変数が設定された場合のみ実行（本流 CI から除外）。
 
+### 責任主体・取得方法・更新タイミング
+
+| 項目 | 内容 |
+|---|---|
+| 責任主体 | 実装 PR 担当エンジニア（infrastructure sub-feature 実装者）。実装 PR 着手前に fixture 取得タスクを完了し、fixture ファイルを PR に含める |
+| 取得方法 | `RUN_CHARACTERIZATION=1` を設定して `pytest tests/characterization/` を実行（本流 CI から除外）。取得には有効な API キー（`BAKUFU_ANTHROPIC_API_KEY` / `BAKUFU_OPENAI_API_KEY`）が必要。API キーは bakufu オーナー（まこちゃん）が提供 |
+| fixture 配置先 | `tests/fixtures/characterization/raw/llm_client/`（リポジトリにコミット）|
+| 更新タイミング | ① SDK メジャーバージョン更新時（anthropic 0.x → 1.x 等）② API レスポンス形式変更時（既存 schema ファイルとの差分が出たとき）③ 既存 fixture が stale であることが判明したとき（テスト失敗等）|
+| 未取得でのテスト実装禁止 | 本 test-design.md 冒頭「Characterization 先行ルール」参照。`RUN_CHARACTERIZATION=1` の fixture 取得前に UT/IT 実装に着手することは禁止 |
+
 ### 取得対象 raw fixture
 
 | ファイルパス | 取得対象 API | 取得内容 |
@@ -140,7 +150,7 @@ SDK は `AsyncMock` でスタブ化。返却値は factory 由来のみ。
 | テストID | 対象 | 種別 | 入力 | 期待結果 |
 |---------|-----|------|------|---------|
 | TC-UT-AC-006 | `_extract_text` — TextBlock あり | 正常系 | `AnthropicSDKResponseFactory.build(content='テキスト応答')` | `'テキスト応答'` が返る |
-| TC-UT-AC-007 | `_extract_text` — TextBlock なし → MSG-LC-006 + フォールバック | 境界値 | `AnthropicSDKResponseFactory.build_no_text_block()` | `LLM_FALLBACK_RESPONSE_TEXT`（`"(LLM returned no text response)"`）が返る。MSG-LC-006 が `logger.warning` で出力される |
+| TC-UT-AC-007 | `_extract_text` — TextBlock なし → MSG-LC-006 + エラー raise | 境界値 | `AnthropicSDKResponseFactory.build_no_text_block()` | `LLMAPIError(kind='empty_response', provider='anthropic')` が raise される。`LLMClientError` として catch 可能。MSG-LC-006 が `logger.error` で出力される |
 
 #### _convert_messages（§確定F Anthropic system 分離）
 

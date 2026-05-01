@@ -22,7 +22,7 @@
 | 入力 | `messages: tuple[LLMMessage, ...]`、`max_tokens: int`、`LLMClientConfig`（DI 注入）|
 | 処理 | `anthropic.AsyncAnthropic` で `messages.create()` を非同期呼び出し。`asyncio.wait_for()` でタイムアウト制御。応答から `_extract_text()` でテキスト抽出 |
 | 出力 | `LLMResponse(content=text)` |
-| エラー時 | `asyncio.TimeoutError` → `LLMTimeoutError` / `anthropic.RateLimitError` → `LLMRateLimitError` / `anthropic.AuthenticationError` → `LLMAuthError` / その他 `anthropic.APIError` → `LLMAPIError`（MSG-LC-001〜004）|
+| エラー時 | `asyncio.TimeoutError` → `LLMTimeoutError` / `anthropic.RateLimitError` → `LLMRateLimitError` / `anthropic.AuthenticationError` → `LLMAuthError` / その他 `anthropic.APIError` → `LLMAPIError`（MSG-LC-001〜004）/ LLM 空応答 → `LLMAPIError(kind='empty_response')`（MSG-LC-006）/ `_convert_messages` 後 messages リスト空 → `LLMMessagesEmptyError`（MSG-LC-010）|
 
 ### REQ-LC-012: OpenAI LLM クライアントの実装
 
@@ -31,13 +31,13 @@
 | 入力 | `messages: tuple[LLMMessage, ...]`、`max_tokens: int`、`LLMClientConfig`（DI 注入）|
 | 処理 | `openai.AsyncOpenAI` で `chat.completions.create()` を非同期呼び出し。`asyncio.wait_for()` でタイムアウト制御 |
 | 出力 | `LLMResponse(content=text)` |
-| エラー時 | `asyncio.TimeoutError` → `LLMTimeoutError` / `openai.RateLimitError` → `LLMRateLimitError` / `openai.AuthenticationError` → `LLMAuthError` / その他 `openai.APIError` → `LLMAPIError`（MSG-LC-001〜004）|
+| エラー時 | `asyncio.TimeoutError` → `LLMTimeoutError` / `openai.RateLimitError` → `LLMRateLimitError` / `openai.AuthenticationError` → `LLMAuthError` / その他 `openai.APIError` → `LLMAPIError`（MSG-LC-001〜004）/ LLM 空応答（`content=None`）→ `LLMAPIError(kind='empty_response')`（MSG-LC-006）|
 
 ### REQ-LC-013: LLM クライアント設定の構築
 
 | 項目 | 内容 |
 |---|---|
-| 入力 | 環境変数（`BAKUFU_LLM_PROVIDER` / `BAKUFU_ANTHROPIC_API_KEY` / `BAKUFU_OPENAI_API_KEY` / `BAKUFU_LLM_TIMEOUT_SECONDS` / `BAKUFU_LLM_MODEL_NAME`）|
+| 入力 | 環境変数（`BAKUFU_LLM_PROVIDER` / `BAKUFU_ANTHROPIC_API_KEY` / `BAKUFU_OPENAI_API_KEY` / `BAKUFU_ANTHROPIC_MODEL_NAME` / `BAKUFU_OPENAI_MODEL_NAME` / `BAKUFU_LLM_TIMEOUT_SECONDS`）|
 | 処理 | Pydantic `BaseSettings` で環境変数を読み込み、`LLMClientConfig` を構築する |
 | 出力 | `LLMClientConfig` インスタンス |
 | エラー時 | 必須環境変数（`BAKUFU_LLM_PROVIDER`）が未設定 → `LLMConfigError`（MSG-LC-007）/ API キーが未設定かつ対応プロバイダが選択されている → `LLMConfigError`（MSG-LC-008）|
@@ -84,9 +84,11 @@ backend/src/bakufu/
 
 | ID | 種別 | メッセージ（要旨）| 表示条件 |
 |---|---|---|---|
+| MSG-LC-006 | エラー | LLM 応答テキスト空→ `LLMAPIError(kind='empty_response')` raise | Anthropic: TextBlock 0件 / OpenAI: content=None 時 |
 | MSG-LC-007 | エラー | `BAKUFU_LLM_PROVIDER` 未設定 | `LLMClientConfig` 構築時 |
 | MSG-LC-008 | エラー | 選択プロバイダの API キーが未設定 | `LLMClientConfig` 構築時 |
 | MSG-LC-009 | エラー | 未知のプロバイダ名 | `llm_client_factory` 呼び出し時 |
+| MSG-LC-010 | エラー | system role 除外後 messages リスト空 → `LLMMessagesEmptyError` raise | Anthropic `_convert_messages` で非system メッセージが0件になった時 |
 
 各メッセージの確定文言は [`detailed-design.md §MSG 確定文言表`](detailed-design.md) で凍結する。
 
@@ -131,7 +133,8 @@ classDiagram
         +provider: LLMProviderEnum
         +anthropic_api_key: SecretStr | None
         +openai_api_key: SecretStr | None
-        +model_name: str
+        +anthropic_model_name: str
+        +openai_model_name: str
         +timeout_seconds: float
     }
 
@@ -208,7 +211,7 @@ sequenceDiagram
         Client->>Client: raise LLMRateLimitError(retry_after=60.0)
         Client-->>Svc: LLMRateLimitError
     else 他の APIError
-        Client->>Masking: masking(str(e))
+        Client->>Masking: masking.mask(str(e))
         Masking-->>Client: masked_str
         Client->>Client: raise LLMAPIError(raw_error=masked_str)
         Client-->>Svc: LLMAPIError

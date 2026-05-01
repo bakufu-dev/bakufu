@@ -49,7 +49,9 @@ flowchart LR
 
 | 資産 | 機密性 | 完全性 | 可用性 | 保管場所 |
 |----|----|----|----|----|
-| Anthropic / OpenAI / Gemini OAuth トークン | **高** | 高 | 中 | OS ユーザーホーム配下（CLI 標準）。bakufu は触らない |
+| Anthropic / OpenAI / Gemini OAuth トークン（CLI subprocess 用）| **高** | 高 | 中 | OS ユーザーホーム配下（CLI 標準）。`LLMProviderPort`（subprocess CLI）専用。HTTP API 呼び出しは使用しない |
+| `BAKUFU_ANTHROPIC_API_KEY`（HTTP API キー）| **高** | 高 | 中 | 環境変数 / `.env` ファイル。`LLMClientConfig` が `SecretStr` で読み込む（Issue #144）。ログ・永続化での平文出力を禁止（`masking.mask()` 適用対象）|
+| `BAKUFU_OPENAI_API_KEY`（HTTP API キー）| **高** | 高 | 中 | 同上。`SecretStr` 管理。`LLMClientConfig.openai_api_key` として保持 |
 | GitHub トークン | **高** | 高 | 中 | `gh` CLI 標準（`gh auth login`）。bakufu は触らない |
 | Discord Bot Token | **高** | 高 | 中 | 環境変数 `BAKUFU_DISCORD_BOT_TOKEN`、または `~/.config/bakufu/secrets.toml`（OS ユーザーのみ可読）|
 | Conversation 本文 | **中** | 高 | 中 | SQLite。マスキング後保存 |
