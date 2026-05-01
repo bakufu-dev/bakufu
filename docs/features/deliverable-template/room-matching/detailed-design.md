@@ -232,21 +232,38 @@ HTTP レスポンス形式（error_handler 経由）:
 | 変更 | 場所 | 内容 |
 |-----|------|------|
 | パラメータ追加 | `assign_agent` シグネチャ | `custom_refs: tuple[DeliverableTemplateRef, ...] \| None = None` を末尾に追加 |
-| UoW 統一 | `assign_agent` の全処理 | **全 async I/O（読み取り + 書き込み）を単一 `async with self._session.begin():` ブロックに包む**。以下の順序で実行する: 1) Room 存在確認・archived 確認 2) Agent 存在確認（`AgentRepository.find_by_id`）3) `empire_id = await _room_repo.find_empire_id_by_room_id(room_id)` 4) `workflow = await _workflow_repo.find_by_id(room.workflow_id)` 5) `effective_refs = await matching_svc.resolve_effective_refs(room_id, empire_id, role_enum, custom_refs)` — 内部で `_override_repo` / `_role_profile_repo` を呼ぶが `begin()` 内なので autobegin 競合なし 6) `missing = matching_svc.validate_coverage(workflow, effective_refs)` → `if missing: raise RoomDeliverableMatchingError(room_id, role_enum, missing)` 7) `room.add_member(membership)` 8) `RoomRepository.save(updated_room, empire_id)` 9) `if custom_refs is not None: RoomRoleOverrideRepository.save(RoomRoleOverride(room_id, role_enum, custom_refs))` |
+| UoW 統一 | `assign_agent` の全処理 | **全 async I/O（読み取り + 書き込み）を単一 `async with self._session.begin():` ブロックに包む**。以下の順序で実行する: 1) Room 存在確認・archived 確認 2) Agent 存在確認（`AgentRepository.find_by_id`）3) `empire_id = await _room_repo.find_empire_id_by_room_id(room_id)` 4) `workflow = await _workflow_repo.find_by_id(room.workflow_id)` 5) `effective_refs = await matching_svc.resolve_effective_refs(room_id, empire_id, role_enum, custom_refs)` — 内部で `_override_repo` / `_role_profile_repo` を呼ぶが `begin()` 内なので autobegin 競合なし 6) `missing = matching_svc.validate_coverage(workflow, effective_refs)` → `if missing: raise RoomDeliverableMatchingError(room_id, role_enum, missing)` 7) `room.add_member(membership)` 8) `await self._room_repo.save(updated_room, empire_id)` 9) `if custom_refs is not None: await self._override_repo.save(RoomRoleOverride(room_id, role_enum, custom_refs))` ← **`RoomService._override_repo` を直接使用**（`RoomRoleOverrideService.upsert_override` 経由にしない理由: ①Room 存在確認が二重実行になる ②`upsert_override` が独自 `begin()` を開くと外側の `begin()` と競合する）|
 
 **UoW 境界の理由**: SQLAlchemy の autobegin により、repository メソッド（SELECT）を `async with session.begin():` の外側で呼び出すと暗黙的なトランザクションが開始される。その後 explicit な `begin()` を呼び出すと `InvalidRequestError: A transaction is already begun on this Session.` が発生する（BUG-001 パターン）。`EmpireService` / `RoomService` の既存パターンと同様に、全 async I/O を単一 `begin()` ブロックに包む方針を採用する。
 
 ### §確定 H: `RoomMatchingService` / `RoomRoleOverrideService` の DI 配線
 
-`get_room_matching_service(session: SessionDep)` ファクトリを `interfaces/http/dependencies.py` に追加する。以下の 2 Repository を注入する:
-- `SqliteRoomRoleOverrideRepository(session)`
-- `SqliteRoleProfileRepository(session)`
+**`get_room_matching_service(session: SessionDep)` ファクトリ** を `interfaces/http/dependencies.py` に追加する。注入する依存:
 
-`get_room_role_override_service(session: SessionDep)` ファクトリを同ファイルに追加する。以下を注入する:
-- `SqliteRoomRepository(session)`
-- `SqliteRoomRoleOverrideRepository(session)`
+| パラメータ | 型 | インスタンス |
+|---|---|---|
+| `override_repo` | `RoomRoleOverrideRepository` | `SqliteRoomRoleOverrideRepository(session)` |
+| `role_profile_repo` | `RoleProfileRepository` | `SqliteRoleProfileRepository(session)` |
 
-`RoomService.__init__` のコンストラクタパラメータとして `matching_svc: RoomMatchingService` を追加する。`get_room_service` DI ファクトリは `get_room_matching_service(session)` で生成した `RoomMatchingService` インスタンスを `RoomService` コンストラクタに注入する（Composition over Inheritance / 明示的 DI 原則）。
+**`get_room_role_override_service(session: SessionDep)` ファクトリ** を同ファイルに追加する。注入する依存:
+
+| パラメータ | 型 | インスタンス |
+|---|---|---|
+| `room_repo` | `RoomRepository` | `SqliteRoomRepository(session)` |
+| `override_repo` | `RoomRoleOverrideRepository` | `SqliteRoomRoleOverrideRepository(session)` |
+
+**`RoomService.__init__` の完全な DI 引数リスト**（全引数を凍結）:
+
+| パラメータ | 型 | インスタンス（`get_room_service` 内）|
+|---|---|---|
+| `room_repo` | `RoomRepository` | `SqliteRoomRepository(session)` |
+| `empire_repo` | `EmpireRepository` | `SqliteEmpireRepository(session)` |
+| `workflow_repo` | `WorkflowRepository` | `SqliteWorkflowRepository(session)` |
+| `agent_repo` | `AgentRepository` | `SqliteAgentRepository(session)` |
+| `matching_svc` | `RoomMatchingService` | `get_room_matching_service(session)` |
+| `override_repo` | `RoomRoleOverrideRepository` | `SqliteRoomRoleOverrideRepository(session)` |
+
+`override_repo` を `RoomService` に直接注入する理由: §確定 G ステップ 9 で `Room.save` と `RoomRoleOverride.save` を同一 `begin()` トランザクション内で実行するため、`RoomRoleOverrideService.upsert_override` 経由にできない（独自 `begin()` を開き競合する）。
 
 `RoomRouter` は override CRUD エンドポイント（REQ-RM-HTTP-008〜010）で `RoomRoleOverrideService` を DI で受け取る。`RoomMatchingService` は `RoomService` 内部で使用するため Router が直接受け取らない。
 

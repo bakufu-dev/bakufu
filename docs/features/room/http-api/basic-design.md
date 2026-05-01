@@ -198,7 +198,8 @@ classDiagram
         -_workflow_repo: WorkflowRepository
         -_agent_repo: AgentRepository
         -_matching_svc: RoomMatchingService
-        +__init__(room_repo, empire_repo, workflow_repo, agent_repo, matching_svc)
+        -_override_repo: RoomRoleOverrideRepository
+        +__init__(room_repo, empire_repo, workflow_repo, agent_repo, matching_svc, override_repo)
         +create(empire_id, name, description, workflow_id, prompt_kit_prefix_markdown) Room
         +find_all_by_empire(empire_id) list~Room~
         +find_by_id(room_id) Room
