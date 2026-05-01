@@ -21,6 +21,7 @@ from bakufu.domain.external_review_gate.gate import ExternalReviewGate
 from bakufu.domain.value_objects import (
     AcceptanceCriterion,
     Deliverable,
+    DeliverableTemplateId,
     GateId,
     OwnerId,
     StageId,
@@ -57,7 +58,7 @@ class ExternalReviewGateService:
         stage_id: StageId,
         deliverable_snapshot: Deliverable,
         reviewer_id: OwnerId,
-        required_deliverable_template_ids: list[object],
+        required_deliverable_template_ids: list[DeliverableTemplateId],
         created_at: datetime,
     ) -> ExternalReviewGate:
         """PENDING の ExternalReviewGate を生成して返す（保存は呼び出し元の責務）。
@@ -82,18 +83,14 @@ class ExternalReviewGateService:
         """
         # Stage.required_deliverables から各 DeliverableTemplate の acceptance_criteria
         # を収集する（§確定 J - GateService の責務）。
-        # 重複 criterion.id は先頭出現を保持して除去し、tuple 順序は
-        # template_ids の順序 × 各 template 内の順序で決まる。
-        seen_ids: set[object] = set()
+        # 全 criteria をそのまま順序通り tuple に変換する（重複除去は行わない）。
+        # dangling ref（template が見つからない場合）は silently skip する（MVP 方針）。
         all_criteria: list[AcceptanceCriterion] = []
         for template_id in required_deliverable_template_ids:
-            template = await self._template_repo.find_by_id(template_id)  # type: ignore[arg-type]
+            template = await self._template_repo.find_by_id(template_id)
             if template is None:
                 continue
-            for criterion in template.acceptance_criteria:
-                if criterion.id not in seen_ids:
-                    seen_ids.add(criterion.id)
-                    all_criteria.append(criterion)
+            all_criteria.extend(template.acceptance_criteria)
 
         return ExternalReviewGate(
             id=GateId(uuid4()),
