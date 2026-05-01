@@ -390,7 +390,8 @@ class DeliverableTemplateService:
         """
         # 完全処理済みノード（黒）: 別経路で循環なし確認済み → 再訪問をスキップ
         visited: set[DeliverableTemplateId] = set()
-        node_count: int = 0
+        # root 自身を 1 ノードとしてカウントして開始する（node_limit = 100 は root 含む総ノード数）
+        node_count: int = 1
 
         async def _dfs(
             template_id: DeliverableTemplateId,
