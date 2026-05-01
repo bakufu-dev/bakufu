@@ -37,19 +37,39 @@
 
 | 項目 | 内容 |
 |---|---|
-| 入力 | 環境変数（`BAKUFU_LLM_PROVIDER` / `BAKUFU_ANTHROPIC_API_KEY` / `BAKUFU_OPENAI_API_KEY` / `BAKUFU_ANTHROPIC_MODEL_NAME` / `BAKUFU_OPENAI_MODEL_NAME` / `BAKUFU_LLM_TIMEOUT_SECONDS`）|
+| 入力 | 環境変数（`BAKUFU_LLM_PROVIDER` / `BAKUFU_ANTHROPIC_API_KEY` / `BAKUFU_OPENAI_API_KEY` / `BAKUFU_ANTHROPIC_MODEL_NAME` / `BAKUFU_OPENAI_MODEL_NAME` / `BAKUFU_LLM_TIMEOUT_SECONDS` / `BAKUFU_LLM_CLI_MODEL`）|
 | 処理 | Pydantic `BaseSettings` で環境変数を読み込み、`LLMClientConfig` を構築する |
 | 出力 | `LLMClientConfig` インスタンス |
-| エラー時 | 必須環境変数（`BAKUFU_LLM_PROVIDER`）が未設定 → `LLMConfigError`（MSG-LC-007）/ API キーが未設定かつ対応プロバイダが選択されている → `LLMConfigError`（MSG-LC-008）|
+| エラー時 | 必須環境変数（`BAKUFU_LLM_PROVIDER`）が未設定 → `LLMConfigError`（MSG-LC-007）/ API キーが未設定かつ SDK プロバイダが選択されている → `LLMConfigError`（MSG-LC-008）|
 
 ### REQ-LC-014: LLM クライアント factory
 
 | 項目 | 内容 |
 |---|---|
 | 入力 | `config: LLMClientConfig` |
-| 処理 | `config.provider` に基づいて `AnthropicLLMClient` または `OpenAILLMClient` を選択して返す |
+| 処理 | `config.provider` に基づいて `ClaudeCodeLLMClient` / `CodexLLMClient` / `AnthropicLLMClient` / `OpenAILLMClient` を選択して返す |
 | 出力 | `AbstractLLMClient` を実装したインスタンス |
 | エラー時 | 未知のプロバイダ名 → `LLMConfigError`（MSG-LC-009）|
+
+### REQ-LC-015: Claude Code CLI クライアントの実装（Phase 1 必須）
+
+| 項目 | 内容 |
+|---|---|
+| 入力 | `messages: tuple[LLMMessage, ...]`、`max_tokens: int`、`model_name: str`（オプション、`LLMClientConfig.cli_model_name`）|
+| 処理 | `asyncio.create_subprocess_exec` で `claude -p <prompt> --system-prompt <system> --model <model> --output-format stream-json --verbose --tools ""` を起動。stdout を JSONL で非同期読み込み。`event_type="result"` の `result` フィールドに最終テキスト。`asyncio.wait_for()` でタイムアウト制御 |
+| 出力 | `LLMResponse(content=text)` |
+| 認証 | Claude Code OAuthトークン（環境変数 `CLAUDE_HOME` 等で自動認証）。APIキー不要 |
+| エラー時 | `asyncio.TimeoutError` → `LLMTimeoutError` / 非ゼロ終了コード → `LLMAPIError` / 空応答 → `LLMAPIError(kind='empty_response')`（MSG-LC-006）|
+
+### REQ-LC-016: Codex CLI クライアントの実装（Phase 1 必須）
+
+| 項目 | 内容 |
+|---|---|
+| 入力 | `messages: tuple[LLMMessage, ...]`、`max_tokens: int` |
+| 処理 | `asyncio.create_subprocess_exec` で `codex exec --json --skip-git-repo-check --ephemeral --dangerously-bypass-approvals-and-sandbox <prompt>` を起動。stdout を JSONL で非同期読み込み。`item.type == "agent_message"` から応答テキスト抽出 |
+| 出力 | `LLMResponse(content=text)` |
+| 認証 | OpenAIサブスクリプション認証（ローカルインストール済み Codex CLI が自動認証）。APIキー不要 |
+| エラー時 | `asyncio.TimeoutError` → `LLMTimeoutError` / 非ゼロ終了コード → `LLMAPIError` / 空応答 → `LLMAPIError(kind='empty_response')`（MSG-LC-006）/ セッション再開失敗 → 新規セッションでリトライ（Codex resume 失敗パターン対応）|
 
 ---
 
@@ -57,11 +77,13 @@
 
 | 機能 ID | モジュール | ディレクトリ | 責務 |
 |---|---|---|---|
-| REQ-LC-011 | `AnthropicLLMClient` | `backend/src/bakufu/infrastructure/llm/anthropic_llm_client.py` | Anthropic SDK 統合。`AbstractLLMClient` 実装 |
-| REQ-LC-012 | `OpenAILLMClient` | `backend/src/bakufu/infrastructure/llm/openai_llm_client.py` | OpenAI SDK 統合。`AbstractLLMClient` 実装 |
+| REQ-LC-015 | `ClaudeCodeLLMClient` | `backend/src/bakufu/infrastructure/llm/claude_code_llm_client.py` | Claude Code CLI サブプロセス統合。`AbstractLLMClient` 実装。**Phase 1 必須** |
+| REQ-LC-016 | `CodexLLMClient` | `backend/src/bakufu/infrastructure/llm/codex_llm_client.py` | Codex CLI サブプロセス統合。`AbstractLLMClient` 実装。**Phase 1 必須** |
+| REQ-LC-011 | `AnthropicLLMClient` | `backend/src/bakufu/infrastructure/llm/anthropic_llm_client.py` | Anthropic SDK 統合。`AbstractLLMClient` 実装（Phase 2 オプション）|
+| REQ-LC-012 | `OpenAILLMClient` | `backend/src/bakufu/infrastructure/llm/openai_llm_client.py` | OpenAI SDK 統合。`AbstractLLMClient` 実装（Phase 2 オプション）|
 | REQ-LC-013 | `LLMClientConfig` | `backend/src/bakufu/infrastructure/llm/config.py` | 環境変数ベースの設定 VO（Pydantic BaseSettings）|
-| REQ-LC-014 | `llm_client_factory` | `backend/src/bakufu/infrastructure/llm/factory.py` | プロバイダ選択・インスタンス生成 |
-| — | `LLMProviderEnum` | `backend/src/bakufu/infrastructure/llm/config.py` | プロバイダ種別列挙（`anthropic` / `openai`）|
+| REQ-LC-014 | `llm_client_factory` | `backend/src/bakufu/infrastructure/llm/factory.py` | プロバイダ選択・インスタンス生成（CLI / SDK 両対応）|
+| — | `LLMProviderEnum` | `backend/src/bakufu/infrastructure/llm/config.py` | プロバイダ種別列挙（`claude-code` / `codex` / `anthropic` / `openai`）|
 | — | `__init__.py` | `backend/src/bakufu/infrastructure/llm/__init__.py` | パッケージ公開インターフェース（`llm_client_factory` / `LLMClientConfig` のみ export）|
 
 ```
@@ -71,8 +93,10 @@ backend/src/bakufu/
 ├── infrastructure/
 │   └── llm/                                    # 新規ディレクトリ
 │       ├── __init__.py                          # 新規: factory / config のみ公開
-│       ├── anthropic_llm_client.py              # 新規: AnthropicLLMClient
-│       ├── openai_llm_client.py                 # 新規: OpenAILLMClient
+│       ├── claude_code_llm_client.py            # 新規: ClaudeCodeLLMClient (Phase 1 必須)
+│       ├── codex_llm_client.py                  # 新規: CodexLLMClient (Phase 1 必須)
+│       ├── anthropic_llm_client.py              # 新規: AnthropicLLMClient (Phase 2 オプション)
+│       ├── openai_llm_client.py                 # 新規: OpenAILLMClient (Phase 2 オプション)
 │       ├── config.py                            # 新規: LLMClientConfig / LLMProviderEnum
 │       └── factory.py                           # 新規: llm_client_factory
 └── (application/ports/llm_client.py は domain sub-feature で追加済み)
@@ -138,8 +162,26 @@ classDiagram
         +timeout_seconds: float
     }
 
+    class ClaudeCodeLLMClient {
+        -_model_name: str
+        -_timeout_seconds: float
+        +complete(messages, max_tokens) LLMResponse
+        -_run_claude_cli(prompt, system) str
+        -_stream_and_collect(process) str
+    }
+
+    class CodexLLMClient {
+        -_model_name: str
+        -_timeout_seconds: float
+        +complete(messages, max_tokens) LLMResponse
+        -_run_codex_exec(prompt) str
+        -_stream_and_collect(process) str
+    }
+
     class LLMProviderEnum {
         <<StrEnum>>
+        CLAUDE_CODE = "claude-code"
+        CODEX = "codex"
         ANTHROPIC = "anthropic"
         OPENAI = "openai"
     }
@@ -149,18 +191,25 @@ classDiagram
         +llm_client_factory(config) AbstractLLMClient
     }
 
+    ClaudeCodeLLMClient ..|> AbstractLLMClient : implements
+    CodexLLMClient ..|> AbstractLLMClient : implements
     AnthropicLLMClient ..|> AbstractLLMClient : implements
     OpenAILLMClient ..|> AbstractLLMClient : implements
     LLMClientConfig --> LLMProviderEnum
     llm_client_factory ..> LLMClientConfig : uses
+    llm_client_factory ..> ClaudeCodeLLMClient : creates
+    llm_client_factory ..> CodexLLMClient : creates
     llm_client_factory ..> AnthropicLLMClient : creates
     llm_client_factory ..> OpenAILLMClient : creates
 ```
 
 **凝集のポイント**:
-- `AnthropicLLMClient` と `OpenAILLMClient` は `AbstractLLMClient` Protocol を実装。pyright strict が Protocol 適合を静的検証する
-- `_extract_text()` は各クライアントのプライベートメソッド。SDK のレスポンス構造が異なるため共通化しない（Composition over Inheritance）
-- `LLMClientConfig` は Pydantic BaseSettings を継承し、環境変数からの自動読み込みを担う。`SecretStr` で API キーをマスキング
+- 全クライアントは `AbstractLLMClient` Protocol を実装。pyright strict が Protocol 適合を静的検証する
+- `ClaudeCodeLLMClient` / `CodexLLMClient` は CLIサブプロセス（OAuthトークン/サブスク認証）。**APIキー不要**（Phase 1 必須）
+- `AnthropicLLMClient` / `OpenAILLMClient` は SDK + APIキー方式（Phase 2 将来オプション）
+- `_stream_and_collect()` は各 CLI クライアントのプライベートメソッド。JSONL フォーマットが異なるため共通化しない（Composition over Inheritance）
+- `LLMClientConfig` は Pydantic BaseSettings を継承。CLI プロバイダは APIキー設定不要（`SecretStr` フィールドは `optional`）
+- 参照実装: `kkm-horikawa/ai-team` の `claude_code_client.py` / `codex_cli_client.py`（https://github.com/kkm-horikawa/ai-team）
 
 ## 処理フロー
 
@@ -228,8 +277,10 @@ sequenceDiagram
 
 | 連携先 | 目的 | プロトコル | 認証 | タイムアウト |
 |---|---|---|---|---|
-| `api.anthropic.com` | テキスト補完 | HTTPS | `BAKUFU_ANTHROPIC_API_KEY`（SecretStr）| `LLMClientConfig.timeout_seconds`（デフォルト 30s）|
-| `api.openai.com` | テキスト補完 | HTTPS | `BAKUFU_OPENAI_API_KEY`（SecretStr）| 同上 |
+| `claude` CLI プロセス | テキスト補完（Phase 1）| CLIサブプロセス（stdout JSONL）| Claude Code OAuthトークン（自動認証、APIキー不要）| `LLMClientConfig.timeout_seconds`（デフォルト 3600s）|
+| `codex` CLI プロセス | テキスト補完（Phase 1）| CLIサブプロセス（stdout JSONL）| OpenAIサブスクリプション認証（自動認証、APIキー不要）| 同上 |
+| `api.anthropic.com` | テキスト補完（Phase 2 オプション）| HTTPS | `BAKUFU_ANTHROPIC_API_KEY`（SecretStr）| 同上（デフォルト 30s）|
+| `api.openai.com` | テキスト補完（Phase 2 オプション）| HTTPS | `BAKUFU_OPENAI_API_KEY`（SecretStr）| 同上 |
 
 ## UX 設計
 
