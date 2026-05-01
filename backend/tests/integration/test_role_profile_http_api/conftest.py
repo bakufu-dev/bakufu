@@ -63,7 +63,7 @@ async def _create_deliverable_template(
     ctx: RpTestCtx, name: str = "参照テンプレート"
 ) -> dict[str, Any]:
     """POST /api/deliverable-templates → 201 を assert → JSON を返す。"""
-    body = {
+    body: dict[str, Any] = {
         "name": name,
         "description": "",
         "type": "MARKDOWN",

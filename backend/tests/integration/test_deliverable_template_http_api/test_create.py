@@ -480,9 +480,9 @@ class TestCreateJsonSchemaType:
         from tests.factories.deliverable_template import ValidStubValidator
 
         # テスト用 validator を注入（Fail Secure 回避）
-        original_validator = DeliverableTemplate._validator
+        original_validator = DeliverableTemplate._validator  # pyright: ignore[reportPrivateUsage]
         try:
-            DeliverableTemplate._validator = ValidStubValidator()
+            DeliverableTemplate._validator = ValidStubValidator()  # pyright: ignore[reportPrivateUsage]
             body = {
                 **_MINIMAL_MARKDOWN_BODY,
                 "type": "JSON_SCHEMA",
@@ -492,7 +492,7 @@ class TestCreateJsonSchemaType:
             assert resp.status_code == 201
             assert isinstance(resp.json()["schema"], dict)
         finally:
-            DeliverableTemplate._validator = original_validator
+            DeliverableTemplate._validator = original_validator  # pyright: ignore[reportPrivateUsage]
 
 
 # ---------------------------------------------------------------------------
