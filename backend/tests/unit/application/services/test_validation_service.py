@@ -12,7 +12,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from bakufu.application.services.validation_service import ValidationService
 from bakufu.domain.exceptions.deliverable_template import LLMValidationError
 from bakufu.domain.value_objects.chat_result import ChatResult
@@ -54,7 +53,8 @@ class TestValidateDeliverable:
     """TC-UT-VS-001〜007: ValidationService.validate_deliverable テスト。"""
 
     async def test_validate_deliverable_returns_passed(self) -> None:
-        """TC-UT-VS-001: stub が PASSED JSON を返す → DeliverableRecord.validation_status == PASSED。
+        """TC-UT-VS-001: stub が PASSED JSON を返す
+        → DeliverableRecord.validation_status == PASSED。
 
         要件: REQ-AIVM-001
         """
@@ -185,12 +185,15 @@ class TestValidateDeliverable:
         criterion = make_acceptance_criterion(required=True)
 
         # ExternalReviewGate 生成が試みられないことを確認
-        with patch("bakufu.application.services.validation_service.ValidationService") as mock_class:
+        with patch(
+            "bakufu.application.services.validation_service.ValidationService"
+        ) as mock_class:
             mock_class.side_effect = AssertionError("ExternalReviewGate が生成された")
             result = await service.validate_deliverable(record, (criterion,))
 
         # 返却値は DeliverableRecord（UNCERTAIN）
         from bakufu.domain.deliverable_record.deliverable_record import DeliverableRecord
+
         assert isinstance(result, DeliverableRecord)
         assert result.validation_status == ValidationStatus.UNCERTAIN
 
@@ -216,9 +219,9 @@ class TestValidateDeliverable:
         criterion = make_acceptance_criterion(required=True)
 
         # pydantic v2 で ValidationError を確実に生成する
-        from pydantic import BaseModel as _BM
+        from pydantic import BaseModel as _BaseModel
 
-        class _Dummy(_BM):
+        class _Dummy(_BaseModel):
             x: int
 
         pydantic_error: pydantic.ValidationError | None = None
@@ -230,9 +233,11 @@ class TestValidateDeliverable:
         assert pydantic_error is not None, "pydantic.ValidationError が生成できなかった"
 
         # derive_status を mock して pydantic.ValidationError を raise させる
-        with patch.object(record.__class__, "derive_status", side_effect=pydantic_error):
-            with pytest.raises(pydantic.ValidationError):
-                await service.validate_deliverable(record, (criterion,))
+        with (
+            patch.object(record.__class__, "derive_status", side_effect=pydantic_error),
+            pytest.raises(pydantic.ValidationError),
+        ):
+            await service.validate_deliverable(record, (criterion,))
 
 
 # ---------------------------------------------------------------------------
@@ -373,7 +378,8 @@ class TestLLMProviderErrorConversion:
         return exc_info.value
 
     async def test_timeout_error_converts_to_llm_validation_error(self) -> None:
-        """TC-UT-VS-014: LLMProviderTimeoutError → kind='llm_call_failed', llm_error_kind='timeout'。
+        """TC-UT-VS-014: LLMProviderTimeoutError
+        → kind='llm_call_failed', llm_error_kind='timeout'。
 
         要件: REQ-AIVM-001
         """

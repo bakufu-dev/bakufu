@@ -9,16 +9,14 @@ DB: in-memory SQLite 実接続（create_all でスキーマ作成、Alembic な�
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
-import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
 from bakufu.domain.value_objects.enums import ValidationStatus
 from bakufu.infrastructure.persistence.sqlite.repositories.deliverable_record_repository import (
     SqliteDeliverableRecordRepository,
 )
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from tests.factories.deliverable_record import (
     make_criterion_validation_result,
@@ -51,10 +49,9 @@ class TestSaveFindById:
             criterion_results=(result_a, result_b),
         )
 
-        async with repo_session_factory() as session:
-            async with session.begin():
-                repo = SqliteDeliverableRecordRepository(session)
-                await repo.save(record)
+        async with repo_session_factory() as session, session.begin():
+            repo = SqliteDeliverableRecordRepository(session)
+            await repo.save(record)
 
         async with repo_session_factory() as session:
             repo = SqliteDeliverableRecordRepository(session)
@@ -80,15 +77,12 @@ class TestSaveFindById:
         """
         record = make_deliverable_record(
             validation_status=ValidationStatus.PASSED,
-            criterion_results=(
-                make_criterion_validation_result(status=ValidationStatus.PASSED),
-            ),
+            criterion_results=(make_criterion_validation_result(status=ValidationStatus.PASSED),),
         )
 
-        async with repo_session_factory() as session:
-            async with session.begin():
-                repo = SqliteDeliverableRecordRepository(session)
-                await repo.save(record)
+        async with repo_session_factory() as session, session.begin():
+            repo = SqliteDeliverableRecordRepository(session)
+            await repo.save(record)
 
         async with repo_session_factory() as session:
             repo = SqliteDeliverableRecordRepository(session)
@@ -127,10 +121,9 @@ class TestSaveIdempotency:
             criterion_results=(),
         )
 
-        async with repo_session_factory() as session:
-            async with session.begin():
-                repo = SqliteDeliverableRecordRepository(session)
-                await repo.save(first_record)
+        async with repo_session_factory() as session, session.begin():
+            repo = SqliteDeliverableRecordRepository(session)
+            await repo.save(first_record)
 
         # 2 回目: 同一 id で PASSED 状態に更新して保存
         updated_record = make_deliverable_record(
@@ -140,16 +133,13 @@ class TestSaveIdempotency:
             content=first_record.content,
             task_id=first_record.task_id,
             validation_status=ValidationStatus.PASSED,
-            criterion_results=(
-                make_criterion_validation_result(status=ValidationStatus.PASSED),
-            ),
+            criterion_results=(make_criterion_validation_result(status=ValidationStatus.PASSED),),
             created_at=first_record.created_at,
         )
 
-        async with repo_session_factory() as session:
-            async with session.begin():
-                repo = SqliteDeliverableRecordRepository(session)
-                await repo.save(updated_record)
+        async with repo_session_factory() as session, session.begin():
+            repo = SqliteDeliverableRecordRepository(session)
+            await repo.save(updated_record)
 
         # 2 回目 save 後に find_by_id で取得した record が PASSED になっていること
         async with repo_session_factory() as session:
@@ -180,6 +170,7 @@ class TestFindNotFound:
         要件: REQ-AIVM-003
         """
         from uuid import uuid4
+
         random_id = uuid4()
 
         async with repo_session_factory() as session:
@@ -197,6 +188,7 @@ class TestFindNotFound:
         要件: REQ-AIVM-003
         """
         from uuid import uuid4
+
         random_id = uuid4()
 
         async with repo_session_factory() as session:
@@ -234,10 +226,9 @@ class TestSaveNResults:
             criterion_results=results,
         )
 
-        async with repo_session_factory() as session:
-            async with session.begin():
-                repo = SqliteDeliverableRecordRepository(session)
-                await repo.save(record)
+        async with repo_session_factory() as session, session.begin():
+            repo = SqliteDeliverableRecordRepository(session)
+            await repo.save(record)
 
         async with repo_session_factory() as session:
             repo = SqliteDeliverableRecordRepository(session)
@@ -276,25 +267,26 @@ class TestTransactionRollback:
         )
 
         try:
-            async with repo_session_factory() as session:
-                async with session.begin():
-                    repo = SqliteDeliverableRecordRepository(session)
-                    # Step 3 の INSERT を強制的に失敗させる
-                    from sqlalchemy import insert
-                    original_execute = session.execute
+            async with repo_session_factory() as session, session.begin():
+                repo = SqliteDeliverableRecordRepository(session)
+                # Step 3 の INSERT を強制的に失敗させる
 
-                    call_count = 0
+                original_execute = session.execute
 
-                    async def _patched_execute(stmt: object, *args: object, **kwargs: object) -> object:
-                        nonlocal call_count
-                        call_count += 1
-                        # 3 回目の execute（deliverable_records INSERT）で失敗させる
-                        if call_count == 3:
-                            raise SQLAlchemyError("forced error for test")
-                        return await original_execute(stmt, *args, **kwargs)
+                call_count = 0
 
-                    with patch.object(session, "execute", side_effect=_patched_execute):
-                        await repo.save(record)
+                async def _patched_execute(
+                    stmt: object, *args: object, **kwargs: object
+                ) -> object:
+                    nonlocal call_count
+                    call_count += 1
+                    # 3 回目の execute（deliverable_records INSERT）で失敗させる
+                    if call_count == 3:
+                        raise SQLAlchemyError("forced error for test")
+                    return await original_execute(stmt, *args, **kwargs)
+
+                with patch.object(session, "execute", side_effect=_patched_execute):
+                    await repo.save(record)
         except SQLAlchemyError:
             pass  # ロールバックが期待される
 
@@ -303,6 +295,4 @@ class TestTransactionRollback:
             repo = SqliteDeliverableRecordRepository(session)
             result = await repo.find_by_id(record.id)
 
-        assert result is None, (
-            f"Rollback 後も record が残っている: {result}"
-        )
+        assert result is None, f"Rollback 後も record が残っている: {result}"

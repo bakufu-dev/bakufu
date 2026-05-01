@@ -8,9 +8,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-import pytest
 import pytest_asyncio
-
 from bakufu.infrastructure.persistence.sqlite import engine as engine_mod
 
 

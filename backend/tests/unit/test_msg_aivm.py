@@ -12,7 +12,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from bakufu.application.services.validation_service import ValidationService
 from bakufu.domain.exceptions.deliverable_template import LLMValidationError
 
@@ -26,7 +25,8 @@ class TestMsgAivm:
 
     @pytest.mark.asyncio
     async def test_msg_aivm_001_llm_call_failed_contains_fail_and_next(self) -> None:
-        """TC-UT-MSG-AIVM-001: MSG-AIVM-001 — [FAIL] + Next: が含まれ、プレースホルダが展開されること。
+        """TC-UT-MSG-AIVM-001: MSG-AIVM-001 — [FAIL] + Next: が含まれ、
+        プレースホルダが展開されること。
 
         要件: MSG-AIVM-001, R1-F
         """

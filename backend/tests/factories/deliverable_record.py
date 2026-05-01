@@ -13,8 +13,6 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 from weakref import WeakValueDictionary
 
-from pydantic import BaseModel
-
 from bakufu.domain.deliverable_record.deliverable_record import DeliverableRecord
 from bakufu.domain.value_objects.deliverable_record_vos import CriterionValidationResult
 from bakufu.domain.value_objects.enums import ValidationStatus
@@ -52,12 +50,19 @@ def make_criterion_validation_result(
     criterion_id: UUID | None = None,
     status: ValidationStatus = ValidationStatus.PASSED,
     reason: str = "合成評価理由",
+    required: bool = True,
 ) -> CriterionValidationResult:
-    """妥当な CriterionValidationResult を構築する（_meta.synthetic: True）。"""
+    """妥当な CriterionValidationResult を構築する（_meta.synthetic: True）。
+
+    Args:
+        required: AcceptanceCriterion.required の値。
+            True（デフォルト）の場合のみ overall ValidationStatus 計算対象（§確定 R1-G）。
+    """
     result = CriterionValidationResult(
         criterion_id=criterion_id or uuid4(),
         status=status,
         reason=reason,
+        required=required,
     )
     _register(result)
     return result

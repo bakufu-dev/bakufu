@@ -12,7 +12,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from bakufu.application.services.validation_service import ValidationService
 from bakufu.domain.exceptions.deliverable_template import LLMValidationError
 

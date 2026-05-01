@@ -30,6 +30,7 @@ def _initialize_masking(monkeypatch: pytest.MonkeyPatch) -> None:
     ):
         monkeypatch.delenv(env_key, raising=False)
     from bakufu.infrastructure.security import masking
+
     masking.init()
 
 

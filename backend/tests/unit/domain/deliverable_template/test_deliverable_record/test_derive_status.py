@@ -4,17 +4,12 @@ Issue: #123
 設計書: docs/features/deliverable-template/ai-validation/test-design.md §derive_status
 対応要件: REQ-DT-008（derive_status / ValidationStatus 導出 §確定A / R1-G）
 
-NOTE（バグ報告 BUG-DR-001）:
-TC-UT-DR-008 「required=false のみ FAILED → overall PASSED」は
-feature-spec.md §確定 R1-G の仕様（required=false の FAIL は validation_status に影響しない）
-と実装の derive_status() の間に矛盾があるため XFAIL としてマークする。
-derive_status() は CriterionValidationResult に required フィールドがないため
-required=false を識別できず、全件 FAILED を検出して FAILED を返す。
+BUG-DR-001 修正済み: CriterionValidationResult に required フィールドを追加し、
+derive_status() が required=True の結果のみを overall status 計算に使用するよう修正。
+TC-UT-DR-008 の xfail マーカーを解除した。
 """
 
 from __future__ import annotations
-
-import pytest
 
 from bakufu.domain.value_objects.enums import ValidationStatus
 
@@ -87,30 +82,24 @@ class TestDeriveStatus:
         derived = record.derive_status(())
         assert derived.validation_status == ValidationStatus.PASSED
 
-    @pytest.mark.xfail(
-        reason=(
-            "BUG-DR-001: derive_status() は CriterionValidationResult に required フィールドがないため "
-            "required=false の FAIL を識別できない。feature-spec.md §確定 R1-G と実装が矛盾。"
-        ),
-        strict=True,
-    )
     def test_only_required_false_failed_returns_passed(self) -> None:
         """TC-UT-DR-008: required=false のみ FAILED → overall PASSED（R1-G 仕様）。
 
         要件: REQ-DT-008, §確定A, R1-G
-        BUG-DR-001: 実装は required フィールドを持たないため FAILED を返してしまう。
+        BUG-DR-001 修正後: CriterionValidationResult に required フィールドが追加され、
+        derive_status() が required=True の結果のみを overall status 計算に使用するため、
+        required=false の FAILED は overall status に影響しない（PASSED を返す）。
         """
-        # required=false の criterion の結果として FAILED を渡す
-        # 実装は required を識別できないため FAILED を返してしまう（仕様違反）
+        # required=false の criterion の結果として FAILED を渡す。
         results = (
-            make_criterion_validation_result(status=ValidationStatus.FAILED),
+            make_criterion_validation_result(status=ValidationStatus.FAILED, required=False),
         )
         record = make_deliverable_record(
             validation_status=ValidationStatus.PENDING,
             criterion_results=(),
         )
         derived = record.derive_status(results)
-        # R1-G: required=false の FAIL は validation_status に影響しない → PASSED を期待
+        # §確定 R1-G: required=false の FAIL は validation_status に影響しない → PASSED。
         assert derived.validation_status == ValidationStatus.PASSED
 
     def test_required_true_failed_and_required_false_uncertain_returns_failed(
@@ -137,9 +126,7 @@ class TestDeriveStatus:
         要件: REQ-DT-008
         元 record の validation_status は変化しない（PENDING のまま）。
         """
-        results = (
-            make_criterion_validation_result(status=ValidationStatus.PASSED),
-        )
+        results = (make_criterion_validation_result(status=ValidationStatus.PASSED),)
         original = make_deliverable_record(
             validation_status=ValidationStatus.PENDING,
             criterion_results=(),

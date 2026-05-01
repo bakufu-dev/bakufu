@@ -1,7 +1,8 @@
 """ValidationService + SqliteDeliverableRecordRepository 結合テスト（TC-IT-VS-001〜002）。
 
 Issue: #123
-設計書: docs/features/deliverable-template/ai-validation/test-design.md §ValidationService+Repository
+設計書: docs/features/deliverable-template/ai-validation/test-design.md
+         §ValidationService+Repository
 対応要件: REQ-AIVM-001〜003
 
 LLMProviderPort のみ AsyncMock で mock。DB は in-memory SQLite 実接続。
@@ -10,8 +11,6 @@ LLMProviderPort のみ AsyncMock で mock。DB は in-memory SQLite 実接続。
 from __future__ import annotations
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
 from bakufu.application.services.validation_service import ValidationService
 from bakufu.domain.exceptions.deliverable_template import LLMValidationError
 from bakufu.domain.value_objects.chat_result import ChatResult
@@ -19,6 +18,7 @@ from bakufu.domain.value_objects.enums import ValidationStatus
 from bakufu.infrastructure.persistence.sqlite.repositories.deliverable_record_repository import (
     SqliteDeliverableRecordRepository,
 )
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from tests.factories.deliverable_record import (
     make_acceptance_criterion,
@@ -59,11 +59,10 @@ class TestValidationServiceIntegration:
         )
         criterion = make_acceptance_criterion(required=True)
 
-        async with vs_session_factory() as session:
-            async with session.begin():
-                repo = SqliteDeliverableRecordRepository(session)
-                service = ValidationService(llm_provider=stub, repository=repo)
-                result = await service.validate_deliverable(record, (criterion,))
+        async with vs_session_factory() as session, session.begin():
+            repo = SqliteDeliverableRecordRepository(session)
+            service = ValidationService(llm_provider=stub, repository=repo)
+            result = await service.validate_deliverable(record, (criterion,))
 
         # 返却 record が PASSED
         assert result.validation_status == ValidationStatus.PASSED
@@ -106,6 +105,4 @@ class TestValidationServiceIntegration:
             repo = SqliteDeliverableRecordRepository(session)
             db_record = await repo.find_by_id(record.id)
 
-        assert db_record is None, (
-            f"LLM 失敗時に DB に record が保存されてしまった: {db_record}"
-        )
+        assert db_record is None, f"LLM 失敗時に DB に record が保存されてしまった: {db_record}"

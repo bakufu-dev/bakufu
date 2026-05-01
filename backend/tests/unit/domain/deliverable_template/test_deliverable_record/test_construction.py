@@ -8,7 +8,6 @@ Issue: #123
 from __future__ import annotations
 
 import pytest
-
 from bakufu.domain.exceptions.deliverable_template import DeliverableRecordInvariantViolation
 from bakufu.domain.value_objects.enums import ValidationStatus
 

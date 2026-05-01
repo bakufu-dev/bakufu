@@ -15,10 +15,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-import pytest_asyncio
-from sqlalchemy import text
-
 from bakufu.infrastructure.persistence.sqlite.migrations import run_upgrade_head
+from sqlalchemy import text
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine
@@ -45,16 +43,15 @@ class TestMigration0015:
         self,
         empty_engine: AsyncEngine,
     ) -> None:
-        """TC-IT-MIGR-001: alembic upgrade head で deliverable_records / criterion_validation_results が作成される。
+        """TC-IT-MIGR-001: alembic upgrade head で
+        deliverable_records / criterion_validation_results が作成される。
 
         要件: REQ-AIVM-004
         """
         await run_upgrade_head(empty_engine)
 
         async with empty_engine.connect() as conn:
-            result = await conn.execute(
-                text("SELECT name FROM sqlite_master WHERE type='table'")
-            )
+            result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
             tables = {row[0] for row in result}
 
         assert "deliverable_records" in tables, (
@@ -66,9 +63,7 @@ class TestMigration0015:
 
         # カラム確認（deliverable_records）
         async with empty_engine.connect() as conn:
-            result = await conn.execute(
-                text("PRAGMA table_info(deliverable_records)")
-            )
+            result = await conn.execute(text("PRAGMA table_info(deliverable_records)"))
             columns = {row[1] for row in result}
 
         expected_columns = {
@@ -95,7 +90,10 @@ class TestMigration0015:
         # インデックス確認
         async with empty_engine.connect() as conn:
             result = await conn.execute(
-                text("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='deliverable_records'")
+                text(
+                    "SELECT name FROM sqlite_master WHERE type='index'"
+                    " AND tbl_name='deliverable_records'"
+                )
             )
             indexes = {row[0] for row in result}
 
@@ -115,7 +113,8 @@ class TestMigration0015:
         self,
         empty_engine: AsyncEngine,
     ) -> None:
-        """TC-IT-MIGR-002: downgrade 0014 で deliverable_records / criterion_validation_results が消える。
+        """TC-IT-MIGR-002: downgrade 0014 で
+        deliverable_records / criterion_validation_results が消える。
 
         要件: REQ-AIVM-004, §確定D
         """
@@ -124,9 +123,7 @@ class TestMigration0015:
 
         # upgrade 後にテーブルが存在することを確認
         async with empty_engine.connect() as conn:
-            result = await conn.execute(
-                text("SELECT name FROM sqlite_master WHERE type='table'")
-            )
+            result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
             tables_after_upgrade = {row[0] for row in result}
 
         assert "deliverable_records" in tables_after_upgrade, (
@@ -139,15 +136,14 @@ class TestMigration0015:
 
         def _do_downgrade() -> None:
             from alembic import command
+
             command.downgrade(cfg, "0014_external_review_gate_criteria")  # type: ignore[arg-type]
 
         await asyncio.to_thread(_do_downgrade)
 
         # downgrade 後にテーブルが消えていることを確認
         async with empty_engine.connect() as conn:
-            result = await conn.execute(
-                text("SELECT name FROM sqlite_master WHERE type='table'")
-            )
+            result = await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
             tables_after_downgrade = {row[0] for row in result}
 
         assert "deliverable_records" not in tables_after_downgrade, (
