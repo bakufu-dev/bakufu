@@ -22,7 +22,7 @@
 | `test_protocol_crud.py` | TC-UT-ERGR-001〜004 / 009 + TC-IT-ERGR-LIFECYCLE |
 | `test_find_methods.py` | TC-UT-ERGR-006 / 006b / 006c / 006d / 007 / 007b / 007c（find_pending_by_reviewer + find_by_task_id）|
 | `test_count_by_decision.py` | TC-UT-ERGR-008（count_by_decision SQL 保証）|
-| `test_save_child_tables.py` | TC-UT-ERGR-005 / 005b / 005c（5 段階 save() 物理確認）|
+| `test_save_child_tables.py` | TC-UT-ERGR-005 / 005b / 005c / 010（save() 物理確認 + criteria round-trip）|
 | `test_masking_fields.py` | TC-IT-ERGR-020-masking-* (9 ケース、3 masking カラム核心) |
 
 ## 受入基準対応一覧
@@ -287,7 +287,7 @@ backend/
               test_count_by_decision.py              # TC-UT-ERGR-008（count_by_decision SQL 保証）
               test_save_child_tables.py              # TC-UT-ERGR-005 / 005b / 005c（5段階 save() 物理確認）
               test_masking_fields.py                 # TC-IT-ERGR-020-masking-* (9 ケース、3 masking カラム核心)
-          test_alembic_external_review_gate.py       # TC-IT-ERGR-001〜008（Alembic 0008 + §設計決定 ERGR-001）
+          test_alembic_external_review_gate.py       # TC-IT-ERGR-001〜010（Alembic 0008 + 0014 + §設計決定 ERGR-001）
     docs/
       test_storage_md_back_index.py                  # 既存更新: ExternalReviewGate 行検証（TC-DOC-ERGR-001）
 ```
