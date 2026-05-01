@@ -33,6 +33,9 @@
 | REQ-ERGR-004 | CI 三層防衛拡張 Layer 1 | `scripts/ci/check_masking_columns.sh`（既存ファイル更新）| ExternalReviewGate 3 masking カラム明示登録（snapshot_body_markdown / feedback_text / comment） |
 | REQ-ERGR-004 | CI 三層防衛拡張 Layer 2 | `backend/tests/architecture/test_masking_columns.py`（既存ファイル更新）| parametrize に 3 masking カラム追加 |
 | REQ-ERGR-005 | storage.md 逆引き表更新 | `docs/design/domain-model/storage.md`（既存ファイル更新）| ExternalReviewGate 関連行追加・後続表記更新 |
+| REQ-ERGR-009 | CI 三層防衛拡張 Layer 1（criteria テーブル）| `scripts/ci/check_masking_columns.sh`（既存ファイル更新）| `external_review_gate_criteria` テーブルの全カラムを **masking 対象なし**として明示登録（負のチェック: `MaskedText` / `MaskedJSONEncoded` が登場しないことを assert。PR #137 `acceptance_criteria_json` と同一業務判断。`deliverable-template/feature-spec.md §13` 機密レベル「低」凍結済み）|
+| REQ-ERGR-009 | CI 三層防衛拡張 Layer 2（criteria テーブル）| `backend/tests/architecture/test_masking_columns.py`（既存ファイル更新）| `external_review_gate_criteria` テーブルの全カラムが masking 対象外であることを assert する parametrize 行を追加（過剰マスキング BUG-PF-001 防止）|
+| REQ-ERGR-009 | storage.md 逆引き表更新（criteria テーブル）| `docs/design/domain-model/storage.md`（既存ファイル更新）| `external_review_gate_criteria` 全カラム（masking 対象なし）を §逆引き表に追加。`deliverable-template` の `acceptance_criteria_json` masking 判断と同一行に掲載 |
 | 共通 | `tables/external_review_gates.py` | `backend/src/bakufu/infrastructure/persistence/sqlite/tables/` | `external_review_gates` テーブル ORM 定義（snapshot_body_markdown は MaskedText） |
 | 共通 | `tables/external_review_gate_attachments.py` | 同上 | `external_review_gate_attachments` テーブル ORM 定義 |
 | 共通 | `tables/external_review_audit_entries.py` | 同上 | `external_review_audit_entries` テーブル ORM 定義（comment は MaskedText） |
@@ -325,7 +328,7 @@ UNIQUE 制約:
 - `external_review_gate_attachments(gate_id, sha256)`: 同一 Gate 内で同 sha256 の重複参照を禁止（snapshot 凍結後の重複防止）
 - `external_review_gate_criteria(gate_id, order_index)`: 同一 Gate 内での order_index 重複を禁止
 
-masking 対象カラム: `external_review_gates.snapshot_body_markdown` / `external_review_gates.feedback_text` / `external_review_audit_entries.comment`（各 MaskedText、§確定 R1-E で CI 三層防衛が物理保証）。`external_review_gate_criteria.description` は開発者定義のテンプレートメタデータのため masking 不要（ユーザー入力 / Agent 出力でない）。
+masking 対象カラム: `external_review_gates.snapshot_body_markdown` / `external_review_gates.feedback_text` / `external_review_audit_entries.comment`（各 MaskedText、§確定 R1-E で CI 三層防衛が物理保証）。`external_review_gate_criteria.description` は masking 不要 — 根拠: `deliverable-template/feature-spec.md §13` で全カラムが機密レベル「低」と業務判定済み（PR #137 で `acceptance_criteria_json` カラムが masking なしで凍結・CI 三層防衛で物理保証済み）。同一 `AcceptanceCriterion` VO を Gate snapshot として保持するため、同一の業務判断を踏襲する（REQ-ERGR-009）。
 
 ## エラーハンドリング方針
 

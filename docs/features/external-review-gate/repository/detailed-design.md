@@ -110,7 +110,6 @@ parametrize に追加する 3 行:
 | `ix_external_review_gates_task_id_created` | `(external_review_gates.task_id, created_at)` | 非 UNIQUE | `find_by_task_id` の WHERE task_id フィルタ + ORDER BY created_at を一括最適化。task_id 単体 INDEX では ORDER BY ソートが追加コストになるため複合 INDEX で解決 |
 | `ix_external_review_gates_reviewer_decision` | `(external_review_gates.reviewer_id, decision)` | 非 UNIQUE | `find_pending_by_reviewer` の WHERE reviewer_id + decision フィルタ最適化（PENDING 絞り込みが主なユースケース）。decision 単体 INDEX では reviewer フィルタに効かない |
 | `ix_external_review_gates_decision` | `external_review_gates.decision` | 非 UNIQUE | `count_by_decision` の WHERE decision フィルタ最適化（`ix_external_review_gates_reviewer_decision` の prefix では COUNT(*) 全体には効かない場合があるため単体 INDEX も追加） |
-
 | `ix_external_review_gate_criteria_gate_id` | `external_review_gate_criteria.gate_id` | 非 UNIQUE | 子テーブル SELECT の `WHERE gate_id = :id` 最適化（Alembic 0014 で追加） |
 
 **INDEX を張らない判断（YAGNI）**:
@@ -174,12 +173,12 @@ parametrize に追加する 3 行:
 | `id` | `UUIDStr` | PK, NOT NULL | **内部識別子。save() ごとに uuid4() で再生成（DELETE-then-INSERT パターン）。外部参照禁止。ビジネスキーは UNIQUE(gate_id, order_index)** |
 | `gate_id` | `UUIDStr` | **FK → `external_review_gates.id` ON DELETE CASCADE, NOT NULL** | 親 Gate |
 | `criterion_id` | `UUIDStr` | NOT NULL | `AcceptanceCriterion.id`（Issue #115 の VO が持つ UUID。DB 上は参照のみ、FK なし — DeliverableTemplate Aggregate 境界） |
-| `description` | `Text` | NOT NULL（1〜500 文字）| AcceptanceCriterion.description（開発者定義テンプレートメタデータ、masking 不要） |
+| `description` | `Text` | NOT NULL（1〜500 文字）| AcceptanceCriterion.description（masking 不要 — `deliverable-template/feature-spec.md §13` で機密レベル「低」と業務判定済み、PR #137 `acceptance_criteria_json` 凍結と同一業務判断）|
 | `required` | `Boolean` | NOT NULL DEFAULT TRUE | AcceptanceCriterion.required |
 | `order_index` | `Integer` | NOT NULL（0-based）| 元の tuple 順序を保持（INSERT 時に `enumerate(gate.required_deliverable_criteria)` で付与）|
 | UNIQUE | `(gate_id, order_index)` | — | 同一 Gate 内での order_index 重複禁止 |
 
-**masking 対象カラム**: なし（全カラム masking 対象外。`description` は開発者定義メタデータであり、ユーザー入力 / Agent 出力でない）。
+**masking 対象カラム**: なし（全カラム masking 対象外。`description` の masking 不要根拠は `deliverable-template/feature-spec.md §13` 機密レベル「低」業務判定 + PR #137 `acceptance_criteria_json` 凍結と同一。REQ-ERGR-009 の CI 三層防衛 Layer 1/2 で過剰 masking を物理保証）。
 
 ### `0008_external_review_gate_aggregate.py`（Alembic revision 構造）
 
