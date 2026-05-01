@@ -15,6 +15,7 @@ ID 型は概念的に区別される UUIDv4 値である。表面を最小に保
 - :mod:`.references` — RoomRef / AgentRef / CompletionPolicy / NotifyChannel /
   AuditEntry
 - :mod:`.attachments` — Attachment / Deliverable VO
+- :mod:`.llm` — LLMMessage / LLMResponse / MessageRole（Issue #144）
 """
 
 from __future__ import annotations
@@ -57,6 +58,7 @@ from bakufu.domain.value_objects.identifiers import (
     TransitionId,
     WorkflowId,
 )
+from bakufu.domain.value_objects.llm import LLMMessage, LLMResponse, MessageRole
 from bakufu.domain.value_objects.references import (
     AgentRef,
     AuditEntry,
@@ -98,6 +100,9 @@ __all__ = [
     "GateRole",
     "InternalGateId",
     "LLMErrorKind",
+    "LLMMessage",
+    "LLMResponse",
+    "MessageRole",
     "NormalizedAgentName",
     "NormalizedShortName",
     "NotifyChannel",
