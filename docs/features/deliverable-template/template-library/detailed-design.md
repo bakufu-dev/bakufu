@@ -14,7 +14,7 @@
 ```mermaid
 classDiagram
     class TemplateLibrarySeeder {
-        +async seed_global_templates(session_factory: async_sessionmaker) None
+        -async _seed_global_templates(session_factory: async_sessionmaker) None
         +async seed_role_profiles_for_empire(empire_id: EmpireId, session_factory: async_sessionmaker) None
         -async _upsert_templates(session: AsyncSession, templates: list~DeliverableTemplate~) int
         -async _upsert_role_profile_if_absent(session: AsyncSession, empire_id: EmpireId, role: Role, refs: list~DeliverableTemplateRef~) bool
@@ -47,7 +47,7 @@ classDiagram
 
 | メソッド | 引数 | 戻り値 | 制約 |
 |----|----|----|----|
-| `seed_global_templates(session_factory)` | `async_sessionmaker[AsyncSession]` | `None` | `WELL_KNOWN_TEMPLATES` 全 12 件を 1 トランザクションで UPSERT。1 件でも失敗したら全ロールバック（§確定 E）|
+| `_seed_global_templates(session_factory)` | `async_sessionmaker[AsyncSession]` | `None` | `WELL_KNOWN_TEMPLATES` 全 12 件を 1 トランザクションで UPSERT。1 件でも失敗したら全ロールバック（§確定 E）|
 | `seed_role_profiles_for_empire(empire_id, session_factory)` | `EmpireId`, `async_sessionmaker[AsyncSession]` | `None` | LEADER / DEVELOPER / TESTER / REVIEWER の 4 件を処理。各 Role に対して `find_by_empire_and_role` で存在確認 → なければ save、あれば skip（§確定 F）|
 | `_upsert_templates(session, templates)` | `AsyncSession`, `list[DeliverableTemplate]` | `int`（upserted 件数） | 各テンプレートに対して `SqliteDeliverableTemplateRepository(session).save(t)` を呼ぶ |
 | `_upsert_role_profile_if_absent(session, empire_id, role, refs)` | `AsyncSession`, `EmpireId`, `Role`, `list[DeliverableTemplateRef]` | `bool`（True: saved / False: skipped） | 存在確認 → RoleProfile 構築 → save または skip |
@@ -58,11 +58,11 @@ classDiagram
 
 #### BAKUFU_TEMPLATE_NS（§確定 C）
 
-固定 UUID（`uuid.UUID("ba4a2f00-cafe-1234-dead-c0detemplate0")`）。全 well-known テンプレートの UUID5 算出に使う名前空間。ソースコードで管理し、変更禁止（変更すると全テンプレートの UUID が変わり既存 DB レコードと乖離する）。
+固定 UUID（`uuid.UUID("ba4a2f00-cafe-1234-dead-beefcafe0001")`）。全 well-known テンプレートの UUID5 算出に使う名前空間。ソースコードで管理し、変更禁止（変更すると全テンプレートの UUID が変わり既存 DB レコードと乖離する）。
 
 #### BAKUFU_ROLE_NS（§確定 C）
 
-固定 UUID（`uuid.UUID("ba4a2f00-cafe-1234-dead-c0deroleprof0")`）。Empire-scope RoleProfile の UUID5 算出に使う名前空間（empire_id + role を組み合わせる）。
+固定 UUID（`uuid.UUID("ba4a2f00-cafe-1234-dead-beefcafe0002")`）。Empire-scope RoleProfile の UUID5 算出に使う名前空間（empire_id + role を組み合わせる）。
 
 #### WELL_KNOWN_TEMPLATES — 12 件の確定定義（§確定 A）
 
@@ -85,7 +85,7 @@ classDiagram
 
 各テンプレートの `id` は `UUID5(BAKUFU_TEMPLATE_NS, slug)` で算出する（§確定 C）。`acceptance_criteria` は初期版では空（`()`）。将来 bakufu 自身の品質基準を Criterion として追加する際は MINOR バージョンアップで対応する。
 
-#### PRESET_ROLE_PROFILES — 4 件の確定定義（§確定 B）
+#### PRESET_ROLE_TEMPLATE_MAP — 4 件の確定定義（§確定 B）
 
 | Role | 参照テンプレート（minimum_version=1.0.0） |
 |---|---|
@@ -118,21 +118,21 @@ classDiagram
 - スキーマ構造の破壊的変更（TemplateType 変更等） → `major` を +1（2.0.0）
 - テンプレートの削除は禁止（参照中の DeliverableTemplateRef が破損するリスクがある）
 
-### 確定 B: PRESET_ROLE_PROFILES 4 件の定義（凍結）
+### 確定 B: PRESET_ROLE_TEMPLATE_MAP 4 件の定義（凍結）
 
-§クラス設計の `PRESET_ROLE_PROFILES` テーブル参照。LEADER / DEVELOPER / TESTER / REVIEWER の 4 Role が対象。UX / SECURITY / ASSISTANT 等の他 Role は Issue #124 スコープ外（Post-MVP）。
+§クラス設計の `PRESET_ROLE_TEMPLATE_MAP` テーブル参照。LEADER / DEVELOPER / TESTER / REVIEWER の 4 Role が対象。UX / SECURITY / ASSISTANT 等の他 Role は Issue #124 スコープ外（Post-MVP）。
 
 将来 Role 追加時の手順:
 1. `WELL_KNOWN_TEMPLATES` に対応 slug のテンプレートを追加（MINOR up）
-2. `PRESET_ROLE_PROFILES` に新 Role エントリを追加
+2. `PRESET_ROLE_TEMPLATE_MAP` に新 Role エントリを追加
 3. 新規 Empire へは自動適用、既存 Empire は既存 RoleProfile の skip 設定により影響なし
 
 ### 確定 C: 固定 UUID 名前空間（変更禁止）
 
 | 定数 | 値 | 用途 |
 |---|---|---|
-| `BAKUFU_TEMPLATE_NS` | `UUID("ba4a2f00-cafe-1234-dead-c0detemplate0")` | `UUID5(BAKUFU_TEMPLATE_NS, slug)` で各テンプレートの id を生成 |
-| `BAKUFU_ROLE_NS` | `UUID("ba4a2f00-cafe-1234-dead-c0deroleprof0")` | `UUID5(BAKUFU_ROLE_NS, f"{empire_id}:{role.value}")` で RoleProfile id を生成 |
+| `BAKUFU_TEMPLATE_NS` | `UUID("ba4a2f00-cafe-1234-dead-beefcafe0001")` | `UUID5(BAKUFU_TEMPLATE_NS, slug)` で各テンプレートの id を生成 |
+| `BAKUFU_ROLE_NS` | `UUID("ba4a2f00-cafe-1234-dead-beefcafe0002")` | `UUID5(BAKUFU_ROLE_NS, f"{empire_id}:{role.value}")` で RoleProfile id を生成 |
 
 **変更禁止理由**: 名前空間を変更すると UUID5 の算出値が変わり、既存 DB レコードの `id` と乖離する。旧テンプレートが DB に孤立し、参照中の `DeliverableTemplateRef` が dangling reference になる。
 
@@ -140,14 +140,14 @@ classDiagram
 
 ### 確定 D: UPSERT は definitions.py 定義で上書き（§確定 E との組み合わせ）
 
-`seed_global_templates()` は `DO UPDATE SET name=EXCLUDED.name, description=EXCLUDED.description, ...` で全フィールドを上書きする。理由:
+`_seed_global_templates()` は `DO UPDATE SET name=EXCLUDED.name, description=EXCLUDED.description, ...` で全フィールドを上書きする。理由:
 
 - bakufu バージョンアップ時にテンプレートの schema / description が更新された場合、起動時 UPSERT で DB を最新版に同期する必要がある
 - CEO が well-known テンプレートを直接編集した場合、その変更は起動時に上書きされる。CEO が独自カスタマイズを保持したい場合は別 UUID の新規テンプレートを作成するフローを推奨する（HTTP API で POST /deliverable-templates）
 
 **例外**: `acceptance_criteria_json` は初期 definitions では `[]` だが、CEO が手動で AcceptanceCriterion を追加した場合でも、次回起動時に `[]` で上書きされる。これは MVP 範囲の既知動作とする。将来、「ユーザー追加 AcceptanceCriterion を保持しつつ schema のみ同期」する精密 UPSERT が必要になった場合は MINOR バージョンアップで対応する（YAGNI）。
 
-### 確定 E: seed_global_templates の Tx 戦略（all-or-nothing）
+### 確定 E: _seed_global_templates の Tx 戦略（all-or-nothing）
 
 12 件全体を 1 つの `async with session.begin():` ブロックで UPSERT する。1 件でも失敗した場合は全ロールバック → `BakufuConfigError` で Bootstrap 起動中断。
 
@@ -162,15 +162,22 @@ classDiagram
 - CEO が意図的に LEADER の RoleProfile を変更した場合、プリセット適用で上書きすることは CEO の業務判断を破壊する
 - seed_role_profiles_for_empire はオプトイン（明示的呼び出し）。無意識の上書きリスクを避けるため skip が安全方向
 
+**TOCTOU 対策**: `find_by_empire_and_role()` による存在確認と `save()` の間に別トランザクションが先行 INSERT するレースコンディション（TOCTOU）が理論上発生しうる。この場合、`UNIQUE(empire_id, role)` 制約違反 `IntegrityError` が raise される。`_upsert_role_profile_if_absent()` はこの `IntegrityError` を catch して skip 扱い（戻り値 `False`）にする。「既に存在する → skip」という意味論と一致するため安全方向の処理となる。
+
 **運用ガイド**: 全プリセットを強制再適用したい場合は、対象 Role の RoleProfile を手動削除（HTTP DELETE）してから再呼び出しする。
 
 ### 確定 G: TemplateType は全件 MARKDOWN（MVP 範囲）
 
 ai-team の ai-team-jp 暗黙知は自然言語ドキュメント。JSON_SCHEMA / OPENAPI / CODE_SKELETON / PROMPT は将来の拡張（MINOR バージョンアップ）で追加する。MVP では MARKDOWN + plain text schema（自然言語ガイドライン）で充足する。
 
-### 確定 H: seed_global_templates は Bootstrap のみが呼ぶ
+### 確定 H: _seed_global_templates は Bootstrap のみが呼ぶ
 
-`TemplateLibrarySeeder.seed_global_templates()` は Bootstrap `_stage_3b_seed_template_library()` からのみ呼ばれることを設計上の前提とする。HTTP API エンドポイントから外部公開しない（CEO が意図せず再 seed を走らせることで DB が上書きされるリスクを避ける）。`seed_role_profiles_for_empire()` は HTTP API / CLI から呼べる（オプトイン + skip 戦略のため安全）。
+`TemplateLibrarySeeder._seed_global_templates()` は Bootstrap `_stage_3b_seed_template_library()` からのみ呼ばれることを設計上の前提とする。HTTP API エンドポイントから外部公開しない（CEO が意図せず再 seed を走らせることで DB が上書きされるリスクを避ける）。`seed_role_profiles_for_empire()` は HTTP API / CLI から呼べる（オプトイン + skip 戦略のため安全）。
+
+**プライベート化の強制**:
+- メソッド名に単一アンダースコアプレフィックス（`_seed_global_templates`）を付与し、Python 慣習上 private であることを明示する
+- `seeder.py` の `__all__` に `_seed_global_templates` を含めない（`TemplateLibrarySeeder` クラスのみ公開）
+- 呼び出し元は `Bootstrap._stage_3b_seed_template_library()` に限定する設計を `basic-design.md §REQ-TL-002` で凍結済み
 
 ## データ構造（永続化キー）
 
@@ -221,7 +228,7 @@ OQ-4 の決定（Issue #142 → ジェンセン 決定）。採用根拠:
 | seed 開始（Bootstrap ログ） | `[INFO] Bootstrap stage 3b/8: seeding template-library (12 templates)...` |
 | RoleProfile skip（INFO ログ） | `[INFO] stage 3b: skip preset RoleProfile for {role} in empire {empire_id} (already exists)` |
 | RoleProfile saved（INFO ログ） | `[INFO] stage 3b: saved preset RoleProfile for {role} in empire {empire_id}` |
-| seed 失敗（FATAL ログ） | `[FAIL] Bootstrap stage 3b/8: template-library seed failed: {exc!r}` |
+| seed 失敗（FATAL ログ） | `[FAIL] Bootstrap stage 3b/8: template-library seed failed: {exc.__class__.__name__}: {exc}` |
 
 ## API エンドポイント詳細
 

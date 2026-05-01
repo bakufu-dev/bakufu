@@ -29,7 +29,7 @@
 | 項目 | 内容 |
 |-----|-----|
 | 入力 | `Bootstrap.run()` 内でのステージシーケンス / `session_factory` |
-| 処理 | `_stage_3_migrate()` 完了直後（Alembic でスキーマが最新化された後）、`_stage_4_pid_gc()` 実行前に `TemplateLibrarySeeder.seed_global_templates(session_factory)` を呼ぶ。Bootstrap の既存 8 ステージに割り込む形で「Stage 3b」として追加する（既存ステージ番号は変更しない） |
+| 処理 | `_stage_3_migrate()` 完了直後（Alembic でスキーマが最新化された後）、`_stage_4_pid_gc()` 実行前に `TemplateLibrarySeeder._seed_global_templates(session_factory)` を呼ぶ。Bootstrap の既存 8 ステージに割り込む形で「Stage 3b」として追加する（既存ステージ番号は変更しない） |
 | 出力 | Bootstrap ログ: `[INFO] Bootstrap stage 3b: template-library seed complete (upserted=N)` |
 | エラー時 | `BakufuConfigError` でラップして Bootstrap に伝播（起動中断）。DB スキーマ確定前（Stage 3 失敗後）は絶対に実行されないことをステージ順序で保証 |
 
@@ -38,7 +38,7 @@
 | 項目 | 内容 |
 |-----|-----|
 | 入力 | `empire_id: EmpireId` / `async_sessionmaker[AsyncSession]` |
-| 処理 | `PRESET_ROLE_PROFILES` 定数（§確定 B で定義: LEADER / DEVELOPER / TESTER / REVIEWER の 4 件）を受け取った `empire_id` で `RoleProfileRepository.save()` 経由で UPSERT する。`RoleProfile.id` は `UUID5(BAKUFU_ROLE_NS, f"{empire_id}:{role}")` で決定論的に生成（empire_id + role のペアで一意）。既存 RoleProfile が存在する場合は上書きしない（`find_by_empire_and_role()` 事前確認 + skip）|
+| 処理 | `PRESET_ROLE_TEMPLATE_MAP` 定数（§確定 B で定義: LEADER / DEVELOPER / TESTER / REVIEWER の 4 件）を受け取った `empire_id` で `RoleProfileRepository.save()` 経由で UPSERT する。`RoleProfile.id` は `UUID5(BAKUFU_ROLE_NS, f"{empire_id}:{role}")` で決定論的に生成（empire_id + role のペアで一意）。既存 RoleProfile が存在する場合は上書きしない（`find_by_empire_and_role()` 事前確認 + skip）|
 | 出力 | 指定 Empire の `role_profiles` テーブルに LEADER / DEVELOPER / TESTER / REVIEWER の 4 件が存在する状態 |
 | エラー時 | `RoleProfile` 1:1 制約違反（既に手動設定済み）は skip（上書きしない）。SQLAlchemy 例外は呼び出し元（HTTP API / CLI）に伝播 |
 
@@ -56,7 +56,7 @@
 | 機能 ID | モジュール | ディレクトリ | 責務 |
 |--------|----------|------------|------|
 | REQ-TL-001 / REQ-TL-004 | `WELL_KNOWN_TEMPLATES` 定数 | `backend/src/bakufu/application/services/template_library/definitions.py` | ai-team 5 ロール向け 12 テンプレートの固定定義（DeliverableTemplate インスタンス群） |
-| REQ-TL-003 | `PRESET_ROLE_PROFILES` 定数 | `backend/src/bakufu/application/services/template_library/definitions.py` | LEADER / DEVELOPER / TESTER / REVIEWER 4 ロール向けプリセット RoleProfile 定義（empire_id テンプレート） |
+| REQ-TL-003 | `PRESET_ROLE_TEMPLATE_MAP` 定数 | `backend/src/bakufu/application/services/template_library/definitions.py` | LEADER / DEVELOPER / TESTER / REVIEWER 4 ロール向けプリセット RoleProfile 定義（empire_id テンプレート） |
 | REQ-TL-001 / REQ-TL-002 / REQ-TL-003 | `TemplateLibrarySeeder` | `backend/src/bakufu/application/services/template_library/seeder.py` | startup upsert + Empire 向けプリセット適用 |
 | REQ-TL-002 | `Bootstrap._stage_3b_seed_template_library()` | `backend/src/bakufu/infrastructure/bootstrap.py`（既存更新） | `run()` シーケンスへの組み込み（Stage 3b） |
 
@@ -71,7 +71,7 @@
 │           │   └── services/
 │           │       └── template_library/
 │           │           ├── __init__.py                  # 新規
-│           │           ├── definitions.py               # 新規: WELL_KNOWN_TEMPLATES / PRESET_ROLE_PROFILES
+│           │           ├── definitions.py               # 新規: WELL_KNOWN_TEMPLATES / PRESET_ROLE_TEMPLATE_MAP
 │           │           └── seeder.py                    # 新規: TemplateLibrarySeeder
 │           └── infrastructure/
 │               └── bootstrap.py                         # 既存更新: Stage 3b 追加
@@ -87,7 +87,7 @@
 ```mermaid
 classDiagram
     class TemplateLibrarySeeder {
-        +async seed_global_templates(session_factory) None
+        -async _seed_global_templates(session_factory) None
         +async seed_role_profiles_for_empire(empire_id, session_factory) None
         -async _upsert_templates(session, templates) int
         -async _upsert_role_profile_if_absent(session, role_profile) None
@@ -111,7 +111,7 @@ classDiagram
         +UUID BAKUFU_TEMPLATE_NS
     }
 
-    class PRESET_ROLE_PROFILES {
+    class PRESET_ROLE_TEMPLATE_MAP {
         <<constant>>
         +dict~Role_list~DeliverableTemplateRef~~ ROLE_TEMPLATE_MAP
         +UUID BAKUFU_ROLE_NS
@@ -120,15 +120,15 @@ classDiagram
     TemplateLibrarySeeder --> DeliverableTemplateRepository : uses
     TemplateLibrarySeeder --> RoleProfileRepository : uses
     TemplateLibrarySeeder --> WELL_KNOWN_TEMPLATES : reads
-    TemplateLibrarySeeder --> PRESET_ROLE_PROFILES : reads
+    TemplateLibrarySeeder --> PRESET_ROLE_TEMPLATE_MAP : reads
 ```
 
 **凝集のポイント**:
 
 - `TemplateLibrarySeeder` は application 層に配置。`DeliverableTemplateRepository` / `RoleProfileRepository` の Protocol 経由で永続化し、infrastructure 実装に依存しない
 - `definitions.py` はデータ定数のみを保持する純粋なモジュール。副作用なし
-- Bootstrap の `_stage_3b_seed_template_library()` は `TemplateLibrarySeeder.seed_global_templates()` に委譲する（単一責任）
-- `RoleProfile.id` の決定論的生成（UUID5）は `TemplateLibrarySeeder` に閉じ、domain 層の Aggregate 生成は従来通り
+- Bootstrap の `_stage_3b_seed_template_library()` は `TemplateLibrarySeeder._seed_global_templates()` に委譲する（単一責任）
+- UUID5 算出ロジックは `TemplateLibrarySeeder` 内に閉じ、namespace 定数（`BAKUFU_TEMPLATE_NS` / `BAKUFU_ROLE_NS`）は `definitions.py` で一元管理
 
 ## データモデル
 
@@ -157,7 +157,7 @@ classDiagram
 ### ユースケース 1: 起動時グローバルテンプレート seed（REQ-TL-001 / REQ-TL-002）
 
 1. Bootstrap `run()` が `_stage_3_migrate()` 完了後に `_stage_3b_seed_template_library()` を呼ぶ
-2. `_stage_3b_seed_template_library()` が `TemplateLibrarySeeder.seed_global_templates(session_factory)` に委譲
+2. `_stage_3b_seed_template_library()` が `TemplateLibrarySeeder._seed_global_templates(session_factory)` に委譲
 3. `TemplateLibrarySeeder` が `async with session.begin():` で Tx を開き、`WELL_KNOWN_TEMPLATES.TEMPLATES` を 1 件ずつ UPSERT
 4. 全 12 件の UPSERT 完了後、Tx commit（`session.begin()` ブロック退出）
 5. Bootstrap ログ: `[INFO] Bootstrap stage 3b: template-library seed complete (upserted=12)`
@@ -166,7 +166,7 @@ classDiagram
 
 1. Empire 作成後（または CLI から）、`TemplateLibrarySeeder.seed_role_profiles_for_empire(empire_id, session_factory)` を呼ぶ
 2. `TemplateLibrarySeeder` が各 Role（LEADER / DEVELOPER / TESTER / REVIEWER）に対して `RoleProfileRepository.find_by_empire_and_role()` で既存確認
-3. 既存がなければ PRESET_ROLE_PROFILES の定義から `RoleProfile` を構築し `RoleProfileRepository.save()` で UPSERT
+3. 既存がなければ PRESET_ROLE_TEMPLATE_MAP の定義から `RoleProfile` を構築し `RoleProfileRepository.save()` で UPSERT
 4. 既存がある場合は skip（上書きしない）
 
 ## シーケンス図
@@ -179,7 +179,7 @@ sequenceDiagram
     participant Sess as AsyncSession
     participant DB as SQLite
 
-    Boot->>Seed: seed_global_templates(session_factory)
+    Boot->>Seed: _seed_global_templates(session_factory)
     Seed->>Sess: async with session.begin():
     loop WELL_KNOWN_TEMPLATES × 12件
         Seed->>DTRepo: save(template)
@@ -240,13 +240,13 @@ sequenceDiagram
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|
 | **T1: 既定テンプレートの意図しない上書き** | 起動のたびに UPSERT が走り手動編集内容が失われる | CEO が手動で加工した既定テンプレートの内容 | UPSERT の `DO UPDATE SET` はバージョン・内容を definitions.py 定義で上書きする仕様（§確定 D）。CEO が独自カスタマイズするには既定テンプレートの COPY を作成して別 UUID で保存することを案内する（REQ-TL-003 は skip 方式で上書きしない） |
-| **T2: UUID5 衝突による CEO 作成テンプレートの UPSERT 上書き** | `BAKUFU_TEMPLATE_NS` と同一 UUID5 を持つテンプレートを CEO が手動作成 → 起動時 UPSERT で上書き | CEO 作成テンプレート | `BAKUFU_TEMPLATE_NS` は bakufu ソースコードで管理される秘匿 UUID。CEO は UUID5 の算出方法を知らないため実質的に衝突不可能。万一衝突が発生した場合は UPSERT で definitions.py 定義が勝つ（Fail Secure 方向：既定テンプレートの整合性を優先） |
+| **T2: UUID5 衝突による CEO 作成テンプレートの UPSERT 上書き** | `BAKUFU_TEMPLATE_NS` と同一 UUID5 を持つテンプレートを CEO が手動作成 → 起動時 UPSERT で上書き | CEO 作成テンプレート | `BAKUFU_TEMPLATE_NS` は変更禁止の固定 UUID（definitions.py で管理）。UUID5 の出力空間は 2^122 ≒ 5×10^36 であり 12 件のテンプレートとの衝突確率は事実上ゼロ。万一衝突が発生した場合は UPSERT で definitions.py 定義が上書き勝ち（Fail Secure：既定テンプレートの整合性を優先） |
 
 ### OWASP Top 10 対応
 
 | # | カテゴリ | 対応状況 |
 |---|---------|---------|
-| A01 | Broken Access Control | 該当なし（application 層内部、HTTP エンドポイント経由でない）。REQ-TL-003 の呼び出し経路（HTTP API / CLI）は呼び出し元が認可責務を持つ |
+| A01 | Broken Access Control | 該当なし（application 層内部、HTTP エンドポイント経由でない）。REQ-TL-003 の `seed_role_profiles_for_empire()` は Empire オーナー（CEO）のみ呼び出し可能。呼び出し経路（HTTP API / CLI）は呼び出し元が認可責務を持つ |
 | A02 | Cryptographic Failures | **適用**: DeliverableTemplate.schema はテンプレート定義文字列（public 情報）。Secret を含まないことを definitions.py レビュー時に確認する（feature-spec §13 機密レベル「低」）|
 | A03 | Injection | **適用**: SQLAlchemy ORM + Core バインドパラメータで SQL injection 防御。raw SQL 文字列は使わない |
 | A04 | Insecure Design | **適用**: 起動時 seed は Alembic migration（Stage 3）後に実行。スキーマ確定前の write を防ぐ |
