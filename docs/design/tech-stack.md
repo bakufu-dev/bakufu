@@ -231,7 +231,7 @@ Docker Desktop for Mac（osxfs / gRPC FUSE）上では、SQLite WAL モードの
 | backend 起動コマンド | **`uv run python -m bakufu.main`** | `bakufu.main`（`backend/src/bakufu/main.py`）は Bootstrap 経由で uvicorn をプロセス内起動する wrapper。マイグレーション実行等の 8 段階コールドスタートを経由させる必要があるため、`uvicorn bakufu.interfaces.http.app:app` を直接呼ぶことは禁止し、必ず `bakufu.main` 経由を強制する |
 | CORS | backend `CORSMiddleware` で `http://localhost:5173` を allowedOrigin に追加 | frontend（`localhost:5173`）→ backend（`localhost:8000`）間の cross-origin リクエストに必須。設定詳細は [`docs/features/http-api-foundation/`](../features/http-api-foundation/) §CORS 設定を参照 |
 | コンテナ間通信 | frontend コンテナ → `http://backend:8000`（docker internal DNS） | ブラウザ（ホスト側）→ backend は `http://localhost:8000`。Vite dev proxy や SSR を追加する場合はコンテナ間で `http://backend:8000` を使用する。この通信経路の信頼境界は [`threat-model.md §docker-compose ネットワーク境界`](threat-model.md) を参照 |
-| just 統合 | `just up` / `just down` / `just logs` / `just env-init` | `justfile` に docker compose コマンドを alias として定義。`just env-init` は OS 横断で `.env.example` → `.env` をコピーする（`justfile` の `windows-shell` 設定により Windows は PowerShell、Unix は sh で実行）。`just up`（コンテナ起動）とネイティブ起動の両方を同一 `justfile` で提供する |
+| just 統合 | `just up` / `just down` / `just logs` / `just env-init` / `just health` | `justfile` に docker compose コマンドを alias として定義。`just env-init` は OS 横断で `.env.example` → `.env` をコピーする（`justfile` の `windows-shell` 設定により Windows は PowerShell、Unix は sh で実行）。`just health` は `GET http://localhost:8000/health` を実行してバックエンド起動確認を行う。`just up`（コンテナ起動）とネイティブ起動の両方を同一 `justfile` で提供する |
 
 #### ローカル起動手順（OS 横断）
 
