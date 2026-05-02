@@ -156,21 +156,47 @@ REJECTED Verdict が確定した後も、`asyncio.gather(return_exceptions=True)
 
 | ステップ | 操作 |
 |---------|------|
-| 1 | `LLMProviderPort.chat_with_tools(prompt, tools=[submit_verdict_tool_schema], session_id=uuid4())` を呼ぶ（§確定 A の session_id 戦略を踏襲）|
+| 1 | 試行ごとのプロンプトを構築（下記「再指示プロンプト注入内容」参照）→ `LLMProviderPort.chat_with_tools(prompt, tools=[submit_verdict_tool_schema], session_id=uuid4())` を呼ぶ（§確定 A の session_id 戦略を踏襲）|
 | 2 | LLM 応答に `[LLM tool] submit_verdict` ツール呼び出しが含まれているか確認 |
 | 3a（呼び出しあり）| ツール引数 `decision: "APPROVED"\|"REJECTED"` / `reason: str` を取得 → `VerdictDecision` に変換 → `InternalReviewService.submit_verdict(gate_id, role, agent_id, decision, comment=reason)` を呼ぶ |
-| 3b（呼び出しなし）| リトライカウントをインクリメント。`"審査判定が登録されていません。必ず submit_verdict ツールを呼び出してください。"` を追加メッセージとして LLM に送信し、ステップ 1 に戻る |
-| 4 | リトライカウントが `MAX_TOOL_RETRIES`（= 2）を超えた場合: `decision=REJECTED`、`reason="[SYSTEM] ツール未呼び出しによる自動 REJECTED（ambiguous 扱い）"` で `InternalReviewService.submit_verdict()` を呼ぶ |
+| 3b（呼び出しなし）| `prev_response_summary` に今回の LLM 応答テキスト先頭 200 文字を保持。リトライカウントをインクリメント。「再指示プロンプト注入内容」の次試行プロンプトをシステムが構築してステップ 1 に戻る |
+| 4（リトライ超過）| 3 回全て未登録の場合: 「3 回全て未登録時の処理」を実行（下記参照）|
+
+**再指示プロンプトの注入内容（`_execute_single_role()` がシステムとして自動構築）**:
+
+コンテキスト注入は `_execute_single_role()` の**システム責務**であり、LLM の自由裁量に委ねない。LLM が「前回何を間違えたか・なぜ登録が必要か」を把握した状態で再試行できることを保証する（ai-team 実証済み経験知、ジェンセン決定）。
+
+| 試行回数 | LLM に送信するプロンプト | 注入情報 |
+|--------|----------------------|---------|
+| 初回（試行 1）| `_build_prompt(role, deliverable_summary)` の出力（§確定 E）— "{deliverable_summary} を審査し、必ず `submit_verdict(decision, reason)` ツールを呼び出せ" を含む完全プロンプト | `deliverable_summary`（`task.current_deliverable.content` / §確定 E §取得元）|
+| 再指示 1 回目（試行 2）| "前回の応答で判定ツールの呼び出しが確認できませんでした。理由: {tool_not_called}。前回応答の要約: {prev_response_summary}。必ず `submit_verdict` ツールを呼び出して判定を登録してください。" | `tool_not_called`（固定文言: "ツールを呼び出さずテキストのみで応答しました"）/ `prev_response_summary`（初回 LLM 応答の先頭 200 文字）|
+| 再指示 2 回目（試行 3）| "前回の応答でも判定ツールの呼び出しが確認できませんでした。理由: {tool_not_called}。前回応答の要約: {prev_response_summary}。**これが最終機会です。** 必ず `submit_verdict` ツールを呼び出してください。この後ツールを呼び出さない場合、システムが自動的に REJECTED として登録します。" | 同上 + "これが最終機会" の明示 |
+
+**注入変数の定義**:
+
+| 変数 | 内容 | 生成責務 |
+|-----|------|---------|
+| `{tool_not_called}` | 固定文言: "ツールを呼び出さずテキストのみで応答しました" | システム（`_execute_single_role()` がハードコード）|
+| `{prev_response_summary}` | 前回 LLM 応答テキストの先頭 200 文字（Fail Safe: 空の場合は "（前回応答なし）"）| システム（`_execute_single_role()` が前回応答をトランケートして注入）|
+
+> **重要制約（T3 対策）**: `{prev_response_summary}` は先頭 200 文字のトランケートであり、raw LLM 出力全体を保持・ログ出力しない。200 文字を超えた部分は切り捨て、`logger` には `prev_response_length`（整数）のみ記録する。
 
 **リトライ設計**:
 
 | 項目 | 値 |
 |-----|---|
 | `MAX_TOOL_RETRIES` 定数 | `2`（クラス定数として定義、テスト時に差し替え可能）|
-| 最大 LLM 呼び出し回数 | 3 回（初回 1 回 + 再指示 2 回）|
-| 再指示メッセージ | "審査判定が登録されていません。必ず `submit_verdict(decision, reason)` ツールを呼び出してください。" |
+| 最大 LLM 呼び出し回数 | 3 回（試行 1 + 再指示試行 2 + 再指示試行 3）|
 | リトライ超過時の判定 | `VerdictDecision.REJECTED`（feature-spec.md R1-F: ambiguous → REJECTED として扱う）|
-| リトライ超過時のログ | `logger.warning` で `gate_id` / `role` / `retry_count` を記録（T3 対策: raw LLM 出力はログ禁止）|
+| リトライ超過時のログ | `logger.warning` で `gate_id` / `role` / `retry_count` / `event="tool_not_called_all_retries"` を記録（raw LLM 出力はログ禁止）|
+
+**3 回全て未登録時の処理**:
+
+| 処理 | 内容 |
+|-----|------|
+| Verdict 登録 | `decision=REJECTED`、`reason="[SYSTEM] 全試行でツール未呼び出し——判定未登録（ambiguous 扱い）"` で `InternalReviewService.submit_verdict()` を呼ぶ |
+| audit_log 記録 | `gate_id` / `role` / `retry_count=3` / `event="tool_not_called_all_retries"` / `timestamp` を audit_log に記録（§確定 J に基づくシステム側の強制記録）|
+| `logger.warning` | `gate_id` / `role` / `retry_count` / `event` のみを記録（T3 対策: raw LLM 応答テキスト禁止）|
 
 **`LLMProviderPort` への影響（M5-A 後方互換）**:
 
