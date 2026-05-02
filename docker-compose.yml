@@ -1,0 +1,67 @@
+# bakufu 統合起動環境（基底定義）
+#
+# 用途: CI / 最小起動。override を適用しない状態で動作する。
+# 開発起動: docker compose up（docker-compose.override.yml が自動合成される）
+# CI 起動:  docker compose -f docker-compose.yml up
+#
+# ⚠️ ports は必ず "127.0.0.1:<host>:<container>" 形式を強制。
+#    "0.0.0.0" バインド（"<host>:<container>" 形式）はホスト全インターフェース露出のため禁止。
+#    （threat-model.md §A3: docker-compose の 0.0.0.0 バインド）
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: bakufu-backend:dev
+    volumes:
+      # named volume 必須（Mac 環境では SQLite WAL locking 問題を回避するため）
+      # ⚠️ Mac では bind mount への変更禁止。Linux ホスト + native FS のみ bind mount 可。
+      - bakufu-data:/app/data
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file:
+      - path: backend/.env
+        required: false
+    environment:
+      # env_file がない場合のフォールバック（just env-init 未実行時も起動可能にする）
+      BAKUFU_DATA_DIR: /app/data
+      BAKUFU_BIND_HOST: "0.0.0.0"
+      BAKUFU_BIND_PORT: "8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      # dev ステージを使用（Vite HMR 有効）
+      target: dev
+    image: bakufu-frontend:dev
+    ports:
+      - "127.0.0.1:5173:5173"
+    env_file:
+      - path: frontend/.env
+        required: false
+    environment:
+      # Vite が参照する API ベース URL（ブラウザ → backend の直接経路）
+      VITE_API_BASE_URL: "http://localhost:8000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 5173 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  # Docker が管理する named volume（OS の FS 差異を吸収し SQLite WAL locking を回避）
+  bakufu-data:

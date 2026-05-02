@@ -179,11 +179,58 @@ pwsh scripts/setup.ps1
 
 このスクリプトは冪等です。2 回目以降は既存ツールをスキップします。
 
+### docker-compose 起動手順（推奨）
+
+`docker compose up` 一発で backend + frontend を同時起動できます。
+
+**前提**: [Docker Desktop](https://www.docker.com/products/docker-desktop/) または [OrbStack](https://orbstack.dev/)（Mac 推奨）が起動済みであること。
+
+```bash
+# 1. 環境変数ファイルを初期化（初回のみ）
+just env-init
+
+# 2. コンテナを起動（初回はイメージビルドを含む）
+just up
+
+# 3. バックエンドのヘルスを確認: {"status":"ok"} が返れば成功
+just health
+
+# 4. ブラウザで UI を開く
+open http://localhost:5173  # Mac
+# または手動で http://localhost:5173 を開く
+
+# 5. 停止
+just down
+
+# データ（SQLite DB）ごと削除する場合
+just down-v
+```
+
+> **⚠️ Mac 環境の注意**: Docker Desktop for Mac では SQLite WAL モードの bind mount に既知問題があります。`docker-compose.override.yml` の `bakufu-data` volume を bind mount に変更しないでください。named volume（既定値）を必ず維持してください。詳細は [`docs/design/tech-stack.md`](docs/design/tech-stack.md) §SQLite WAL × Docker bind mount 警告 を参照してください。
+
+### ネイティブ起動（docker なし）
+
+docker なしでのローカル起動も継続サポートしています。
+
+```bash
+# backend（uv 必須）
+uv run python -m bakufu.main
+
+# frontend（pnpm 必須）
+pnpm --filter @bakufu/frontend dev
+```
+
 ### `just` レシピ一覧
 
 | レシピ | 用途 |
 |------|------|
 | `just` | レシピ一覧表示（`just --list` を実行） |
+| `just env-init` | `.env.example` → `.env` をコピー（初回のみ、OS 横断対応） |
+| `just up` | docker compose でコンテナ起動（ビルド含む） |
+| `just down` | コンテナ停止 |
+| `just down-v` | コンテナ停止 + volumes 削除（データも消える） |
+| `just logs` | コンテナログをフォロー |
+| `just health` | `GET http://localhost:8000/health` でバックエンド起動確認 |
 | `just fmt-check` | Python (ruff) + TypeScript (biome) の format 検査 |
 | `just fmt` | format 自動修正 |
 | `just lint` | Python (ruff) + TypeScript (biome) の lint |
