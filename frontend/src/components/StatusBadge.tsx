@@ -36,7 +36,8 @@ const STATUS_STYLES: Record<BadgeStatus, { bg: string; text: string; label: stri
     label: "AWAITING_EXTERNAL_REVIEW",
   },
   DONE: {
-    bg: "bg-green-600",
+    // green-700 (#15803d) white 比: ~5.0:1 ✅ (green-600 は 3.22:1 で WCAG AA 未達)
+    bg: "bg-green-700",
     text: "text-white",
     label: "DONE",
   },
@@ -51,7 +52,8 @@ const STATUS_STYLES: Record<BadgeStatus, { bg: string; text: string; label: stri
     label: "CANCELLED",
   },
   APPROVED: {
-    bg: "bg-green-600",
+    // DONE と同色統一（green-700 ~5.0:1 ✅）
+    bg: "bg-green-700",
     text: "text-white",
     label: "APPROVED",
   },
