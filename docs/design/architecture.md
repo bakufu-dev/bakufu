@@ -28,28 +28,32 @@ flowchart LR
 - **infrastructure** は domain と application を実装する（依存性逆転）
 - **interfaces** は application を呼び出す
 
-### interfaces レイヤー詳細（M3 http-api-foundation で確定）
+### interfaces レイヤー詳細（M3 http-api-foundation + M5-C admin-cli で確定）
 
 `backend/src/bakufu/interfaces/` は外部からの入力を application 層に橋渡しするレイヤー。FastAPI router / WebSocket handler / Admin CLI が含まれる。
 
 ```
 backend/src/bakufu/interfaces/
-└── http/
-    ├── app.py                  # FastAPI app 初期化・lifespan・CORS・error handler 登録
-    ├── connection_manager.py   # ConnectionManager（接続プール管理・ブロードキャスト）+ make_ws_bridge_handler()（M4 websocket-broadcast Issue #159）
-    ├── dependencies.py         # get_session() / get_*_repository() / get_*_service() / get_connection_manager() DI ファクトリ
-    ├── error_handlers.py       # 例外 → {"error": {"code": ..., "message": ...}} ErrorResponse 変換
-    ├── schemas/
-    │   └── common.py           # ErrorResponse / PaginatedResponse[T] 汎用 Pydantic モデル
-    └── routers/
-        ├── health.py           # GET /health（M3 http-api-foundation）
-        ├── empire.py           # Empire CRUD（M3 後続 Issue B）
-        ├── room.py             # Room CRUD（M3 後続 Issue C）
-        ├── workflow.py         # Workflow CRUD（M3 後続 Issue D）
-        ├── agent.py            # Agent CRUD（M3 後続 Issue E）
-        ├── task.py             # Task CRUD（M3 後続 Issue F）
-        ├── external_review_gate.py  # ExternalReviewGate CRUD（M3 後続 Issue G）
-        └── ws.py               # GET /ws WebSocket endpoint（M4 websocket-broadcast Issue #159）
+├── http/
+│   ├── app.py                  # FastAPI app 初期化・lifespan・CORS・error handler 登録
+│   ├── connection_manager.py   # ConnectionManager（接続プール管理・ブロードキャスト）+ make_ws_bridge_handler()（M4 websocket-broadcast Issue #159）
+│   ├── dependencies.py         # get_session() / get_*_repository() / get_*_service() / get_connection_manager() DI ファクトリ
+│   ├── error_handlers.py       # 例外 → {"error": {"code": ..., "message": ...}} ErrorResponse 変換
+│   ├── schemas/
+│   │   └── common.py           # ErrorResponse / PaginatedResponse[T] 汎用 Pydantic モデル
+│   └── routers/
+│       ├── health.py           # GET /health（M3 http-api-foundation）
+│       ├── empire.py           # Empire CRUD（M3 後続 Issue B）
+│       ├── room.py             # Room CRUD（M3 後続 Issue C）
+│       ├── workflow.py         # Workflow CRUD（M3 後続 Issue D）
+│       ├── agent.py            # Agent CRUD（M3 後続 Issue E）
+│       ├── task.py             # Task CRUD（M3 後続 Issue F）
+│       ├── external_review_gate.py  # ExternalReviewGate CRUD（M3 後続 Issue G）
+│       └── ws.py               # GET /ws WebSocket endpoint（M4 websocket-broadcast Issue #159）
+└── cli/                        # Admin CLI コマンドグループ（M5-C admin-cli Issue #165）
+    ├── admin.py                # Typer app `bakufu admin`（list-blocked / retry-task / cancel-task / list-dead-letters / retry-event）
+    ├── lite_bootstrap.py       # lite DB 初期化（Stage 1 DATA_DIR + Stage 4 engine のみ。フル Bootstrap 非起動）
+    └── formatters.py           # テーブル形式 / JSON 形式出力フォーマッタ
 ```
 
 interfaces レイヤーの規律:
