@@ -1,9 +1,10 @@
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   server: {
     // ホスト: コンテナ内全インターフェース。ホスト公開は docker-compose ports の
     // "127.0.0.1:5173:5173" バインドで制御する（threat-model.md §docker-compose A3）
