@@ -11,6 +11,12 @@
 # ===== dev stage =====
 FROM node:20-slim AS dev
 
+# ヘルスチェック用 netcat-openbsd をインストール（node:20-slim に nc は含まれないため）
+# nc -z localhost 5173 で Vite 開発サーバの TCP port open を検査する（tech-stack.md §frontend ヘルスチェック）
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends netcat-openbsd \
+    && rm -rf /var/lib/apt/lists/*
+
 # corepack で pnpm を有効化（node:20-slim に同梱）
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
