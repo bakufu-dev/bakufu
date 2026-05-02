@@ -2,7 +2,8 @@
 
 <!-- feature: websocket-broadcast / sub-feature: domain -->
 <!-- 配置先: docs/features/websocket-broadcast/domain/test-design.md -->
-<!-- 対象範囲: REQ-WSB-001〜008 / MSG-WSB-001〜002 / 親 spec §9 受入基準（domain 担当分）-->
+<!-- 対象範囲: REQ-WSB-001〜008 / MSG-WSB-001〜002 / 確定E(Fail Fast) / 親 spec §9 受入基準（domain 担当分）-->
+<!-- REQ-WSB-008 M4 スコープ: TaskService(cancel/unblock_retry/commit_deliverable) + ExternalReviewGateService(approve/reject) のみ。AgentService / DirectiveService は M5 Phase 2 -->
 <!-- 関連 Issue: #158 feat(websocket-broadcast): Domain Event 基盤 -->
 
 本 sub-feature は domain 層（`domain/events.py`）+ application/ports（`application/ports/event_bus.py`）+ infrastructure（`infrastructure/event_bus.py`）+ ApplicationService 統合（`application/services/*.py`）に閉じる。WebSocket endpoint / ConnectionManager は `http-api` sub-feature（Issue #159）が担当し、本 test-design.md の対象外とする。
@@ -22,14 +23,17 @@
 | REQ-WSB-005（DirectiveCompletedEvent） | `domain/events.py: DirectiveCompletedEvent` | TC-UT-WSB-017〜019 | ユニット | 正常系 / 異常系 | — |
 | REQ-WSB-006（EventBusPort Protocol） | `application/ports/event_bus.py: EventBusPort` | TC-UT-WSB-020 | ユニット | 正常系 | — |
 | REQ-WSB-007（InMemoryEventBus） | `infrastructure/event_bus.py: InMemoryEventBus` | TC-UT-WSB-021〜027 | ユニット | 正常系 / 異常系 / 境界値 | — |
-| REQ-WSB-008（ApplicationService 統合） | `application/services/task_service.py` 他 | TC-IT-WSB-001〜004 | 結合 | 正常系 / 異常系 | — |
+| REQ-WSB-008（ApplicationService 統合 — M4）| `application/services/task_service.py` / `application/services/external_review_gate_service.py` | TC-IT-WSB-001〜004 | 結合 | 正常系 / 異常系 | — |
+| REQ-WSB-008（確定E: Fail Fast） | `task_service.py` / `external_review_gate_service.py` `__init__` | TC-UT-WSB-028〜029 | ユニット | 異常系 | — |
 | MSG-WSB-001（ハンドラ例外ログ） | `infrastructure/event_bus.py: InMemoryEventBus.publish` | TC-UT-WSB-026 | ユニット | 異常系 | — |
 | MSG-WSB-002（配信完了ログ） | `infrastructure/event_bus.py: InMemoryEventBus.publish` | TC-UT-WSB-027 | ユニット | 正常系 | — |
 
 **マトリクス充足の証拠**:
 - REQ-WSB-001〜008 すべてに最低 1 件のテストケース ✅
 - MSG-WSB-001〜002 すべてに静的文字列照合ケース ✅
+- 確定E（Fail Fast）の event_bus=None 検証ケース ✅（TC-UT-WSB-028/029）
 - 親 spec 受入基準 §9 #1〜#6 はシステムテスト（`../system-test-design.md`）で検証（domain sub-feature 単体では WebSocket endpoint が存在しないため、全受入基準は http-api 完了後のシステムテストで担保）
+- REQ-WSB-008 AgentService / DirectiveService は M5 Phase 2 対象のため本 test-design.md には含めない（未実装 Service への phantom test は許容しない）
 - 孤児要件なし
 
 ---
@@ -126,6 +130,15 @@
 | TC-UT-WSB-026 | `InMemoryEventBus.publish()` — MSG-WSB-001 | 異常系 | 例外を発火するハンドラ + `caplog` フィクスチャ | WARNING レベルのログに `"EventBus handler error:"` 文字列が含まれる（MSG-WSB-001 静的照合） |
 | TC-UT-WSB-027 | `InMemoryEventBus.publish()` — MSG-WSB-002 | 正常系 | 正常 spy handler + `caplog` フィクスチャ | DEBUG レベルのログに `"DomainEvent published:"` 文字列が含まれる（MSG-WSB-002 静的照合） |
 
+### 確定E（Fail Fast）: event_bus=None 禁止
+
+`detailed-design.md §確定E` の凍結: 各 Service の `__init__` は `event_bus: EventBusPort` を必須引数とし、`None` デフォルトを禁止する（Fail Fast）。以下のケースでこの契約を検証する。
+
+| テスト ID | 対象クラス.メソッド | 種別 | 入力 | 期待結果 |
+|---|---|---|---|---|
+| TC-UT-WSB-028 | `TaskService.__init__` | 異常系 | `event_bus=None`（または `event_bus` 引数を省略）を渡してインスタンス化 | `TypeError` または `pydantic.ValidationError` が発火する（`None` は許容されない） |
+| TC-UT-WSB-029 | `ExternalReviewGateService.__init__` | 異常系 | `event_bus=None`（または `event_bus` 引数を省略）を渡してインスタンス化 | `TypeError` または `pydantic.ValidationError` が発火する（`None` は許容されない） |
+
 ---
 
 ## 結合テストケース
@@ -137,12 +150,17 @@
 - EventBus: `InMemoryEventBus()` に SpyHandler を登録（InMemoryEventBus 自体は実装を使用）
 - 各 Service は `event_bus: EventBusPort` を DI 注入した状態でインスタンス化する
 
+**M4 対象 Service**:
+- `TaskService`: `cancel()` / `unblock_retry()` / `commit_deliverable()` のみ（M4 実装済み）
+- `ExternalReviewGateService`: `approve()` / `reject()` のみ（M4 実装済み）
+- `AgentService` / `DirectiveService`: M5 Phase 2 対象 — 本 test-design.md では扱わない
+
 | テスト ID | 対象モジュール連携 | 使用 factory | 前提条件 | 操作 | 期待結果 |
 |---|---|---|---|---|---|
-| TC-IT-WSB-001 | `TaskService.transition_state()` → `InMemoryEventBus.publish()` | `TaskStateChangedEventFactory` | DB に Task 存在、EventBus に SpyHandler 登録 | `task_service.transition_state(task_id, new_status="IN_PROGRESS")` を呼ぶ | SpyHandler が `TaskStateChangedEvent`（`event_type="task.state_changed"`, `new_status="IN_PROGRESS"`）を 1 件受け取る |
-| TC-IT-WSB-002 | `TaskService.transition_state()` 失敗時の publish() 非呼び出し | `TaskStateChangedEventFactory` | DB に Task 不存在（invalid task_id）、EventBus に SpyHandler 登録 | `task_service.transition_state(invalid_id, new_status)` を呼ぶ | 例外が発火する（Task 未発見等）。SpyHandler の受信件数が 0 である |
-| TC-IT-WSB-003 | `TaskService.transition_state()` 成功 → EventBus handler 例外が業務結果をブロックしない | `TaskStateChangedEventFactory` | DB に Task 存在、EventBus に「必ず例外を発火するハンドラ」を登録 | `task_service.transition_state(task_id, new_status="IN_PROGRESS")` を呼ぶ | Service の戻り値（TaskResponse 相当）が返る。例外が呼び出し元に伝播しない |
-| TC-IT-WSB-004 | `ExternalReviewGateService` 状態遷移 → `ExternalReviewGateStateChangedEvent` publish | `ExternalReviewGateStateChangedEventFactory` | DB に Gate 存在、EventBus に SpyHandler 登録 | Gate の状態遷移メソッドを呼ぶ | SpyHandler が `ExternalReviewGateStateChangedEvent`（`event_type="external_review_gate.state_changed"`）を 1 件受け取る |
+| TC-IT-WSB-001 | `TaskService.cancel()` → `InMemoryEventBus.publish()` | `TaskStateChangedEventFactory` | DB に Task 存在（キャンセル可能な状態）、EventBus に SpyHandler 登録 | `task_service.cancel(task_id)` を呼ぶ | SpyHandler が `TaskStateChangedEvent`（`event_type="task.state_changed"`）を 1 件受け取る |
+| TC-IT-WSB-002 | `TaskService.cancel()` 失敗時の publish() 非呼び出し | `TaskStateChangedEventFactory` | DB に Task 不存在（invalid task_id）、EventBus に SpyHandler 登録 | `task_service.cancel(invalid_id)` を呼ぶ | 例外が発火する（Task 未発見等）。SpyHandler の受信件数が 0 である |
+| TC-IT-WSB-003 | `TaskService.cancel()` 成功 → EventBus handler 例外が業務結果をブロックしない | `TaskStateChangedEventFactory` | DB に Task 存在、EventBus に「必ず例外を発火するハンドラ」を登録 | `task_service.cancel(task_id)` を呼ぶ | Service の戻り値（TaskResponse 相当）が返る。例外が呼び出し元に伝播しない |
+| TC-IT-WSB-004 | `ExternalReviewGateService.approve()` → `ExternalReviewGateStateChangedEvent` publish | `ExternalReviewGateStateChangedEventFactory` | DB に Gate 存在（承認待ち状態）、EventBus に SpyHandler 登録 | `gate_service.approve(gate_id, reviewer_comment="LGTM")` を呼ぶ | SpyHandler が `ExternalReviewGateStateChangedEvent`（`event_type="external_review_gate.state_changed"`, `reviewer_comment` が masking 適用済み）を 1 件受け取る |
 
 ---
 
@@ -175,9 +193,9 @@ backend/tests/
 ├── factories/
 │   └── domain_event_factory.py       # 新規追加: DomainEvent 各クラス用 factory
 ├── unit/
-│   └── test_websocket_broadcast_domain.py   # TC-UT-WSB-001〜027
+│   └── test_websocket_broadcast_domain.py   # TC-UT-WSB-001〜029（確定E Fail Fast 含む）
 └── integration/
-    └── test_websocket_broadcast_domain.py   # TC-IT-WSB-001〜004
+    └── test_websocket_broadcast_domain.py   # TC-IT-WSB-001〜004（M4 スコープ: TaskService + ExternalReviewGateService）
 ```
 
 ---
