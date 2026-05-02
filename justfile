@@ -100,13 +100,14 @@ health:
     curl -sf http://localhost:8000/health
 
 # Initialize .env files from .env.example (Unix)
+# if 文を使用して演算子結合順の曖昧さを排除し、動作を明示する
 [unix]
 env-init:
-    @[ -f backend/.env ] || cp backend/.env.example backend/.env && echo "✓ backend/.env initialized" || true
-    @[ -f frontend/.env ] || cp frontend/.env.example frontend/.env && echo "✓ frontend/.env initialized" || true
+    @if [ -f backend/.env ]; then echo "  backend/.env already exists (skipped)"; else cp backend/.env.example backend/.env && echo "✓ backend/.env initialized"; fi
+    @if [ -f frontend/.env ]; then echo "  frontend/.env already exists (skipped)"; else cp frontend/.env.example frontend/.env && echo "✓ frontend/.env initialized"; fi
 
 # Initialize .env files from .env.example (Windows / PowerShell)
 [windows]
 env-init:
-    @if (-not (Test-Path backend/.env)) { Copy-Item backend/.env.example backend/.env; Write-Host "✓ backend/.env initialized" }
-    @if (-not (Test-Path frontend/.env)) { Copy-Item frontend/.env.example frontend/.env; Write-Host "✓ frontend/.env initialized" }
+    @if (Test-Path backend/.env) { Write-Host "  backend/.env already exists (skipped)" } else { Copy-Item backend/.env.example backend/.env; Write-Host "✓ backend/.env initialized" }
+    @if (Test-Path frontend/.env) { Write-Host "  frontend/.env already exists (skipped)" } else { Copy-Item frontend/.env.example frontend/.env; Write-Host "✓ frontend/.env initialized" }

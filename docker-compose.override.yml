@@ -10,6 +10,19 @@
 #   bind mount への変更は Linux ホスト + native FS のみ許可する。
 
 services:
+  backend:
+    volumes:
+      # bakufu-data は named volume のまま維持（SQLite WAL locking 問題のため bind mount に変更禁止）
+      - bakufu-data:/app/data
+      # ソース bind mount: ホスト側の変更を uvicorn ホットリロードに反映する
+      # BAKUFU_DEV_RELOAD=true と組み合わせることでファイル変更を検知してリロードする
+      # Linux / Mac 両対応（src/ は SQLite を含まないため WAL 問題なし）
+      - ./backend/src:/app/backend/src
+    environment:
+      # BAKUFU_DEV_RELOAD=true: uvicorn.Config(reload=True, reload_dirs=[BAKUFU_RELOAD_DIR]) を有効化
+      # BAKUFU_RELOAD_DIR のデフォルト値は /app/backend/src（main.py で定義）
+      BAKUFU_DEV_RELOAD: "true"
+
   frontend:
     volumes:
       # ソース bind mount: ホスト側の変更を即座にコンテナに反映し Vite HMR を有効化

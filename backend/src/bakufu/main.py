@@ -21,17 +21,27 @@ from bakufu.infrastructure.persistence.sqlite.migrations import run_upgrade_head
 
 
 async def _uvicorn_starter() -> None:
-    """Stage-8 listener_starter: run uvicorn serving the FastAPI app (確定 G)。"""
+    """Stage-8 listener_starter: run uvicorn serving the FastAPI app (確定 G)。
+
+    ``BAKUFU_DEV_RELOAD=true`` を設定すると uvicorn が
+    ``BAKUFU_RELOAD_DIR``（デフォルト: ``/app/backend/src``）を監視してホットリロードする。
+    docker-compose.override.yml で ``BAKUFU_DEV_RELOAD=true`` + ソース bind mount と
+    組み合わせることで開発時のホットリロードを実現する（tech-stack.md §開発専用オーバーライド）。
+    """
     import uvicorn
 
     from bakufu.interfaces.http.app import app
 
+    dev_reload = os.environ.get("BAKUFU_DEV_RELOAD", "").lower() in {"true", "1", "yes"}
+    reload_dir = os.environ.get("BAKUFU_RELOAD_DIR", "/app/backend/src")
     config = uvicorn.Config(
         app,
         host=os.environ.get("BAKUFU_BIND_HOST", "127.0.0.1"),
         port=int(os.environ.get("BAKUFU_BIND_PORT", "8000")),
         loop="asyncio",
         log_level="info",
+        reload=dev_reload,
+        reload_dirs=[reload_dir] if dev_reload else None,
     )
     server = uvicorn.Server(config)
     await server.serve()
