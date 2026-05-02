@@ -226,9 +226,7 @@ class ClaudeCodeLLMClient:
 
             # psutil で実際の create_time を取得（GC の PID 衝突ガードに使用）
             try:
-                started_at = datetime.fromtimestamp(
-                    psutil.Process(pid).create_time(), UTC
-                )
+                started_at = datetime.fromtimestamp(psutil.Process(pid).create_time(), UTC)
             except Exception:
                 started_at = datetime.now(UTC)
 
@@ -264,9 +262,7 @@ class ClaudeCodeLLMClient:
             )
 
             async with self._session_factory() as session, session.begin():
-                await session.execute(
-                    delete(PidRegistryRow).where(PidRegistryRow.pid == pid)
-                )
+                await session.execute(delete(PidRegistryRow).where(PidRegistryRow.pid == pid))
         except Exception:
             logger.warning(
                 "[WARN] pid_registry DELETE failed for pid=%d; GC will clean up at next startup",

@@ -44,7 +44,27 @@ class WorkflowIrreversibleError(Exception):
         self.workflow_id = workflow_id
 
 
+class IllegalWorkflowStructureError(Exception):
+    """Workflow DAG 構造が業務ルールに違反している場合（設計バグ、Fail Fast）。
+
+    INTERNAL_REVIEW Stage の直前に WORK Stage が存在しない場合等に送出する。
+    MSG-IRG-A003 に対応。
+    """
+
+    def __init__(self, task_id: str, stage_id: str, reason: str) -> None:
+        super().__init__(
+            f"[FAIL] Task {task_id} の前段 WORK Stage が Workflow DAG に存在しません"
+            f"（stage_id: {stage_id}）。\n"
+            f"Next: Workflow 設計を確認してください。INTERNAL_REVIEW Stage の直前に"
+            f" WORK Stage が必要です。詳細: {reason}"
+        )
+        self.task_id = task_id
+        self.stage_id = stage_id
+        self.reason = reason
+
+
 __all__ = [
+    "IllegalWorkflowStructureError",
     "WorkflowArchivedError",
     "WorkflowIrreversibleError",
     "WorkflowNotFoundError",

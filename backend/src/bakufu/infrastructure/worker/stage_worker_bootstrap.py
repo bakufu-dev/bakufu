@@ -119,20 +119,49 @@ class StageWorkerBootstrap:
             return False
 
     def _launch_worker(self) -> None:
-        """StageWorker を生成して start() を呼ぶ（§確定 A: asyncio.Queue + Semaphore）。"""
+        """StageWorker を生成して start() を呼ぶ（§確定 A: asyncio.Queue + Semaphore）。
+
+        M5-B: InternalReviewGateExecutor を構築して StageWorker に注入する。
+        InternalReviewService（application 層）と InternalReviewGateExecutor
+        （infrastructure 層）を session_factory + llm_provider で接続する（§確定 G / I）。
+        """
+        from uuid import uuid4
+
+        from bakufu.application.services.internal_review_service import InternalReviewService
+        from bakufu.infrastructure.reviewers.internal_review_gate_executor import (
+            InternalReviewGateExecutor,
+        )
         from bakufu.infrastructure.worker.stage_worker import StageWorker
 
         assert self._event_bus is not None, "event_bus must be set before _launch_worker"
         assert self._llm_provider is not None, "llm_provider must be set before _launch_worker"
 
+        # InternalReviewService: Gate CRUD + downstream 連携
+        review_svc = InternalReviewService(
+            session_factory=self._session_factory,
+            event_bus=self._event_bus,
+        )
+
+        # InternalReviewGateExecutor: 並列 LLM 実行 + Verdict 提出（§確定 G）
+        # agent_id はプロセス起動時に一意な UUID v4 を生成（Executor 共通 ID）。
+        internal_review_executor = InternalReviewGateExecutor(
+            review_svc=review_svc,
+            llm_provider=self._llm_provider,
+            agent_id=uuid4(),
+            session_factory=self._session_factory,
+        )
+
         worker = StageWorker(
             session_factory=self._session_factory,
             llm_provider=self._llm_provider,
             event_bus=self._event_bus,
+            internal_review_port=internal_review_executor,  # type: ignore[arg-type]
         )
         worker.start()
         self._worker = worker
-        logger.info("[INFO] Bootstrap stage 6.5/8: StageWorker started")
+        logger.info(
+            "[INFO] Bootstrap stage 6.5/8: StageWorker started (with InternalReviewGateExecutor)"
+        )
 
 
 __all__ = ["StageWorkerBootstrap"]
