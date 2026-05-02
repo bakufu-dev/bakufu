@@ -38,11 +38,14 @@ export function InlineError({ error, onRetry }: InlineErrorProps): React.ReactEl
         </span>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-red-800 break-words">{message}</p>
-          {"code" in (error as object) && (error as ApiError).code && (
-            <p className="mt-1 text-xs text-red-600 font-mono">
-              コード: {(error as ApiError).code}
-            </p>
-          )}
+          {typeof error === "object" &&
+            error !== null &&
+            "code" in error &&
+            (error as ApiError).code && (
+              <p className="mt-1 text-xs text-red-600 font-mono">
+                コード: {(error as ApiError).code}
+              </p>
+            )}
         </div>
         {onRetry && (
           <button
