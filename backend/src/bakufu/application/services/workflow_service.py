@@ -114,11 +114,21 @@ class WorkflowService:
             try:
                 workflow = await self._workflow_repo.find_by_id(workflow_id)
             except ValidationError as exc:
-                # notify_channels がマスク済みの Workflow は pydantic 再構築で失敗する。
+                # notify_channels がマスク済みの Workflow は pydantic 再構築で失敗する
+                # ことがある（フォールバック: BUG-AT-002 修正後は通常ここには来ない）。
                 # §確定 H 不可逆性コントラクトに従い 409 に写す (MSG-WF-HTTP-008)。
                 raise WorkflowIrreversibleError(str(workflow_id)) from exc
             if workflow is None:
                 raise WorkflowNotFoundError(str(workflow_id))
+            # §確定 H 不可逆性: マスク済み notify_channels を持つ Workflow は更新不可。
+            # BUG-AT-002 修正で masked URL が ValidationError を起こさなくなったため、
+            # 明示的に masked token を検出して WorkflowIrreversibleError を raise する。
+            if any(
+                "<REDACTED:DISCORD_WEBHOOK>" in ch.target
+                for stage in workflow.stages
+                for ch in stage.notify_channels
+            ):
+                raise WorkflowIrreversibleError(str(workflow_id))
             if workflow.archived:
                 raise WorkflowArchivedError(str(workflow_id), kind="update")
             # 部分更新: name のみ、または stages/transitions/entry_stage_id を全置換

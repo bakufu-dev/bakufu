@@ -3,20 +3,13 @@
 受入基準:
   #3: directive → Task が最初の Stage で起票される
   #4: Stage 実行（WORK + INTERNAL_REVIEW）が正常進行する
+  #7: 全 Stage 完了 → status=DONE（ExternalReviewGate 承認後）
   #17: 全 INTERNAL_REVIEW APPROVED → Task が AWAITING_EXTERNAL_REVIEW になる
 
-セットアップ戦略（§不可逆性回避）:
-  - Empire / Agent は HTTP API で作成
-  - Room は DB 直接シード（temp workflow）→ Agent 割り当て → Directive 発行を
-    V モデルプリセット Workflow 保存の前に実施（Workflow 読み取りはこの時点では
-    temp workflow に対して行われ、マスク問題が発生しない）
-  - V モデル Workflow は HTTP API (POST /api/rooms/{id}/workflows) で作成
-  - Directive / Task は V モデル Workflow 作成の前に HTTP API で発行し、
-    発行後に task.current_stage_id を Stage 1 に DB 直接更新する
-  - Task への Agent 割り当ては V モデル Workflow 作成後に HTTP API で実施
-    （TaskService.assign は workflow を読まない）
-  - Stage 実行は InMemory workflow 経由の mock workflow_repo を使って
-    StageExecutorService.dispatch_stage() を直接呼び出す（§不可逆性回避）
+ブラックボックス原則:
+  - Stage 実行は StageWorker.enqueue() 経由（HTTP API ポーリングで結果確認）
+  - BUG-AT-002 修正後は AsyncMock workflow_repo が不要
+  - DB 直接アクセスは acceptance_ctx.session_factory を使わず HTTP API のみ
 """
 
 from __future__ import annotations
@@ -25,8 +18,10 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from tests.acceptance.conftest import AcceptanceCtx
-from tests.acceptance.fake_llm_provider import FakeRoundBasedLLMProvider
+from tests.acceptance.conftest import (
+    AcceptanceCtx,
+    poll_task_status,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -36,6 +31,9 @@ _VMODEL_TRANSITION_COUNT = 16
 
 # V モデル Stage 1 (要件定義, WORK) の固定 ID
 _STAGE_1_ID = UUID("00000001-0000-4000-8000-000000000001")
+
+# §暫定実装: _request_external_review() が使う固定 reviewer UUID（dispatcher.py と同値）
+_SYSTEM_REVIEWER_ID = "00000000-0000-0000-0000-000000000099"
 
 # Agent 作成用ペイロードテンプレート
 _AGENT_PROVIDER = [{"provider_kind": "CLAUDE_CODE", "model": "claude-test", "is_default": True}]
@@ -75,7 +73,7 @@ async def _create_agent(client, empire_id: str, role: str, name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# DB シードヘルパ
+# DB シードヘルパ（§不可逆性回避のため Room 作成時のみ使用）
 # ---------------------------------------------------------------------------
 
 
@@ -106,87 +104,6 @@ async def _seed_temp_workflow_and_room(session_factory, empire_id: UUID) -> tupl
     return room.id, temp_stage.id
 
 
-async def _seed_task_at_stage(
-    session_factory,
-    room_id: UUID,
-    directive_id: UUID,
-    task_id: UUID,
-    stage_id: UUID,
-    assigned_agent_ids: list[UUID],
-) -> None:
-    """DB に IN_PROGRESS Task を直接シードする（current_stage_id = stage_id）。
-
-    §不可逆性 回避: DirectiveService.issue() が workflow_repo を読むため、
-    V モデル Workflow 保存後は HTTP API でディレクティブを発行できない。
-    代わりに DB に直接シードして current_stage_id を V モデル Stage 1 に設定する。
-    """
-    # Task を IN_PROGRESS で作成（AssignedAgent がいれば IN_PROGRESS が要件）
-    from datetime import UTC, datetime
-
-    from bakufu.domain.directive.directive import Directive
-    from bakufu.domain.value_objects import TaskStatus
-    from bakufu.infrastructure.persistence.sqlite.repositories.directive_repository import (
-        SqliteDirectiveRepository,
-    )
-    from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
-        SqliteTaskRepository,
-    )
-
-    from tests.factories.task import make_task
-
-    now = datetime.now(UTC)
-    directive = Directive(
-        id=directive_id,
-        text="$ 受入テスト用 directive",
-        target_room_id=room_id,
-        created_at=now,
-    )
-    task = make_task(
-        task_id=task_id,
-        room_id=room_id,
-        directive_id=directive_id,
-        current_stage_id=stage_id,
-        status=TaskStatus.IN_PROGRESS,
-        assigned_agent_ids=assigned_agent_ids,
-        created_at=now,
-        updated_at=now,
-    )
-
-    async with session_factory() as session, session.begin():
-        directive_repo = SqliteDirectiveRepository(session)
-        task_repo = SqliteTaskRepository(session)
-        await directive_repo.save(directive)
-        # FK 制約: directives.task_id → tasks.id のため task を先に保存する
-        await task_repo.save(task)
-        # directive.link_task で task_id をリンク
-        await directive_repo.save(directive.link_task(task_id))
-
-
-async def _build_vmodel_workflow_in_memory(workflow_id: str) -> object:
-    """HTTP API が返した workflow_id を使って V モデル Workflow をメモリ上に構築する。
-
-    §不可逆性 回避: DB から読み戻すと MaskedJSONEncoded で伏字化された
-    notify_channels が ValidationError を発生させるため、メモリ上で構築する。
-
-    Returns:
-        DB 保存時と同じ workflow_id を持つ Workflow オブジェクト。
-        Stage IDs / Transition IDs は preset 定義の固定値。
-    """
-    from bakufu.application.presets.workflow_presets import WORKFLOW_PRESETS
-    from bakufu.domain.workflow.workflow import Workflow
-
-    preset = WORKFLOW_PRESETS["v-model"]
-    return Workflow.model_validate(
-        {
-            "id": workflow_id,
-            "name": preset.name,
-            "stages": preset.stages,
-            "transitions": preset.transitions,
-            "entry_stage_id": preset.entry_stage_id,
-        }
-    )
-
-
 # ---------------------------------------------------------------------------
 # 複合セットアップヘルパ
 # ---------------------------------------------------------------------------
@@ -201,7 +118,7 @@ async def _setup_empire_agents_room_workflow(
     1. Empire / Agent 作成 (HTTP API)
     2. temp Workflow + Room を DB 直接シード
     3. Agent を Room に割り当て (HTTP API) ← temp workflow を読む（OK）
-    4. V モデル Workflow を Room に紐付け (HTTP API) ← DB 読み取りなし（POST レスポンスのみ）
+    4. V モデル Workflow を Room に紐付け (HTTP API)
 
     Returns:
         (empire_id, room_id, workflow_id, leader_id, developer_id, tester_id, reviewer_id)
@@ -243,129 +160,60 @@ async def _setup_empire_agents_room_workflow(
     return empire_id, room_id, workflow_id, leader_id, developer_id, tester_id, reviewer_id
 
 
-# ---------------------------------------------------------------------------
-# Dispatch ヘルパ
-# ---------------------------------------------------------------------------
-
-
-async def _dispatch_all_stages_until_awaiting(
+async def _seed_task_in_progress(
     session_factory,
-    task_id: UUID,
-    stage_id: UUID,
-    fake_provider: FakeRoundBasedLLMProvider,
-    event_bus,
-    vmodel_workflow,
-    max_dispatches: int = 50,
-) -> str:
-    """task の current_stage からスタートし AWAITING_EXTERNAL_REVIEW になるまで
-    dispatch_stage() を繰り返す。
+    room_id: UUID,
+    leader_id: UUID,
+) -> UUID:
+    """DB に IN_PROGRESS Task (current_stage_id = Stage 1) を直接シードして task_id を返す。
 
-    §不可逆性 回避: workflow_repo は AsyncMock で置き換え、DB ラウンドトリップを回避する。
-    InternalReviewService の workflow_repo_factory も同様に mock で置き換える。
-
-    Returns:
-        終了理由を示す文字列:
-          "AWAITING_EXTERNAL_REVIEW": 受入基準達成
-          "DONE": 全 Stage 完了（想定外）
-          "BLOCKED": LLM エラー等でブロック
-          "MAX_DISPATCHES_REACHED": max_dispatches に達した（無限ループ防止）
-          その他: 予期しない TaskStatus 文字列
+    §不可逆性 回避: V モデル Workflow 作成後は DirectiveService.issue() が
+    workflow_repo.find_by_id() を呼んでマスク済み notify_channels を再構築する。
+    BUG-AT-002 修正後は ValidationError なしに読み戻せるが、Task の current_stage_id を
+    Stage 1 固定にするため DB 直接シードを維持する。
     """
-    from unittest.mock import AsyncMock
+    from datetime import UTC, datetime
 
-    from bakufu.application.services.internal_review_service import InternalReviewService
-    from bakufu.application.services.stage_executor_service import StageExecutorService
+    from bakufu.domain.directive.directive import Directive
     from bakufu.domain.value_objects import TaskStatus
-    from bakufu.infrastructure.persistence.sqlite.repositories.agent_repository import (
-        SqliteAgentRepository,
-    )
-    from bakufu.infrastructure.persistence.sqlite.repositories.internal_review_gate_repository import (  # noqa: E501
-        SqliteInternalReviewGateRepository,
-    )
-    from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
-        SqliteRoomRepository,
+    from bakufu.infrastructure.persistence.sqlite.repositories.directive_repository import (
+        SqliteDirectiveRepository,
     )
     from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
         SqliteTaskRepository,
     )
-    from bakufu.infrastructure.reviewers.internal_review_gate_executor import (
-        InternalReviewGateExecutor,
+
+    from tests.factories.task import make_task
+
+    now = datetime.now(UTC)
+    directive_id = uuid4()
+    task_id = uuid4()
+
+    directive = Directive(
+        id=directive_id,
+        text="$ 受入テスト用 directive",
+        target_room_id=room_id,
+        created_at=now,
+    )
+    task = make_task(
+        task_id=task_id,
+        room_id=room_id,
+        directive_id=directive_id,
+        current_stage_id=_STAGE_1_ID,
+        status=TaskStatus.IN_PROGRESS,
+        assigned_agent_ids=[leader_id],
+        created_at=now,
+        updated_at=now,
     )
 
-    # §不可逆性 回避: DB 読み取りを行わず in-memory workflow を返す mock
-    mock_workflow_repo = AsyncMock()
-    mock_workflow_repo.find_by_id = AsyncMock(return_value=vmodel_workflow)
+    async with session_factory() as session, session.begin():
+        directive_repo = SqliteDirectiveRepository(session)
+        task_repo = SqliteTaskRepository(session)
+        await directive_repo.save(directive)
+        await task_repo.save(task)
+        await directive_repo.save(directive.link_task(task_id))
 
-    def _fake_workflow_repo_factory(session):
-        return mock_workflow_repo
-
-    dispatched = 0
-    current_task_id = task_id
-    current_stage_id = stage_id
-
-    # B023 回避: _capture_enqueue をループ外で定義し、queued_stages.clear() でリセット。
-    queued_stages: list[tuple[UUID, UUID]] = []
-
-    def _capture_enqueue(tid: UUID, sid: UUID) -> None:
-        queued_stages.append((tid, sid))
-
-    while dispatched < max_dispatches:
-        queued_stages.clear()
-
-        async with session_factory() as session:
-            review_svc = InternalReviewService(
-                session_factory=session_factory,
-                gate_repo_factory=SqliteInternalReviewGateRepository,
-                task_repo_factory=SqliteTaskRepository,
-                workflow_repo_factory=_fake_workflow_repo_factory,
-                room_repo_factory=SqliteRoomRepository,
-                event_bus=event_bus,
-            )
-            internal_review_executor = InternalReviewGateExecutor(
-                review_svc=review_svc,
-                llm_provider=fake_provider,
-                agent_id=uuid4(),
-                session_factory=session_factory,
-            )
-            service = StageExecutorService(
-                task_repo=SqliteTaskRepository(session),
-                workflow_repo=mock_workflow_repo,
-                agent_repo=SqliteAgentRepository(session),
-                room_repo=SqliteRoomRepository(session),
-                session=session,
-                llm_provider=fake_provider,
-                internal_review_port=internal_review_executor,
-                event_bus=event_bus,
-                enqueue_fn=_capture_enqueue,
-            )
-            await service.dispatch_stage(current_task_id, current_stage_id)
-
-        dispatched += 1
-
-        # Task の最新状態を確認
-        async with session_factory() as session:
-            task_repo = SqliteTaskRepository(session)
-            task = await task_repo.find_by_id(current_task_id)
-
-        if task is None:
-            return "TASK_NOT_FOUND"
-        if task.status == TaskStatus.AWAITING_EXTERNAL_REVIEW:
-            return "AWAITING_EXTERNAL_REVIEW"
-        if task.status == TaskStatus.DONE:
-            return "DONE"
-        if task.status == TaskStatus.BLOCKED:
-            return "BLOCKED"
-        if task.status not in (TaskStatus.IN_PROGRESS,):
-            return str(task.status)
-
-        # 次の stage を queue から取得（INTERNAL_REVIEW 後の re-enqueue も含む）
-        if queued_stages:
-            current_task_id, current_stage_id = queued_stages[-1]
-        else:
-            # enqueue_fn が呼ばれなかった場合は Task.current_stage_id を使う
-            current_stage_id = task.current_stage_id
-
-    return "MAX_DISPATCHES_REACHED"
+    return task_id
 
 
 # ---------------------------------------------------------------------------
@@ -381,6 +229,7 @@ class TestSCMvp001VmodelFullflow:
 
         Note: GET /api/workflows/{id} は §不可逆性（notify_channels のトークンが DB
         保存時にマスクされ再取得時に ValidationError になる）で利用不可。
+        BUG-AT-002 修正後は find_by_id が成功するが、HTTP API レスポンスでの確認を維持。
         Workflow の構造検証は POST /api/rooms/{id}/workflows のレスポンスで行う。
         """
         client = acceptance_ctx.client
@@ -447,13 +296,7 @@ class TestSCMvp001VmodelFullflow:
         )
 
     async def test_step2_directive_creates_task(self, acceptance_ctx: AcceptanceCtx) -> None:
-        """Step 2: directive → Task が最初の Stage で起票される (受入基準 #3)。
-
-        §不可逆性 回避戦略:
-        - V モデル Workflow 作成後は workflow_repo.find_by_id が ValidationError を送出する。
-        - Directive と Task は DB 直接シード（DirectiveService.issue() が workflow を読むため）。
-        - Task の current_stage_id は V モデル Stage 1 (要件定義) に直接設定する。
-        """
+        """Step 2: directive → Task が最初の Stage で起票される (受入基準 #3)。"""
         client = acceptance_ctx.client
         session_factory = acceptance_ctx.session_factory
 
@@ -463,16 +306,10 @@ class TestSCMvp001VmodelFullflow:
         )
 
         # §不可逆性 回避: Directive + Task を DB に直接シード
-        # Task の current_stage_id = Stage 1 (要件定義) の固定 ID
-        directive_id = uuid4()
-        task_id = uuid4()
-        await _seed_task_at_stage(
+        task_id = await _seed_task_in_progress(
             session_factory,
             room_id=UUID(room_id),
-            directive_id=directive_id,
-            task_id=task_id,
-            stage_id=_STAGE_1_ID,
-            assigned_agent_ids=[UUID(leader_id)],
+            leader_id=UUID(leader_id),
         )
 
         # HTTP API で Task の最新状態を確認（受入基準 #3）
@@ -480,101 +317,145 @@ class TestSCMvp001VmodelFullflow:
         assert r_task.status_code == 200, f"Task 取得失敗: {r_task.status_code} {r_task.text}"
         task_data = r_task.json()
 
-        task_status = task_data["status"]
-        task_current_stage_id = task_data["current_stage_id"]
-
-        assert task_status == "IN_PROGRESS", f"Task の状態が IN_PROGRESS でない: {task_status}"
-        assert task_current_stage_id == str(_STAGE_1_ID), (
+        assert task_data["status"] == "IN_PROGRESS", (
+            f"Task の状態が IN_PROGRESS でない: {task_data['status']}"
+        )
+        assert task_data["current_stage_id"] == str(_STAGE_1_ID), (
             f"Task の current_stage_id が V モデル entry Stage (要件定義) でない: "
-            f"{task_current_stage_id} != {_STAGE_1_ID}"
+            f"{task_data['current_stage_id']} != {_STAGE_1_ID}"
         )
 
     async def test_step3_stage_progression_work_and_internal_review(
         self, acceptance_ctx: AcceptanceCtx
     ) -> None:
-        """Step 3/3.5a: 全 Stage 実行 → Task が AWAITING_EXTERNAL_REVIEW になる (受入基準 #4, #17)。
+        """Step 3/3.5a: 全 Stage 実行 → Task が AWAITING_EXTERNAL_REVIEW (受入基準 #4, #17)。
 
-        §不可逆性 回避戦略:
-        - Directive + Task は DB 直接シード（current_stage_id = Stage 1）
-        - Stage 実行は mock workflow_repo (in-memory V モデル Workflow) を使用
-        - InternalReviewService の workflow_repo_factory も mock で置き換え
+        BUG-AT-001 修正: StageWorker.enqueue() 経由で Stage を開始し、
+        HTTP API ポーリングで AWAITING_EXTERNAL_REVIEW を確認（ブラックボックス原則）。
 
-        FakeRoundBasedLLMProvider を使って全 WORK / INTERNAL_REVIEW Stage を
-        順番に実行し、Stage 14 (EXTERNAL_REVIEW) で AWAITING_EXTERNAL_REVIEW になることを確認する。
-
-        V モデルステージ構成:
-          WORK Stage (7 個): 1, 3, 5, 7, 8, 10, 11
-          INTERNAL_REVIEW Stage (6 個): 2, 4, 6, 9, 12, 13
-          EXTERNAL_REVIEW Stage (1 個): 14
+        FakeRoundBasedLLMProvider を全 APPROVED で実行し、Stage 14 (EXTERNAL_REVIEW) で
+        AWAITING_EXTERNAL_REVIEW になることを確認する。
         """
-        from bakufu.infrastructure.event_bus import InMemoryEventBus
-
         client = acceptance_ctx.client
         session_factory = acceptance_ctx.session_factory
-        event_bus = InMemoryEventBus()
+        stage_worker = acceptance_ctx.stage_worker
+
+        # 全 INTERNAL_REVIEW Stage を APPROVED で実行（verdicts 空 = 全 APPROVED）
+        acceptance_ctx.fake_llm.reset(verdicts=None)
 
         # Empire + Agent + Room + V モデル Workflow 作成 + Agent 割り当て
-        (
-            _,
-            room_id,
-            workflow_id,
-            leader_id,
-            *_,
-        ) = await _setup_empire_agents_room_workflow(client, session_factory)
+        _, room_id, _, leader_id, *_ = await _setup_empire_agents_room_workflow(
+            client, session_factory
+        )
 
-        # §不可逆性 回避: Directive + Task を DB に直接シード
-        directive_id = uuid4()
-        task_id = uuid4()
-        await _seed_task_at_stage(
+        # Task を DB に直接シード（Stage 1 / IN_PROGRESS）
+        task_id = await _seed_task_in_progress(
             session_factory,
             room_id=UUID(room_id),
-            directive_id=directive_id,
-            task_id=task_id,
-            stage_id=_STAGE_1_ID,
-            assigned_agent_ids=[UUID(leader_id)],
+            leader_id=UUID(leader_id),
         )
 
-        # §不可逆性 回避: V モデル Workflow をメモリ上で構築（DB 読み取りを回避）
-        vmodel_workflow = await _build_vmodel_workflow_in_memory(workflow_id)
+        # Stage 1 から全 Stage を StageWorker 経由で実行（ブラックボックス原則）
+        stage_worker.enqueue(task_id, _STAGE_1_ID)
 
-        # 全 INTERNAL_REVIEW Stage を APPROVED で実行するため verdicts は空（デフォルト APPROVED）
-        fake_provider = FakeRoundBasedLLMProvider(chat_with_tools_verdicts=[])
-
-        # Stage 1 (要件定義, WORK) から全 Stage を AWAITING_EXTERNAL_REVIEW まで実行
-        final_status = await _dispatch_all_stages_until_awaiting(
-            session_factory,
+        # AWAITING_EXTERNAL_REVIEW になるまでポーリング（受入基準 #4 + #17）
+        final_task = await poll_task_status(
+            client,
             task_id,
-            _STAGE_1_ID,
-            fake_provider,
-            event_bus,
-            vmodel_workflow,
-            max_dispatches=50,
+            expected={"AWAITING_EXTERNAL_REVIEW", "DONE", "BLOCKED"},
+            timeout=60.0,
         )
 
-        # 受入基準 #4 + #17: 全 Stage が正常進行し AWAITING_EXTERNAL_REVIEW になること
-        assert final_status == "AWAITING_EXTERNAL_REVIEW", (
-            f"Task が AWAITING_EXTERNAL_REVIEW にならなかった: final_status={final_status}\n"
-            f"LLM 呼び出し数: "
-            f"chat={fake_provider._chat_call_count}, "
-            f"chat_with_tools={fake_provider._tools_call_count}"
-        )
-
-        # HTTP API で Task の最終状態を確認
-        r_final = await client.get(f"/api/tasks/{task_id}")
-        assert r_final.status_code == 200
-        final_task = r_final.json()
         assert final_task["status"] == "AWAITING_EXTERNAL_REVIEW", (
-            "API で確認した Task の最終状態が AWAITING_EXTERNAL_REVIEW でない: "
-            f"{final_task['status']}"
+            "Task が AWAITING_EXTERNAL_REVIEW にならなかった: "
+            f"status={final_task['status']}\n"
+            f"LLM 呼び出し数: "
+            f"chat={acceptance_ctx.fake_llm.chat_call_count}, "
+            f"chat_with_tools={acceptance_ctx.fake_llm.tools_call_count}"
         )
 
         # WORK Stage (1, 3, 5, 7, 8, 10, 11) = 7 個 → chat() 7 回
-        assert fake_provider._chat_call_count == 7, (
-            f"WORK Stage 実行 (chat) 回数が 7 でない: {fake_provider._chat_call_count}"
+        assert acceptance_ctx.fake_llm.chat_call_count == 7, (
+            f"WORK Stage 実行 (chat) 回数が 7 でない: "
+            f"{acceptance_ctx.fake_llm.chat_call_count}"
         )
 
         # INTERNAL_REVIEW Stage (2, 4, 6, 9, 12, 13) = 6 個 → chat_with_tools() 6 回
-        assert fake_provider._tools_call_count == 6, (
+        assert acceptance_ctx.fake_llm.tools_call_count == 6, (
             f"INTERNAL_REVIEW Stage 実行 (chat_with_tools) 回数が 6 でない: "
-            f"{fake_provider._tools_call_count}"
+            f"{acceptance_ctx.fake_llm.tools_call_count}"
+        )
+
+    async def test_step4_external_review_gate_approve_completes_task(
+        self, acceptance_ctx: AcceptanceCtx
+    ) -> None:
+        """Step 4/5: ExternalReviewGate 承認 → Task DONE (受入基準 #7)。
+
+        BUG-AT-003 実装: POST /api/gates/{gate_id}/approve → GET /api/tasks/{task_id}
+        status=DONE を確認する。
+
+        前提: test_step3 と同一セットアップで AWAITING_EXTERNAL_REVIEW に到達してから
+        ExternalReviewGate を承認する。
+        """
+        client = acceptance_ctx.client
+        session_factory = acceptance_ctx.session_factory
+        stage_worker = acceptance_ctx.stage_worker
+
+        acceptance_ctx.fake_llm.reset(verdicts=None)
+
+        # Empire + Agent + Room + V モデル Workflow 作成 + Agent 割り当て
+        _, room_id, _, leader_id, *_ = await _setup_empire_agents_room_workflow(
+            client, session_factory
+        )
+
+        task_id = await _seed_task_in_progress(
+            session_factory,
+            room_id=UUID(room_id),
+            leader_id=UUID(leader_id),
+        )
+
+        # Stage 1 から全 Stage を実行して AWAITING_EXTERNAL_REVIEW に到達
+        stage_worker.enqueue(task_id, _STAGE_1_ID)
+        await poll_task_status(
+            client,
+            task_id,
+            expected={"AWAITING_EXTERNAL_REVIEW"},
+            timeout=60.0,
+        )
+
+        # ExternalReviewGate を取得（受入基準 #17: 自動生成されているはず）
+        r_gates = await client.get(f"/api/tasks/{task_id}/gates")
+        assert r_gates.status_code == 200, f"Gates 取得失敗: {r_gates.status_code}"
+        gates = r_gates.json()["items"]
+        assert len(gates) > 0, "ExternalReviewGate が自動生成されていない（受入基準 #17 違反）"
+
+        pending_gates = [g for g in gates if g["decision"] == "PENDING"]
+        assert len(pending_gates) > 0, f"PENDING な ExternalReviewGate がない: {gates}"
+        gate_id = pending_gates[0]["id"]
+
+        # ExternalReviewGate を承認する（受入基準 #5 UI承認相当）
+        # Authorization ヘッダーは _SYSTEM_REVIEWER_ID（dispatcher.py §暫定実装 と同値）
+        r_approve = await client.post(
+            f"/api/gates/{gate_id}/approve",
+            headers={"Authorization": f"Bearer {_SYSTEM_REVIEWER_ID}"},
+            json={"comment": "受入テスト: 承認"},
+        )
+        assert r_approve.status_code == 200, (
+            f"Gate 承認失敗: {r_approve.status_code} {r_approve.text}"
+        )
+
+        # Task が次 Stage （Stage 1 以降）に進んで最終的に DONE になるまで待機
+        # V モデルの ExternalReviewGate は Stage 14 のみなので、承認後 DONE になる
+        final_task = await poll_task_status(
+            client,
+            task_id,
+            expected={"DONE", "BLOCKED"},
+            timeout=30.0,
+        )
+
+        # 受入基準 #7: Task DONE
+        # Note: Task.complete() は current_stage_id を意図的に変更しない（domain 設計 §確定 K）。
+        # DONE Task は最後に実行された Stage（EXTERNAL_REVIEW Stage 14）の stage_id を保持する。
+        assert final_task["status"] == "DONE", (
+            f"ExternalReviewGate 承認後も Task が DONE にならない: {final_task['status']}"
         )
