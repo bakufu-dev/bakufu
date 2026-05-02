@@ -10,7 +10,7 @@ DDD の Domain Event パターンを実装する。各 Event は Pydantic v2 Bas
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, ClassVar, Literal
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -29,6 +29,11 @@ class DomainEvent(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    #: to_ws_message() でペイロードから除外する基底フィールド名集合（クラスレベル定数）。
+    _BASE_FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {"event_id", "event_type", "aggregate_id", "aggregate_type", "occurred_at"}
+    )
+
     event_id: UUID = Field(default_factory=uuid4)
     event_type: str
     aggregate_id: str
@@ -42,11 +47,8 @@ class DomainEvent(BaseModel):
         を除いた残余フィールドを ``payload`` として格納する（detailed-design §確定 C）。
         ``occurred_at`` は ISO 8601 UTC 形式で出力する。
         """
-        _base_fields: frozenset[str] = frozenset(
-            {"event_id", "event_type", "aggregate_id", "aggregate_type", "occurred_at"}
-        )
         payload: dict[str, Any] = {
-            k: v for k, v in self.model_dump().items() if k not in _base_fields
+            k: v for k, v in self.model_dump().items() if k not in self._BASE_FIELDS
         }
         return {
             "event_type": self.event_type,
@@ -62,11 +64,12 @@ class TaskStateChangedEvent(DomainEvent):
 
     ``TaskService.cancel()`` / ``unblock_retry()`` / ``commit_deliverable()`` が
     業務操作成功後に発行する（M4 スコープ）。
-    event_type / aggregate_type は frozen=True により構築後変更不能（§確定 B）。
+    event_type / aggregate_type は Literal 型で構築時バリデーションを保証し、
+    frozen=True により構築後変更不能（§確定 B）。
     """
 
-    event_type: str = "task.state_changed"
-    aggregate_type: str = "Task"
+    event_type: Literal["task.state_changed"] = "task.state_changed"  # pyright: ignore[reportIncompatibleVariableOverride]
+    aggregate_type: Literal["Task"] = "Task"  # pyright: ignore[reportIncompatibleVariableOverride]
     directive_id: str
     old_status: str
     new_status: str
@@ -79,11 +82,12 @@ class ExternalReviewGateStateChangedEvent(DomainEvent):
     ``ExternalReviewGateService.approve()`` / ``reject()`` が業務操作成功後に
     発行する（M4 スコープ）。``reviewer_comment`` は Service 層で ``masking.mask()``
     を適用済みの値を渡すこと（§確定 F）。
-    event_type / aggregate_type は frozen=True により構築後変更不能（§確定 B）。
+    event_type / aggregate_type は Literal 型で構築時バリデーションを保証し、
+    frozen=True により構築後変更不能（§確定 B）。
     """
 
-    event_type: str = "external_review_gate.state_changed"
-    aggregate_type: str = "ExternalReviewGate"
+    event_type: Literal["external_review_gate.state_changed"] = "external_review_gate.state_changed"  # pyright: ignore[reportIncompatibleVariableOverride]
+    aggregate_type: Literal["ExternalReviewGate"] = "ExternalReviewGate"  # pyright: ignore[reportIncompatibleVariableOverride]
     task_id: str
     old_status: str
     new_status: str
@@ -95,11 +99,12 @@ class AgentStatusChangedEvent(DomainEvent):
 
     M4 では型定義のみ凍結する。実 publish（``AgentService.update_status()`` 統合）は
     M5 Phase 2 で実装する（feature-spec.md §6 Out of Scope）。
-    event_type / aggregate_type は frozen=True により構築後変更不能（§確定 B）。
+    event_type / aggregate_type は Literal 型で構築時バリデーションを保証し、
+    frozen=True により構築後変更不能（§確定 B）。
     """
 
-    event_type: str = "agent.status_changed"
-    aggregate_type: str = "Agent"
+    event_type: Literal["agent.status_changed"] = "agent.status_changed"  # pyright: ignore[reportIncompatibleVariableOverride]
+    aggregate_type: Literal["Agent"] = "Agent"  # pyright: ignore[reportIncompatibleVariableOverride]
     room_id: str
     old_status: str
     new_status: str
@@ -110,11 +115,12 @@ class DirectiveCompletedEvent(DomainEvent):
 
     M4 では型定義のみ凍結する。実 publish（``DirectiveService.complete()`` / ``fail()`` 統合）は
     M5 Phase 2 で実装する（feature-spec.md §6 Out of Scope）。
-    event_type / aggregate_type は frozen=True により構築後変更不能（§確定 B）。
+    event_type / aggregate_type は Literal 型で構築時バリデーションを保証し、
+    frozen=True により構築後変更不能（§確定 B）。
     """
 
-    event_type: str = "directive.completed"
-    aggregate_type: str = "Directive"
+    event_type: Literal["directive.completed"] = "directive.completed"  # pyright: ignore[reportIncompatibleVariableOverride]
+    aggregate_type: Literal["Directive"] = "Directive"  # pyright: ignore[reportIncompatibleVariableOverride]
     empire_id: str
     final_status: str
 

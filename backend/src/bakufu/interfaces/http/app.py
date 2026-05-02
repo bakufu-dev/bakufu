@@ -76,11 +76,15 @@ def _parse_allowed_origins() -> list[str]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """lifespan: startup で session_factory / event_bus を保持、shutdown で dispose (確定 B)。"""
+    """lifespan: startup で masking / session_factory / event_bus 初期化、shutdown で dispose。"""
     from bakufu.infrastructure.config import data_dir as data_dir_mod
     from bakufu.infrastructure.event_bus import InMemoryEventBus
     from bakufu.infrastructure.persistence.sqlite.engine import create_engine
     from bakufu.infrastructure.persistence.sqlite.session import make_session_factory
+    from bakufu.infrastructure.security import masking as masking_mod
+
+    # タブリーズ指摘 §確定F: dev_reload 子プロセスを含む全起動経路で Layer 1 を保証
+    masking_mod.init()
 
     resolved_data_dir = data_dir_mod.resolve()
     url = f"sqlite+aiosqlite:///{resolved_data_dir / 'bakufu.db'}"
