@@ -33,6 +33,8 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
+from bakufu.application.ports.event_bus import EventBusPort
+from bakufu.application.ports.llm_provider_port import LLMProviderPort
 from bakufu.application.services.template_library import TemplateLibrarySeeder
 from bakufu.infrastructure.config import data_dir
 from bakufu.infrastructure.exceptions import (
@@ -82,6 +84,8 @@ class Bootstrap:
         *,
         listener_starter: ListenerStarter | None = None,
         migration_runner: Callable[[AsyncEngine], Awaitable[str]] | None = None,
+        event_bus: EventBusPort | None = None,
+        llm_provider: LLMProviderPort | None = None,
     ) -> None:
         self._listener_starter = listener_starter
         # マイグレーションは Bootstrap から疎結合化されており、テストは
@@ -89,6 +93,11 @@ class Bootstrap:
         # ``infrastructure.persistence.sqlite.migrations`` の Alembic 駆動
         # 実装を渡す。
         self._migration_runner = migration_runner
+
+        # Stage 6.5 用: 外部から注入しない場合は Stage 6.5 で生成する。
+        # テストは stub を差し込んで Stage 6.5 の起動を制御できる。
+        self._event_bus: EventBusPort | None = event_bus
+        self._llm_provider: LLMProviderPort | None = llm_provider
 
         # Stage が成功するごとに状態を埋めていく。失敗時は LIFO クリーン
         # アップが逆順に走査する。
@@ -98,6 +107,9 @@ class Bootstrap:
         self._dispatcher_task: asyncio.Task[None] | None = None
         self._attachments_task: asyncio.Task[None] | None = None
         self._data_dir: Path | None = None
+        # Stage 6.5: StageWorker 起動制御（§確定 C）
+        self._stage_worker: object | None = None  # StageWorker（循環 import 回避のため object）
+        self._stage_worker_task: asyncio.Task[None] | None = None
 
     @property
     def app_engine(self) -> AsyncEngine | None:
@@ -126,6 +138,7 @@ class Bootstrap:
             await self._stage_4_pid_gc()
             self._stage_5_attachments()
             await self._stage_6_dispatcher()
+            await self._stage_6_5_stage_worker()
             self._stage_7_orphan_scheduler()
             await self._stage_8_listener()
         finally:
@@ -381,6 +394,67 @@ class Bootstrap:
             )
 
     # ------------------------------------------------------------------
+    # Stage 6.5: StageWorker 起動（§確定 C）。
+    # ------------------------------------------------------------------
+    async def _stage_6_5_stage_worker(self) -> None:
+        """StageWorker を asyncio.create_task でスケジュールし Stage 6.5 として登録する。
+
+        Outbox Dispatcher（Stage 6）の起動後に配置し、FastAPI listener（Stage 8）より
+        前に起動することで、HTTP API 受付前から Stage 実行が可能になる（§確定 C）。
+
+        LLM プロバイダが未設定の場合、環境変数 ``BAKUFU_LLM_PROVIDER`` から読み込む。
+        BAKUFU_LLM_PROVIDER が未設定の場合は WARNING のみで StageWorker をスキップする
+        （LLM なしでも他機能は動作させるため）。
+        EventBus が未注入の場合は InMemoryEventBus を生成して使用する。
+        """
+        if self._session_factory is None:  # pragma: no cover — stage ordering
+            raise BakufuConfigError(
+                msg_id="MSG-PF-002",
+                message="[FAIL] Bootstrap stage 6.5/8: session_factory not ready",
+            )
+
+        # EventBus が未注入の場合は InMemoryEventBus を生成（テスト・本番共通）。
+        if self._event_bus is None:
+            # 遅延 import: infrastructure 内部の循環参照リスクを回避するため。
+            from bakufu.infrastructure.event_bus import InMemoryEventBus
+
+            self._event_bus = InMemoryEventBus()
+            logger.info("[INFO] Bootstrap stage 6.5/8: InMemoryEventBus created for StageWorker")
+
+        # LLM プロバイダが未注入の場合は環境変数から構築を試みる。
+        if self._llm_provider is None:
+            try:
+                from bakufu.infrastructure.llm.config import LLMCliConfig
+                from bakufu.infrastructure.llm.factory import llm_provider_factory
+
+                cli_config = LLMCliConfig()
+                self._llm_provider = llm_provider_factory(cli_config)
+                logger.info(
+                    "[INFO] Bootstrap stage 6.5/8: LLMProviderPort created (provider=%s)",
+                    self._llm_provider.provider,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "[WARN] Bootstrap stage 6.5/8: LLM provider initialization failed: %s; "
+                    "StageWorker will not start (LLM-dependent stages will not execute). "
+                    "Set BAKUFU_LLM_PROVIDER to enable stage execution.",
+                    exc,
+                )
+                return
+
+        # StageWorker を起動する（§確定 A: asyncio.Queue + asyncio.Semaphore）。
+        from bakufu.infrastructure.worker.stage_worker import StageWorker
+
+        worker = StageWorker(
+            session_factory=self._session_factory,
+            llm_provider=self._llm_provider,
+            event_bus=self._event_bus,
+        )
+        worker.start()
+        self._stage_worker = worker
+        logger.info("[INFO] Bootstrap stage 6.5/8: StageWorker started")
+
+    # ------------------------------------------------------------------
     # Stage 7: 添付ファイル オーファン GC スケジューラ。
     # ------------------------------------------------------------------
     def _stage_7_orphan_scheduler(self) -> None:
@@ -429,6 +503,14 @@ class Bootstrap:
         if self._attachments_task is not None:
             self._attachments_task.cancel()
             await asyncio.gather(self._attachments_task, return_exceptions=True)
+
+        # Stage 6.5 のクリーンアップ — LIFO 順（Stage 7 → Stage 6.5 → Stage 6）。
+        if self._stage_worker is not None:
+            with contextlib.suppress(Exception):
+                from bakufu.infrastructure.worker.stage_worker import StageWorker
+
+                if isinstance(self._stage_worker, StageWorker):
+                    await self._stage_worker.stop()
 
         if self._dispatcher is not None:
             await self._dispatcher.stop()

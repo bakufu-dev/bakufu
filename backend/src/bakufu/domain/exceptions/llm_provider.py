@@ -53,10 +53,30 @@ class LLMProviderEmptyResponseError(LLMProviderError):
     """
 
 
+class LLMProviderSessionLostError(LLMProviderError):
+    """セッション消失例外（§確定H）。
+
+    stderr に ``"session not found"`` / ``"unknown session"`` を含む
+    非ゼロ終了コード時に raise される。リトライ時は新規 UUID v4 の
+    session_id を使用する（§確定B）。
+    """
+
+
+class LLMProviderRateLimitedError(LLMProviderError):
+    """レート制限例外（§確定H）。
+
+    stderr に ``"rate limit"`` / HTTP 429 相当のメッセージを含む場合に
+    raise される。固定 backoff（60s → 300s → 900s）で最大 3 回リトライ
+    する（§確定E）。
+    """
+
+
 __all__ = [
     "LLMProviderAuthError",
     "LLMProviderEmptyResponseError",
     "LLMProviderError",
     "LLMProviderProcessError",
+    "LLMProviderRateLimitedError",
+    "LLMProviderSessionLostError",
     "LLMProviderTimeoutError",
 ]
