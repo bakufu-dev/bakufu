@@ -309,7 +309,7 @@ class TestConnectionManagerHandleEvent:
 
 
 class TestWebSocketEndpointOriginValidation:
-    """TC-UT-WSB-115: GET /ws — 不正 Origin 拒否の単体確認（§確定E）。"""
+    """TC-UT-WSB-115/116: GET /ws — Origin 検証の単体確認（§確定E）。"""
 
     async def test_endpoint_rejects_invalid_origin_with_code_1008(self) -> None:
         """TC-UT-WSB-115: 不正 Origin の場合に close(code=1008) が呼ばれ _connections 非混入。
@@ -335,3 +335,33 @@ class TestWebSocketEndpointOriginValidation:
         ws.close.assert_awaited_once_with(code=1008)
         # cm.connect() は呼ばれていない（_connections 非混入）
         cm.connect.assert_not_awaited()
+
+    async def test_endpoint_allows_absent_origin_header(self) -> None:
+        """TC-UT-WSB-116: Origin ヘッダー不在（headers={}）の場合に接続が通過する（§確定E）。
+
+        §確定E: origin is None 通過設計の回帰防止。
+        headers に "origin" キーが存在しない → headers.get("origin") が None を返す →
+        origin is not None 条件が False → close() 呼び出しなし → cm.connect() に到達する。
+
+        CLI / AI エージェントはブラウザと異なり Origin ヘッダーを送らないため、
+        このケースは MVP 目標（bakufu 自己開発）において必須の正常系である。
+        """
+        from bakufu.interfaces.http.connection_manager import ConnectionManager
+        from bakufu.interfaces.http.routers.ws import websocket_endpoint
+        from fastapi import WebSocketDisconnect
+
+        ws = AsyncMock()
+        # Origin ヘッダーなし: headers.get("origin") → None
+        ws.headers = {}
+        ws.app.state.allowed_origins = ["http://localhost:5173"]
+        # receive_text() ループを即座に終了させる（WebSocketDisconnect を発火）
+        ws.receive_text.side_effect = WebSocketDisconnect()
+
+        cm = AsyncMock(spec=ConnectionManager)
+
+        await websocket_endpoint(websocket=ws, cm=cm)
+
+        # close(code=1008) は呼ばれない（通過）
+        ws.close.assert_not_awaited()
+        # cm.connect() が呼ばれる（接続プールに登録）
+        cm.connect.assert_awaited_once_with(ws)

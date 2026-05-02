@@ -18,7 +18,8 @@
 | REQ-WSB-009（ConnectionManager）| `interfaces/http/connection_manager.py: ConnectionManager.disconnect()` | TC-UT-WSB-103〜105 | ユニット | 正常系 / 境界値 | — |
 | REQ-WSB-009（ConnectionManager Fail Soft）| `interfaces/http/connection_manager.py: ConnectionManager.broadcast()` | TC-UT-WSB-106〜110 | ユニット | 正常系 / 境界値 / 異常系 | — |
 | REQ-WSB-010（ConnectionManager.handle_event）| `interfaces/http/connection_manager.py: ConnectionManager.handle_event()` | TC-UT-WSB-111〜113 | ユニット | 正常系 | — |
-| §確定E（WebSocket Origin 検証）| `interfaces/http/routers/ws.py` — Origin 拒否 | TC-UT-WSB-115 | ユニット | 異常系 | — |
+| §確定E（WebSocket Origin 検証 — 不正拒否）| `interfaces/http/routers/ws.py` — Origin 拒否 | TC-UT-WSB-115 | ユニット | 異常系 | — |
+| §確定E（WebSocket Origin 検証 — ヘッダー不在通過）| `interfaces/http/routers/ws.py` — Origin ヘッダー不在 → 通過 | TC-UT-WSB-116 | ユニット | 正常系 | — |
 | MSG-WSB-003（接続ログ）| `ConnectionManager.connect()` | TC-UT-WSB-102 | ユニット | 正常系 | — |
 | MSG-WSB-004（切断ログ）| `ConnectionManager.disconnect()` | TC-UT-WSB-104 | ユニット | 正常系 | — |
 | MSG-WSB-005（ブロードキャスト失敗ログ）| `ConnectionManager.broadcast()` | TC-UT-WSB-110 | ユニット | 異常系 | — |
@@ -30,7 +31,7 @@
 **マトリクス充足の証拠**:
 - REQ-WSB-009〜012 すべてに最低 1 件のテストケース ✅
 - MSG-WSB-003〜005 すべてに静的文字列照合ケース ✅
-- 確定A（`list[WebSocket]`）/ 確定B（スナップショット走査）/ 確定C（bound method）/ 確定D（accept 後 append + 失敗時非混入）/ 確定E（Origin 明示検証）/ 確定F（receive_text ループ）の契約を検証するケース ✅
+- 確定A（`list[WebSocket]`）/ 確定B（スナップショット走査）/ 確定C（bound method）/ 確定D（accept 後 append + 失敗時非混入）/ 確定E（不正 Origin 拒否 + ヘッダー不在通過）/ 確定F（receive_text ループ）の契約を検証するケース ✅
 - 孤児要件なし
 
 ---
@@ -99,11 +100,12 @@ raw（integration 用）/ factory（unit 用）の使い分けは本 sub-feature
 
 ### §確定E: WebSocket Origin 検証
 
-§確定E: `ws.py` エンドポイントは接続前に Origin ヘッダーを検証し、`BAKUFU_ALLOWED_ORIGINS` 外の Origin を `close(code=1008)` で拒否する。
+§確定E: `ws.py` エンドポイントは接続前に Origin ヘッダーを検証し、`BAKUFU_ALLOWED_ORIGINS` 外の Origin を `close(code=1008)` で拒否する。Origin ヘッダー不在（`None`）の場合は通過を許可する（CLI / AI エージェントへの配慮 — detailed-design.md §確定E 参照）。
 
 | テスト ID | 対象クラス.メソッド | 種別 | 入力 | 期待結果 |
 |---|---|---|---|---|
-| TC-UT-WSB-115 | `GET /ws` — 不正 Origin 拒否 | 異常系 | `TestClient.websocket_connect("/ws", headers={"origin": "https://attacker.com"})` （`BAKUFU_ALLOWED_ORIGINS` に含まれない Origin）| WebSocket 接続が拒否される。`_connections` に追加されない。§確定E: Cross-Origin WebSocket Hijacking 防止の単体確認 |
+| TC-UT-WSB-115 | `GET /ws` — 不正 Origin 拒否 | 異常系 | `ws.headers = {"origin": "https://attacker.com"}` + `allowed_origins = ["http://localhost:5173"]` | `ws.close(code=1008)` が呼ばれる。`cm.connect()` は呼ばれない。§確定E: Cross-Origin WebSocket Hijacking 防止の単体確認 |
+| TC-UT-WSB-116 | `GET /ws` — Origin ヘッダー不在 → 通過 | 正常系 | `ws.headers = {}` (Origin キー不在 → `get("origin")` が `None` を返す) + `allowed_origins = ["http://localhost:5173"]` | `ws.close()` は呼ばれない。`cm.connect(websocket)` が呼ばれる。§確定E: `origin is None` 通過設計の回帰防止 |
 
 ---
 
@@ -137,7 +139,8 @@ raw（integration 用）/ factory（unit 用）の使い分けは本 sub-feature
 - MSG-WSB-003〜005 の各文言が **静的文字列照合** で検証される ✅（TC-UT-WSB-102/104/110）
 - 確定A〜F の各設計凍結事項が対応するテストケースで検証される ✅
   - 確定D（accept 完了後 append + 失敗時非混入）: TC-UT-WSB-101/114 + TC-IT-WSB-101
-  - 確定E（Origin 明示検証）: TC-UT-WSB-115 + TC-IT-WSB-107
+  - 確定E（不正 Origin 拒否）: TC-UT-WSB-115 + TC-IT-WSB-107
+  - 確定E（ヘッダー不在通過の回帰防止）: TC-UT-WSB-116
 - 親 spec §9 受入基準 #1（接続確立）/ #2（task.state_changed 配信）/ #3（external_review_gate.state_changed 配信）/ #5（切断後の残存配信継続）は本 sub-feature の結合テストで部分カバー ✅
 - §9 受入基準 #4（agent.status_changed）/ #6（レイテンシ p95 2 秒）は `system-test-design.md` のシステムテストで検証
 - 行カバレッジ目標: `interfaces/http/connection_manager.py` + `interfaces/http/routers/ws.py` で **90% 以上**（feature-spec.md §10 Q-2 準拠）
