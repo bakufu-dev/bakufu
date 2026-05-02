@@ -38,6 +38,7 @@ from bakufu.domain.exceptions.llm_client import (
     LLMRateLimitError,
     LLMTimeoutError,
 )
+from bakufu.domain.exceptions.outbox import IllegalOutboxStateError, OutboxEventNotFoundError
 from bakufu.domain.exceptions.review_gate import (
     ExternalReviewGateInvariantViolation,
     ExternalReviewGateViolationKind,
@@ -69,6 +70,7 @@ __all__ = [
     "EmpireViolationKind",
     "ExternalReviewGateInvariantViolation",
     "ExternalReviewGateViolationKind",
+    "IllegalOutboxStateError",
     "InternalReviewGateInvariantViolation",
     "InternalReviewGateViolationKind",
     "LLMAPIError",
@@ -78,6 +80,7 @@ __all__ = [
     "LLMMessagesEmptyError",
     "LLMRateLimitError",
     "LLMTimeoutError",
+    "OutboxEventNotFoundError",
     "RoleProfileInvariantViolation",
     "RoleProfileViolationKind",
     "RoomInvariantViolation",

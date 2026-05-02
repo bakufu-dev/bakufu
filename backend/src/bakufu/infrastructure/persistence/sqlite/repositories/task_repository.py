@@ -263,6 +263,37 @@ class SqliteTaskRepository:
                 results.append(task)
         return results
 
+    async def list_by_status(self, status: TaskStatus) -> list[Task]:
+        """指定 ``status`` の全 Task を ``updated_at DESC, id DESC`` の順で返す。
+
+        StageWorker 起動時リカバリスキャン（§確定J）で ``IN_PROGRESS`` Task を
+        取得するために使用する。
+
+        ``(status, updated_at, id)`` 上の複合 INDEX ``ix_tasks_status_updated_id``
+        が WHERE フィルタと ORDER BY の両方をカバーする。
+        該当 Task が存在しない場合は ``[]`` を返す。
+        """
+        task_rows = list(
+            (
+                await self._session.execute(
+                    select(TaskRow)
+                    .where(TaskRow.status == status.value)
+                    .order_by(TaskRow.updated_at.desc(), TaskRow.id.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not task_rows:
+            return []
+
+        results: list[Task] = []
+        for task_row in task_rows:
+            task = await self.find_by_id(task_row.id)
+            if task is not None:
+                results.append(task)
+        return results
+
     # ---- private domain ↔ row converters (empire-repo §確定 C) -----------
 
     def _to_rows(

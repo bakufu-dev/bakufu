@@ -164,22 +164,24 @@ class StageWorker:
     async def _run_loop(self) -> None:
         """Queue consumer のメインループ。
 
+        §確定J: ループ開始前に IN_PROGRESS 孤立 Task をスキャンしてキューに再投入する。
         Semaphore を acquire → dispatch_stage → release のサイクルを繰り返す。
         sentinel（None）を受信するか _running が False になると終了する。
         dispatch_stage の例外は StageExecutorService 内で Task.block() 済みのため
         ここでは catchall ログのみ出して次のアイテムへ進む（REQ-ME-006 エラー時）。
         """
+        await self._recovery_scan()
         logger.info("[INFO] StageWorker _run_loop started")
         while self._running:
             item = await self._queue.get()
             if item is _SENTINEL:
                 break
-            task_id, stage_id = item
+            task_id, stage_id = item  # type: ignore[misc]
 
             # Semaphore acquire（上限に達した場合は自然にキューイングして待機）
             await self._semaphore.acquire()
             dispatch_task = asyncio.create_task(
-                self._dispatch_and_release(task_id, stage_id),
+                self._dispatch_and_release(task_id, stage_id),  # type: ignore[arg-type]
                 name=f"stage-dispatch-{task_id}-{stage_id}",
             )
             # 完了コールバックで self._active_tasks から自動削除する（RUF006 対応）。
@@ -187,6 +189,49 @@ class StageWorker:
             dispatch_task.add_done_callback(self._active_tasks.discard)
 
         logger.info("[INFO] StageWorker _run_loop finished")
+
+    async def _recovery_scan(self) -> None:
+        """起動時 IN_PROGRESS 孤立 Task リカバリスキャン（§確定J）。
+
+        StageWorker 起動時（Queue 処理ループ開始前）に ``IN_PROGRESS`` 状態の
+        全 Task を DB から取得し、Queue に再投入する。
+
+        admin-cli の ``retry-task`` が BLOCKED → IN_PROGRESS に変更した Task を
+        次回サーバー再起動時に自動的にピックアップする機構（Q-OPEN-2 解決策 Option A）。
+
+        冪等性: 起動時は Queue が空のため、同一 Task の二重投入は発生しない。
+        Queue maxsize 超過時は ``await self._queue.put()`` で自然に backpressure が発生
+        する（正常動作）。
+        """
+        from bakufu.domain.value_objects import TaskStatus
+
+        try:
+            async with self._session_factory() as session:
+                from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
+                    SqliteTaskRepository,
+                )
+
+                repo = SqliteTaskRepository(session)
+                in_progress_tasks = await repo.list_by_status(TaskStatus.IN_PROGRESS)
+
+            if not in_progress_tasks:
+                logger.info("[INFO] StageWorker: 起動時リカバリスキャン — 孤立 Task なし。")
+                return
+
+            count = len(in_progress_tasks)
+            for task in in_progress_tasks:
+                await self._queue.put((task.id, task.current_stage_id))
+
+            logger.info(
+                "[INFO] StageWorker: 起動時リカバリスキャン — %d 件の"
+                " IN_PROGRESS Task をキューに投入しました。",
+                count,
+            )
+        except Exception as exc:
+            logger.exception(
+                "[FAIL] StageWorker: 起動時リカバリスキャンに失敗しました: %s",
+                masking.mask(str(exc)),
+            )
 
     async def _dispatch_and_release(self, task_id: TaskId, stage_id: StageId) -> None:
         """dispatch_stage を呼び出し、完了後に Semaphore を release する。
