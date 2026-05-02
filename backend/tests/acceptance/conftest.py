@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.asyncio
 
 _POLL_INTERVAL = 0.05  # 秒
-_POLL_TIMEOUT = 30.0   # 秒
+_POLL_TIMEOUT = 30.0  # 秒
 
 
 class DelegateFakeLLMProvider:
@@ -53,9 +53,7 @@ class DelegateFakeLLMProvider:
     def tools_call_count(self) -> int:
         return self._inner._tools_call_count
 
-    async def chat(
-        self, messages, system, use_tools=False, agent_name="", session_id=None
-    ):
+    async def chat(self, messages, system, use_tools=False, agent_name="", session_id=None):
         return await self._inner.chat(messages, system, use_tools, agent_name, session_id)
 
     async def chat_with_tools(self, messages, system, tools, session_id=None):
@@ -137,6 +135,7 @@ async def acceptance_ctx(tmp_path: Path) -> AsyncIterator[AcceptanceCtx]:
 
     app.state.connection_manager = ConnectionManager()
     app.state.allowed_origins = ["http://test"]
+    app.state.stage_worker = stage_worker
 
     transport = ASGITransport(app=app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -173,9 +172,7 @@ async def poll_task_status(
         if data["status"] in expected:
             return data
         await asyncio.sleep(_POLL_INTERVAL)
-    raise TimeoutError(
-        f"Task {task_id} did not reach {expected} within {timeout}s"
-    )
+    raise TimeoutError(f"Task {task_id} did not reach {expected} within {timeout}s")
 
 
 async def poll_internal_review_gates(
@@ -184,11 +181,13 @@ async def poll_internal_review_gates(
     *,
     min_count: int = 1,
     timeout: float = _POLL_TIMEOUT,
+    owner_id: str | None = None,
 ) -> list[dict]:
     """InternalReviewGate が min_count 件以上になるまでポーリングしてリストを返す。"""
+    headers = {"Authorization": f"Bearer {owner_id}"} if owner_id is not None else {}
     deadline = asyncio.get_event_loop().time() + timeout
     while asyncio.get_event_loop().time() < deadline:
-        r = await client.get(f"/api/tasks/{task_id}/internal-review-gates")
+        r = await client.get(f"/api/tasks/{task_id}/internal-review-gates", headers=headers)
         assert r.status_code == 200, f"GET internal-review-gates failed: {r.status_code}"
         gates = r.json()
         if len(gates) >= min_count:
@@ -205,16 +204,16 @@ async def poll_gate_with_verdict(
     *,
     verdict: str,
     timeout: float = _POLL_TIMEOUT,
+    owner_id: str | None = None,
 ) -> dict:
     """指定した verdict を持つ InternalReviewGate が現れるまでポーリングして返す。"""
+    headers = {"Authorization": f"Bearer {owner_id}"} if owner_id is not None else {}
     deadline = asyncio.get_event_loop().time() + timeout
     while asyncio.get_event_loop().time() < deadline:
-        r = await client.get(f"/api/tasks/{task_id}/internal-review-gates")
+        r = await client.get(f"/api/tasks/{task_id}/internal-review-gates", headers=headers)
         assert r.status_code == 200
         for gate in r.json():
             if gate["gate_decision"] == verdict:
                 return gate
         await asyncio.sleep(_POLL_INTERVAL)
-    raise TimeoutError(
-        f"Task {task_id}: gate with verdict={verdict!r} not found within {timeout}s"
-    )
+    raise TimeoutError(f"Task {task_id}: gate with verdict={verdict!r} not found within {timeout}s")

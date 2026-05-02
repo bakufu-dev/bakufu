@@ -76,7 +76,7 @@ class Room(BaseModel):
     id: RoomId
     name: str
     description: str = ""
-    workflow_id: WorkflowId
+    workflow_id: WorkflowId | None = None
     members: list[AgentMembership] = []
     prompt_kit: PromptKit = PromptKit()
     archived: bool = False

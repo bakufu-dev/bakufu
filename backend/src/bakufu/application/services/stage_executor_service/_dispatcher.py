@@ -15,7 +15,7 @@ import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from bakufu.application.ports.agent_repository import AgentRepository
 from bakufu.application.ports.event_bus import EventBusPort
@@ -59,11 +59,6 @@ logger = logging.getLogger(__name__)
 
 # 並列 Agent アサインが複数の場合でも先頭を代表 Agent とする（MVP シリアル前提）。
 _PRIMARY_AGENT_INDEX: int = 0
-
-# §暫定実装: Outbox Dispatcher が未実装のため EXTERNAL_REVIEW Stage 遷移時に
-# ExternalReviewGate を直接生成する reviewer。
-# Outbox Dispatcher 実装（M6-A）後に本定数は削除し、Dispatcher がゲートを生成する。
-_SYSTEM_REVIEWER_ID = UUID("00000000-0000-0000-0000-000000000099")
 
 
 class _StageDispatcher:
@@ -466,12 +461,15 @@ class _StageDispatcher:
                     committed_by=agent_id,
                     committed_at=now,
                 )
+            _reviewer_id = (
+                current_task.assigned_agent_ids[0] if current_task.assigned_agent_ids else uuid4()
+            )
             gate = ExternalReviewGate(
                 id=uuid4(),
                 task_id=current_task.id,
                 stage_id=stage.id,
                 deliverable_snapshot=deliverable,
-                reviewer_id=_SYSTEM_REVIEWER_ID,
+                reviewer_id=_reviewer_id,
                 required_deliverable_criteria=(),
                 created_at=now,
             )
@@ -521,6 +519,13 @@ class _StageDispatcher:
                 )
                 return task, None, None, None
 
+            if room.workflow_id is None:
+                logger.error(
+                    "[FAIL] dispatch_stage: room=%s has no workflow for task=%s",
+                    room.id,
+                    task_id,
+                )
+                return task, None, None, None
             workflow = await self._workflow_repo.find_by_id(room.workflow_id)
             if workflow is None:
                 logger.error(

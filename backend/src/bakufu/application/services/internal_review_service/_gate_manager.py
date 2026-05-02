@@ -14,7 +14,7 @@ import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
-from uuid import UUID, uuid4
+from uuid import uuid4
 from weakref import WeakValueDictionary
 
 from bakufu.application.exceptions.gate_exceptions import (
@@ -53,11 +53,6 @@ if TYPE_CHECKING:
     from bakufu.application.ports.workflow_repository import WorkflowRepository
 
 logger = logging.getLogger(__name__)
-
-# §暫定実装: Outbox Dispatcher 未実装のため EXTERNAL_REVIEW 遷移時に
-# ExternalReviewGate を直接生成する reviewer UUID。
-# Outbox Dispatcher 実装（M6-A）後に本定数は削除し、Dispatcher がゲートを生成する。
-_SYSTEM_REVIEWER_ID = UUID("00000000-0000-0000-0000-000000000099")
 
 
 class InternalReviewService:
@@ -280,23 +275,20 @@ class InternalReviewService:
 
                 deliverable = task.current_deliverable
                 if deliverable is None:
-                    agent_id = (
-                        task.assigned_agent_ids[0]
-                        if task.assigned_agent_ids
-                        else uuid4()
-                    )
+                    agent_id = task.assigned_agent_ids[0] if task.assigned_agent_ids else uuid4()
                     deliverable = Deliverable(
                         stage_id=next_stage_id,
                         body_markdown="",
                         committed_by=agent_id,
                         committed_at=now,
                     )
+                _reviewer_id = task.assigned_agent_ids[0] if task.assigned_agent_ids else uuid4()
                 ext_gate = ExternalReviewGate(
                     id=uuid4(),
                     task_id=task.id,
                     stage_id=next_stage_id,
                     deliverable_snapshot=deliverable,
-                    reviewer_id=_SYSTEM_REVIEWER_ID,
+                    reviewer_id=_reviewer_id,
                     required_deliverable_criteria=(),
                     created_at=now,
                 )

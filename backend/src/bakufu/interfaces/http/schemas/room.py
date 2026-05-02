@@ -85,7 +85,7 @@ class RoomCreate(BaseModel):
 
     name: str = Field(min_length=1, max_length=80)
     description: str = Field(default="", max_length=500)
-    workflow_id: UUID
+    workflow_id: UUID | None = None
     prompt_kit_prefix_markdown: str = Field(default="", max_length=10000)
 
 
@@ -138,7 +138,7 @@ class RoomResponse(BaseModel):
     id: str
     name: str
     description: str
-    workflow_id: str
+    workflow_id: str | None
     members: list[MemberResponse]
     prompt_kit_prefix_markdown: str
     archived: bool
@@ -157,7 +157,7 @@ class RoomResponse(BaseModel):
                 "id": str(data.id),
                 "name": data.name,
                 "description": data.description,
-                "workflow_id": str(data.workflow_id),
+                "workflow_id": str(data.workflow_id) if data.workflow_id is not None else None,
                 "members": list(data.members),
                 "prompt_kit_prefix_markdown": data.prompt_kit.prefix_markdown,
                 "archived": data.archived,

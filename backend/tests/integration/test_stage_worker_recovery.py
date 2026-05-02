@@ -14,18 +14,17 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 from uuid import UUID
 
 import pytest
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
-from bakufu.domain.value_objects import TaskId, TaskStatus
+from bakufu.domain.value_objects import TaskStatus
 from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
     SqliteTaskRepository,
 )
 from bakufu.infrastructure.worker.stage_worker import StageWorker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from tests.factories.db import create_all_tables, make_test_engine, make_test_session_factory
 from tests.factories.directive import make_directive
@@ -33,7 +32,6 @@ from tests.factories.empire import make_empire
 from tests.factories.room import make_room
 from tests.factories.task import (
     make_blocked_task,
-    make_done_task,
     make_in_progress_task,
     make_task,
 )
@@ -151,9 +149,7 @@ class TestRecoveryScan:
 
         ip1 = make_in_progress_task(room_id=room_id, directive_id=directive_id)
         ip2 = make_in_progress_task(room_id=room_id, directive_id=directive_id)
-        pending = make_task(
-            room_id=room_id, directive_id=directive_id, status=TaskStatus.PENDING
-        )
+        pending = make_task(room_id=room_id, directive_id=directive_id, status=TaskStatus.PENDING)
 
         async with session_factory() as session, session.begin():
             repo = SqliteTaskRepository(session)

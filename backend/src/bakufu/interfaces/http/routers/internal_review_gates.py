@@ -3,17 +3,41 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
 from bakufu.interfaces.http.dependencies import SessionDep
+
+_MSG_INVALID_AUTH_HEADER = (
+    "[FAIL] Invalid or missing Authorization header.\n"
+    "Next: Set the header as: Authorization: Bearer <owner-id> (UUID format)."
+)
 
 task_internal_review_gates_router = APIRouter(
     prefix="/api/tasks",
     tags=["internal-review-gate"],
 )
+
+
+def _get_owner_id(
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+) -> UUID:
+    """Authorization: Bearer <owner-id> ヘッダーから OwnerId を抽出する。"""
+    if authorization is None:
+        raise HTTPException(status_code=422, detail=_MSG_INVALID_AUTH_HEADER)
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=422, detail=_MSG_INVALID_AUTH_HEADER)
+    token = authorization[len("Bearer ") :]
+    try:
+        return UUID(token)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=_MSG_INVALID_AUTH_HEADER) from exc
+
+
+_OwnerIdDep = Annotated[UUID, Depends(_get_owner_id)]
 
 
 class VerdictResponse(BaseModel):
@@ -47,11 +71,13 @@ class InternalReviewGateResponse(BaseModel):
 async def list_internal_review_gates_by_task(
     task_id: UUID,
     session: SessionDep,
+    owner_id: _OwnerIdDep,
 ) -> list[InternalReviewGateResponse]:
     """Task に紐づく全 InternalReviewGate を返す。
 
     受入テスト（SC-MVP-002 Step 5）の audit trail 確認および
     REJECTED / ALL_APPROVED 履歴の公開 API 参照先として使用する。
+    Authorization: Bearer <owner-id> ヘッダーが必要（Finding 2 対応）。
     """
     from bakufu.infrastructure.persistence.sqlite.repositories.internal_review_gate_repository import (  # noqa: E501
         SqliteInternalReviewGateRepository,

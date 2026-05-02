@@ -9,11 +9,10 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, call
+from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
 import pytest
-
 from bakufu.application.exceptions.task_exceptions import IllegalTaskStateError, TaskNotFoundError
 from bakufu.application.ports.outbox_event_repository import OutboxEventView
 from bakufu.application.services.admin_service import AdminService
@@ -24,7 +23,6 @@ from tests.factories.task import (
     make_blocked_task,
     make_cancelled_task,
     make_done_task,
-    make_in_progress_task,
 )
 
 # asyncio mark はクラスレベルで設定（sync テストクラスには付けない）

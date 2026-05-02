@@ -18,9 +18,6 @@ from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
 from bakufu.application.exceptions.task_exceptions import IllegalTaskStateError, TaskNotFoundError
 from bakufu.application.services.admin_service import AdminService
 from bakufu.domain.exceptions.outbox import IllegalOutboxStateError, OutboxEventNotFoundError
@@ -35,6 +32,8 @@ from bakufu.infrastructure.persistence.sqlite.repositories.task_repository impor
 )
 from bakufu.infrastructure.persistence.sqlite.tables.audit_log import AuditLogRow
 from bakufu.infrastructure.persistence.sqlite.tables.outbox import OutboxRow
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from tests.factories.db import create_all_tables, make_test_engine, make_test_session_factory
 from tests.factories.directive import make_directive
@@ -46,7 +45,6 @@ from tests.factories.task import (
     make_blocked_task,
     make_done_task,
     make_in_progress_task,
-    make_task,
 )
 from tests.factories.workflow import make_workflow
 

@@ -47,6 +47,11 @@ class DirectiveService:
             if room.archived:
                 raise RoomArchivedError(str(room_id))
 
+            if room.workflow_id is None:
+                raise WorkflowNotFoundError(
+                    f"Room {room_id} has no workflow attached;"
+                    " POST /api/rooms/{room_id}/workflows first"
+                )
             workflow = await self._workflow_repo.find_by_id(room.workflow_id)
             if workflow is None:
                 raise WorkflowNotFoundError(str(room.workflow_id))

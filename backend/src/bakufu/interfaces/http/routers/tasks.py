@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter
 
-from bakufu.interfaces.http.dependencies import TaskServiceDep
+from bakufu.interfaces.http.dependencies import StageWorkerDep, TaskServiceDep
 from bakufu.interfaces.http.schemas.task import (
     DeliverableCreate,
     TaskAssign,
@@ -80,6 +80,27 @@ async def cancel_task(task_id: UUID, service: TaskServiceDep) -> TaskResponse:
 async def unblock_task(task_id: UUID, service: TaskServiceDep) -> TaskResponse:
     """BLOCKED Task を再試行可能状態へ戻す。"""
     task = await service.unblock_retry(task_id)
+    return TaskResponse.model_validate(task)
+
+
+@tasks_router.post(
+    "/{task_id}/dispatch",
+    response_model=TaskResponse,
+    status_code=200,
+    summary="StageWorker への Stage 実行キューイング（受入テスト / 管理 API）",
+)
+async def dispatch_task(
+    task_id: UUID,
+    service: TaskServiceDep,
+    stage_worker: StageWorkerDep,
+) -> TaskResponse:
+    """Task を StageWorker にキューして Stage を実行する。
+
+    Task が IN_PROGRESS でなければ TaskStateConflictError（409）。
+    実行は非同期（enqueue 後即座に 200 を返す）。
+    """
+    task = await service.find_by_id(task_id)
+    stage_worker.enqueue(task_id, task.current_stage_id)
     return TaskResponse.model_validate(task)
 
 

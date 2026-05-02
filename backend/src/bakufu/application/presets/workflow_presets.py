@@ -431,8 +431,7 @@ WORKFLOW_PRESETS: dict[str, WorkflowPresetDefinition] = {
         preset_name="v-model",
         display_name="V モデル",
         description=(
-            "要件定義からリリース前承認まで V 字型プロセスを辿る"
-            " 14 ステージのワークフロー。"
+            "要件定義からリリース前承認まで V 字型プロセスを辿る 14 ステージのワークフロー。"
         ),
         name="V モデル開発プロセス",
         stages=_VMODEL_STAGES,

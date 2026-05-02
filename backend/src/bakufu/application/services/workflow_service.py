@@ -88,6 +88,8 @@ class WorkflowService:
         room = await self._room_repo.find_by_id(room_id)
         if room is None:
             raise RoomNotFoundError(str(room_id))
+        if room.workflow_id is None:
+            return None
         return await self._workflow_repo.find_by_id(room.workflow_id)
 
     async def find_by_id(self, workflow_id: WorkflowId) -> Workflow:
@@ -212,9 +214,21 @@ class WorkflowService:
             if s.get("completion_policy") is None:
                 s["completion_policy"] = {"kind": "manual", "description": ""}
             # notify_channels: URL strings → NotifyChannel dict format
-            s["notify_channels"] = [
-                {"kind": "discord", "target": url} for url in s.get("notify_channels", [])
-            ]
+            # Finding 3: <REDACTED: トークンを作成パスで弾く（不可逆性 self-lock 防止）
+            raw_channels: list[str] = s.get("notify_channels", [])
+            for url in raw_channels:
+                if "<REDACTED:" in url:
+                    from bakufu.domain.exceptions import WorkflowInvariantViolation
+
+                    raise WorkflowInvariantViolation(
+                        kind="masked_notify_channel",
+                        message=(
+                            "[FAIL] notify_channels must not contain masked tokens"
+                            " (<REDACTED:...>). Please provide the original webhook URL."
+                        ),
+                        detail={"masked_token": url},
+                    )
+            s["notify_channels"] = [{"kind": "discord", "target": url} for url in raw_channels]
             result.append(s)
         return result
 

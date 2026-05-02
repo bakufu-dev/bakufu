@@ -15,31 +15,25 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
-import pytest_asyncio
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from typer.testing import CliRunner
-
-from bakufu.application.exceptions.task_exceptions import IllegalTaskStateError, TaskNotFoundError
+from bakufu.application.exceptions.task_exceptions import TaskNotFoundError
 from bakufu.application.services.admin_service import BlockedTaskSummary, DeadLetterSummary
-from bakufu.domain.exceptions.outbox import OutboxEventNotFoundError
-from bakufu.domain.value_objects import TaskStatus
 from bakufu.infrastructure.persistence.sqlite.tables.audit_log import AuditLogRow
 from bakufu.interfaces.cli.admin import app
+from sqlalchemy import select
+from typer.testing import CliRunner
+
 from tests.factories.db import create_all_tables, make_test_engine, make_test_session_factory
 from tests.factories.directive import make_directive
 from tests.factories.empire import make_empire
 from tests.factories.room import make_room
-from tests.factories.task import make_blocked_task, make_done_task, make_task
+from tests.factories.task import make_blocked_task, make_done_task
 from tests.factories.workflow import make_workflow
-
 
 # ---------------------------------------------------------------------------
 # Fixture helpers
@@ -74,6 +68,7 @@ def _patch_build_service(
     Option-A 修正後: Tx 管理は AdminService 内部に移動したため、
     CLI 層では AdminService インスタンスのみを返す。
     """
+
     async def _fake_build() -> AsyncMock:
         return mock_service
 
@@ -432,9 +427,6 @@ async def _seed_entity_hierarchy(db_path: Path) -> tuple[UUID, UUID]:
     from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
         SqliteRoomRepository,
     )
-    from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
-        SqliteTaskRepository,
-    )
     from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
         SqliteWorkflowRepository,
     )
@@ -588,9 +580,7 @@ class TestAuditLogPersistenceViaCLI:
         assert "[FAIL]" in (result.output + result.stderr)
 
         audit_logs = asyncio.run(_read_audit_logs_from_db(db_path))
-        assert len(audit_logs) == 1, (
-            f"audit_log が 1 件期待されるが {len(audit_logs)} 件"
-        )
+        assert len(audit_logs) == 1, f"audit_log が 1 件期待されるが {len(audit_logs)} 件"
         assert audit_logs[0].result == "FAIL"
         assert audit_logs[0].command == "retry-task"
 
