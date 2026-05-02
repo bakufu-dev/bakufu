@@ -38,7 +38,6 @@ from bakufu.domain.exceptions.llm_provider import (
     LLMProviderTimeoutError,
 )
 from bakufu.domain.value_objects import (
-    AgentId,
     Deliverable,
     GateRole,
     StageId,
@@ -47,7 +46,6 @@ from bakufu.domain.value_objects import (
     TaskStatus,
     TransitionCondition,
 )
-from bakufu.domain.value_objects.identifiers import OwnerId, TransitionId
 from bakufu.infrastructure.security import masking
 
 if TYPE_CHECKING:
@@ -311,7 +309,9 @@ class StageExecutorService:
         deliverable = Deliverable(
             stage_id=stage.id,
             body_markdown=masked_body,
-            committed_by=AgentId(agent.id),
+            # BUG-ME-001 修正: AgentId は TypeAlias (type AgentId = UUID) のため
+            # AgentId(agent.id) は TypeError になる。agent.id は既に UUID のため直接渡す。
+            committed_by=agent.id,
             committed_at=now,
         )
 
@@ -329,22 +329,22 @@ class StageExecutorService:
             updated = current_task.commit_deliverable(
                 stage.id,
                 deliverable,
-                AgentId(agent.id),
+                agent.id,  # BUG-ME-001 修正: AgentId(agent.id) → agent.id
                 updated_at=now,
             )
 
             if next_transition is not None:
                 updated = updated.advance_to_next(
-                    TransitionId(next_transition.id),
-                    OwnerId(agent.id),
+                    next_transition.id,  # BUG-ME-001 修正: TransitionId(id) → id
+                    agent.id,  # BUG-ME-001 修正: OwnerId(agent.id) → agent.id
                     next_transition.to_stage_id,
                     updated_at=now,
                 )
             else:
                 # 終端 Stage → complete
                 updated = updated.complete(
-                    TransitionId(uuid4()),
-                    OwnerId(agent.id),
+                    uuid4(),  # BUG-ME-001 修正: TransitionId(uuid4()) → uuid4()
+                    agent.id,  # BUG-ME-001 修正: OwnerId(agent.id) → agent.id
                     updated_at=now,
                 )
 
