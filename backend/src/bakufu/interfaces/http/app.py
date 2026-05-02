@@ -64,6 +64,7 @@ from bakufu.interfaces.http.routers.role_profile import router as role_profile_r
 from bakufu.interfaces.http.routers.rooms import empire_rooms_router, rooms_router
 from bakufu.interfaces.http.routers.tasks import room_tasks_router, tasks_router
 from bakufu.interfaces.http.routers.workflows import room_workflows_router, workflows_router
+from bakufu.interfaces.http.routers.ws import router as ws_router
 
 
 def _parse_allowed_origins() -> list[str]:
@@ -76,14 +77,15 @@ def _parse_allowed_origins() -> list[str]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """lifespan: startup で masking / session_factory / event_bus 初期化、shutdown で dispose。"""
+    """lifespan: startup で masking / session_factory / event_bus / ConnectionManager 初期化。"""
     from bakufu.infrastructure.config import data_dir as data_dir_mod
     from bakufu.infrastructure.event_bus import InMemoryEventBus
     from bakufu.infrastructure.persistence.sqlite.engine import create_engine
     from bakufu.infrastructure.persistence.sqlite.session import make_session_factory
     from bakufu.infrastructure.security import masking as masking_mod
+    from bakufu.interfaces.http.connection_manager import ConnectionManager
 
-    # タブリーズ指摘 §確定F: dev_reload 子プロセスを含む全起動経路で Layer 1 を保証
+    # §確定F: dev_reload 子プロセスを含む全起動経路で masking Layer 1 を保証
     masking_mod.init()
 
     resolved_data_dir = data_dir_mod.resolve()
@@ -93,8 +95,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.engine = engine
     app.state.session_factory = session_factory
     # REQ-WSB-007: InMemoryEventBus をアプリケーションライフタイムで共有
-    # Issue #159 で ConnectionManager の subscribe() が追加される
-    app.state.event_bus = InMemoryEventBus()
+    event_bus = InMemoryEventBus()
+    app.state.event_bus = event_bus
+    # REQ-WSB-009/010/012: ConnectionManager 生成・登録・EventBus bridge 接続
+    cm = ConnectionManager()
+    app.state.connection_manager = cm
+    event_bus.subscribe(cm.handle_event)
+    # §確定E: Origin 検証に使用する許可リストを ws.py から参照できるよう保持
+    app.state.allowed_origins = _parse_allowed_origins()
 
     yield
 
@@ -256,6 +264,8 @@ def create_app() -> FastAPI:
     app.include_router(task_gates_router)
     app.include_router(deliverable_template_router)
     app.include_router(role_profile_router)
+    # REQ-WSB-011: WebSocket エンドポイント
+    app.include_router(ws_router)
 
     return app
 
