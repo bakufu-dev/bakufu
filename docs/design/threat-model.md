@@ -130,6 +130,7 @@ flowchart LR
 | WebSocket origin 偽装 | `Sec-WebSocket-Origin` 検証で許可 origin のみ受け入れ | 同上 |
 | docker-compose の `0.0.0.0` バインド | `ports:` は `"127.0.0.1:<host>:<container>"` 形式を強制し `0.0.0.0` バインドを禁止 | [`tech-stack.md`](tech-stack.md) §ポートバインド（外部公開禁止）|
 | docker-compose コンテナ間通信の CORS 漏洩 | frontend コンテナ（5173）→ backend（8000）は cross-origin。`CORSMiddleware` の `allow_origins` に `http://localhost:5173` を限定追加し、`*` は禁止 | [`docs/features/http-api-foundation/`](../features/http-api-foundation/) §CORS 設定 |
+| **Gate reviewer ID の識別メカニズム（VITE_REVIEWER_ID）** | ceo-dashboard の Gate action（approve / reject / cancel）は `Authorization: Bearer <VITE_REVIEWER_ID>` ヘッダで reviewer_id を受け渡す。バックエンドは UUID 形式検証のみ実施し、audit_trail に reviewer_id として記録する（権限確認・存在確認は Phase 2 RBAC 導入時）。`VITE_REVIEWER_ID` は Vite ビルド時に JS バンドルへ **平文で埋め込まれる**（DevTools → Sources で誰でも確認可能）。MVP は loopback 専用のためリスクは低いが、外部公開時は環境変数の役割を誤解しないよう注意。「`Authorization: Bearer` ヘッダが存在する ≠ 認証済み」であり、ヘッダ値を secret として扱ってはならない。外部公開時は reverse proxy 側で OIDC / Basic 認証を終端すること（A07 / Phase 2） | [`docs/features/ceo-dashboard/ui/detailed-design.md §確定B`](../features/ceo-dashboard/ui/detailed-design.md) |
 
 ### A4. 管理操作（T1 / T6 対策）
 
