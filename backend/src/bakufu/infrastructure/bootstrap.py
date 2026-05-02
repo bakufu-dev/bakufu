@@ -33,6 +33,8 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
+from bakufu.application.ports.event_bus import EventBusPort
+from bakufu.application.ports.llm_provider_port import LLMProviderPort
 from bakufu.application.services.template_library import TemplateLibrarySeeder
 from bakufu.infrastructure.config import data_dir
 from bakufu.infrastructure.exceptions import (
@@ -82,6 +84,8 @@ class Bootstrap:
         *,
         listener_starter: ListenerStarter | None = None,
         migration_runner: Callable[[AsyncEngine], Awaitable[str]] | None = None,
+        event_bus: EventBusPort | None = None,
+        llm_provider: LLMProviderPort | None = None,
     ) -> None:
         self._listener_starter = listener_starter
         # マイグレーションは Bootstrap から疎結合化されており、テストは
@@ -89,6 +93,11 @@ class Bootstrap:
         # ``infrastructure.persistence.sqlite.migrations`` の Alembic 駆動
         # 実装を渡す。
         self._migration_runner = migration_runner
+
+        # Stage 6.5 用: 外部から注入しない場合は Stage 6.5 で生成する。
+        # テストは stub を差し込んで Stage 6.5 の起動を制御できる。
+        self._event_bus: EventBusPort | None = event_bus
+        self._llm_provider: LLMProviderPort | None = llm_provider
 
         # Stage が成功するごとに状態を埋めていく。失敗時は LIFO クリーン
         # アップが逆順に走査する。
@@ -98,6 +107,9 @@ class Bootstrap:
         self._dispatcher_task: asyncio.Task[None] | None = None
         self._attachments_task: asyncio.Task[None] | None = None
         self._data_dir: Path | None = None
+        # Stage 6.5: StageWorker 起動制御（§確定 C）
+        self._stage_worker: object | None = None  # StageWorker（循環 import 回避のため object）
+        self._stage_worker_task: asyncio.Task[None] | None = None
 
     @property
     def app_engine(self) -> AsyncEngine | None:
@@ -126,6 +138,7 @@ class Bootstrap:
             await self._stage_4_pid_gc()
             self._stage_5_attachments()
             await self._stage_6_dispatcher()
+            await self._stage_6_5_stage_worker()
             self._stage_7_orphan_scheduler()
             await self._stage_8_listener()
         finally:
@@ -381,6 +394,34 @@ class Bootstrap:
             )
 
     # ------------------------------------------------------------------
+    # Stage 6.5: StageWorker 起動（§確定 C）。
+    # ------------------------------------------------------------------
+    async def _stage_6_5_stage_worker(self) -> None:
+        """StageWorker を asyncio.create_task でスケジュールし Stage 6.5 として登録する。
+
+        起動ロジックは StageWorkerBootstrap に委譲する（SRP）。
+        LLM プロバイダ未設定時は WARNING のみで StageWorker をスキップする。
+        """
+        if self._session_factory is None:  # pragma: no cover — stage ordering
+            raise BakufuConfigError(
+                msg_id="MSG-PF-002",
+                message="[FAIL] Bootstrap stage 6.5/8: session_factory not ready",
+            )
+
+        from bakufu.infrastructure.worker.stage_worker_bootstrap import StageWorkerBootstrap
+
+        stage_worker_bootstrap = StageWorkerBootstrap(
+            session_factory=self._session_factory,
+            event_bus=self._event_bus,
+            llm_provider=self._llm_provider,
+        )
+        await stage_worker_bootstrap.start()
+
+        self._stage_worker = stage_worker_bootstrap.worker
+        self._event_bus = stage_worker_bootstrap.event_bus
+        self._llm_provider = stage_worker_bootstrap.llm_provider
+
+    # ------------------------------------------------------------------
     # Stage 7: 添付ファイル オーファン GC スケジューラ。
     # ------------------------------------------------------------------
     def _stage_7_orphan_scheduler(self) -> None:
@@ -429,6 +470,14 @@ class Bootstrap:
         if self._attachments_task is not None:
             self._attachments_task.cancel()
             await asyncio.gather(self._attachments_task, return_exceptions=True)
+
+        # Stage 6.5 のクリーンアップ — LIFO 順（Stage 7 → Stage 6.5 → Stage 6）。
+        if self._stage_worker is not None:
+            with contextlib.suppress(Exception):
+                from bakufu.infrastructure.worker.stage_worker import StageWorker
+
+                if isinstance(self._stage_worker, StageWorker):
+                    await self._stage_worker.stop()
 
         if self._dispatcher is not None:
             await self._dispatcher.stop()

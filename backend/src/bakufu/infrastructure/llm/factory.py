@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from bakufu.application.ports.llm_client import AbstractLLMClient
 from bakufu.application.ports.llm_provider_port import LLMProviderPort
 from bakufu.infrastructure.llm.anthropic_llm_client import AnthropicLLMClient
@@ -18,6 +20,9 @@ from bakufu.infrastructure.llm.config import (
     LLMProviderEnum,
 )
 from bakufu.infrastructure.llm.openai_llm_client import OpenAILLMClient
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 # MSG-LC-009: 未知のプロバイダ
 _MSG_LC_009_TEMPLATE = (
@@ -56,11 +61,16 @@ _MSG_LC_009_CLI = (
 )
 
 
-def llm_provider_factory(config: LLMCliConfig) -> LLMProviderPort:
+def llm_provider_factory(
+    config: LLMCliConfig,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
+) -> LLMProviderPort:
     """LLMCliConfig に基づいて CLI サブプロセス LLM クライアントを返す（REQ-LC-014）。
 
     Args:
         config: LLMCliConfig インスタンス（provider が確定済み）。
+        session_factory: T3 セキュリティ用 pid_registry 操作に使用するセッションファクトリ。
+            None の場合は pid_registry への登録をスキップする（テスト・最小構成向け）。
 
     Returns:
         LLMProviderPort を満たすインスタンス。
@@ -72,6 +82,7 @@ def llm_provider_factory(config: LLMCliConfig) -> LLMProviderPort:
         return ClaudeCodeLLMClient(
             model_name=config.cli_model_name,
             timeout_seconds=config.timeout_seconds,
+            session_factory=session_factory,
         )
     if config.provider == LLMCliProviderEnum.CODEX:
         return CodexLLMClient(
