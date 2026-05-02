@@ -67,14 +67,16 @@ interfaces レイヤーの規律:
 ```
 backend/src/bakufu/application/
 ├── ports/
-│   ├── empire_repository.py            # EmpireRepositoryPort
-│   ├── room_repository.py              # RoomRepositoryPort
-│   ├── workflow_repository.py          # WorkflowRepositoryPort
-│   ├── agent_repository.py             # AgentRepositoryPort
-│   ├── task_repository.py              # TaskRepositoryPort
-│   ├── directive_repository.py         # DirectiveRepositoryPort
-│   ├── external_review_gate_repository.py  # ExternalReviewGateRepositoryPort
-│   └── event_bus.py                    # EventBusPort（M4 websocket-broadcast Issue #158）
+│   ├── empire_repository.py                    # EmpireRepositoryPort
+│   ├── room_repository.py                      # RoomRepositoryPort
+│   ├── workflow_repository.py                  # WorkflowRepositoryPort
+│   ├── agent_repository.py                     # AgentRepositoryPort
+│   ├── task_repository.py                      # TaskRepositoryPort
+│   ├── directive_repository.py                 # DirectiveRepositoryPort
+│   ├── external_review_gate_repository.py      # ExternalReviewGateRepositoryPort
+│   ├── event_bus.py                            # EventBusPort（M4 websocket-broadcast Issue #158）
+│   ├── llm_provider_port.py                    # LLMProviderPort（M5 stage-executor Issue #163）
+│   └── internal_review_gate_executor_port.py   # InternalReviewGateExecutorPort（M5-A #163 定義、M5-B #164 実装）
 └── services/
     ├── empire_service.py               # EmpireService（M3 骨格、M3-B で肉付け）
     ├── room_service.py                 # RoomService（M3 骨格、M3-C で肉付け）
@@ -82,7 +84,19 @@ backend/src/bakufu/application/
     ├── agent_service.py                # AgentService（M3 骨格、M3-E で肉付け）
     ├── task_service.py                 # TaskService（M3 骨格、M3-F で肉付け、M4 で event publish 追加）
     ├── external_review_gate_service.py # ExternalReviewGateService（M3 骨格、M3-G で肉付け、M4 で event publish 追加）
-    └── directive_service.py            # DirectiveService（M4 で event publish 追加）
+    ├── directive_service.py            # DirectiveService（M4 で event publish 追加）
+    └── stage_executor_service.py       # StageExecutorService（M5-A stage-executor Issue #163）
+                                        #   StageKind dispatch（WORK/INTERNAL_REVIEW/EXTERNAL_REVIEW）
+                                        #   LLMProviderError 5 分類 → Task.block()
+                                        #   retry_blocked_task() エントリポイント（M5-C #165 が利用）
+```
+
+StageExecutorService 追加に伴う infrastructure レイヤーへの追加（M5-A）:
+
+```
+backend/src/bakufu/infrastructure/
+└── worker/
+    └── stage_worker.py   # StageWorker（asyncio.Queue + asyncio.Semaphore、Bootstrap Stage 6.5 で起動）
 ```
 
 application レイヤーの規律:
