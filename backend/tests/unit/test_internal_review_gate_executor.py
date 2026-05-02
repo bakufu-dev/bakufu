@@ -147,7 +147,7 @@ class TestInitialToolCallSuccess:
 class TestBuildPrompt:
     """TC-UT-IRG-A103: _build_prompt() — 必須キーワードの存在確認（§確定 E）。"""
 
-    def test_build_prompt_contains_required_keywords(self) -> None:
+    async def test_build_prompt_contains_required_keywords(self) -> None:
         """TC-UT-IRG-A103: プロンプトに必須キーワードが含まれる。旧来の '1行目' は含まれない。"""
         executor = _make_executor()
         prompt = executor._build_prompt("security", "テスト成果物")
