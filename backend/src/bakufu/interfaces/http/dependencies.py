@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bakufu.application.ports.agent_repository import AgentRepository
 from bakufu.application.ports.directive_repository import DirectiveRepository
 from bakufu.application.ports.empire_repository import EmpireRepository
+from bakufu.application.ports.event_bus import EventBusPort
 from bakufu.application.ports.external_review_gate_repository import (
     ExternalReviewGateRepository,
 )
@@ -41,6 +42,7 @@ __all__ = [
     "DirectiveRepository",
     "DirectiveServiceDep",
     "EmpireRepository",
+    "EventBusPort",
     "ExternalReviewGateRepository",
     "GateServiceDep",
     "RoleProfileService",
@@ -55,6 +57,7 @@ __all__ = [
     "get_deliverable_template_service",
     "get_directive_service",
     "get_empire_service",
+    "get_event_bus",
     "get_external_review_gate_service",
     "get_role_profile_service",
     "get_room_matching_service",
@@ -74,6 +77,15 @@ async def get_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
 
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
+
+
+def get_event_bus(request: Request) -> EventBusPort:
+    """InMemoryEventBus を app.state から取得する DI ファクトリ（REQ-WSB-007）。
+
+    lifespan で生成された ``InMemoryEventBus`` を返す。
+    Issue #159 で ConnectionManager の subscribe() が追加される。
+    """
+    return request.app.state.event_bus  # type: ignore[no-any-return]
 
 
 async def get_empire_service(session: SessionDep) -> EmpireService:
@@ -220,7 +232,7 @@ async def get_agent_service(session: SessionDep) -> AgentService:
 AgentServiceDep = Annotated[AgentService, Depends(get_agent_service)]
 
 
-async def get_task_service(session: SessionDep) -> TaskService:
+async def get_task_service(session: SessionDep, request: Request) -> TaskService:
     """TaskService を DI 注入する。"""
     # 遅延 import: interfaces → infrastructure の直接依存を避けるため
     # モジュールロード時の循環参照リスクを回避し、
@@ -240,6 +252,7 @@ async def get_task_service(session: SessionDep) -> TaskService:
         room_repo=SqliteRoomRepository(session),
         agent_repo=SqliteAgentRepository(session),
         session=session,
+        event_bus=get_event_bus(request),
     )
 
 
@@ -275,6 +288,7 @@ DirectiveServiceDep = Annotated[DirectiveService, Depends(get_directive_service)
 
 async def get_external_review_gate_service(
     session: SessionDep,
+    request: Request,
 ) -> ExternalReviewGateService:
     """ExternalReviewGateService を DI 注入する。"""
     # 遅延 import: interfaces → infrastructure の直接依存を避けるため
@@ -289,7 +303,11 @@ async def get_external_review_gate_service(
 
     repo = SqliteExternalReviewGateRepository(session)
     template_repo = SqliteDeliverableTemplateRepository(session)
-    return ExternalReviewGateService(repo, template_repo)
+    return ExternalReviewGateService(
+        repo=repo,
+        template_repo=template_repo,
+        event_bus=get_event_bus(request),
+    )
 
 
 GateServiceDep = Annotated[ExternalReviewGateService, Depends(get_external_review_gate_service)]

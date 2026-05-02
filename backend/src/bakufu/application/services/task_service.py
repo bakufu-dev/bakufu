@@ -19,8 +19,10 @@ from bakufu.application.exceptions.task_exceptions import (
     TaskStateConflictError,
 )
 from bakufu.application.ports.agent_repository import AgentRepository
+from bakufu.application.ports.event_bus import EventBusPort
 from bakufu.application.ports.room_repository import RoomRepository
 from bakufu.application.ports.task_repository import TaskRepository
+from bakufu.domain.events import TaskStateChangedEvent
 from bakufu.domain.exceptions import TaskInvariantViolation
 from bakufu.domain.task.task import Task
 from bakufu.domain.value_objects import (
@@ -42,11 +44,13 @@ class TaskService:
         room_repo: RoomRepository,
         agent_repo: AgentRepository,
         session: AsyncSession,
+        event_bus: EventBusPort,
     ) -> None:
         self._task_repo = task_repo
         self._room_repo = room_repo
         self._agent_repo = agent_repo
         self._session = session
+        self._event_bus = event_bus
 
     async def find_by_id(self, task_id: TaskId) -> Task:
         """Task を返す。存在しない場合は ``TaskNotFoundError``。"""
@@ -83,6 +87,16 @@ class TaskService:
                 self._raise_conflict_if_needed(task, "cancel", exc)
                 raise
             await self._task_repo.save(updated)
+        # トランザクション commit 後に publish（業務操作成功後のみ）
+        await self._event_bus.publish(
+            TaskStateChangedEvent(
+                aggregate_id=str(task.id),
+                directive_id=str(task.directive_id),
+                old_status=str(task.status),
+                new_status=str(updated.status),
+                room_id=str(task.room_id),
+            )
+        )
         return updated
 
     async def unblock_retry(self, task_id: TaskId) -> Task:
@@ -95,6 +109,16 @@ class TaskService:
                 self._raise_conflict_if_needed(task, "unblock_retry", exc)
                 raise
             await self._task_repo.save(updated)
+        # トランザクション commit 後に publish（業務操作成功後のみ）
+        await self._event_bus.publish(
+            TaskStateChangedEvent(
+                aggregate_id=str(task.id),
+                directive_id=str(task.directive_id),
+                old_status=str(task.status),
+                new_status=str(updated.status),
+                room_id=str(task.room_id),
+            )
+        )
         return updated
 
     async def commit_deliverable(
@@ -128,6 +152,16 @@ class TaskService:
                 self._raise_conflict_if_needed(task, "commit_deliverable", exc)
                 raise
             await self._task_repo.save(updated)
+        # トランザクション commit 後に publish（業務操作成功後のみ）
+        await self._event_bus.publish(
+            TaskStateChangedEvent(
+                aggregate_id=str(task.id),
+                directive_id=str(task.directive_id),
+                old_status=str(task.status),
+                new_status=str(updated.status),
+                room_id=str(task.room_id),
+            )
+        )
         return updated
 
     async def _find_by_id_in_uow(self, task_id: TaskId) -> Task:

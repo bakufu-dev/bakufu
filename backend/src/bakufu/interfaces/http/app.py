@@ -76,8 +76,9 @@ def _parse_allowed_origins() -> list[str]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """lifespan: startup で session_factory を app.state に保持、shutdown で dispose (確定 B)。"""
+    """lifespan: startup で session_factory / event_bus を保持、shutdown で dispose (確定 B)。"""
     from bakufu.infrastructure.config import data_dir as data_dir_mod
+    from bakufu.infrastructure.event_bus import InMemoryEventBus
     from bakufu.infrastructure.persistence.sqlite.engine import create_engine
     from bakufu.infrastructure.persistence.sqlite.session import make_session_factory
 
@@ -87,6 +88,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     session_factory = make_session_factory(engine)
     app.state.engine = engine
     app.state.session_factory = session_factory
+    # REQ-WSB-007: InMemoryEventBus をアプリケーションライフタイムで共有
+    # Issue #159 で ConnectionManager の subscribe() が追加される
+    app.state.event_bus = InMemoryEventBus()
 
     yield
 

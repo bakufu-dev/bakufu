@@ -44,8 +44,11 @@ async def test_issue_rolls_back_directive_when_task_save_fails(tmp_path: Path) -
     engine = make_test_engine(tmp_path / "atomic_uow.db")
     await create_all_tables(engine)
     session_factory = make_test_session_factory(engine)
+    from bakufu.infrastructure.event_bus import InMemoryEventBus
+
     app.state.engine = engine
     app.state.session_factory = session_factory
+    app.state.event_bus = InMemoryEventBus()
 
     async def _override_directive_service(session: SessionDep) -> DirectiveService:
         return DirectiveService(

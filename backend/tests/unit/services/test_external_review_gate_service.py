@@ -36,7 +36,7 @@ class TestFindByIdOrRaise:
         mock_repo = AsyncMock()
         mock_repo.find_by_id = AsyncMock(return_value=gate)
 
-        service = ExternalReviewGateService(repo=mock_repo, template_repo=AsyncMock())
+        service = ExternalReviewGateService(repo=mock_repo, template_repo=AsyncMock(), event_bus=AsyncMock())
         result = await service.find_by_id_or_raise(gate.id)
 
         assert result is gate
@@ -51,7 +51,7 @@ class TestFindByIdOrRaise:
         mock_repo = AsyncMock()
         mock_repo.find_by_id = AsyncMock(return_value=None)
 
-        service = ExternalReviewGateService(repo=mock_repo, template_repo=AsyncMock())
+        service = ExternalReviewGateService(repo=mock_repo, template_repo=AsyncMock(), event_bus=AsyncMock())
         gate_id = uuid4()
 
         with pytest.raises(GateNotFoundError):
@@ -74,7 +74,7 @@ class TestApproveGate:
         gate = make_gate(reviewer_id=reviewer_id)
         mock_repo = AsyncMock()
 
-        service = ExternalReviewGateService(repo=mock_repo, template_repo=AsyncMock())
+        service = ExternalReviewGateService(repo=mock_repo, template_repo=AsyncMock(), event_bus=AsyncMock())
         result = await service.approve(
             gate=gate,
             reviewer_id=reviewer_id,
@@ -97,7 +97,7 @@ class TestApproveGate:
         gate = make_approved_gate(reviewer_id=reviewer_id)
         mock_repo = AsyncMock()
 
-        service = ExternalReviewGateService(repo=mock_repo, template_repo=AsyncMock())
+        service = ExternalReviewGateService(repo=mock_repo, template_repo=AsyncMock(), event_bus=AsyncMock())
 
         with pytest.raises(GateAlreadyDecidedError):
             await service.approve(

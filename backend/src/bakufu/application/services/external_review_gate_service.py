@@ -13,9 +13,12 @@ from bakufu.application.exceptions.gate_exceptions import (
 from bakufu.application.ports.deliverable_template_repository import (
     DeliverableTemplateRepository,
 )
+from bakufu.application.ports.event_bus import EventBusPort
 from bakufu.application.ports.external_review_gate_repository import (
     ExternalReviewGateRepository,
 )
+from bakufu.application.security import masking
+from bakufu.domain.events import ExternalReviewGateStateChangedEvent
 from bakufu.domain.exceptions import ExternalReviewGateInvariantViolation
 from bakufu.domain.external_review_gate.gate import ExternalReviewGate
 from bakufu.domain.value_objects import (
@@ -47,9 +50,11 @@ class ExternalReviewGateService:
         self,
         repo: ExternalReviewGateRepository,
         template_repo: DeliverableTemplateRepository,
+        event_bus: EventBusPort,
     ) -> None:
         self._repo = repo
         self._template_repo = template_repo
+        self._event_bus = event_bus
 
     async def create(
         self,
@@ -131,6 +136,9 @@ class ExternalReviewGateService:
         ExternalReviewGateInvariantViolation(kind='decision_already_decided')
         → GateAlreadyDecidedError (409) に変換する。save() は呼び出し元 router が
         async with session.begin() 内で行う（§確定E）。
+
+        domain 操作成功後に ``ExternalReviewGateStateChangedEvent`` を publish する。
+        ``reviewer_comment`` は ``masking.mask()`` 適用済みの値を渡す（§確定 F）。
         """
         if gate.reviewer_id != reviewer_id:
             raise GateAuthorizationError(
@@ -139,7 +147,7 @@ class ExternalReviewGateService:
                 expected_reviewer_id=gate.reviewer_id,
             )
         try:
-            return gate.approve(by_owner_id=reviewer_id, comment=comment, decided_at=decided_at)
+            updated = gate.approve(by_owner_id=reviewer_id, comment=comment, decided_at=decided_at)
         except ExternalReviewGateInvariantViolation as exc:
             if exc.kind == "decision_already_decided":
                 raise GateAlreadyDecidedError(
@@ -147,6 +155,17 @@ class ExternalReviewGateService:
                     current_decision=gate.decision,
                 ) from exc
             raise
+        # domain 操作成功後に publish（§確定 F: reviewer_comment は masking.mask() 適用）
+        await self._event_bus.publish(
+            ExternalReviewGateStateChangedEvent(
+                aggregate_id=str(gate.id),
+                task_id=str(gate.task_id),
+                old_status=str(gate.decision),
+                new_status=str(updated.decision),
+                reviewer_comment=masking.mask(comment),
+            )
+        )
+        return updated
 
     async def reject(
         self,
@@ -158,6 +177,9 @@ class ExternalReviewGateService:
         """Gate を差し戻す。
 
         approve と同構造。domain の gate.reject() に委譲する。
+
+        domain 操作成功後に ``ExternalReviewGateStateChangedEvent`` を publish する。
+        ``reviewer_comment`` は ``masking.mask()`` 適用済みの値を渡す（§確定 F）。
         """
         if gate.reviewer_id != reviewer_id:
             raise GateAuthorizationError(
@@ -166,7 +188,7 @@ class ExternalReviewGateService:
                 expected_reviewer_id=gate.reviewer_id,
             )
         try:
-            return gate.reject(
+            updated = gate.reject(
                 by_owner_id=reviewer_id, comment=feedback_text, decided_at=decided_at
             )
         except ExternalReviewGateInvariantViolation as exc:
@@ -176,6 +198,17 @@ class ExternalReviewGateService:
                     current_decision=gate.decision,
                 ) from exc
             raise
+        # domain 操作成功後に publish（§確定 F: reviewer_comment は masking.mask() 適用）
+        await self._event_bus.publish(
+            ExternalReviewGateStateChangedEvent(
+                aggregate_id=str(gate.id),
+                task_id=str(gate.task_id),
+                old_status=str(gate.decision),
+                new_status=str(updated.decision),
+                reviewer_comment=masking.mask(feedback_text),
+            )
+        )
+        return updated
 
     async def cancel(
         self,

@@ -47,8 +47,11 @@ async def dt_ctx(tmp_path: Path) -> AsyncIterator[DtTestCtx]:
     engine = make_test_engine(tmp_path / "dt_test.db")
     await create_all_tables(engine)
     session_factory = make_test_session_factory(engine)
+    from bakufu.infrastructure.event_bus import InMemoryEventBus
+
     app.state.engine = engine
     app.state.session_factory = session_factory
+    app.state.event_bus = InMemoryEventBus()
 
     transport = ASGITransport(app=app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
