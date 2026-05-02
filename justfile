@@ -74,3 +74,39 @@ commit-msg-no-ai-footer FILE:
     if grep -iqE '🤖.*Generated with.*Claude|Co-Authored-By:.*@anthropic\.com|Co-Authored-By:.*\bClaude\b' {{FILE}}; then
         exit 1
     fi
+
+# ============================================================
+# Docker Compose（統合起動環境）
+# ============================================================
+
+# Start backend + frontend containers (build if needed)
+up:
+    docker compose up --build -d
+
+# Stop containers
+down:
+    docker compose down
+
+# Stop containers and remove volumes (データ削除)
+down-v:
+    docker compose down -v
+
+# Follow container logs
+logs:
+    docker compose logs -f
+
+# Check backend health: GET http://localhost:8000/health → {"status":"ok"}
+health:
+    curl -sf http://localhost:8000/health
+
+# Initialize .env files from .env.example (Unix)
+[unix]
+env-init:
+    @[ -f backend/.env ] || cp backend/.env.example backend/.env && echo "✓ backend/.env initialized" || true
+    @[ -f frontend/.env ] || cp frontend/.env.example frontend/.env && echo "✓ frontend/.env initialized" || true
+
+# Initialize .env files from .env.example (Windows / PowerShell)
+[windows]
+env-init:
+    @if (-not (Test-Path backend/.env)) { Copy-Item backend/.env.example backend/.env; Write-Host "✓ backend/.env initialized" }
+    @if (-not (Test-Path frontend/.env)) { Copy-Item frontend/.env.example frontend/.env; Write-Host "✓ frontend/.env initialized" }

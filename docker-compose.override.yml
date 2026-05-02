@@ -1,0 +1,20 @@
+# bakufu 開発専用オーバーライド
+#
+# `docker compose up` で docker-compose.yml と自動合成される（Docker Compose 公式挙動）。
+# CI では `-f docker-compose.yml` のみ指定してこのファイルを排除すること。
+#
+# ⚠️ SQLite WAL × Docker bind mount 警告（Mac 必読）
+#   Docker Desktop for Mac（osxfs / gRPC FUSE）では SQLite WAL モードの locking が
+#   正しく機能しない既知問題がある。bakufu-data volume を bind mount に変更すると
+#   DB 破損リスクがある。Mac 環境では named volume（基底定義）を必ず維持すること。
+#   bind mount への変更は Linux ホスト + native FS のみ許可する。
+
+services:
+  frontend:
+    volumes:
+      # ソース bind mount: ホスト側の変更を即座にコンテナに反映し Vite HMR を有効化
+      # Linux / Mac 両対応（src/ は SQLite を含まないため WAL 問題なし）
+      - ./frontend/src:/app/frontend/src
+      - ./frontend/index.html:/app/frontend/index.html:ro
+      - ./frontend/vite.config.ts:/app/frontend/vite.config.ts:ro
+      - ./frontend/tsconfig.json:/app/frontend/tsconfig.json:ro
