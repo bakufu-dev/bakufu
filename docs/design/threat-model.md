@@ -12,12 +12,19 @@ flowchart LR
         direction TB
         Browser["Web ブラウザ<br/>（同一ユーザー権限）"]
         ReverseProxy["reverse proxy<br/>（Caddy / Nginx、外部公開時のみ）<br/>TLS 終端"]
-        Backend["bakufu Backend<br/>FastAPI + uvicorn<br/>127.0.0.1:8000 既定"]
+
+        subgraph DockerNet["docker-compose bridge network（境界 A.1: 境界 A と同等信頼）"]
+            FrontendC["frontend コンテナ<br/>Vite dev server<br/>ports: 127.0.0.1:5173:5173"]
+            BackendC["backend コンテナ<br/>FastAPI + uvicorn<br/>ports: 127.0.0.1:8000:8000<br/>コンテナ間: http://backend:8000"]
+            DataVol[("named volume<br/>bakufu-data<br/>uid=1000, 0600/0700")]
+        end
+
+        Backend["bakufu Backend<br/>FastAPI + uvicorn<br/>127.0.0.1:8000<br/>（ネイティブ起動時）"]
         DB[("SQLite WAL<br/>0600 mode")]
         FS[("BAKUFU_DATA_DIR<br/>添付ファイル<br/>0700 mode")]
         PidReg[("bakufu_pid_registry<br/>子プロセス追跡")]
         AuditLog[("audit_log<br/>追記のみ")]
-        SubProc["LLM CLI subprocess<br/>spawn / kill")"]
+        SubProc["LLM CLI subprocess<br/>spawn / kill"]
     end
 
     subgraph Network["外部ネットワーク（信頼境界 B: 不信）"]
@@ -30,20 +37,37 @@ flowchart LR
     Browser -- "HTTP / WebSocket" --> ReverseProxy
     ReverseProxy -. "HTTP（loopback）" .-> Backend
     Browser -. "直接（既定）<br/>loopback" .-> Backend
+    Browser -- "127.0.0.1:5173<br/>（docker compose 時）" --> FrontendC
+    Browser -- "127.0.0.1:8000<br/>（docker compose 時）" --> BackendC
+    FrontendC -- "docker internal<br/>http://backend:8000" --> BackendC
+    BackendC <--> DataVol
     Backend <--> DB
     Backend <--> FS
     Backend <--> PidReg
     Backend <--> AuditLog
     Backend -- "fork / exec<br/>env allow-list" --> SubProc
+    BackendC -- "fork / exec<br/>env allow-list" --> SubProc
     SubProc -- "HTTPS<br/>OAuth トークン<br/>local file" --> LLMRemote
     Backend -- "HTTPS<br/>Bot Token" --> Discord
+    BackendC -- "HTTPS<br/>Bot Token" --> Discord
     Backend -- "HTTPS<br/>OAuth / SSH" --> GitHub
+    BackendC -- "HTTPS<br/>OAuth / SSH" --> GitHub
 ```
 
-信頼境界は 2 層：
+信頼境界は 3 層：
 
 - **境界 A**: ローカル端末上の OS ユーザー領域。Backend / DB / 添付ストレージ / subprocess はすべてこの境界内。攻撃者が既に同一 OS ユーザー権限を取得していたら防御不能（前提）
+- **境界 A.1（docker-compose bridge network）**: `docker compose up` 使用時、backend / frontend コンテナが docker bridge network（`bakufu_default`）で接続される仮想ネットワーク層。境界 A の内側に完全に包含されるため**境界 A と同等の信頼レベル**として扱う。追加考慮事項は下記「docker-compose ネットワーク境界」セクションを参照
 - **境界 B**: 外部ネットワーク。Discord / GitHub / LLM プロバイダ。すべて不信扱い、TLS 必須、トークンは最小権限
+
+#### docker-compose ネットワーク境界（境界 A.1）補足
+
+| 考慮事項 | 方針 |
+|----|-----|
+| コンテナ間通信の信頼レベル | 境界 A.1 は境界 A と同等信頼とする。ただし frontend → backend のコンテナ間通信は `http://backend:8000`（docker DNS 解決）を使用し、loopback `127.0.0.1` は経由しない |
+| ポート外部露出の禁止 | `docker-compose.yml` の `ports:` は **`"127.0.0.1:<host>:<container>"` 形式を強制**。`"<port>:<port>"`（`0.0.0.0` バインド）は外部 IP への露出となるため禁止（tech-stack.md §ポートバインド と連動） |
+| コンテナ内 root 実行の禁止 | backend / frontend コンテナは uid=1000 の non-root ユーザーで実行必須。named volume 上のファイル所有者を uid=1000 に統一し、root 所有ファイルがホスト側に出現する経路を排除する |
+| ネイティブ起動との共存 | ネイティブ起動（docker なし）では境界 A.1 は存在しない。既存の境界 A だけで完結する |
 
 ## 主要資産と機密性レベル
 
@@ -104,6 +128,8 @@ flowchart LR
 | Cookie 漏洩 | `BAKUFU_TRUST_PROXY=true` 時、`Set-Cookie` に `Secure` / `HttpOnly` / `SameSite=Strict` を強制 | 同上 |
 | CSRF | SameSite=Strict + 状態変更 API は `Origin` ヘッダ検証 | feature `docs/features/http-api/` で詳細 |
 | WebSocket origin 偽装 | `Sec-WebSocket-Origin` 検証で許可 origin のみ受け入れ | 同上 |
+| docker-compose の `0.0.0.0` バインド | `ports:` は `"127.0.0.1:<host>:<container>"` 形式を強制し `0.0.0.0` バインドを禁止 | [`tech-stack.md`](tech-stack.md) §ポートバインド（外部公開禁止）|
+| docker-compose コンテナ間通信の CORS 漏洩 | frontend コンテナ（5173）→ backend（8000）は cross-origin。`CORSMiddleware` の `allow_origins` に `http://localhost:5173` を限定追加し、`*` は禁止 | [`docs/features/http-api-foundation/`](../features/http-api-foundation/) §CORS 設定 |
 
 ### A4. 管理操作（T1 / T6 対策）
 
