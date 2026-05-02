@@ -31,43 +31,53 @@ async def _uvicorn_starter() -> None:
     組み合わせることで開発時のホットリロードを実現する（tech-stack.md §開発専用オーバーライド）。
 
     .. note::
-        reload=True 時は ``app`` オブジェクトではなく import string を渡す。
-        uvicorn の reload manager は子プロセスが app を再 import する際に
-        import string（``"module:attr"``）が必須であり、オブジェクト渡しでは
-        ``WARNING: Current configuration will not reload`` と出力して reload を
-        黙殺する（uvicorn 0.46.0 以降の挙動）。
-        通常時（reload=False）は app オブジェクトを直接渡すことで型安全性を維持する。
+        reload 時は ``uvicorn.run()`` を使う。
+        ``uvicorn.Server(config).serve()`` は ``config.should_reload`` を評価せず
+        ``ChangeReload`` サブプロセスを起動しないため、``reload=True`` を渡しても
+        ファイル監視が一切行われない（BUG-005）。
+        ``uvicorn.run()`` のみが ``ChangeReload.run()`` を呼び出してホットリロードを実現する。
+
+        ``uvicorn.run()`` は同期ブロッキング呼び出しのため、
+        ``asyncio.get_running_loop().run_in_executor`` でスレッド上で実行する。
+
+        通常時（reload=False）は ``uvicorn.Server.serve()`` を維持する
+        （同一イベントループ上で動作し、型安全性・テスト容易性を保つ）。
     """
     import uvicorn
 
     dev_reload = os.environ.get("BAKUFU_DEV_RELOAD", "").lower() in {"true", "1", "yes"}
     reload_dir = os.environ.get("BAKUFU_RELOAD_DIR", "/app/backend/src")
+    host = os.environ.get("BAKUFU_BIND_HOST", "127.0.0.1")
+    port = int(os.environ.get("BAKUFU_BIND_PORT", "8000"))
 
     if dev_reload:
-        # reload 時: import string 必須（オブジェクト渡しでは reload が黙殺される）
-        config = uvicorn.Config(
-            _APP_IMPORT_STRING,
-            host=os.environ.get("BAKUFU_BIND_HOST", "127.0.0.1"),
-            port=int(os.environ.get("BAKUFU_BIND_PORT", "8000")),
-            loop="asyncio",
-            log_level="info",
-            reload=True,
-            reload_dirs=[reload_dir],
+        # reload 時: uvicorn.run() 経由でのみ ChangeReload が起動する（BUG-005 対応）。
+        # uvicorn.run() は同期ブロッキングのため run_in_executor でスレッド上で実行する。
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            None,
+            lambda: uvicorn.run(
+                _APP_IMPORT_STRING,
+                host=host,
+                port=port,
+                log_level="info",
+                reload=True,
+                reload_dirs=[reload_dir],
+            ),
         )
     else:
-        # 通常時: app オブジェクトを直接渡す（型安全、テスト容易性を維持）
+        # 通常時: uvicorn.Server.serve() で同一イベントループ上で動作（型安全・テスト容易）
         from bakufu.interfaces.http.app import app
 
         config = uvicorn.Config(
             app,
-            host=os.environ.get("BAKUFU_BIND_HOST", "127.0.0.1"),
-            port=int(os.environ.get("BAKUFU_BIND_PORT", "8000")),
+            host=host,
+            port=port,
             loop="asyncio",
             log_level="info",
         )
-
-    server = uvicorn.Server(config)
-    await server.serve()
+        server = uvicorn.Server(config)
+        await server.serve()
 
 
 async def _run() -> int:
