@@ -16,7 +16,12 @@ dependencies = [
     "anthropic>=0.40.0",
     "openai>=1.30.0",
     "pydantic-settings>=2.0.0",
+    "typer>=0.15",
+    "tabulate>=0.9",
 ]
+
+[project.scripts]
+"bakufu-admin" = "bakufu.interfaces.cli.admin:app"
 
 [build-system]
 requires = ["hatchling"]

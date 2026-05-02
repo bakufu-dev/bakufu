@@ -112,5 +112,17 @@ class TaskRepository(Protocol):
         """
         ...
 
+    async def list_by_status(self, status: TaskStatus) -> list[Task]:
+        """指定 ``status`` の全 Task を ``updated_at DESC, id DESC`` の順で返す。
+
+        StageWorker の起動時リカバリスキャン（§確定J）で ``IN_PROGRESS`` Task を
+        取得するために使用する。admin-cli でも任意 status の列挙に使用可能。
+
+        ORDER BY ``updated_at DESC, id DESC``（BUG-EMR-001 規約に準拠）。
+
+        該当 status の Task が存在しない場合は ``[]`` を返す。
+        """
+        ...
+
 
 __all__ = ["TaskRepository"]
