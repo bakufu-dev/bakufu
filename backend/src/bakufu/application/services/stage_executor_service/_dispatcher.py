@@ -461,9 +461,16 @@ class _StageDispatcher:
                     committed_by=agent_id,
                     committed_at=now,
                 )
-            _reviewer_id = (
-                current_task.assigned_agent_ids[0] if current_task.assigned_agent_ids else uuid4()
-            )
+            # Fail Fast: assigned_agent_ids が空なら reviewer_id が決定不能 → 永久ロック防止
+            if not current_task.assigned_agent_ids:
+                msg = (
+                    f"[FAIL] _request_external_review: task={task.id} has no assigned agents;"
+                    " cannot create ExternalReviewGate with deterministic reviewer_id."
+                    " Next: assign an agent to the task and retry."
+                )
+                logger.error("%s", msg)
+                raise ValueError(msg)
+            _reviewer_id = current_task.assigned_agent_ids[0]
             gate = ExternalReviewGate(
                 id=uuid4(),
                 task_id=current_task.id,

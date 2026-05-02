@@ -77,11 +77,28 @@ async def list_internal_review_gates_by_task(
 
     受入テスト（SC-MVP-002 Step 5）の audit trail 確認および
     REJECTED / ALL_APPROVED 履歴の公開 API 参照先として使用する。
-    Authorization: Bearer <owner-id> ヘッダーが必要（Finding 2 対応）。
+
+    Authorization: Bearer <owner-id> ヘッダー必須（Finding 2 対応）。
+    owner_id が Task の assigned_agent_ids に含まれない場合は 403 を返す（IDOR 防御）。
     """
     from bakufu.infrastructure.persistence.sqlite.repositories.internal_review_gate_repository import (  # noqa: E501
         SqliteInternalReviewGateRepository,
     )
+    from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
+        SqliteTaskRepository,
+    )
+
+    # IDOR 防御: owner_id が task の assigned_agent_ids に含まれるか確認（Finding 2 残存修正）
+    task_repo = SqliteTaskRepository(session)
+    task = await task_repo.find_by_id(task_id)
+    if task is None or owner_id not in task.assigned_agent_ids:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "[FAIL] Access denied: owner_id is not an assigned agent of this task.\n"
+                "Next: Verify the task_id and your Authorization token."
+            ),
+        )
 
     repo = SqliteInternalReviewGateRepository(session)
     gates = await repo.find_all_by_task_id(task_id)
