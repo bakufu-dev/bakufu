@@ -19,6 +19,8 @@ from bakufu.infrastructure.bootstrap import Bootstrap
 from bakufu.infrastructure.exceptions import BakufuConfigError
 from bakufu.infrastructure.persistence.sqlite.migrations import run_upgrade_head
 
+_APP_IMPORT_STRING = "bakufu.interfaces.http.app:app"
+
 
 async def _uvicorn_starter() -> None:
     """Stage-8 listener_starter: run uvicorn serving the FastAPI app (確定 G)。
@@ -27,22 +29,43 @@ async def _uvicorn_starter() -> None:
     ``BAKUFU_RELOAD_DIR``（デフォルト: ``/app/backend/src``）を監視してホットリロードする。
     docker-compose.override.yml で ``BAKUFU_DEV_RELOAD=true`` + ソース bind mount と
     組み合わせることで開発時のホットリロードを実現する（tech-stack.md §開発専用オーバーライド）。
+
+    .. note::
+        reload=True 時は ``app`` オブジェクトではなく import string を渡す。
+        uvicorn の reload manager は子プロセスが app を再 import する際に
+        import string（``"module:attr"``）が必須であり、オブジェクト渡しでは
+        ``WARNING: Current configuration will not reload`` と出力して reload を
+        黙殺する（uvicorn 0.46.0 以降の挙動）。
+        通常時（reload=False）は app オブジェクトを直接渡すことで型安全性を維持する。
     """
     import uvicorn
 
-    from bakufu.interfaces.http.app import app
-
     dev_reload = os.environ.get("BAKUFU_DEV_RELOAD", "").lower() in {"true", "1", "yes"}
     reload_dir = os.environ.get("BAKUFU_RELOAD_DIR", "/app/backend/src")
-    config = uvicorn.Config(
-        app,
-        host=os.environ.get("BAKUFU_BIND_HOST", "127.0.0.1"),
-        port=int(os.environ.get("BAKUFU_BIND_PORT", "8000")),
-        loop="asyncio",
-        log_level="info",
-        reload=dev_reload,
-        reload_dirs=[reload_dir] if dev_reload else None,
-    )
+
+    if dev_reload:
+        # reload 時: import string 必須（オブジェクト渡しでは reload が黙殺される）
+        config = uvicorn.Config(
+            _APP_IMPORT_STRING,
+            host=os.environ.get("BAKUFU_BIND_HOST", "127.0.0.1"),
+            port=int(os.environ.get("BAKUFU_BIND_PORT", "8000")),
+            loop="asyncio",
+            log_level="info",
+            reload=True,
+            reload_dirs=[reload_dir],
+        )
+    else:
+        # 通常時: app オブジェクトを直接渡す（型安全、テスト容易性を維持）
+        from bakufu.interfaces.http.app import app
+
+        config = uvicorn.Config(
+            app,
+            host=os.environ.get("BAKUFU_BIND_HOST", "127.0.0.1"),
+            port=int(os.environ.get("BAKUFU_BIND_PORT", "8000")),
+            loop="asyncio",
+            log_level="info",
+        )
+
     server = uvicorn.Server(config)
     await server.serve()
 
