@@ -47,6 +47,12 @@ COPY --from=builder /app/.venv /app/.venv
 # アプリケーションソースをコピー（editable install の .pth が /app/backend/src を指す）
 COPY --from=builder /app/backend/src /app/backend/src
 
+# Alembic マイグレーションファイルをコピー
+# Bootstrap stage 3 が /app/backend/alembic.ini を参照するため必須
+# （src/ のみコピーでは CommandError: Path doesn't exist: /app/backend/alembic が発生する）
+COPY backend/alembic.ini backend/alembic.ini
+COPY backend/alembic/ backend/alembic/
+
 # データディレクトリを事前作成し、bakufu (uid=1000) に所有させる
 # volume mount 後もファイル所有者が uid=1000 になる（root 所有ファイルのホスト流出防止）
 RUN mkdir -p /app/data \
