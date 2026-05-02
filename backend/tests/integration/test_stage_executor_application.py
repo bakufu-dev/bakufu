@@ -7,6 +7,8 @@ Issue: #163 feat(M5-A): stage-executorサービス実装
 前提:
 - DB: tmp_path ベースの SQLite（create_all_tables 実行済み）
 - LLM: make_stub_llm_provider() / make_stub_llm_provider_raises() で stub（実 subprocess 不使用）
+       ただし TC-IT-ME-103 のみ ClaudeCodeLLMClient + python3 スタブプロセスで
+       pid_registry ライフサイクル検証
 - EventBus: InMemoryEventBus() + spy handler
 - masking: 実実装（API キー環境変数クリア済み）
 """
@@ -14,10 +16,11 @@ Issue: #163 feat(M5-A): stage-executorサービス実装
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
@@ -314,36 +317,98 @@ class TestWorkStageIntegration:
             f"終端 Stage で DONE にならなかった: {task.status}"
         )
 
-    async def test_tc_it_me_103_pid_registry_empty_after_stub(
+    async def test_tc_it_me_103_pid_registry_lifecycle(
         self, session_factory: async_sessionmaker[AsyncSession]
     ) -> None:
-        """TC-IT-ME-103: T3 — stub LLM 使用後 bakufu_pid_registry テーブルが空（孤児なし）。
+        """TC-IT-ME-103: T3 — ClaudeCodeLLMClient の pid_registry INSERT→DELETE ライフサイクル。
 
-        stub は実 subprocess を起動しないため pid_registry に行を挿入しない。
-        呼び出し完了後もテーブルが空であることを確認する。
+        ClaudeCodeLLMClient に session_factory を注入し、asyncio.create_subprocess_exec を
+        python3（軽量スタブ、実 OS プロセス）で差し替える。
+        - chat() 実行中（communicate() 完了前）に pid が pid_registry に INSERT されていること
+        - chat() 完了後に pid_registry が空（DELETE 実行済み）であること
+        を spy で確認する。以前の stub テストはこのライフサイクルを検証していなかった
+        （タブリーズ査読指摘）。
         """
-        from bakufu.infrastructure.persistence.sqlite.tables.pid_registry import (
-            PidRegistryRow,
-        )
+        from bakufu.infrastructure.llm.claude_code_llm_client import ClaudeCodeLLMClient
+        from bakufu.infrastructure.persistence.sqlite.tables.pid_registry import PidRegistryRow
         from sqlalchemy import func, select
 
-        _, _, _, _, task_id, stage_id = await _seed_full_context(session_factory)
+        # asyncio.create_subprocess_exec の元の関数を patch 前に退避（再帰呼び出し防止）
+        _real_cse = asyncio.create_subprocess_exec
 
-        chat_result = ChatResult(response="stub result", session_id=None)
-        llm_provider = make_stub_llm_provider(responses=[chat_result])
+        # python3 で有効な JSONL を出力する軽量スタブ（実 OS プロセス = 実 PID を持つ）
+        _jsonl = json.dumps(
+            {
+                "type": "result",
+                "result": "pid_registry lifecycle OK",
+                "session_id": "test-lifecycle-session",
+            }
+        )
 
-        async with session_factory() as session:
-            service = _make_service(session, llm_provider=llm_provider)
-            await service.dispatch_stage(task_id, stage_id)
+        async def _python_stub(*_args: object, **_kwargs: object) -> object:
+            """claude CLI の代わりに python3 で JSONL を標準出力する軽量スタブ。"""
+            return await _real_cse(
+                "python3",
+                "-c",
+                f"print({_jsonl!r})",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
 
-        # pid_registry テーブルが空であること（孤児行なし）
-        async with session_factory() as session, session.begin():
-            count = (
-                await session.execute(
-                    select(func.count()).select_from(PidRegistryRow)
-                )
+        client = ClaudeCodeLLMClient(
+            model_name="claude-test",
+            timeout_seconds=30.0,
+            session_factory=session_factory,
+        )
+
+        # INSERT 直後の pid_registry 行数を記録する spy
+        spy_insert_counts: list[int] = []
+        _original_register = client._register_pid
+
+        async def _spy_register(pid: int, cmd: list) -> None:  # type: ignore[type-arg]
+            await _original_register(pid, cmd)
+            # INSERT がコミットされた直後: pid_registry に 1 行あるはず
+            async with session_factory() as s, s.begin():
+                row_count = (
+                    await s.execute(
+                        select(func.count())
+                        .select_from(PidRegistryRow)
+                        .where(PidRegistryRow.pid == pid)
+                    )
+                ).scalar_one()
+            spy_insert_counts.append(row_count)
+
+        client._register_pid = _spy_register  # type: ignore[method-assign]
+
+        with patch(
+            "bakufu.infrastructure.llm.claude_code_llm_client.asyncio.create_subprocess_exec",
+            new=_python_stub,
+        ):
+            result = await client.chat(
+                messages=[{"role": "user", "content": "pid registry lifecycle test"}],
+                system="test system",
+            )
+
+        # 1. LLM 応答テキストが正しいこと（subprocess が正常終了した証拠）
+        assert result.response == "pid_registry lifecycle OK", (
+            f"期待した応答テキストが得られなかった: {result.response!r}"
+        )
+        # 2. INSERT が実行されたこと（spy で確認）
+        assert spy_insert_counts, (
+            "pid_registry INSERT が実行されなかった（_register_pid が呼ばれていない）"
+        )
+        assert spy_insert_counts[0] == 1, (
+            f"INSERT 直後の pid_registry 行数が 1 ではない: {spy_insert_counts}"
+        )
+        # 3. chat() 完了後: DELETE が実行されて pid_registry は空であること
+        async with session_factory() as s, s.begin():
+            final_count = (
+                await s.execute(select(func.count()).select_from(PidRegistryRow))
             ).scalar_one()
-        assert count == 0, f"bakufu_pid_registry に孤児行 {count} 件が残っている"
+        assert final_count == 0, (
+            f"chat() 完了後に pid_registry が空でない: {final_count} 行残存"
+            " （_unregister_pid の DELETE が実行されていない）"
+        )
 
 
 # ---------------------------------------------------------------------------

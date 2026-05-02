@@ -571,6 +571,53 @@ class TestDispatchStageExternalReview:
         llm_provider.chat.assert_not_called()
         internal_review_port.execute.assert_not_called()
 
+    async def test_tc_ut_me_302_external_review_fail_fast_state_changed(self) -> None:
+        """TC-UT-ME-302: _request_external_review Fail Fast。
+        書き込みフェーズで状態変化 → ValueError。
+
+        §確定 F Option A: _load_context で取得した IN_PROGRESS Task が、書き込みフェーズの
+        re-fetch 時に status が変わっていた場合は ValueError を raise する（silent return 禁止）。
+        ヘルスバーグ査読指摘（silent return → ValueError 変更に対応するテストが存在しなかった）。
+        """
+        task_repo = AsyncMock()
+        workflow_repo = AsyncMock()
+        agent_repo = AsyncMock()
+        room_repo = AsyncMock()
+
+        # EXTERNAL_REVIEW Stage のコンテキストを設定
+        _ext_task, _stage, task_id, stage_id = _setup_work_stage_context(
+            task_repo,
+            workflow_repo,
+            agent_repo,
+            room_repo,
+            stage_kind=StageKind.EXTERNAL_REVIEW,
+        )
+
+        # _load_context（1回目）: IN_PROGRESS Task
+        # _request_external_review 内 re-fetch（2回目）: DONE Task（並行更新をシミュレート）
+        in_progress_task = task_repo.find_by_id.return_value
+        done_task = make_task(
+            status=TaskStatus.DONE,
+            current_stage_id=stage_id,
+            room_id=in_progress_task.room_id,
+            assigned_agent_ids=list(in_progress_task.assigned_agent_ids),
+        )
+        task_repo.find_by_id.side_effect = [in_progress_task, done_task]
+
+        service = _make_service(
+            task_repo=task_repo,
+            workflow_repo=workflow_repo,
+            agent_repo=agent_repo,
+            room_repo=room_repo,
+        )
+
+        # Fail Fast: 書き込みフェーズで status が IN_PROGRESS でない → ValueError（§確定 F）
+        with pytest.raises(ValueError, match="_request_external_review"):
+            await service.dispatch_stage(task_id, stage_id)
+
+        # Task が BLOCKED に遷移していないこと（save は呼ばれていない）
+        task_repo.save.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # REQ-ME-004: LLM エラー 5 分類 + EmptyResponse → BLOCKED
