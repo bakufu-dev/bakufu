@@ -2,6 +2,7 @@
 
 > 関連: feature-spec.md §9 受入基準 8〜10, 12（受入基準 1〜7, 11 は domain IT/UT — [`domain/test-design.md`](domain/test-design.md) が担当）
 > 対象: UC-IRG-002〜006（InternalReviewGate ライフサイクル全体 E2E）
+> M5-B 追加: TC-ST-IRG-005〜007（application / repository sub-feature E2E）
 
 本ドキュメントは InternalReviewGate **業務概念全体** のシステムテスト戦略を凍結する。sub-feature（domain）の IT / UT はそれぞれの `test-design.md` が担当する。
 
@@ -86,6 +87,26 @@ sequenceDiagram
     Note over App,Task: 受入基準 #9 達成
 ```
 
+## M5-B 追加システムテストケース（application / repository sub-feature）
+
+### TC-ST-IRG-005: 並列 GateRole LLM 実行 — asyncio.gather による独立並列審査
+
+| テストID | ペルソナ | シナリオ | 操作手順 | 期待結果 | 紐付く受入基準 |
+|---------|---------|---------|---------|---------|------------|
+| TC-ST-IRG-005 | GateRole エージェント（複数）| INTERNAL_REVIEW Stage に 3 GateRole が並列審査し、全 APPROVED → ExternalReviewGate 生成 | 1) mock LLMProviderPort（reviewer / ux / security 全 APPROVED 応答）を設定 → 2) `InternalReviewGateExecutor.execute(task_id, stage_id, {"reviewer","ux","security"})` を await → 3) LLMProviderPort.chat() 呼び出し確認 → 4) Gate 状態確認 | LLMProviderPort.chat() が 3 回呼ばれる（各呼び出しの session_id が互いに異なる UUID v4）/ Gate が ALL_APPROVED に遷移 / ExternalReviewGateService.create() が呼ばれる | #8（ALL_APPROVED 後の次フェーズ）|
+
+### TC-ST-IRG-006: REJECTED → Task 差し戻し → DAG traversal による前段 WORK Stage 特定
+
+| テストID | ペルソナ | シナリオ | 操作手順 | 期待結果 | 紐付く受入基準 |
+|---------|---------|---------|---------|---------|------------|
+| TC-ST-IRG-006 | GateRole エージェント（security）| security が REJECTED → DAG traversal で前段 WORK Stage に差し戻し | 1) mock Workflow（DAG: WORK_A → INTERNAL_REVIEW_B）を設定 → 2) security GateRole が REJECTED を返す mock LLMProvider を設定 → 3) `executor.execute(task_id, INTERNAL_REVIEW_B.id, {"reviewer","security"})` を await → 4) TaskRepository の更新内容確認 | `task.rollback_to_stage(WORK_A.id)` が呼ばれる / Gate が REJECTED に遷移 / EventBus に InternalReviewGateDecidedEvent(decision=REJECTED) が発行される | #9（REJECTED 後の Task 差し戻し）|
+
+### TC-ST-IRG-007: Gate の永続化 — Verdict comment の MaskedText マスキング end-to-end
+
+| テストID | ペルソナ | シナリオ | 操作手順 | 期待結果 | 紐付く受入基準 |
+|---------|---------|---------|---------|---------|------------|
+| TC-ST-IRG-007 | application 層 | LLM が comment に secret（webhook URL）を含んで返す → 永続化前にマスキングされる | 1) LLM 応答 comment に `"https://discord.com/api/webhooks/123/secret"` を含む mock を設定 → 2) `executor.execute()` → 3) `find_by_id()` で復元 → 4) 復元 Gate の verdicts[0].comment を確認 | DB 上の comment が `<REDACTED:DISCORD_WEBHOOK>` 形式 / 復元 Gate の comment が masked 文字列 / plain text の token が残っていない | #12（再起動跨ぎ保持）+ feature-spec.md §13 機密レベル「高」|
+
 ## カバレッジ基準
 
 受入基準 #1〜#12 の全件が最低 1 件のテストケースで検証される:
@@ -99,8 +120,8 @@ sequenceDiagram
 | #5（REJECTED → REJECTED 遷移）| domain UT | TC-UT-IRG-005 |
 | #6（同一 GateRole 重複提出拒否）| domain UT | TC-UT-IRG-006 |
 | #7（確定後 Verdict 拒否）| domain UT | TC-UT-IRG-007 |
-| #8（ALL_APPROVED 後の次フェーズ）| **TC-ST-IRG-001** |  |
-| #9（REJECTED 後の Task 差し戻し）| **TC-ST-IRG-002** |  |
+| #8（ALL_APPROVED 後の次フェーズ）| **TC-ST-IRG-001** / **TC-ST-IRG-005**（M5-B: 並列実行を通じた ALL_APPROVED）| |
+| #9（REJECTED 後の Task 差し戻し）| **TC-ST-IRG-002** / **TC-ST-IRG-006**（M5-B: DAG traversal 経由の差し戻し）| |
 | #10（空集合 Gate 非生成）| **TC-ST-IRG-003** |  |
 | #11（comment 文字数境界）| domain UT | TC-UT-IRG-008 |
-| #12（再起動跨ぎ保持）| **TC-ST-IRG-004** |  |
+| #12（再起動跨ぎ保持）| **TC-ST-IRG-004** / **TC-ST-IRG-007**（M5-B: masking 経由の永続化）| |
