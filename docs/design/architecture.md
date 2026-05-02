@@ -35,28 +35,30 @@ flowchart LR
 ```
 backend/src/bakufu/interfaces/
 └── http/
-    ├── app.py              # FastAPI app 初期化・lifespan・CORS・error handler 登録
-    ├── dependencies.py     # get_session() / get_*_repository() / get_*_service() DI ファクトリ
-    ├── error_handlers.py   # 例外 → {"error": {"code": ..., "message": ...}} ErrorResponse 変換
+    ├── app.py                  # FastAPI app 初期化・lifespan・CORS・error handler 登録
+    ├── connection_manager.py   # ConnectionManager（接続プール管理・ブロードキャスト）+ make_ws_bridge_handler()（M4 websocket-broadcast Issue #159）
+    ├── dependencies.py         # get_session() / get_*_repository() / get_*_service() / get_connection_manager() DI ファクトリ
+    ├── error_handlers.py       # 例外 → {"error": {"code": ..., "message": ...}} ErrorResponse 変換
     ├── schemas/
-    │   └── common.py       # ErrorResponse / PaginatedResponse[T] 汎用 Pydantic モデル
+    │   └── common.py           # ErrorResponse / PaginatedResponse[T] 汎用 Pydantic モデル
     └── routers/
-        ├── health.py       # GET /health（M3 http-api-foundation）
-        ├── empire.py       # Empire CRUD（M3 後続 Issue B）
-        ├── room.py         # Room CRUD（M3 後続 Issue C）
-        ├── workflow.py     # Workflow CRUD（M3 後続 Issue D）
-        ├── agent.py        # Agent CRUD（M3 後続 Issue E）
-        ├── task.py         # Task CRUD（M3 後続 Issue F）
+        ├── health.py           # GET /health（M3 http-api-foundation）
+        ├── empire.py           # Empire CRUD（M3 後続 Issue B）
+        ├── room.py             # Room CRUD（M3 後続 Issue C）
+        ├── workflow.py         # Workflow CRUD（M3 後続 Issue D）
+        ├── agent.py            # Agent CRUD（M3 後続 Issue E）
+        ├── task.py             # Task CRUD（M3 後続 Issue F）
         ├── external_review_gate.py  # ExternalReviewGate CRUD（M3 後続 Issue G）
-        └── ws.py           # GET /ws WebSocket endpoint（M4 websocket-broadcast Issue #159）
+        └── ws.py               # GET /ws WebSocket endpoint（M4 websocket-broadcast Issue #159）
 ```
 
 interfaces レイヤーの規律:
 - **domain 層への直接 import 禁止**: interfaces は application/services/ 経由でのみ domain を操作する（依存方向の物理的保証）
-- **エラーハンドリングは境界のみ**: `error_handlers.py` が唯一の例外キャッチポイント。router 内で try/except を書かない
-- **エラーレスポンス形式の統一**: 全エンドポイントが `{"error": {"code": str, "message": str}}` 形式を使う（feature-spec.md §7 R1-1 で凍結）
+- **エラーハンドリングは境界のみ**: `error_handlers.py` が唯一の例外キャッチポイント。router 内で try/except を書かない（ただし `ws.py` の `WebSocketDisconnect` catch は切断処理のための正常フロー扱い）
+- **エラーレスポンス形式の統一**: 全 REST エンドポイントが `{"error": {"code": str, "message": str}}` 形式を使う（feature-spec.md §7 R1-1 で凍結）
 - **DI ファクトリ経由のセッション管理**: `get_session()` が lifespan で初期化した `async_sessionmaker` からセッションを yield し、リクエスト完了後に close する
 - **WebSocket handler の切断処理**: `ws.py` は `WebSocketDisconnect` を `ConnectionManager` に委譲し、router 内で接続管理の詳細を持たない。切断は他クライアントへのブロードキャストをブロックしない（feature-spec.md §7 R1-5）
+- **ConnectionManager の責務**: `ConnectionManager` は接続プール管理（connect/disconnect）とブロードキャストのみを担う。業務ロジックを含まない。`make_ws_bridge_handler(cm)` が EventBus handler を生成し `ConnectionManager` をキャプチャする。Router は `ConnectionManager` を DI 注入（`get_connection_manager()`）で受け取り、EventBus に直接依存しない
 
 ### application レイヤー詳細（M3 http-api-foundation で骨格確定）
 
