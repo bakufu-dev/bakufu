@@ -34,28 +34,28 @@
 
 | 要件ID | 実装アーティファクト | テストケースID | テストレベル | 種別 | 受入基準 |
 |---|---|---|---|---|---|
-| REQ-CD-UI-001 | `TaskListPage` / `useTasks` | TC-IT-CD-001, TC-IT-CD-002 | IT | 正常系 / 異常系 | feature-spec.md §9 #1 |
-| REQ-CD-UI-002 | `TaskDetailPage` / `useTask` | TC-IT-CD-003 | IT | 正常系 | feature-spec.md §9 #2, #3, #4 |
-| REQ-CD-UI-003 | `ExternalReviewGatePage` / `useGate` | TC-IT-CD-004 | IT | 正常系 | feature-spec.md §9 #5, #6 |
-| REQ-CD-UI-004 | `DirectiveNewPage` / `useRooms` | TC-IT-CD-012 | IT | 正常系 | feature-spec.md §9 #11 |
-| REQ-CD-UI-005 | `useWebSocketBus` / `ConnectionIndicator` | TC-IT-CD-007, TC-IT-CD-008, TC-IT-CD-009, TC-IT-CD-010, TC-IT-CD-011 | IT | 正常系 / 異常系 | feature-spec.md §9 #12, #13 |
-| REQ-CD-UI-006 | `StatusBadge` | TC-UT-CD-001〜006 | UT | 正常系 | feature-spec.md §9 #1 |
+| REQ-CD-UI-001 | `TaskListPage` / `useTasks` | TC-IT-CD-001, TC-IT-CD-002 | IT | 正常系 / 異常系 | feature-spec.md §8 #1 |
+| REQ-CD-UI-002 | `TaskDetailPage` / `useTask` | TC-IT-CD-003 | IT | 正常系 | feature-spec.md §8 #2, #3, #4 |
+| REQ-CD-UI-003 | `ExternalReviewGatePage` / `useGate` | TC-IT-CD-004 | IT | 正常系 | feature-spec.md §8 #5, #6 |
+| REQ-CD-UI-004 | `DirectiveNewPage` / `useRooms` | TC-IT-CD-012 | IT | 正常系 | feature-spec.md §8 #11 |
+| REQ-CD-UI-005 | `useWebSocketBus` / `ConnectionIndicator` | TC-IT-CD-007, TC-IT-CD-008, TC-IT-CD-009, TC-IT-CD-010, TC-IT-CD-011 | IT | 正常系 / 異常系 | feature-spec.md §8 #12, #13 |
+| REQ-CD-UI-006 | `StatusBadge` | TC-UT-CD-001〜006 | UT | 正常系 | feature-spec.md §8 #1 |
 | §確定 B | `apiClient` | TC-IT-CD-005, TC-IT-CD-006 | IT | 正常系 / 異常系 | feature-spec.md R1-5 |
 | §確定 C | `useWebSocketBus` 再接続バックオフ | TC-IT-CD-008, TC-IT-CD-009, TC-IT-CD-018 | IT | 異常系 / 境界値 | feature-spec.md R1-1 |
 | §確定 C（Agent / Directive invalidate）| `useWebSocketBus` イベントルーティング | TC-IT-CD-010, TC-IT-CD-011, TC-IT-CD-019, TC-IT-CD-020 | IT | 正常系 | feature-spec.md §8 #12 |
-| §確定 D | `GateActionForm` / `useGateAction` | TC-IT-CD-013, TC-IT-CD-014, TC-IT-CD-015, TC-UT-CD-010, TC-UT-CD-011, TC-UT-CD-012 | IT / UT | 正常系 / 異常系 | feature-spec.md §9 #7, #8, #9, #10 |
-| §確定 E | `DirectiveForm` / `useDirectiveSubmit` | TC-IT-CD-016, TC-IT-CD-017, TC-UT-CD-013, TC-UT-CD-014, TC-UT-CD-015 | IT / UT | 正常系 / 異常系 | feature-spec.md §9 #11 |
+| §確定 D | `GateActionForm` / `useGateAction` | TC-IT-CD-013, TC-IT-CD-014, TC-IT-CD-015, TC-UT-CD-010, TC-UT-CD-011, TC-UT-CD-012 | IT / UT | 正常系 / 異常系 | feature-spec.md §8 #7, #8, #9, #10 |
+| §確定 E | `DirectiveForm` / `useDirectiveSubmit` | TC-IT-CD-016, TC-IT-CD-017, TC-UT-CD-013, TC-UT-CD-014, TC-UT-CD-015 | IT / UT | 正常系 / 異常系 | feature-spec.md §8 #11 |
 | §確定 F | `DeliverableViewer` | TC-UT-CD-007, TC-UT-CD-008, TC-UT-CD-009 | UT | 正常系 / セキュリティ | — |
 | MSG-CD-UI-001 | `DirectiveNewPage` エラーメッセージ | TC-UT-CD-018 | UT | 文言照合 | — |
-| MSG-CD-UI-002 | `GateActionForm` reject 空入力警告 | TC-UT-CD-010, TC-UT-CD-019 | UT | 文言照合 | feature-spec.md §9 #9 |
+| MSG-CD-UI-002 | `GateActionForm` reject 空入力警告 | TC-UT-CD-010, TC-UT-CD-019 | UT | 文言照合 | feature-spec.md §8 #9 |
 | MSG-CD-UI-003 | `DirectiveForm` Room 未選択警告 | TC-UT-CD-013, TC-UT-CD-020 | UT | 文言照合 | — |
 | MSG-CD-UI-004 | `DirectiveForm` テキスト空警告 | TC-UT-CD-014, TC-UT-CD-021 | UT | 文言照合 | — |
-| MSG-CD-UI-005 | `ConnectionIndicator` 切断中テキスト | TC-UT-CD-016, TC-UT-CD-022 | UT | 文言照合 | feature-spec.md §9 #13 |
+| MSG-CD-UI-005 | `ConnectionIndicator` 切断中テキスト | TC-UT-CD-016, TC-UT-CD-022 | UT | 文言照合 | feature-spec.md §8 #13 |
 | MSG-CD-UI-006 | `InlineError` ネットワーク不達テキスト | TC-IT-CD-006, TC-UT-CD-023 | IT / UT | 文言照合 | feature-spec.md R1-5 |
 | T1: XSS（LLM 出力）| `DeliverableViewer` + `rehype-sanitize` | TC-UT-CD-008 | UT | セキュリティ | basic-design.md §セキュリティ設計 |
 | T2: CORS（API クライアント境界）| `apiClient` ベース URL 制限 | TC-IT-CD-005 | IT | セキュリティ | basic-design.md §セキュリティ設計 |
-| R1-2: 二重送信防止 | `GateActionForm` ボタン disabled | TC-UT-CD-011 | UT | 異常系 | feature-spec.md §9 #10 |
-| R1-3: reject feedback_text 必須 | `GateActionForm` クライアントバリデーション | TC-UT-CD-010 | UT | 異常系 | feature-spec.md §9 #9 |
+| R1-2: 二重送信防止 | `GateActionForm` ボタン disabled | TC-UT-CD-011 | UT | 異常系 | feature-spec.md §8 #10 |
+| R1-3: reject feedback_text 必須 | `GateActionForm` クライアントバリデーション | TC-UT-CD-010 | UT | 異常系 | feature-spec.md §8 #9 |
 | R1-4: `<REDACTED:...>` そのまま表示 | `DeliverableViewer` | TC-UT-CD-009 | UT | 正常系 | — |
 | R1-7: Directive 投入 Room 選択必須 | `DirectiveForm` / `DirectiveNewPage` | TC-UT-CD-013, TC-UT-CD-015 | UT | 異常系 | — |
 
@@ -94,7 +94,7 @@
 | 前提 | MSW ハンドラ: `GET /api/rooms/:roomId/tasks` → `TaskListResponse`（各 room に 2 件）。`VITE_API_BASE_URL=http://localhost:8000` |
 | 操作 | `renderHook(() => useTasks(["room-a", "room-b"]))` でフックをマウント。待機後にデータ取得完了 |
 | 期待結果 | 返された tasks リストに room-a / room-b 各 2 件（計 4 件）が含まれる。各 Task の `id` / `status` / `room_id` が MSW ハンドラのレスポンスと一致する |
-| 受入基準 | feature-spec.md §9 #1 |
+| 受入基準 | feature-spec.md §8 #1 |
 
 ### TC-IT-CD-002: `useTasks` — 個別 Room エラーが他 Room に影響しない（REQ-CD-UI-001 エラー時）
 
@@ -114,7 +114,7 @@
 | 前提 | MSW: `GET /api/tasks/:taskId` → `TaskResponse`（status=AWAITING_EXTERNAL_REVIEW / stages あり / PENDING Gate 1 件）|
 | 操作 | `renderHook(() => useTask("task-uuid-1"))` |
 | 期待結果 | `data.status === "AWAITING_EXTERNAL_REVIEW"` / `data.stages` に Stage リストが含まれる / `data.current_stage_id` が一致する |
-| 受入基準 | feature-spec.md §9 #2, #3, #4 |
+| 受入基準 | feature-spec.md §8 #2, #3, #4 |
 
 ### TC-IT-CD-004: `useGate` — Gate 詳細を取得する（REQ-CD-UI-003）
 
@@ -124,7 +124,7 @@
 | 前提 | MSW: `GET /api/gates/:gateId` → `GateDetailResponse`（decision=PENDING / deliverable_snapshot あり / audit_trail 1 件）|
 | 操作 | `renderHook(() => useGate("gate-uuid-1"))` |
 | 期待結果 | `data.decision === "PENDING"` / `data.deliverable_snapshot.body_markdown` に値がある / `data.audit_trail` に 1 件含まれる |
-| 受入基準 | feature-spec.md §9 #5, #6 |
+| 受入基準 | feature-spec.md §8 #5, #6 |
 
 ### TC-IT-CD-005: `apiClient` — 正常系: JSON レスポンスを返す（§確定 B）
 
@@ -153,7 +153,7 @@
 | 前提 | `vi.stubGlobal('WebSocket', MockWebSocket)` / `VITE_API_BASE_URL=http://localhost:8000` |
 | 操作 | `renderHook(() => useWebSocketBus())` → `MockWebSocket` の `onopen` を即時 dispatch |
 | 期待結果 | hook の `state` が `"connected"` になる |
-| 受入基準 | feature-spec.md §9 #12 |
+| 受入基準 | feature-spec.md §8 #12 |
 
 ### TC-IT-CD-008: `useWebSocketBus` — `onclose` → `state=reconnecting` + backoff タイマー起動（§確定 C）
 
@@ -163,7 +163,7 @@
 | 前提 | 接続済み状態から `onclose` を dispatch |
 | 操作 | `onclose` dispatch → `vi.advanceTimersByTime(1000)` |
 | 期待結果 | `onclose` 直後に `state === "reconnecting"`。1000ms 経過後に新しい `WebSocket` コンストラクタが呼ばれる（1 回目の再接続試行）|
-| 受入基準 | feature-spec.md §9 #13 / R1-1 |
+| 受入基準 | feature-spec.md §8 #13 / R1-1 |
 
 ### TC-IT-CD-009: `useWebSocketBus` — 再接続成功 → `state=connected` + `invalidateQueries()` 呼ばれる（§確定 C）
 
@@ -183,7 +183,7 @@
 | 前提 | 接続済み状態 |
 | 操作 | `MockWebSocket.onmessage` に `{"event_type":"TaskStateChangedEvent","aggregate_type":"Task","aggregate_id":"task-abc","payload":{}}` を dispatch |
 | 期待結果 | `queryClient.invalidateQueries` が `["task", "task-abc"]` と `["tasks"]` の 2 回呼ばれる |
-| 受入基準 | feature-spec.md §9 #12 |
+| 受入基準 | feature-spec.md §8 #12 |
 
 ### TC-IT-CD-011: `useWebSocketBus` — `ExternalReviewGateStateChangedEvent` 受信 → `["gate", id]` + `["task", taskId]` invalidate（§確定 C）
 
@@ -202,7 +202,7 @@
 | 前提 | MSW: `GET /api/empires/:empireId/rooms` → `RoomListResponse`（3 件）/ `VITE_EMPIRE_ID=empire-1` |
 | 操作 | `renderHook(() => useRooms("empire-1"))` |
 | 期待結果 | 3 件の Room が返る。各 Room の `id` / `name` が MSW レスポンスと一致する |
-| 受入基準 | feature-spec.md §9 #11 |
+| 受入基準 | feature-spec.md §8 #11 |
 
 ### TC-IT-CD-013: `useGateAction.approve` — 成功 → cache invalidate + navigate(-1)（§確定 D）
 
@@ -212,7 +212,7 @@
 | 前提 | MSW: `POST /api/gates/gate-1/approve` → 200 `GateDetailResponse`（decision=APPROVED）|
 | 操作 | `approve("gate-1", "LGTM")` を呼ぶ |
 | 期待結果 | `queryClient.invalidateQueries(["gate", "gate-1"])` が呼ばれる。`router.state.location` が前のパスに戻る（`navigate(-1)`）|
-| 受入基準 | feature-spec.md §9 #7 |
+| 受入基準 | feature-spec.md §8 #7 |
 
 ### TC-IT-CD-014: `useGateAction.reject` — feedback_text 付き成功 → navigate(-1)（§確定 D）
 
@@ -222,7 +222,7 @@
 | 前提 | MSW: `POST /api/gates/gate-1/reject` → 200 `GateDetailResponse`（decision=REJECTED）|
 | 操作 | `reject("gate-1", "要修正: XYZ")` を呼ぶ |
 | 期待結果 | API に `{"feedback_text": "要修正: XYZ"}` が送信される。`queryClient.invalidateQueries(["gate", "gate-1"])` 呼ばれる。`navigate(-1)` が呼ばれる |
-| 受入基準 | feature-spec.md §9 #8 |
+| 受入基準 | feature-spec.md §8 #8 |
 
 ### TC-IT-CD-015: `useGateAction.approve` — API エラー → `isSubmitting` リセット + `error` 設定（§確定 D）
 
@@ -241,7 +241,7 @@
 | 前提 | MSW: `POST /api/rooms/room-1/directives` → 201 `DirectiveWithTaskResponse` |
 | 操作 | `submit("room-1", "task text")` を呼ぶ |
 | 期待結果 | `queryClient.invalidateQueries(["tasks"])` が呼ばれる。`router.state.location.pathname === "/"` に遷移する |
-| 受入基準 | feature-spec.md §9 #11 |
+| 受入基準 | feature-spec.md §8 #11 |
 
 ### TC-IT-CD-017: `useDirectiveSubmit` — API エラー → `InlineError` 表示、遷移なし（§確定 E）
 
@@ -270,8 +270,8 @@
 | 対象 | `useWebSocketBus` + `MockWebSocket` + `QueryClient` spy |
 | 前提 | 接続済み状態 |
 | 操作 | `{"event_type":"AgentStateChangedEvent","aggregate_type":"Agent","aggregate_id":"agent-abc","payload":{}}` を dispatch |
-| 期待結果 | `queryClient.invalidateQueries` が `["task"]`（prefix match — 全 Task キャッシュ再検証）で呼ばれる。`["gate"]` 系は呼ばれない |
-| 根拠 | `detailed-design §確定C`: 「`"Agent"` → `["task"]` 全件（Agent ステータス変化は Task 詳細に影響する可能性）」|
+| 期待結果 | `queryClient.invalidateQueries` が `["tasks"]`（prefix match — 全 Room の Task 一覧キャッシュを再検証）で呼ばれる。`["gate"]` 系は呼ばれない |
+| 根拠 | `detailed-design §確定C`: 「`"Agent"` → `["task"]` 全件（Agent ステータス変化は Task 詳細に影響する可能性）」→ `useTasks` の queryKey は `["tasks", roomId]` であり、`["tasks"]` プレフィックスで全 Room の Task 一覧を一括再検証する|
 
 ### TC-IT-CD-020: `useWebSocketBus` — `DirectiveStateChangedEvent`（aggregate_type=Directive）受信 → `["tasks"]` invalidate（§確定 C）
 
@@ -340,7 +340,7 @@
 | 前提 | `gate.decision="PENDING"` の `GateDetailResponse` を props に渡す |
 | 操作 | `feedback_text` 未入力のまま reject ボタンをクリック |
 | 期待結果 | `onReject` コールバックが呼ばれない。DOM に `"差し戻し理由を入力してください。"` が表示される（MSG-CD-UI-002）|
-| 受入基準 | feature-spec.md §9 #9 |
+| 受入基準 | feature-spec.md §8 #9 |
 
 #### TC-UT-CD-011: `isSubmitting=true` → approve / reject / cancel ボタンが全て disabled（R1-2 / §確定 D）
 
@@ -350,7 +350,7 @@
 | 前提 | `gate.decision="PENDING"` / `isSubmitting=true` を props に渡す |
 | 操作 | render のみ（操作なし）|
 | 期待結果 | approve ボタン / reject ボタン / cancel ボタン全てが `disabled` 属性を持つ |
-| 受入基準 | feature-spec.md §9 #10 |
+| 受入基準 | feature-spec.md §8 #10 |
 
 #### TC-UT-CD-012: `gate.decision` が `PENDING` 以外 → readonly 表示、操作ボタン非表示（§確定 D）
 
@@ -399,7 +399,7 @@
 | 種別 | 正常系 |
 | 操作 | `render(<ConnectionIndicator status="disconnected" />)` |
 | 期待結果 | 赤系 CSS クラスの dot 要素が存在する。DOM に `"サーバーとの接続が切断されました。再接続中..."` が含まれる（MSG-CD-UI-005）|
-| 受入基準 | feature-spec.md §9 #13 |
+| 受入基準 | feature-spec.md §8 #13 |
 
 #### TC-UT-CD-017: `state=reconnecting` → 黄 dot
 
