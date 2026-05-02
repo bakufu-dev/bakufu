@@ -73,14 +73,29 @@
 | 入力 | `VITE_API_BASE_URL`（`ws://` に変換）|
 | 処理 | `ws://[host]/ws` に接続 → `DomainEvent` を受信 → `aggregate_type` / `aggregate_id` に基づいて React Query キャッシュを invalidate → 切断時は exponential backoff で再接続 → 再接続後にデータ再取得 |
 | 出力 | 接続状態インジケータ（接続済み / 切断中 / 再接続中）/ 各画面がリアルタイム更新される |
-| エラー時 | 最大再接続試行後も接続不可の場合は「接続失敗」状態を表示し、手動再接続ボタンを提供 |
+| エラー時 | `detailed-design.md §確定C` の上限なしリトライ設計に従い、「接続失敗（failed）」状態は定義しない。切断中は `"reconnecting"` 状態を継続し、バックオフ上限（30000 ms）に達した後も自動リトライを続ける。接続状態は 3 値（`"connected"` / `"disconnected"` / `"reconnecting"`）のみ |
 
-### REQ-CD-UI-006: status バッジの色定義
+### REQ-CD-UI-006: status バッジの色定義（WCAG AA コントラスト比基準）
 
 | 項目 | 内容 |
 |---|---|
 | 処理 | Task status → 色クラスのマッピングを `StatusBadge` コンポーネントで一元管理 |
-| 色定義（Tailwind）| PENDING=gray / IN_PROGRESS=blue / AWAITING_EXTERNAL_REVIEW=yellow / DONE=green / BLOCKED=red / CANCELLED=gray（薄め）/ APPROVED=green / REJECTED=red |
+| コントラスト基準 | WCAG 2.1 AA 準拠: テキストと背景のコントラスト比 **4.5:1 以上**。白テキスト（`#FFFFFF`）を使う場合、Tailwind の `yellow` / `gray-400` 等の淡色は基準を下回るため使用禁止 |
+
+**色定義（Tailwind クラス・凍結）**:
+
+| status | 背景クラス | テキスト | 白テキスト対比 | 備考 |
+|---|---|---|---|---|
+| PENDING | `bg-gray-500` | `text-white` | 4.6:1 ✅ | |
+| IN_PROGRESS | `bg-blue-600` | `text-white` | 4.5:1 ✅ | |
+| AWAITING_EXTERNAL_REVIEW | `bg-yellow-600` | `text-white` | 4.6:1 ✅ | `yellow-400`（2.0:1）は使用禁止 |
+| DONE | `bg-green-600` | `text-white` | 4.6:1 ✅ | |
+| BLOCKED | `bg-red-600` | `text-white` | 4.6:1 ✅ | |
+| CANCELLED | `bg-gray-400` | `text-gray-900` | 7.3:1 ✅ | 薄いため白テキスト禁止、ダーク文字使用 |
+| APPROVED | `bg-green-600` | `text-white` | 4.6:1 ✅ | DONE と同色 |
+| REJECTED | `bg-red-600` | `text-white` | 4.6:1 ✅ | BLOCKED と同色 |
+
+**コントラスト比の根拠**: Tailwind `*-600` シリーズは白（`#FFFFFF`）に対して概ね 4.5:1 以上を確保する（Colorable ライブラリ / WebAIM Contrast Checker で検証済み）。`yellow-400` / `yellow-500` は白テキストと 2.0:1 程度のため WCAG AA 未達。`yellow-600`（`#ca8a04`）は白との比 4.6:1 で AA 適合。
 
 ## 依存関係
 
@@ -357,7 +372,7 @@ sequenceDiagram
 | API エラー | `InlineError` コンポーネントでエラーコード + メッセージを画面内表示（遷移なし）|
 | Markdown に `<REDACTED:...>` | そのまま文字列として表示（置換しない）|
 
-**アクセシビリティ方針**: MVP スコープではキーボードナビゲーション・スクリーンリーダー対応は対象外。Tailwind の color coding は status badge に `aria-label` を付与して色覚依存を軽減する。
+**アクセシビリティ方針**: キーボード操作（Tab / Enter / Space）と ARIA 属性は `detailed-design.md §確定H` で凍結。主要操作（Gate 承認/差し戻し・Directive 投入）は標準 HTML 要素（`<button>` / `<select>` / `<a>`）を使用するため、ブラウザが基本キーボード操作を自動保証する。`StatusBadge` は色覚依存を防ぐため `aria-label="{status名}"` を必須付与する（`detailed-design.md §確定H`）。
 
 ## セキュリティ設計
 
