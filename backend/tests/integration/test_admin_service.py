@@ -136,14 +136,18 @@ async def seeded_task_ctx(
 
 
 def _make_admin_service(
-    session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
     actor: str = "test_actor",
 ) -> AdminService:
-    """AdminService を組み立てる（実 SQLite 実装クラス経由）。"""
+    """AdminService を組み立てる（Option A: session_factory 注入）。
+
+    業務 Tx と audit_log Tx は AdminService 内部で独立して管理される。
+    """
     return AdminService(
-        task_repo=SqliteTaskRepository(session),
-        outbox_event_repo=SqliteOutboxEventRepository(session),
-        audit_log_writer=SqliteAuditLogWriter(session),
+        session_factory=session_factory,
+        task_repo_factory=SqliteTaskRepository,
+        outbox_event_repo_factory=SqliteOutboxEventRepository,
+        audit_log_writer_factory=SqliteAuditLogWriter,
         actor=actor,
     )
 
@@ -217,9 +221,8 @@ class TestListBlockedTasks:
             await repo.save(b3)
             await repo.save(ip)
 
-        async with session_factory() as session, session.begin():
-            service = _make_admin_service(session)
-            result = await service.list_blocked_tasks()
+        service = _make_admin_service(session_factory)
+        result = await service.list_blocked_tasks()
 
         assert len(result) == 3
         returned_ids = {s.task_id for s in result}
@@ -246,9 +249,8 @@ class TestListBlockedTasks:
         async with session_factory() as session, session.begin():
             await SqliteTaskRepository(session).save(ip)
 
-        async with session_factory() as session, session.begin():
-            service = _make_admin_service(session)
-            result = await service.list_blocked_tasks()
+        service = _make_admin_service(session_factory)
+        result = await service.list_blocked_tasks()
 
         assert result == []
 
@@ -262,9 +264,8 @@ class TestListBlockedTasks:
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """TC-ST-AC-009: 空 DB で list_blocked → audit_log に OK が記録される（受入基準 #14）。"""
-        async with session_factory() as session, session.begin():
-            service = _make_admin_service(session, actor="ceo_user")
-            result = await service.list_blocked_tasks()
+        service = _make_admin_service(session_factory, actor="ceo_user")
+        result = await service.list_blocked_tasks()
 
         assert result == []
 
@@ -296,9 +297,8 @@ class TestRetryTask:
         async with session_factory() as session, session.begin():
             await SqliteTaskRepository(session).save(blocked)
 
-        async with session_factory() as session, session.begin():
-            service = _make_admin_service(session)
-            await service.retry_task(blocked.id)
+        service = _make_admin_service(session_factory)
+        await service.retry_task(blocked.id)
 
         # DB 確認: status が IN_PROGRESS に変わっている
         status = await _get_task_status(session_factory, blocked.id)
@@ -318,16 +318,11 @@ class TestRetryTask:
         """TC-IT-AC-003: 存在しない task_id → TaskNotFoundError + audit_log FAIL。"""
         nonexistent_id = uuid4()
 
-        caught_exc: TaskNotFoundError | None = None
-        async with session_factory() as session, session.begin():
-            service = _make_admin_service(session)
-            try:
-                await service.retry_task(nonexistent_id)
-            except TaskNotFoundError as exc:
-                caught_exc = exc
+        service = _make_admin_service(session_factory)
+        with pytest.raises(TaskNotFoundError) as exc_info:
+            await service.retry_task(nonexistent_id)
 
-        assert caught_exc is not None, "TaskNotFoundError が送出されるべき"
-        assert str(nonexistent_id) in str(caught_exc)
+        assert str(nonexistent_id) in str(exc_info.value)
 
         audit = await _get_last_audit_log(session_factory)
         assert audit is not None
@@ -346,17 +341,12 @@ class TestRetryTask:
         async with session_factory() as session, session.begin():
             await SqliteTaskRepository(session).save(ip)
 
-        caught_exc: IllegalTaskStateError | None = None
-        async with session_factory() as session, session.begin():
-            service = _make_admin_service(session)
-            try:
-                await service.retry_task(ip.id)
-            except IllegalTaskStateError as exc:
-                caught_exc = exc
+        service = _make_admin_service(session_factory)
+        with pytest.raises(IllegalTaskStateError) as exc_info:
+            await service.retry_task(ip.id)
 
-        assert caught_exc is not None
         # メッセージに BLOCKED キーワードが含まれる（MSG-AC-002）
-        assert "BLOCKED" in str(caught_exc)
+        assert "BLOCKED" in str(exc_info.value)
 
         audit = await _get_last_audit_log(session_factory)
         assert audit is not None
@@ -384,9 +374,8 @@ class TestCancelTask:
         async with session_factory() as session, session.begin():
             await SqliteTaskRepository(session).save(blocked)
 
-        async with session_factory() as session, session.begin():
-            service = _make_admin_service(session)
-            await service.cancel_task(blocked.id, reason="admin cancel")
+        service = _make_admin_service(session_factory)
+        await service.cancel_task(blocked.id, reason="admin cancel")
 
         status = await _get_task_status(session_factory, blocked.id)
         assert status == "CANCELLED"
@@ -408,9 +397,8 @@ class TestCancelTask:
         async with session_factory() as session, session.begin():
             await SqliteTaskRepository(session).save(ip)
 
-        async with session_factory() as session, session.begin():
-            service = _make_admin_service(session)
-            await service.cancel_task(ip.id, reason="admin cancel in_progress")
+        service = _make_admin_service(session_factory)
+        await service.cancel_task(ip.id, reason="admin cancel in_progress")
 
         status = await _get_task_status(session_factory, ip.id)
         assert status == "CANCELLED"
@@ -431,15 +419,9 @@ class TestCancelTask:
         async with session_factory() as session, session.begin():
             await SqliteTaskRepository(session).save(ar)
 
-        caught_exc: IllegalTaskStateError | None = None
-        async with session_factory() as session, session.begin():
-            service = _make_admin_service(session)
-            try:
-                await service.cancel_task(ar.id, reason="test")
-            except IllegalTaskStateError as exc:
-                caught_exc = exc
-
-        assert caught_exc is not None
+        service = _make_admin_service(session_factory)
+        with pytest.raises(IllegalTaskStateError):
+            await service.cancel_task(ar.id, reason="test")
 
         audit = await _get_last_audit_log(session_factory)
         assert audit is not None
@@ -458,15 +440,9 @@ class TestCancelTask:
         async with session_factory() as session, session.begin():
             await SqliteTaskRepository(session).save(done)
 
-        caught_exc: IllegalTaskStateError | None = None
-        async with session_factory() as session, session.begin():
-            service = _make_admin_service(session)
-            try:
-                await service.cancel_task(done.id, reason="test")
-            except IllegalTaskStateError as exc:
-                caught_exc = exc
-
-        assert caught_exc is not None
+        service = _make_admin_service(session_factory)
+        with pytest.raises(IllegalTaskStateError):
+            await service.cancel_task(done.id, reason="test")
 
         audit = await _get_last_audit_log(session_factory)
         assert audit is not None
@@ -495,9 +471,8 @@ class TestListDeadLetters:
             session.add(dl2)
             session.add(pending)
 
-        async with session_factory() as session, session.begin():
-            service = _make_admin_service(session)
-            result = await service.list_dead_letters()
+        service = _make_admin_service(session_factory)
+        result = await service.list_dead_letters()
 
         assert len(result) == 2
         returned_ids = {s.event_id for s in result}
@@ -515,9 +490,8 @@ class TestListDeadLetters:
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """list_dead_letters 後に audit_log OK が記録される（受入基準 #14）。"""
-        async with session_factory() as session, session.begin():
-            service = _make_admin_service(session)
-            await service.list_dead_letters()
+        service = _make_admin_service(session_factory)
+        await service.list_dead_letters()
 
         audit = await _get_last_audit_log(session_factory)
         assert audit is not None
@@ -545,9 +519,8 @@ class TestRetryEvent:
 
         before = datetime.now(UTC)
 
-        async with session_factory() as session, session.begin():
-            service = _make_admin_service(session)
-            await service.retry_event(dl.event_id)
+        service = _make_admin_service(session_factory)
+        await service.retry_event(dl.event_id)
 
         after = datetime.now(UTC)
 
@@ -573,16 +546,11 @@ class TestRetryEvent:
         """TC-IT-AC-011: 存在しない event_id → OutboxEventNotFoundError + audit_log FAIL。"""
         nonexistent_id = uuid4()
 
-        caught_exc: OutboxEventNotFoundError | None = None
-        async with session_factory() as session, session.begin():
-            service = _make_admin_service(session)
-            try:
-                await service.retry_event(nonexistent_id)
-            except OutboxEventNotFoundError as exc:
-                caught_exc = exc
+        service = _make_admin_service(session_factory)
+        with pytest.raises(OutboxEventNotFoundError) as exc_info:
+            await service.retry_event(nonexistent_id)
 
-        assert caught_exc is not None
-        assert "[FAIL]" in str(caught_exc)
+        assert "[FAIL]" in str(exc_info.value)
 
         audit = await _get_last_audit_log(session_factory)
         assert audit is not None
@@ -599,16 +567,11 @@ class TestRetryEvent:
         async with session_factory() as session, session.begin():
             session.add(pending)
 
-        caught_exc: IllegalOutboxStateError | None = None
-        async with session_factory() as session, session.begin():
-            service = _make_admin_service(session)
-            try:
-                await service.retry_event(pending.event_id)
-            except IllegalOutboxStateError as exc:
-                caught_exc = exc
+        service = _make_admin_service(session_factory)
+        with pytest.raises(IllegalOutboxStateError) as exc_info:
+            await service.retry_event(pending.event_id)
 
-        assert caught_exc is not None
-        assert "DEAD_LETTER" in str(caught_exc)
+        assert "DEAD_LETTER" in str(exc_info.value)
 
         audit = await _get_last_audit_log(session_factory)
         assert audit is not None

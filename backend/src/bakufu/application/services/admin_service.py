@@ -5,6 +5,12 @@
 StageWorker の起動時リカバリスキャン（§確定J）が IN_PROGRESS Task をピックアップして
 LLM 実行を再開する。
 
+**Tx 分離方針（§確定 Option A）**:
+業務 Tx と audit_log Tx は **独立した別 session** で実行する。
+``session_factory`` を DI 注入し、各 public メソッド内で業務用 session を生成する。
+``_write_audit()`` では audit 専用 session を生成するため、業務 Tx の rollback に
+audit_log INSERT が巻き込まれることはない。
+
 設計書:
   docs/features/admin-cli/application/detailed-design.md
   docs/features/admin-cli/feature-spec.md
@@ -13,8 +19,9 @@ LLM 実行を再開する。
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 from uuid import UUID
 
 from bakufu.application.exceptions.task_exceptions import IllegalTaskStateError, TaskNotFoundError
@@ -23,6 +30,9 @@ from bakufu.application.ports.outbox_event_repository import OutboxEventReposito
 from bakufu.application.ports.task_repository import TaskRepository
 from bakufu.domain.exceptions.outbox import IllegalOutboxStateError
 from bakufu.domain.value_objects import SYSTEM_AGENT_ID, TaskId, TaskStatus
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 logger = logging.getLogger(__name__)
 
@@ -56,20 +66,27 @@ class AdminService:
     （try/finally §確定 A）。失敗操作も ``result='FAIL'`` で記録することで
     「試みた事実」が audit_log に残る。
 
+    **Tx 分離**: ``session_factory`` を保持し、業務操作と audit_log 記録を
+    それぞれ独立した session / commit で実行する（§確定 Option A）。
+    業務 Tx が rollback されても ``_write_audit()`` は独立した session で
+    コミットするため、audit_log の欠落が発生しない。
+
     ``actor`` は DI 時に OS ユーザー名（``getpass.getuser()`` 相当）を注入する
     （§確定 E: AdminService 自体は OS 環境依存の情報を取得しない）。
     """
 
     def __init__(
         self,
-        task_repo: TaskRepository,
-        outbox_event_repo: OutboxEventRepositoryPort,
-        audit_log_writer: AuditLogWriterPort,
+        session_factory: async_sessionmaker[AsyncSession],
+        task_repo_factory: Callable[[AsyncSession], TaskRepository],
+        outbox_event_repo_factory: Callable[[AsyncSession], OutboxEventRepositoryPort],
+        audit_log_writer_factory: Callable[[AsyncSession], AuditLogWriterPort],
         actor: str,
     ) -> None:
-        self._task_repo = task_repo
-        self._outbox_event_repo = outbox_event_repo
-        self._audit_log_writer = audit_log_writer
+        self._session_factory = session_factory
+        self._task_repo_factory = task_repo_factory
+        self._outbox_event_repo_factory = outbox_event_repo_factory
+        self._audit_log_writer_factory = audit_log_writer_factory
         self._actor = actor
 
     # ------------------------------------------------------------------
@@ -82,20 +99,20 @@ class AdminService:
         ``TaskRepositoryPort.find_blocked()`` を使い、``BlockedTaskSummary`` に変換する。
         audit_log に ``command=list-blocked`` / ``result=OK`` を記録する。
         """
-        result: list[BlockedTaskSummary] = []
         error_text: str | None = None
         try:
-            tasks = await self._task_repo.find_blocked()
-            result = [
-                BlockedTaskSummary(
-                    task_id=task.id,
-                    room_id=task.room_id,
-                    last_error=task.last_error or "",
-                    blocked_at=task.updated_at,
-                )
-                for task in tasks
-            ]
-            return result
+            async with self._session_factory() as session, session.begin():
+                repo = self._task_repo_factory(session)
+                tasks = await repo.find_blocked()
+                return [
+                    BlockedTaskSummary(
+                        task_id=task.id,
+                        room_id=task.room_id,
+                        last_error=task.last_error or "",
+                        blocked_at=task.updated_at,
+                    )
+                    for task in tasks
+                ]
         except Exception as exc:
             error_text = str(exc)
             raise
@@ -118,24 +135,27 @@ class AdminService:
         """
         error_text: str | None = None
         try:
-            task = await self._task_repo.find_by_id(task_id)
-            if task is None:
-                raise TaskNotFoundError(task_id)
+            async with self._session_factory() as session, session.begin():
+                repo = self._task_repo_factory(session)
+                task = await repo.find_by_id(task_id)
+                if task is None:
+                    raise TaskNotFoundError(task_id)
 
-            if task.status != TaskStatus.BLOCKED:
-                raise IllegalTaskStateError(
-                    task_id=task_id,
-                    current_status=task.status,
-                    action="retry",
-                    message=(
-                        f"[FAIL] Task {task_id} は BLOCKED 状態ではありません"
-                        f"（現在: {task.status}）。\n"
-                        "Next: 'bakufu admin list-blocked' で BLOCKED Task を確認してください。"
-                    ),
-                )
+                if task.status != TaskStatus.BLOCKED:
+                    raise IllegalTaskStateError(
+                        task_id=task_id,
+                        current_status=task.status,
+                        action="retry",
+                        message=(
+                            f"[FAIL] Task {task_id} は BLOCKED 状態ではありません"
+                            f"（現在: {task.status}）。\n"
+                            "Next: 'bakufu admin list-blocked' で"
+                            " BLOCKED Task を確認してください。"
+                        ),
+                    )
 
-            updated = task.unblock_retry(updated_at=datetime.now(UTC))
-            await self._task_repo.save(updated)
+                updated = task.unblock_retry(updated_at=datetime.now(UTC))
+                await repo.save(updated)
         except Exception as exc:
             error_text = str(exc)
             raise
@@ -158,29 +178,31 @@ class AdminService:
         _cancelable = {TaskStatus.BLOCKED, TaskStatus.PENDING, TaskStatus.IN_PROGRESS}
         error_text: str | None = None
         try:
-            task = await self._task_repo.find_by_id(task_id)
-            if task is None:
-                raise TaskNotFoundError(task_id)
+            async with self._session_factory() as session, session.begin():
+                repo = self._task_repo_factory(session)
+                task = await repo.find_by_id(task_id)
+                if task is None:
+                    raise TaskNotFoundError(task_id)
 
-            if task.status not in _cancelable:
-                raise IllegalTaskStateError(
-                    task_id=task_id,
-                    current_status=task.status,
-                    action="cancel",
-                    message=(
-                        f"[FAIL] Task {task_id} はキャンセル可能な状態ではありません"
-                        f"（現在: {task.status}）。\n"
-                        "Next: キャンセル対象は BLOCKED / PENDING / IN_PROGRESS 状態の"
-                        " Task のみです。"
-                    ),
+                if task.status not in _cancelable:
+                    raise IllegalTaskStateError(
+                        task_id=task_id,
+                        current_status=task.status,
+                        action="cancel",
+                        message=(
+                            f"[FAIL] Task {task_id} はキャンセル可能な状態ではありません"
+                            f"（現在: {task.status}）。\n"
+                            "Next: キャンセル対象は BLOCKED / PENDING / IN_PROGRESS"
+                            " 状態の Task のみです。"
+                        ),
+                    )
+
+                updated = task.cancel(
+                    by_owner_id=SYSTEM_AGENT_ID,
+                    reason=reason,
+                    updated_at=datetime.now(UTC),
                 )
-
-            updated = task.cancel(
-                by_owner_id=SYSTEM_AGENT_ID,
-                reason=reason,
-                updated_at=datetime.now(UTC),
-            )
-            await self._task_repo.save(updated)
+                await repo.save(updated)
         except Exception as exc:
             error_text = str(exc)
             raise
@@ -199,18 +221,20 @@ class AdminService:
         """
         error_text: str | None = None
         try:
-            events = await self._outbox_event_repo.list_dead_letters()
-            return [
-                DeadLetterSummary(
-                    event_id=ev.event_id,
-                    event_kind=ev.event_kind,
-                    aggregate_id=ev.aggregate_id,
-                    attempt_count=ev.attempt_count,
-                    last_error=ev.last_error,
-                    updated_at=ev.updated_at,
-                )
-                for ev in events
-            ]
+            async with self._session_factory() as session, session.begin():
+                repo = self._outbox_event_repo_factory(session)
+                events = await repo.list_dead_letters()
+                return [
+                    DeadLetterSummary(
+                        event_id=ev.event_id,
+                        event_kind=ev.event_kind,
+                        aggregate_id=ev.aggregate_id,
+                        attempt_count=ev.attempt_count,
+                        last_error=ev.last_error,
+                        updated_at=ev.updated_at,
+                    )
+                    for ev in events
+                ]
         except Exception as exc:
             error_text = str(exc)
             raise
@@ -234,21 +258,23 @@ class AdminService:
         """
         error_text: str | None = None
         try:
-            event_view = await self._outbox_event_repo.find_by_id(event_id)
+            async with self._session_factory() as session, session.begin():
+                repo = self._outbox_event_repo_factory(session)
+                event_view = await repo.find_by_id(event_id)
 
-            if event_view.status != _DEAD_LETTER_STATUS:
-                raise IllegalOutboxStateError(
-                    event_id=event_id,
-                    current_status=event_view.status,
-                    message=(
-                        f"[FAIL] Outbox Event {event_id} は DEAD_LETTER 状態ではありません"
-                        f"（現在: {event_view.status}）。\n"
-                        "Next: 'bakufu admin list-dead-letters' で"
-                        " DEAD_LETTER Event を確認してください。"
-                    ),
-                )
+                if event_view.status != _DEAD_LETTER_STATUS:
+                    raise IllegalOutboxStateError(
+                        event_id=event_id,
+                        current_status=event_view.status,
+                        message=(
+                            f"[FAIL] Outbox Event {event_id} は DEAD_LETTER 状態ではありません"
+                            f"（現在: {event_view.status}）。\n"
+                            "Next: 'bakufu admin list-dead-letters' で"
+                            " DEAD_LETTER Event を確認してください。"
+                        ),
+                    )
 
-            await self._outbox_event_repo.reset_to_pending(event_id)
+                await repo.reset_to_pending(event_id)
         except Exception as exc:
             error_text = str(exc)
             raise
@@ -271,18 +297,23 @@ class AdminService:
         result: str,
         error_text: str | None,
     ) -> None:
-        """audit_log に 1 行追記する（§確定 A: try/finally で必ず呼ばれる）。
+        """独立した session で audit_log に 1 行追記する（§確定 A / Option A）。
+
+        業務 Tx とは **別の** session を生成してコミットするため、業務 Tx が
+        rollback されても audit_log INSERT は確実にコミットされる。
 
         audit_log 書き込み失敗は例外を握り潰さず再 raise する。
         「操作証跡の欠落は許容しない」（§確定 A）。
         """
-        await self._audit_log_writer.write(
-            actor=self._actor,
-            command=command,
-            args_json=args_json,
-            result=result,
-            error_text=error_text,
-        )
+        async with self._session_factory() as audit_session, audit_session.begin():
+            writer = self._audit_log_writer_factory(audit_session)
+            await writer.write(
+                actor=self._actor,
+                command=command,
+                args_json=args_json,
+                result=result,
+                error_text=error_text,
+            )
 
 
 __all__ = ["AdminService", "BlockedTaskSummary", "DeadLetterSummary"]

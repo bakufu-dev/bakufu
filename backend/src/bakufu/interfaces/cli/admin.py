@@ -20,8 +20,6 @@ from uuid import UUID
 import typer
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from bakufu.application.services.admin_service import AdminService
 
 from bakufu.application.exceptions.task_exceptions import IllegalTaskStateError, TaskNotFoundError
@@ -46,15 +44,14 @@ def list_blocked(
     """BLOCKED 状態の Task 一覧を表示する（UC-AC-001）。"""
 
     async def _run() -> int:
-        service, session = await _build_service_with_session()
-        async with session, session.begin():
-            try:
-                tasks = await service.list_blocked_tasks()
-                typer.echo(formatters.format_blocked_tasks(tasks, json_output))
-                return 0
-            except Exception as exc:
-                typer.echo(formatters.format_error(str(exc)), err=True)
-                return 1
+        service = await _build_service()
+        try:
+            tasks = await service.list_blocked_tasks()
+            typer.echo(formatters.format_blocked_tasks(tasks, json_output))
+            return 0
+        except Exception as exc:
+            typer.echo(formatters.format_error(str(exc)), err=True)
+            return 1
 
     raise typer.Exit(code=asyncio.run(_run()))
 
@@ -76,26 +73,25 @@ def retry_task(
     parsed_id = _parse_uuid(task_id, arg_name="task_id")
 
     async def _run() -> int:
-        service, session = await _build_service_with_session()
-        async with session, session.begin():
-            try:
-                await service.retry_task(parsed_id)
-                msg = (
-                    f"Task {parsed_id} を BLOCKED → IN_PROGRESS に変更しました。"
-                    " bakufu サーバーの StageWorker が自動的に再実行します。"
+        service = await _build_service()
+        try:
+            await service.retry_task(parsed_id)
+            msg = (
+                f"Task {parsed_id} を BLOCKED → IN_PROGRESS に変更しました。"
+                " bakufu サーバーの StageWorker が自動的に再実行します。"
+            )
+            typer.echo(
+                formatters.format_success(
+                    msg, json_output, command="retry-task", id_=str(parsed_id)
                 )
-                typer.echo(
-                    formatters.format_success(
-                        msg, json_output, command="retry-task", id_=str(parsed_id)
-                    )
-                )
-                return 0
-            except (TaskNotFoundError, IllegalTaskStateError) as exc:
-                typer.echo(formatters.format_error(str(exc)), err=True)
-                return 1
-            except Exception as exc:
-                typer.echo(formatters.format_error(str(exc)), err=True)
-                return 1
+            )
+            return 0
+        except (TaskNotFoundError, IllegalTaskStateError) as exc:
+            typer.echo(formatters.format_error(str(exc)), err=True)
+            return 1
+        except Exception as exc:
+            typer.echo(formatters.format_error(str(exc)), err=True)
+            return 1
 
     raise typer.Exit(code=asyncio.run(_run()))
 
@@ -120,23 +116,22 @@ def cancel_task(
     parsed_id = _parse_uuid(task_id, arg_name="task_id")
 
     async def _run() -> int:
-        service, session = await _build_service_with_session()
-        async with session, session.begin():
-            try:
-                await service.cancel_task(parsed_id, reason)
-                msg = f"Task {parsed_id} を CANCELLED に変更しました。"
-                typer.echo(
-                    formatters.format_success(
-                        msg, json_output, command="cancel-task", id_=str(parsed_id)
-                    )
+        service = await _build_service()
+        try:
+            await service.cancel_task(parsed_id, reason)
+            msg = f"Task {parsed_id} を CANCELLED に変更しました。"
+            typer.echo(
+                formatters.format_success(
+                    msg, json_output, command="cancel-task", id_=str(parsed_id)
                 )
-                return 0
-            except (TaskNotFoundError, IllegalTaskStateError) as exc:
-                typer.echo(formatters.format_error(str(exc)), err=True)
-                return 1
-            except Exception as exc:
-                typer.echo(formatters.format_error(str(exc)), err=True)
-                return 1
+            )
+            return 0
+        except (TaskNotFoundError, IllegalTaskStateError) as exc:
+            typer.echo(formatters.format_error(str(exc)), err=True)
+            return 1
+        except Exception as exc:
+            typer.echo(formatters.format_error(str(exc)), err=True)
+            return 1
 
     raise typer.Exit(code=asyncio.run(_run()))
 
@@ -153,15 +148,14 @@ def list_dead_letters(
     """DEAD_LETTER 状態の Outbox Event 一覧を表示する（UC-AC-004）。"""
 
     async def _run() -> int:
-        service, session = await _build_service_with_session()
-        async with session, session.begin():
-            try:
-                events = await service.list_dead_letters()
-                typer.echo(formatters.format_dead_letters(events, json_output))
-                return 0
-            except Exception as exc:
-                typer.echo(formatters.format_error(str(exc)), err=True)
-                return 1
+        service = await _build_service()
+        try:
+            events = await service.list_dead_letters()
+            typer.echo(formatters.format_dead_letters(events, json_output))
+            return 0
+        except Exception as exc:
+            typer.echo(formatters.format_error(str(exc)), err=True)
+            return 1
 
     raise typer.Exit(code=asyncio.run(_run()))
 
@@ -183,26 +177,25 @@ def retry_event(
     parsed_id = _parse_uuid(event_id, arg_name="event_id")
 
     async def _run() -> int:
-        service, session = await _build_service_with_session()
-        async with session, session.begin():
-            try:
-                await service.retry_event(parsed_id)
-                msg = (
-                    f"Outbox Event {parsed_id} を DEAD_LETTER → PENDING にリセットしました。"
-                    " Outbox Dispatcher が次回ポーリングで再 dispatch します。"
+        service = await _build_service()
+        try:
+            await service.retry_event(parsed_id)
+            msg = (
+                f"Outbox Event {parsed_id} を DEAD_LETTER → PENDING にリセットしました。"
+                " Outbox Dispatcher が次回ポーリングで再 dispatch します。"
+            )
+            typer.echo(
+                formatters.format_success(
+                    msg, json_output, command="retry-event", id_=str(parsed_id)
                 )
-                typer.echo(
-                    formatters.format_success(
-                        msg, json_output, command="retry-event", id_=str(parsed_id)
-                    )
-                )
-                return 0
-            except (OutboxEventNotFoundError, IllegalOutboxStateError) as exc:
-                typer.echo(formatters.format_error(str(exc)), err=True)
-                return 1
-            except Exception as exc:
-                typer.echo(formatters.format_error(str(exc)), err=True)
-                return 1
+            )
+            return 0
+        except (OutboxEventNotFoundError, IllegalOutboxStateError) as exc:
+            typer.echo(formatters.format_error(str(exc)), err=True)
+            return 1
+        except Exception as exc:
+            typer.echo(formatters.format_error(str(exc)), err=True)
+            return 1
 
     raise typer.Exit(code=asyncio.run(_run()))
 
@@ -229,10 +222,11 @@ def _parse_uuid(raw: str, arg_name: str) -> UUID:
         raise typer.Exit(code=1) from None
 
 
-async def _build_service_with_session() -> tuple[AdminService, AsyncSession]:
-    """AdminService と AsyncSession を構築して返す。
+async def _build_service() -> AdminService:
+    """AdminService を構築して返す。
 
-    セッションのライフサイクルは呼び出し元（各コマンド）が管理する。
+    session_factory を LiteBootstrap から取得し、factory callable を DI 注入する。
+    Tx 管理（業務 Tx / audit_log Tx の分離）は AdminService 内部で行う（Option A）。
     遅延 import で循環参照リスクを回避する。
     """
     from bakufu.application.services.admin_service import AdminService
@@ -248,16 +242,13 @@ async def _build_service_with_session() -> tuple[AdminService, AsyncSession]:
     from bakufu.interfaces.cli.lite_bootstrap import LiteBootstrap
 
     session_factory = await LiteBootstrap.setup_db()
-    session = session_factory()
-    actor = _resolve_actor()
-
-    service = AdminService(
-        task_repo=SqliteTaskRepository(session),
-        outbox_event_repo=SqliteOutboxEventRepository(session),
-        audit_log_writer=SqliteAuditLogWriter(session),
-        actor=actor,
+    return AdminService(
+        session_factory=session_factory,
+        task_repo_factory=SqliteTaskRepository,
+        outbox_event_repo_factory=SqliteOutboxEventRepository,
+        audit_log_writer_factory=SqliteAuditLogWriter,
+        actor=_resolve_actor(),
     )
-    return service, session
 
 
 def _resolve_actor() -> str:

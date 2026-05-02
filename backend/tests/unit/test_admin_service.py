@@ -35,6 +35,18 @@ from tests.factories.task import (
 # ---------------------------------------------------------------------------
 
 
+def _make_mock_session() -> AsyncMock:
+    """async with session, session.begin(): をサポートするモックセッションを返す。"""
+    session = AsyncMock()
+    session.__aenter__ = AsyncMock(return_value=session)
+    session.__aexit__ = AsyncMock(return_value=False)
+    begin_ctx = AsyncMock()
+    begin_ctx.__aenter__ = AsyncMock(return_value=None)
+    begin_ctx.__aexit__ = AsyncMock(return_value=False)
+    session.begin = MagicMock(return_value=begin_ctx)
+    return session
+
+
 def _make_service(
     *,
     task_repo: object | None = None,
@@ -42,11 +54,24 @@ def _make_service(
     audit_log_writer: object | None = None,
     actor: str = "test_actor",
 ) -> AdminService:
-    """全 Port を AsyncMock でスタブした AdminService を構築する。"""
+    """全 Port を AsyncMock でスタブした AdminService を構築する（Option A 対応）。
+
+    session_factory は毎回同じモックセッションを返す。
+    各 factory callable は渡された mock port をそのまま返す。
+    _write_audit() が別 session を要求するが、同一モックセッションで動作する。
+    """
+    _task_repo = task_repo or AsyncMock()
+    _outbox_event_repo = outbox_event_repo or AsyncMock()
+    _audit_log_writer = audit_log_writer or AsyncMock()
+
+    mock_session = _make_mock_session()
+    mock_session_factory = MagicMock(return_value=mock_session)
+
     return AdminService(
-        task_repo=task_repo or AsyncMock(),
-        outbox_event_repo=outbox_event_repo or AsyncMock(),
-        audit_log_writer=audit_log_writer or AsyncMock(),
+        session_factory=mock_session_factory,
+        task_repo_factory=lambda _session: _task_repo,
+        outbox_event_repo_factory=lambda _session: _outbox_event_repo,
+        audit_log_writer_factory=lambda _session: _audit_log_writer,
         actor=actor,
     )
 

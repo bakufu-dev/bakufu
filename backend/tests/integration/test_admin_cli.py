@@ -13,19 +13,32 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
+import pytest_asyncio
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from typer.testing import CliRunner
 
 from bakufu.application.exceptions.task_exceptions import IllegalTaskStateError, TaskNotFoundError
 from bakufu.application.services.admin_service import BlockedTaskSummary, DeadLetterSummary
 from bakufu.domain.exceptions.outbox import OutboxEventNotFoundError
+from bakufu.domain.value_objects import TaskStatus
+from bakufu.infrastructure.persistence.sqlite.tables.audit_log import AuditLogRow
 from bakufu.interfaces.cli.admin import app
+from tests.factories.db import create_all_tables, make_test_engine, make_test_session_factory
+from tests.factories.directive import make_directive
+from tests.factories.empire import make_empire
+from tests.factories.room import make_room
+from tests.factories.task import make_blocked_task, make_done_task, make_task
+from tests.factories.workflow import make_workflow
 
 
 # ---------------------------------------------------------------------------
@@ -54,15 +67,17 @@ def _make_mock_session() -> AsyncMock:
 
 def _patch_build_service(
     mock_service: AsyncMock,
-    mock_session: AsyncMock,
+    mock_session: AsyncMock,  # session_factory 注入方式では不要だが呼び出し元との互換のため残す
 ) -> patch:
-    """_build_service_with_session をモックするコンテキストマネージャを返す。"""
-    from bakufu.application.services.admin_service import AdminService
+    """_build_service をモックするコンテキストマネージャを返す。
 
-    async def _fake_build() -> tuple:
-        return mock_service, mock_session
+    Option-A 修正後: Tx 管理は AdminService 内部に移動したため、
+    CLI 層では AdminService インスタンスのみを返す。
+    """
+    async def _fake_build() -> AsyncMock:
+        return mock_service
 
-    return patch("bakufu.interfaces.cli.admin._build_service_with_session", new=_fake_build)
+    return patch("bakufu.interfaces.cli.admin._build_service", new=_fake_build)
 
 
 def _make_blocked_summary(
@@ -361,3 +376,250 @@ class TestLiteBootstrapError:
         # [FAIL] メッセージが stderr または stdout に出力される（LiteBootstrap は print で出力）
         combined_output = (result.output or "") + (result.stderr or "")
         assert "[FAIL]" in combined_output
+
+
+# ---------------------------------------------------------------------------
+# TC-E2E-AC-001〜003: CLI経由フルパスでの audit_log 永続化検証（§確定A / Option-A 修正確認）
+#
+# ヘルスバーグ指摘対応:
+#   業務Tx と audit_log Tx が独立 session で実行され、業務Tx の rollback 後も
+#   audit_log INSERT が独立 commit で永続化されることを実 DB + CLI 全経路で証明する。
+#
+# 設計書: docs/features/admin-cli/cli/detailed-design.md §確定A
+#         docs/features/admin-cli/application/test-design.md §TC-E2E-AC
+#
+# テスト戦略:
+#   - _build_service_with_session を一切モックしない（CLI全経路）
+#   - 実 SQLite bakufu.db + BAKUFU_DATA_DIR 設定で LiteBootstrap を通す
+#   - 非同期操作（DB setup / audit_log 検証）は asyncio.run() で sync テスト内から呼ぶ
+#     （CliRunner が asyncio.run() を使う都合上、テスト関数を sync にする必要がある）
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# E2E テスト用ヘルパー
+# ---------------------------------------------------------------------------
+
+
+async def _create_bakufu_db(db_path: Path) -> None:
+    """テスト用 bakufu.db を作成してスキーマを展開する。"""
+    engine = make_test_engine(db_path)
+    await create_all_tables(engine)
+    await engine.dispose()
+
+
+async def _read_audit_logs_from_db(db_path: Path) -> list[AuditLogRow]:
+    """audit_log テーブルの全行を executed_at 昇順で取得する。"""
+    engine = make_test_engine(db_path)
+    sf = make_test_session_factory(engine)
+    try:
+        async with sf() as session:
+            result = await session.execute(
+                select(AuditLogRow).order_by(AuditLogRow.executed_at.asc())
+            )
+            return list(result.scalars().all())
+    finally:
+        await engine.dispose()
+
+
+async def _seed_entity_hierarchy(db_path: Path) -> tuple[UUID, UUID]:
+    """empire → workflow → room → directive をシードして (room_id, directive_id) を返す。"""
+    from bakufu.infrastructure.persistence.sqlite.repositories.directive_repository import (
+        SqliteDirectiveRepository,
+    )
+    from bakufu.infrastructure.persistence.sqlite.repositories.empire_repository import (
+        SqliteEmpireRepository,
+    )
+    from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
+        SqliteRoomRepository,
+    )
+    from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
+        SqliteTaskRepository,
+    )
+    from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
+        SqliteWorkflowRepository,
+    )
+
+    engine = make_test_engine(db_path)
+    sf = make_test_session_factory(engine)
+    empire = make_empire()
+    workflow = make_workflow()
+    room = make_room(workflow_id=workflow.id)
+    directive = make_directive(target_room_id=room.id)
+    try:
+        async with sf() as session, session.begin():
+            await SqliteEmpireRepository(session).save(empire)
+        async with sf() as session, session.begin():
+            await SqliteWorkflowRepository(session).save(workflow)
+        async with sf() as session, session.begin():
+            await SqliteRoomRepository(session).save(room, empire.id)
+        async with sf() as session, session.begin():
+            await SqliteDirectiveRepository(session).save(directive)
+    finally:
+        await engine.dispose()
+    return room.id, directive.id
+
+
+async def _seed_task(db_path: Path, task: object) -> None:
+    """Task を DB に保存する。"""
+    from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
+        SqliteTaskRepository,
+    )
+
+    engine = make_test_engine(db_path)
+    sf = make_test_session_factory(engine)
+    try:
+        async with sf() as session, session.begin():
+            await SqliteTaskRepository(session).save(task)
+    finally:
+        await engine.dispose()
+
+
+def _init_masking_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """masking 初期化に必要な環境変数をクリアして masking.init() を呼ぶ。"""
+    for key in (
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "GEMINI_API_KEY",
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "OAUTH_CLIENT_SECRET",
+        "BAKUFU_DISCORD_BOT_TOKEN",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    from bakufu.infrastructure.security import masking
+
+    masking.init()
+
+
+class TestAuditLogPersistenceViaCLI:
+    """TC-E2E-AC-001〜003: CLI経由フルパスでの audit_log 永続化検証。
+
+    **§確定A 契約**: 全 Admin CLI 操作の後（成功・失敗を問わず）、
+    audit_log テーブルに対応レコードが追記される。
+
+    ヘルスバーグ指摘（Option-A 修正後の確認テスト）:
+    - AdminService が session_factory を受け取り、業務Tx と audit_log Tx を分離する修正後、
+      業務Tx の rollback（失敗時）の影響を audit_log Tx が受けないことを実 DB で証明する。
+    - _build_service_with_session を一切モックしない（CLI全経路）。
+    """
+
+    def test_retry_nonexistent_task_fail_audit_log_persisted(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """TC-E2E-AC-001: retry-task で TaskNotFoundError → exit 1 AND audit_log result='FAIL' が永続化。
+
+        §確定A 核心検証:
+        CLI 経由フルパスで業務Tx が rollback しても audit_log の FAIL 記録が永続化される。
+        CLI が _build_service_with_session をモックしない実 DB 接続で検証する。
+        """
+        db_path = tmp_path / "bakufu.db"
+        asyncio.run(_create_bakufu_db(db_path))
+        _init_masking_env(monkeypatch)
+        monkeypatch.setenv("BAKUFU_DATA_DIR", str(tmp_path))
+
+        runner = _make_cli_runner()
+        nonexistent_id = uuid4()
+        result = runner.invoke(app, ["retry-task", str(nonexistent_id)])
+
+        # CLI は TaskNotFoundError → exit 1
+        assert result.exit_code == 1
+
+        # §確定A: audit_log に result='FAIL' が永続化されている
+        audit_logs = asyncio.run(_read_audit_logs_from_db(db_path))
+        assert len(audit_logs) == 1, (
+            f"audit_log が 1 件期待されるが {len(audit_logs)} 件。"
+            f" 業務Tx の rollback が audit_log Tx を巻き込んでいる可能性がある。"
+        )
+        assert audit_logs[0].result == "FAIL"
+        assert audit_logs[0].command == "retry-task"
+        assert str(nonexistent_id) in str(audit_logs[0].args_json)
+
+    def test_cancel_nonexistent_task_fail_audit_log_persisted(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """TC-E2E-AC-002: cancel-task で TaskNotFoundError → exit 1 AND audit_log result='FAIL' が永続化。"""
+        db_path = tmp_path / "bakufu.db"
+        asyncio.run(_create_bakufu_db(db_path))
+        _init_masking_env(monkeypatch)
+        monkeypatch.setenv("BAKUFU_DATA_DIR", str(tmp_path))
+
+        runner = _make_cli_runner()
+        nonexistent_id = uuid4()
+        result = runner.invoke(app, ["cancel-task", str(nonexistent_id)])
+
+        assert result.exit_code == 1
+
+        audit_logs = asyncio.run(_read_audit_logs_from_db(db_path))
+        assert len(audit_logs) == 1, (
+            f"audit_log が 1 件期待されるが {len(audit_logs)} 件。"
+            f" 業務Tx の rollback が audit_log Tx を巻き込んでいる可能性がある。"
+        )
+        assert audit_logs[0].result == "FAIL"
+        assert audit_logs[0].command == "cancel-task"
+
+    def test_retry_task_illegal_state_fail_audit_log_persisted(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """TC-E2E-AC-003: DONE Task の retry-task → IllegalTaskStateError + audit_log result='FAIL' 永続化。
+
+        §確定B: Fail Fast 後も audit_log FAIL が記録される。
+        Task が存在するが不正ステータスのケース（DB seed 必要）。
+        """
+        db_path = tmp_path / "bakufu.db"
+        asyncio.run(_create_bakufu_db(db_path))
+        _init_masking_env(monkeypatch)
+        monkeypatch.setenv("BAKUFU_DATA_DIR", str(tmp_path))
+
+        # entity hierarchy + DONE task をシード
+        room_id, directive_id = asyncio.run(_seed_entity_hierarchy(db_path))
+        done_task = make_done_task(room_id=room_id, directive_id=directive_id)
+        asyncio.run(_seed_task(db_path, done_task))
+
+        runner = _make_cli_runner()
+        result = runner.invoke(app, ["retry-task", str(done_task.id)])
+
+        assert result.exit_code == 1
+        assert "[FAIL]" in (result.output + result.stderr)
+
+        audit_logs = asyncio.run(_read_audit_logs_from_db(db_path))
+        assert len(audit_logs) == 1, (
+            f"audit_log が 1 件期待されるが {len(audit_logs)} 件"
+        )
+        assert audit_logs[0].result == "FAIL"
+        assert audit_logs[0].command == "retry-task"
+
+    def test_retry_blocked_task_ok_audit_log_persisted(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """TC-E2E-AC-004: BLOCKED Task の retry-task 成功 → exit 0 AND audit_log result='OK' が永続化。
+
+        正常系: 成功時も audit_log に result='OK' が記録される（§確定A の両面検証）。
+        """
+        db_path = tmp_path / "bakufu.db"
+        asyncio.run(_create_bakufu_db(db_path))
+        _init_masking_env(monkeypatch)
+        monkeypatch.setenv("BAKUFU_DATA_DIR", str(tmp_path))
+
+        # entity hierarchy + BLOCKED task をシード
+        room_id, directive_id = asyncio.run(_seed_entity_hierarchy(db_path))
+        blocked_task = make_blocked_task(room_id=room_id, directive_id=directive_id)
+        asyncio.run(_seed_task(db_path, blocked_task))
+
+        runner = _make_cli_runner()
+        result = runner.invoke(app, ["retry-task", str(blocked_task.id)])
+
+        assert result.exit_code == 0
+        assert "[OK]" in result.output
+
+        audit_logs = asyncio.run(_read_audit_logs_from_db(db_path))
+        assert len(audit_logs) == 1
+        assert audit_logs[0].result == "OK"
+        assert audit_logs[0].command == "retry-task"
