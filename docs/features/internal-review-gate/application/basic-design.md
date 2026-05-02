@@ -94,7 +94,7 @@ classDiagram
         -agent_repo: AgentRepositoryPort
         -ext_review_svc: ExternalReviewGateService
         -event_bus: EventBusPort
-        -_locks: dict[InternalGateId, asyncio.Lock]
+        -_locks: WeakValueDictionary[InternalGateId, asyncio.Lock]
         +async create_gate(task_id, stage_id, required_gate_roles) InternalReviewGate | None
         +async submit_verdict(gate_id, role, agent_id, decision, comment) GateDecision
         -async _handle_all_approved(task_id, stage_id) None
@@ -254,17 +254,17 @@ sequenceDiagram
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|
 | **T1: GateRole 詐称（定義外の role を自称して Verdict を提出）**| `submit_verdict(role="security", ...)` を Gate の `required_gate_roles` に "security" が含まれない状態で呼び出す | Gate の品質保証機能 | `InternalReviewService.submit_verdict()` が提出 `role` を `gate.required_gate_roles` と照合し、含まれない role からの提出を `UnauthorizedGateRoleError` で拒否する（feature-spec.md §7 R1-A / domain/detailed-design.md §確定 I）。LLM Executor の `agent_id` は Executor 共通 ID であり agent レベルの role_profile チェックは行わない（全 GateRole を同一 Executor が実行するため role_profile チェックは形骸化するため）|
-| **T2: ambiguous 判定の悪用（LLM が曖昧表現で APPROVED 相当の扱いを狙う）**| `_parse_verdict_decision()` が "条件付き承認" を APPROVED に誤変換 | Gate の品質保証機能 | `_parse_verdict_decision()` は明確な "APPROVED" または同義語のみを `VerdictDecision.APPROVED` に変換。それ以外は全て `VerdictDecision.REJECTED`（feature-spec.md R1-F / domain/detailed-design.md §確定 F） |
-| **T3: LLM 出力経由の secret 混入（comment に API key 等が含まれる）**| GateRole LLM が出力に secret を含む comment を生成 → `submit_verdict()` → Repository 経由で DB 永続化 / または `logger.debug(llm_output)` でログに漏洩 | API key / webhook token | (1) **ログ禁止制約**: `_execute_single_role()` および `_parse_verdict_decision()` において raw LLM 出力（`llm_output` 変数）を `logger.debug()` / `logger.info()` 等でログ出力することを **禁止** する。ログに書き込む場合はマスキング済み `comment`（`gate.verdicts[-1].comment`）のみ使用すること。(2) **DB 永続化マスキング**: Repository sub-feature の `MaskedText` TypeDecorator が永続化前にマスキング（feature-spec.md §13 機密レベル「高」）|
+| **T2: ambiguous 判定の悪用（LLM が曖昧表現で APPROVED 相当の扱いを狙う）**| LLM が `submit_verdict` ツールを呼び出さずにテキストのみで応答し、ambiguous 判定が APPROVED に分類される | Gate の品質保証機能 | `chat_with_tools()` の `submit_verdict` tool schema が `decision: Literal["APPROVED","REJECTED"]` の 2 値のみを受け付ける型制約で強制（§確定 D）。ツール未呼び出しは再指示リトライ後に全て REJECTED 強制（§確定 D リトライ超過 fallback）。`_parse_verdict_decision()` は廃止済みであり、テキスト解析起因の誤判定リスクは設計レベルで根絶された |
+| **T3: LLM 出力経由の secret 混入（comment に API key 等が含まれる）**| GateRole LLM が出力に secret を含む comment を生成 → `submit_verdict()` → Repository 経由で DB 永続化 / または `logger.debug(llm_output)` でログに漏洩 | API key / webhook token | (1) **ログ禁止制約**: `_execute_single_role()` において raw LLM 出力を `logger.debug()` / `logger.info()` 等でログ出力することを **禁止** する。`{prev_response_summary}` は先頭 200 文字トランケートのみを使用し、`logger` には `prev_response_length`（整数）のみを記録する（§確定 D 注意事項）。comment を含むフィールドをログに記録する場合は repository 層での永続化マスキング完了後のデータに限定すること（`gate.verdicts[-1].comment` はメモリ上の raw 文字列であり永続化前は「マスキング済み」ではない）。(2) **DB 永続化マスキング**: Repository sub-feature の `MaskedText` TypeDecorator が永続化時（`process_bind_param`）にマスキング（feature-spec.md §13 機密レベル「高」）|
 | **T4: asyncio.gather 中の一部 GateRole LLM エラーによるスタック**| `_execute_single_role()` が例外を送出しても他の gather タスクがぶら下がり、Semaphore が永久に解放されない | StageWorker の concurrency slot | `asyncio.gather(return_exceptions=True)` を採用し、全 GateRole のタスクを確実に回収。`execute()` の末尾で例外があれば再送出してエラーハンドリングに委譲（§確定 B）|
 
 ### OWASP Top 10 対応
 
 | # | カテゴリ | 対応状況 |
 |---|---------|---------|
-| A01 | Broken Access Control | **適用**: `InternalReviewService.submit_verdict()` が呼び出し元 agent_id の GateRole 権限を認可確認（T1 対策、domain/detailed-design.md §確定 I の application 層責務）|
+| A01 | Broken Access Control | **適用**: `InternalReviewService.submit_verdict()` が提出 `role` を `gate.required_gate_roles` と照合し、定義外の role からの提出を `UnauthorizedGateRoleError` で拒否する（T1 対策 / §確定 D 変更後の認可モデル。Executor の `agent_id` は共通 ID のため agent レベルの role_profile チェックは行わない）|
 | A02 | Cryptographic Failures | **転送**: comment の secret マスキングは repository 層で実施（本 sub-feature はフロー制御のみ）|
-| A03 | Injection | **適用**: LLM 出力を `_parse_verdict_decision()` で構造化 ENUM に変換してから domain に渡す。raw LLM 出力を直接 domain に注入しない |
+| A03 | Injection | **適用**: `chat_with_tools()` の `submit_verdict` tool schema が `decision: Literal["APPROVED","REJECTED"]` の型制約で LLM 出力を構造化し、raw テキストを直接 domain に注入しない（§確定 D）。`_parse_verdict_decision()` は廃止済み |
 | A04 | Insecure Design | **適用**: Semaphore release 保証（return_exceptions=True）/ ambiguous → REJECTED 強制（T2）/ GateRole 権限認可（T1）|
 | A07 | Auth Failures | **適用**: GateRole 詐称防止（T1）を application 層で実施（domain 層は agent_id を VO として保持のみ）|
 | A09 | Logging Failures | **適用**: `InternalReviewService.submit_verdict()` が Gate 決定時（ALL_APPROVED / REJECTED 遷移）に audit_log を記録する。comment の raw テキストは含めない（T3 対策）。詳細は detailed-design.md §確定 J 参照 |

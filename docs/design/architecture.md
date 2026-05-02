@@ -76,7 +76,7 @@ backend/src/bakufu/application/
 │   ├── external_review_gate_repository.py      # ExternalReviewGateRepositoryPort
 │   ├── internal_review_gate_repository.py      # InternalReviewGateRepositoryPort（M5-B #164）
 │   ├── event_bus.py                            # EventBusPort（M4 websocket-broadcast Issue #158）
-│   ├── llm_provider_port.py                    # LLMProviderPort（M5 stage-executor Issue #163）
+│   ├── llm_provider_port.py                    # LLMProviderPort（M5 stage-executor Issue #163 / M5-B #164 で chat_with_tools() 追加）
 │   └── internal_review_gate_executor_port.py   # InternalReviewGateExecutorPort（M5-A #163 定義、M5-B #164 実装）
 └── services/
     ├── empire_service.py               # EmpireService（M3 骨格、M3-B で肉付け）
