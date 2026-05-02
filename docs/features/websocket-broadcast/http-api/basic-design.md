@@ -72,7 +72,7 @@ backend/src/bakufu/interfaces/http/
 | 項目 | 内容 |
 |---|---|
 | 入力 | WebSocket 接続リクエスト（クライアントの `ws://localhost:8000/ws` 接続 HTTP Upgrade）|
-| 処理 | `ConnectionManager.connect(websocket)` で接続を受け入れ接続プールに登録する。ループで `receive_text()` を待機し（MVP ではクライアントからのメッセージを無視する）、`WebSocketDisconnect` を捕捉したら `ConnectionManager.disconnect(websocket)` を呼ぶ |
+| 処理 | ① `websocket.headers.get("origin")` を `BAKUFU_ALLOWED_ORIGINS` と照合し、不一致なら `await websocket.close(code=1008)` → return（早期拒否）。② Origin 合格後に `ConnectionManager.connect(websocket)` で接続を受け入れ接続プールに登録する。③ ループで `receive_text()` を待機し（MVP ではクライアントからのメッセージを無視する）、`WebSocketDisconnect` を捕捉したら `ConnectionManager.disconnect(websocket)` を呼ぶ |
 | 出力 | 接続維持中は WebSocket コネクションをオープン状態に保つ。切断時は graceful close |
 | エラー時 | `WebSocketDisconnect` → `ConnectionManager.disconnect()` を呼んで接続プールから削除。例外を再 raise しない（接続切断は正常フロー）|
 
@@ -146,15 +146,22 @@ sequenceDiagram
     participant CM as ConnectionManager
 
     Client->>WsRouter: ws://localhost:8000/ws 接続（HTTP Upgrade）
-    WsRouter->>CM: connect(websocket)
-    CM->>Client: websocket.accept()
-    CM-->>WsRouter: 接続プールに追加完了（MSG-WSB-003 ログ）
-    loop 接続中
-        Client-->>WsRouter: receive_text() 待機（クライアントからのメッセージは無視）
+    WsRouter->>WsRouter: Origin ヘッダーを BAKUFU_ALLOWED_ORIGINS と照合
+
+    alt Origin 不一致（Cross-Origin Hijacking 拒否）
+        WsRouter-->>Client: websocket.close(code=1008 Policy Violation)
+        Note over WsRouter: early return
+    else Origin 合格
+        WsRouter->>CM: connect(websocket)
+        CM->>Client: websocket.accept()
+        CM-->>WsRouter: 接続プールに追加完了（MSG-WSB-003 ログ）
+        loop 接続中
+            Client-->>WsRouter: receive_text() 待機（クライアントからのメッセージは無視）
+        end
+        Client->>WsRouter: WebSocketDisconnect（正常 / 異常問わず）
+        WsRouter->>CM: disconnect(websocket)
+        CM-->>WsRouter: 接続プールから削除完了（MSG-WSB-004 ログ）
     end
-    Client->>WsRouter: WebSocketDisconnect（正常 / 異常問わず）
-    WsRouter->>CM: disconnect(websocket)
-    CM-->>WsRouter: 接続プールから削除完了（MSG-WSB-004 ログ）
 ```
 
 ### UC-WSB-001/002: Domain Event → WebSocket 配信
