@@ -91,17 +91,22 @@ classDiagram
         -gate_repo: InternalReviewGateRepositoryPort
         -task_repo: TaskRepositoryPort
         -workflow_repo: WorkflowRepositoryPort
+        -agent_repo: AgentRepositoryPort
         -ext_review_svc: ExternalReviewGateService
         -event_bus: EventBusPort
+        -_locks: dict[InternalGateId, asyncio.Lock]
         +async create_gate(task_id, stage_id, required_gate_roles) InternalReviewGate | None
         +async submit_verdict(gate_id, role, agent_id, decision, comment) GateDecision
         -async _handle_all_approved(task_id, stage_id) None
         -async _handle_rejected(task_id, stage_id) None
         -async _find_prev_work_stage_id(task_id, stage_id) StageId
+        -async _authorize_gate_role(gate, role) None
     }
     class InternalReviewGateExecutor {
         -review_svc: InternalReviewService
         -llm_provider: LLMProviderPort
+        -agent_id: AgentId
+        -session_factory: AsyncSessionFactory
         +async execute(task_id, stage_id, required_gate_roles) None
         -async _execute_single_role(gate_id, role, task_id, stage_id) None
         -_parse_verdict_decision(llm_output) VerdictDecision
@@ -226,7 +231,7 @@ sequenceDiagram
 
 | 連携先 | 目的 | プロトコル | 認証 | タイムアウト / リトライ |
 |-------|------|----------|-----|--------------------|
-| Claude Code CLI（`LLMProviderPort`）| GateRole 審査プロンプト実行 | subprocess（M5-A 実装済み）| ANTHROPIC_API_KEY（環境変数）| 10 分タイムアウト（M5-A §確定 H: LLMProviderTimeoutError）/ REJECTED 時は残りの gather タスクを return_exceptions で回収 |
+| Claude Code CLI（`LLMProviderPort`）| GateRole 審査プロンプト実行 | subprocess（M5-A 実装済み）| M5-A T2 環境変数 allow-list（`{"PATH","HOME","LANG","LC_ALL","CLAUDE_HOME"} + BAKUFU_*`）に従い管理。ANTHROPIC_API_KEY は `CLAUDE_HOME` 経由の設定ファイルに保持し、subprocess 起動時に環境変数として直接渡さない（[stage-executor/application/detailed-design.md §セキュリティ T2](../../stage-executor/application/detailed-design.md) 参照）| 10 分タイムアウト（M5-A §確定 H: LLMProviderTimeoutError）/ REJECTED 時は残りの gather タスクを return_exceptions で回収 |
 
 ## UX 設計
 
@@ -246,9 +251,9 @@ sequenceDiagram
 
 | 想定攻撃者 | 攻撃経路 | 保護資産 | 対策 |
 |-----------|---------|---------|------|
-| **T1: GateRole 詐称（任意エージェントが別 GateRole を自称して Verdict を提出）**| `submit_verdict(role="security", ...)` を security GateRole の権限を持たないエージェントが呼び出す | Gate の品質保証機能 | `InternalReviewService.submit_verdict()` が呼び出し元 `agent_id` の `role_profile` に指定 GateRole が含まれるかを `AgentRepository` で認可確認（feature-spec.md §7 確定 R1-A §A01 注記、domain/detailed-design.md §確定 I）|
+| **T1: GateRole 詐称（定義外の role を自称して Verdict を提出）**| `submit_verdict(role="security", ...)` を Gate の `required_gate_roles` に "security" が含まれない状態で呼び出す | Gate の品質保証機能 | `InternalReviewService.submit_verdict()` が提出 `role` を `gate.required_gate_roles` と照合し、含まれない role からの提出を `UnauthorizedGateRoleError` で拒否する（feature-spec.md §7 R1-A / domain/detailed-design.md §確定 I）。LLM Executor の `agent_id` は Executor 共通 ID であり agent レベルの role_profile チェックは行わない（全 GateRole を同一 Executor が実行するため role_profile チェックは形骸化するため）|
 | **T2: ambiguous 判定の悪用（LLM が曖昧表現で APPROVED 相当の扱いを狙う）**| `_parse_verdict_decision()` が "条件付き承認" を APPROVED に誤変換 | Gate の品質保証機能 | `_parse_verdict_decision()` は明確な "APPROVED" または同義語のみを `VerdictDecision.APPROVED` に変換。それ以外は全て `VerdictDecision.REJECTED`（feature-spec.md R1-F / domain/detailed-design.md §確定 F） |
-| **T3: LLM 出力経由の secret 混入（comment に API key 等が含まれる）**| GateRole LLM が出力に secret を含む comment を生成 → `submit_verdict()` → Repository 経由で DB 永続化 | API key / webhook token | Repository sub-feature で `MaskedText` TypeDecorator が永続化前にマスキング（本 sub-feature ではコメントを raw で `submit_verdict()` に渡す。永続化境界でのマスキングは repository 責務として分離、feature-spec.md §13 機密レベル「高」）|
+| **T3: LLM 出力経由の secret 混入（comment に API key 等が含まれる）**| GateRole LLM が出力に secret を含む comment を生成 → `submit_verdict()` → Repository 経由で DB 永続化 / または `logger.debug(llm_output)` でログに漏洩 | API key / webhook token | (1) **ログ禁止制約**: `_execute_single_role()` および `_parse_verdict_decision()` において raw LLM 出力（`llm_output` 変数）を `logger.debug()` / `logger.info()` 等でログ出力することを **禁止** する。ログに書き込む場合はマスキング済み `comment`（`gate.verdicts[-1].comment`）のみ使用すること。(2) **DB 永続化マスキング**: Repository sub-feature の `MaskedText` TypeDecorator が永続化前にマスキング（feature-spec.md §13 機密レベル「高」）|
 | **T4: asyncio.gather 中の一部 GateRole LLM エラーによるスタック**| `_execute_single_role()` が例外を送出しても他の gather タスクがぶら下がり、Semaphore が永久に解放されない | StageWorker の concurrency slot | `asyncio.gather(return_exceptions=True)` を採用し、全 GateRole のタスクを確実に回収。`execute()` の末尾で例外があれば再送出してエラーハンドリングに委譲（§確定 B）|
 
 ### OWASP Top 10 対応
@@ -260,7 +265,7 @@ sequenceDiagram
 | A03 | Injection | **適用**: LLM 出力を `_parse_verdict_decision()` で構造化 ENUM に変換してから domain に渡す。raw LLM 出力を直接 domain に注入しない |
 | A04 | Insecure Design | **適用**: Semaphore release 保証（return_exceptions=True）/ ambiguous → REJECTED 強制（T2）/ GateRole 権限認可（T1）|
 | A07 | Auth Failures | **適用**: GateRole 詐称防止（T1）を application 層で実施（domain 層は agent_id を VO として保持のみ）|
-| A09 | Logging Failures | **申し送り**: audit_log への ALL_APPROVED / REJECTED 遷移記録は `InternalReviewService` の責務（`docs/design/threat-model.md §A09`）|
+| A09 | Logging Failures | **適用**: `InternalReviewService.submit_verdict()` が Gate 決定時（ALL_APPROVED / REJECTED 遷移）に audit_log を記録する。comment の raw テキストは含めない（T3 対策）。詳細は detailed-design.md §確定 J 参照 |
 
 ## エラーハンドリング方針
 

@@ -32,17 +32,19 @@ classDiagram
         -agent_repo: AgentRepositoryPort
         -ext_review_svc: ExternalReviewGateService
         -event_bus: EventBusPort
+        -_locks: dict[InternalGateId, asyncio.Lock]
         +async create_gate(task_id: TaskId, stage_id: StageId, required_gate_roles: frozenset[GateRole]) InternalReviewGate | None
         +async submit_verdict(gate_id: InternalGateId, role: GateRole, agent_id: AgentId, decision: VerdictDecision, comment: str) GateDecision
         -async _handle_all_approved(gate: InternalReviewGate, task_id: TaskId, stage_id: StageId) None
         -async _handle_rejected(gate: InternalReviewGate, task_id: TaskId, stage_id: StageId) None
         -async _find_prev_work_stage_id(task_id: TaskId, stage_id: StageId) StageId
-        -async _authorize_gate_role(agent_id: AgentId, role: GateRole) None
+        -async _authorize_gate_role(gate: InternalReviewGate, role: GateRole) None
     }
     class InternalReviewGateExecutor {
         -review_svc: InternalReviewService
         -llm_provider: LLMProviderPort
         -agent_id: AgentId
+        -session_factory: AsyncSessionFactory
         +async execute(task_id: TaskId, stage_id: StageId, required_gate_roles: frozenset[GateRole]) None
         -async _execute_single_role(gate_id: InternalGateId, role: GateRole, task_id: TaskId, stage_id: StageId) None
         -_parse_verdict_decision(llm_output: str) VerdictDecision
@@ -60,6 +62,7 @@ classDiagram
 | `agent_repo` | `AgentRepositoryPort` | GateRole 権限認可（T1 対策）|
 | `ext_review_svc` | `ExternalReviewGateService` | ALL_APPROVED → ExternalReviewGate 生成委譲 |
 | `event_bus` | `EventBusPort` | Gate 状態変化 Domain Event 発行 |
+| `_locks` | `dict[InternalGateId, asyncio.Lock]` | Gate ID ごとの Lost Update 防止ロック（§確定 H）|
 
 **ふるまいの不変条件**:
 - `create_gate()`: `required_gate_roles` が空集合なら `None` を返す（Gate を生成しない）
@@ -75,6 +78,7 @@ classDiagram
 | `review_svc` | `InternalReviewService` | Verdict 提出 + Gate 決定 後処理 |
 | `llm_provider` | `LLMProviderPort` | GateRole 審査 LLM 呼び出し |
 | `agent_id` | `AgentId` | InternalReviewGateExecutor 自身のエージェント ID（各 GateRole の `agent_id` に使用）|
+| `session_factory` | `AsyncSessionFactory`（`async_sessionmaker[AsyncSession]`）| GateRole ごとの独立 DB セッション生成元（§確定 I）|
 
 **`execute()` のふるまい**:
 1. `review_svc.create_gate(task_id, stage_id, required_gate_roles)` で Gate を生成・保存
@@ -100,14 +104,24 @@ INTERNAL_REVIEW の各 GateRole 呼び出しに `session_id = uuid4()` を使用
 - 各 GateRole は deliverable の内容と審査観点のみを必要とし、他 GateRole の判定結果を入力として必要としない（競合的評価を避ける設計）
 - 新規 UUID v4 の生成はステートレスであり、SessionLost リトライ時も同じ戦略で対応可能
 
-### 確定 B: 並列実行は `asyncio.gather(return_exceptions=True)` を採用
+### 確定 B: 並列実行は `asyncio.gather(return_exceptions=True)` を採用。`gate_already_decided` 例外は無視する
 
 全 GateRole の `_execute_single_role()` を `asyncio.gather(return_exceptions=True)` で並列実行する。
 
 **根拠**:
 - `return_exceptions=True`: gather タスクの一部が例外を送出しても他のタスクをキャンセルせずに最後まで実行する。1 GateRole の LLM エラーが他 GateRole の判定を妨げない（M4 Fail Soft パターンと同様の設計方針）
-- REJECTED が確定した後も残りの GateRole が並列実行を継続するが、`submit_verdict()` 内で `gate_decision != PENDING` を domain 層が拒否する（`kind='gate_already_decided'`）ため、REJECTED 後の Verdict は記録されない（業務的に無害）
+- REJECTED が確定した後も残りの GateRole が並列実行を継続するが、`submit_verdict()` 内で `gate_decision != PENDING` を domain 層が `InternalReviewGateInvariantViolation(kind='gate_already_decided')` で拒否する。これは「後続 GateRole が REJECTED 確定後に Verdict 提出を試みた」という**正常業務経路**であり、LLM エラーと区別して無視しなければならない
 - `asyncio.gather` は単一 asyncio イベントループ内で完結するため、追加スレッドや外部プロセスが不要（tech-stack.md §LLM Adapter 方針と整合）
+
+**例外フィルタリング規則（§確定B/C の矛盾を解消）**:
+
+| gather 結果の例外型 | 処理方針 |
+|------------------|---------|
+| `InternalReviewGateInvariantViolation(kind='gate_already_decided')` | **無視**（REJECTED 確定後の後続 Verdict 提出による正常業務例外）|
+| `LLMProviderError` 系（SessionLost / RateLimited / Auth / Timeout / Process）| **再送出**（StageExecutorService REQ-ME-002 が Task.block() に帰着）|
+| その他の例外 | **再送出**（予期しない障害として上位に委譲）|
+
+`execute()` は gather 結果を走査し、上記ルールで例外を分類する。`gate_already_decided` 以外の例外が存在する場合は最初の非 `gate_already_decided` 例外を再送出する。
 
 **REJECTED 後の gather 継続について（fire-and-forget との違い）**:
 execute() は `await asyncio.gather(...)` を最後まで待機してから return する。REJECTED が確定した時点で Task 差し戻しは `submit_verdict()` 内で完結しているため、残りの gather タスクが完了するまでの待機時間は LLM の応答時間のみ。Semaphore は全 gather タスク完了後に release される（design rationale: stage-executor §確定 G「なぜ long-running coroutine か」参照）。
@@ -127,14 +141,18 @@ REJECTED Verdict が確定した後も、`asyncio.gather(return_exceptions=True)
 
 | LLM 出力パターン | 変換結果 | 根拠 |
 |----------------|---------|------|
-| 1 行目が "APPROVED" または "承認" または "LGTM" または "OK" を含む（大文字小文字無視）| `VerdictDecision.APPROVED` | 明確な承認表現 |
-| 上記以外の全て（"REJECTED" / "却下" / "条件付き" / 空文字 / parse 失敗 等）| `VerdictDecision.REJECTED` | feature-spec.md R1-F: ambiguous は REJECTED として扱う |
+| 1 行目の **行頭**（前後の空白を除く）が `APPROVED` / `LGTM` / `OK` のいずれかで始まる（大文字小文字無視、`\b` 単語境界）— `re.match(r"^\s*(APPROVED\|LGTM\|OK)\b", first_line, re.IGNORECASE)` | `VerdictDecision.APPROVED` | 明確な承認表現のみを前進許可 |
+| 上記以外の全て（`REJECTED` / "却下" / "条件付き承認" / 空文字 / parse 失敗 等）| `VerdictDecision.REJECTED` | feature-spec.md R1-F: ambiguous は REJECTED として扱う |
 
-**根拠**: 明確な承認のみ前進を許可する（R1-F）。LLM 出力の 1 行目にある判定キーワードを優先して解析する。parse に失敗した場合は安全側（REJECTED）に倒す Fail Safe 設計。
+**根拠**:
+- 行頭マッチ（`re.match`）を使用することで `"REJECTED: 承認できない理由..."` が誤って `APPROVED` に分類されるパターンを排除する。substring 検索では "承認" を含む REJECTED 文が誤判定される脆弱性がある（ヘルスバーグ指摘 §却下5）
+- 日本語の "承認" は不採用。LLM に対してプロンプト（§確定 E）で英語キーワード（`APPROVED` / `REJECTED`）を明示的に指示するため、日本語キーワードマッチは不要であり誤検知を増やすだけ
+- `\b` 単語境界により `APPROVEDXXX` 等の誤マッチを防ぐ
+- parse に失敗した場合は安全側（`REJECTED`）に倒す Fail Safe 設計（feature-spec.md R1-F）
 
 プロンプト設計（§確定 E）で LLM に "1 行目に判定（APPROVED / REJECTED のいずれか）、2 行目以降に理由" を指示することで、パターンマッチング精度を高める。
 
-### 確定 E: GateRole プロンプトテンプレートの構造
+### 確定 E: GateRole プロンプトテンプレートの構造と `deliverable_summary` 取得元
 
 `_build_prompt(role: GateRole, deliverable_summary: str) -> str` が使用するテンプレートを凍結する。
 
@@ -149,17 +167,34 @@ REJECTED Verdict が確定した後も、`asyncio.gather(return_exceptions=True)
 
 role 別のカスタムテンプレート（`prompts/{role}.py`）が存在しない場合は `prompts/default.py` を使用する（現時点では全 role が default テンプレートを使用）。将来、特定 GateRole（例: security）に審査観点の詳細指示が必要な場合は role 別テンプレートを追加する（YAGNI: 現時点では default のみで十分）。
 
-### 確定 F: `create_gate()` のべき等性（既存 PENDING Gate の重複生成防止）
+**`deliverable_summary` の取得元（凍結）**:
 
-`create_gate(task_id, stage_id, required_gate_roles)` 呼び出し時:
+`_execute_single_role()` が `_build_prompt()` に渡す `deliverable_summary` の取得元を以下の通り凍結する（申し送り#3 撤廃）。
+
+| ステップ | 操作 |
+|---------|------|
+| 1 | `TaskRepository.find_by_id(task_id)` で Task を取得 |
+| 2 | `task.current_deliverable` が `None` の場合は `IllegalTaskStateError` を送出（Fail Fast）|
+| 3 | `task.current_deliverable.content`（`str`）を `deliverable_summary` として `_build_prompt()` に渡す |
+
+**根拠**: INTERNAL_REVIEW Stage の審査対象は「直前の WORK Stage が生成した成果物テキスト」である（feature-spec.md §7 R1-C）。`Task.current_deliverable` は domain 設計で「Task の現在有効な成果物」として凍結されており（domain/basic-design.md §Deliverable）、DAG 上で直前 WORK Stage の出力に対応する。実装 PR で取得元を変更することは設計変更であり、別 PR + 設計書更新が必要。
+
+### 確定 F: `create_gate()` の事前条件とべき等性（既存 PENDING Gate の重複生成防止）
+
+`create_gate(task_id, stage_id, required_gate_roles)` 呼び出し時の事前条件確認と分岐:
 
 | 状況 | 動作 |
 |-----|------|
-| 既存 PENDING Gate が存在しない | 新規 Gate を生成・保存して返す |
-| 既存 PENDING Gate が存在する | 既存 Gate をそのまま返す（新規生成しない） |
 | `required_gate_roles` が空集合 | `None` を返す（Gate を生成しない）|
+| `task.status` が `BLOCKED` / `REJECTED` / `COMPLETED` のいずれか | `IllegalTaskStateError` を送出（Fail Fast: 差し戻し中・ブロック中・完了済み Task への二重 Gate 生成を禁止）|
+| 既存 PENDING Gate が存在する | 既存 Gate をそのまま返す（新規生成しない、べき等）|
+| 上記以外（Task が RUNNING 状態、既存 PENDING Gate なし）| 新規 Gate を生成・保存して返す |
 
-**根拠**: StageWorker の retry や crash recovery で `create_gate()` が複数回呼ばれるケースを安全に処理する（Fail Fast 原則の裏面としての Fail Safe）。同一 `(task_id, stage_id)` の PENDING Gate が複数生成される業務バグを application 層で物理防止する（repository/detailed-design.md §申し送り #2 の対応）。
+**事前条件の確認順序**: 空集合チェック → Task.status チェック（`TaskRepository.find_by_id` で取得）→ 既存 PENDING Gate チェック（`gate_repo.find_by_task_and_stage` で取得）→ 新規生成。
+
+**根拠**:
+- Task.status 事前条件: REJECTED Task（差し戻し処理中）に新たな Gate を生成すると、旧ラウンドの差し戻し処理と競合する業務バグが発生する（Tabriz 指摘 §却下8）。`task.status` が `RUNNING` でない場合は Gate 生成を拒否して Fail Fast する
+- べき等保証: StageWorker の retry や crash recovery で `create_gate()` が複数回呼ばれるケースを安全に処理する。同一 `(task_id, stage_id)` の PENDING Gate が複数生成される業務バグを application 層で物理防止する（repository/detailed-design.md §申し送り #2 の対応）
 
 ### 確定 G: `InternalReviewGateExecutor` は `infrastructure/reviewers/` に配置（ジェンセン決定 ①）
 
@@ -182,6 +217,44 @@ M5-B は `backend/src/bakufu/infrastructure/reviewers/internal_review_gate_execu
 | 5 | 見つかった前段 WORK Stage の `id` を返す |
 
 前段 WORK Stage が見つからない場合（Workflow 設計バグ）は `IllegalWorkflowStructureError` を送出（Fail Fast）。domain の `task.rollback_to_stage(prev_stage_id)` には確定済みの `StageId` を渡す（domain 層は DAG traversal を知らない）。
+
+### 確定 H: `submit_verdict()` は `asyncio.Lock(gate_id)` で Lost Update を防止する
+
+`InternalReviewService` は Gate ID をキーとした `asyncio.Lock` テーブル（`_locks: dict[InternalGateId, asyncio.Lock]`）をインスタンス属性として保持する。`submit_verdict()` は Gate の read-modify-write シーケンス（`find_by_id → gate.submit_verdict → save`）をこの Lock で直列化する。
+
+| 状況 | 動作 |
+|-----|------|
+| 同一 Gate への並列 `submit_verdict()` 呼び出し | Lock を取得したコルーチンのみが read-modify-write を実行。他コルーチンは Lock 解放まで待機 |
+| Lock の取得・解放 | `async with self._locks.setdefault(gate_id, asyncio.Lock()):` で管理。例外時も `async with` が確実に Lock を解放する |
+| Gate 確定（ALL_APPROVED / REJECTED）後の Lock エントリ | `_locks` dict から削除しない。後続の `gate_already_decided` 例外は §確定 B の例外フィルタリングで無視される |
+
+**根拠**: `asyncio.gather(return_exceptions=True)` で並列起動した複数の `_execute_single_role()` が同一 Gate に対して `submit_verdict()` を並列呼び出しする（§確定 B）。Repository の `save()` は DELETE/bulk INSERT semantics（repository/detailed-design.md §確定 A）であり、Lock なしでは後着コルーチンが先着の変更を上書きする Lost Update が発生する。`asyncio.Lock` は単一 asyncio イベントループ内で完結し、追加スレッド・外部ロックは不要。
+
+### 確定 I: `InternalReviewGateExecutor` は `session_factory` を注入し GateRole ごとに独立した `AsyncSession` を使用する
+
+`InternalReviewGateExecutor` は `session_factory`（`async_sessionmaker[AsyncSession]`）を属性として保持する。各 `_execute_single_role()` の呼び出し先頭で `async with self.session_factory() as session:` により独立した `AsyncSession` を生成し、その session スコープ内で LLM 呼び出しと `submit_verdict()` を実行する。
+
+| 制約 | 内容 |
+|-----|------|
+| セッション共有禁止 | `execute()` で生成した単一 `AsyncSession` を複数 GateRole タスク間で共有してはならない |
+| セッション生成タイミング | `_execute_single_role()` の先頭で毎回 `session_factory()` から新規生成 |
+| セッション管理 | `async with` コンテキストマネージャで管理。例外時も自動 close・rollback される |
+| session の流し方 | `_execute_single_role()` が session スコープ内で session-aware な repository/service を呼ぶ。具体的な受け渡し方法（constructor / context var 等）は実装 PR で確定するが、session の GateRole 間共有は禁止（本 §の制約が優先）|
+
+**根拠**: SQLAlchemy の `AsyncSession` はコルーチン内での直列使用を前提とする（[SQLAlchemy asyncio doc](https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html)）。`asyncio.gather()` で並列起動した複数コルーチンが単一 `AsyncSession` を共有すると、内部ステートが破損して `MissingGreenlet` や `DetachedInstanceError` 等の実行時エラーを引き起こす。`session_factory`（`async_sessionmaker`）は複数回呼び出し可能なファクトリであり、GateRole ごとに独立したセッションを生成する（ヘルスバーグ指摘 §却下2）。
+
+### 確定 J: Gate 決定時に audit_log を記録する（OWASP A09 対応）
+
+`InternalReviewService.submit_verdict()` は Gate が `ALL_APPROVED` または `REJECTED` に遷移した時点で audit_log を記録する。
+
+| イベント | audit_log に含む情報 |
+|---------|------------------|
+| ALL_APPROVED 遷移 | `task_id` / `gate_id` / `decision=ALL_APPROVED` / 全 Verdict の `role` と `decision` / `timestamp` |
+| REJECTED 遷移 | `task_id` / `gate_id` / `decision=REJECTED` / 拒否した `role` / `timestamp` |
+
+**禁止事項**: Verdict の `comment` の raw テキストを audit_log に含めない。comment には LLM が出力した secret が混入する可能性があり（T3 対策、feature-spec.md §13 機密レベル「高」）、マスキングは repository 層で実施される（repository/detailed-design.md §T1）。audit_log に書き込む前に comment のマスキング済み値（`gate.verdicts[-1].comment`）を使用すること。
+
+**根拠**: OWASP A09（Security Logging and Monitoring Failures）。Gate の ALL_APPROVED / REJECTED 遷移は業務上の重要イベントであり、事後調査・不正検出のために記録が必要（Tabriz 指摘 §却下9）。audit_log の書き込み先は既存の構造化ログ（`logger.info` + JSON formatter）に従う（`docs/design/threat-model.md §A09`）。
 
 ## ユーザー向けメッセージの確定文言
 
@@ -225,10 +298,6 @@ M5-B は `backend/src/bakufu/infrastructure/reviewers/internal_review_gate_execu
 ### 申し送り #2: REJECTED 後の残り GateRole gather 待機時間
 
 §確定 C の設計により、REJECTED 確定後も残りの GateRole LLM 呼び出しが完走するまで `execute()` がブロックする。GateRole が 3〜5 件で各 LLM 応答が数秒〜数十秒の場合、Semaphore が最大 LLM 応答時間分余分に占有される。MVP スコープでは許容範囲内だが、将来的に GateRole が 10 件以上になる場合は REJECTED 時のキャンセル機構（`asyncio.Event` による cooperative cancellation）を別 PR で検討すること。
-
-### 申し送り #3: deliverable_summary の取得元
-
-`_build_prompt()` の `deliverable_summary` は現時点では Task の最終 deliverable テキストを使用する想定だが、具体的な取得方法（どの Repository の何を呼ぶか）は実装 PR で確定させること。設計書での先行凍結が必要な場合は本書を更新する別 PR を立てること。
 
 ## 出典・参考
 
