@@ -335,12 +335,15 @@ erDiagram
 
 ## エラーハンドリング方針
 
-| 例外種別 | 処理方針 | ユーザーへの通知 |
+クラス名と 5 分類のマッピングは [`detailed-design.md §確定 H`](detailed-design.md) で凍結。本表はそこを参照して例外種別を記述する。
+
+| 例外種別（実クラス名）| 処理方針 | ユーザーへの通知 |
 |---|---|---|
-| LLMProviderSessionLostError | 新規 session_id で 1 回のみ再投入。再投入失敗 → Task.block() | MSG-ME-001（Conversation system message）|
-| LLMProviderRateLimitedError | exponential backoff 最大 3 回。3 回失敗 → Task.block() | MSG-ME-001（Conversation system message）|
-| LLMProviderAuthExpiredError | リトライなし。即 Task.block() | MSG-ME-001（Conversation system message）|
-| LLMProviderTimeoutError | SIGTERM→5 秒 grace→SIGKILL → SessionLost 相当に合流 | MSG-ME-001（Conversation system message）|
-| LLMProviderUnknownError | リトライなし。即 Task.block() | MSG-ME-001（Conversation system message）|
-| InternalReviewGateExecutorPort 例外 | Task.block() | MSG-ME-002（Conversation system message）|
-| TaskRepository 例外（find / save）| 上位に伝播（Bootstrap レベルの障害、StageWorker は次のキューアイテムをスキップ）| 該当なし（infrastructure 障害として別途ログ）|
+| `LLMProviderSessionLostError`（新規追加）| 新規 session_id で 1 回のみ再投入。再投入失敗 → Task.block() | MSG-ME-001（Conversation system message）|
+| `LLMProviderRateLimitedError`（新規追加）| exponential backoff 最大 3 回。3 回失敗 → Task.block() | MSG-ME-001（Conversation system message）|
+| `LLMProviderAuthError`（既存活用）| リトライなし。即 Task.block() | MSG-ME-001（Conversation system message）|
+| `LLMProviderTimeoutError`（既存活用）| SIGTERM→5 秒 grace→SIGKILL → SessionLost 相当に合流 | MSG-ME-001（Conversation system message）|
+| `LLMProviderProcessError`（既存活用・Unknown の catch-all）| リトライなし。即 Task.block() | MSG-ME-001（Conversation system message）|
+| `LLMProviderEmptyResponseError`（既存・独立保持）| リトライなし。即 Task.block()（Unknown 相当。空応答は内容的異常として独立扱い）| MSG-ME-001（Conversation system message）|
+| `InternalReviewGateExecutorPort` 例外 | Task.block() | MSG-ME-002（Conversation system message）|
+| `TaskRepository` 例外（find / save）| 上位に伝播（Bootstrap レベルの障害、StageWorker は次のキューアイテムをスキップ）| 該当なし（infrastructure 障害として別途ログ）|
