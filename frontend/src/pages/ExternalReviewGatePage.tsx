@@ -83,12 +83,14 @@ export function ExternalReviewGatePage(): React.ReactElement {
         <p className="text-sm text-gray-400 italic">Deliverable スナップショットがありません。</p>
       )}
 
-      {/* 必要な GateRole */}
-      {gate.required_gate_roles.length > 0 && (
+      {/* 必要な GateRole
+          BUG-E2E-004: APIは required_gate_roles を返さない（required_deliverable_criteria）
+          null-safe に修正 */}
+      {(gate.required_gate_roles ?? []).length > 0 && (
         <section className="space-y-1">
           <h2 className="text-sm font-semibold text-gray-700">必要な Gate ロール</h2>
           <ul className="flex flex-wrap gap-2">
-            {gate.required_gate_roles.map((role) => (
+            {(gate.required_gate_roles ?? []).map((role) => (
               <li
                 key={role}
                 className="px-2 py-0.5 rounded-full bg-gray-100 text-xs text-gray-700 font-mono"
@@ -115,10 +117,10 @@ export function ExternalReviewGatePage(): React.ReactElement {
       </section>
 
       {/* Audit Trail */}
-      {gate.audit_trail.length > 0 && (
+      {(gate.audit_trail ?? []).length > 0 && (
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-gray-700">操作履歴</h2>
-          <AuditTrailList entries={gate.audit_trail} />
+          <AuditTrailList entries={gate.audit_trail ?? []} />
         </section>
       )}
     </div>

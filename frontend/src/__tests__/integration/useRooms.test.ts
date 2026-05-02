@@ -16,7 +16,10 @@ const ROOMS: RoomResponse[] = [
 describe("TC-IT-CD-012: useRooms — Room 一覧取得", () => {
   it("Empire に属する 3 件の Room が取得される", async () => {
     server.use(
-      http.get("http://localhost:8000/api/empires/empire-1/rooms", () => HttpResponse.json(ROOMS)),
+      // BUG-E2E-003: バックエンドは {items: [...], total: N} を返す（PaginatedList<T>）
+      http.get("http://localhost:8000/api/empires/empire-1/rooms", () =>
+        HttpResponse.json({ items: ROOMS, total: ROOMS.length }),
+      ),
     );
 
     const { Wrapper } = createWrapper();

@@ -3,12 +3,14 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "../api/client";
-import type { ApiError, GateDetailResponse } from "../api/types";
+import type { ApiError, GateDetailResponse, PaginatedList } from "../api/types";
 
 export function useTaskGates(taskId: string) {
   return useQuery<GateDetailResponse[], ApiError>({
     queryKey: ["taskGates", taskId],
-    queryFn: () => apiGet<GateDetailResponse[]>(`/api/tasks/${taskId}/gates`),
+    // BUG-E2E-003: バックエンドは {items: [...], total: N} を返す
+    queryFn: () =>
+      apiGet<PaginatedList<GateDetailResponse>>(`/api/tasks/${taskId}/gates`).then((r) => r.items),
     enabled: !!taskId,
   });
 }

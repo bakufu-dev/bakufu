@@ -35,8 +35,9 @@ const TASK_A2: TaskResponse = {
 describe("TC-IT-CD-001: useTasks — 正常系", () => {
   it("MSW が 200 を返す場合、Task 一覧が取得される（REQ-CD-UI-001）", async () => {
     server.use(
+      // BUG-E2E-003: バックエンドは {items: [...], total: N} を返す（PaginatedList<T>）
       http.get("http://localhost:8000/api/rooms/room-a/tasks", () =>
-        HttpResponse.json([TASK_A1, TASK_A2]),
+        HttpResponse.json({ items: [TASK_A1, TASK_A2], total: 2 }),
       ),
     );
 
@@ -61,7 +62,9 @@ describe("TC-IT-CD-002: useTasks — 異常系", () => {
           { status: 500 },
         ),
       ),
-      http.get("http://localhost:8000/api/rooms/room-a/tasks", () => HttpResponse.json([TASK_A1])),
+      http.get("http://localhost:8000/api/rooms/room-a/tasks", () =>
+        HttpResponse.json({ items: [TASK_A1], total: 1 }),
+      ),
     );
 
     const { Wrapper: WrapperB } = createWrapper();

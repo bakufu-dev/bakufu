@@ -43,7 +43,8 @@ export interface TaskResponse {
   room_id: string;
   directive_id: string;
   current_stage_id: string;
-  directive_text: string;
+  // BUG-E2E-001: バックエンド GET /api/rooms/{id}/tasks は directive_text を返さない
+  directive_text?: string;
   last_error: string | null;
   created_at: string;
   updated_at: string;
@@ -64,4 +65,10 @@ export interface ApiError {
   code: string;
   message: string;
   status: number;
+}
+
+/** BUG-E2E-003: バックエンドの全リストエンドポイントはページネーション形式で返す */
+export interface PaginatedList<T> {
+  items: T[];
+  total: number;
 }

@@ -24,8 +24,9 @@ function formatDateTime(isoString: string): string {
   }
 }
 
-/** directive テキストの先頭 80 文字を抜粋する */
-function truncateText(text: string, maxLength = 80): string {
+/** directive テキストの先頭 80 文字を抜粋する（null/undefined 安全） */
+function truncateText(text: string | null | undefined, maxLength = 80): string {
+  if (!text) return "";
   if (text.length <= maxLength) return text;
   return `${text.slice(0, maxLength)}…`;
 }

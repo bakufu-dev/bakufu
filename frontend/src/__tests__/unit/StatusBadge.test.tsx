@@ -31,10 +31,10 @@ describe("TC-UT-CD-001~006: StatusBadge — ステータス別カラーマッピ
     expect(badge?.getAttribute("aria-label")).toBe("AWAITING_EXTERNAL_REVIEW");
   });
 
-  it("TC-UT-CD-004: DONE → green-600 クラス", () => {
+  it("TC-UT-CD-004: DONE → green-700 クラス（WCAG AA: green-700 比約5:1 ✅ green-600 は3.22:1で不適合）", () => {
     const { container } = render(<StatusBadge status="DONE" />);
     const badge = container.querySelector("span");
-    expect(badge?.className).toContain("bg-green-600");
+    expect(badge?.className).toContain("bg-green-700");
     expect(badge?.className).toContain("text-white");
     expect(badge?.getAttribute("aria-label")).toBe("DONE");
   });
@@ -57,10 +57,10 @@ describe("TC-UT-CD-001~006: StatusBadge — ステータス別カラーマッピ
     expect(badge?.getAttribute("aria-label")).toBe("CANCELLED");
   });
 
-  it("APPROVED → green-600 クラス", () => {
+  it("APPROVED → green-700 クラス（DONE と同色: green-700 ~5:1 ✅）", () => {
     const { container } = render(<StatusBadge status="APPROVED" />);
     const badge = container.querySelector("span");
-    expect(badge?.className).toContain("bg-green-600");
+    expect(badge?.className).toContain("bg-green-700");
     expect(badge?.getAttribute("aria-label")).toBe("APPROVED");
   });
 

@@ -5,8 +5,14 @@ import type { ApiError } from "./types";
 
 const baseURL = import.meta.env.VITE_API_BASE_URL as string;
 
+// BUG-E2E-006: Gate アクション POST /api/gates/{id}/approve|reject|cancel は
+// Authorization: Bearer <reviewer-uuid> ヘッダーが必須。
+// VITE_REVIEWER_ID 環境変数からレビュアー ID を取得する（MVP 暫定実装）。
+const reviewerId = import.meta.env.VITE_REVIEWER_ID as string | undefined;
+
 const defaultHeaders: Record<string, string> = {
   "Content-Type": "application/json",
+  ...(reviewerId ? { Authorization: `Bearer ${reviewerId}` } : {}),
 };
 
 async function handleResponse<T>(response: Response): Promise<T> {
