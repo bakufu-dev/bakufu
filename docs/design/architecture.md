@@ -163,9 +163,54 @@ bakufu の中核 Aggregate:
 
 詳細は [`threat-model.md`](threat-model.md) を参照。
 
+### Frontend SPA 詳細（M6-B ceo-dashboard で確定）
+
+`frontend/src/` は CEO が操作する React 19 SPA。React Router 7 data router / TanStack Query v5 / Zustand / Tailwind CSS 4 / WebSocket。
+
+```
+frontend/src/
+├── main.tsx                          # AppRoot: RouterProvider + QueryClientProvider + WebSocketProvider
+├── router.ts                         # createBrowserRouter（全ルート定義）
+├── api/
+│   ├── client.ts                     # fetch wrapper（VITE_API_BASE_URL prefix / ApiError）
+│   └── types.ts                      # バックエンド API レスポンス型定義（TypeScript interface）
+├── pages/
+│   ├── TaskListPage.tsx              # / — 全 Task 一覧（status badge 色分け）
+│   ├── TaskDetailPage.tsx            # /tasks/:taskId — Stage 進行状況 + deliverable + Gate リンク
+│   ├── ExternalReviewGatePage.tsx    # /gates/:gateId — deliverable_snapshot + audit_trail + Gate 操作
+│   └── DirectiveNewPage.tsx          # /directives/new — Room 選択 + テキスト入力 + 送信
+├── components/
+│   ├── Layout.tsx                    # NavBar（ConnectionIndicator 含む）+ Outlet
+│   ├── StatusBadge.tsx               # Task / Gate status → Tailwind color class
+│   ├── TaskCard.tsx                  # Task 一覧用カード（status / directive テキスト / 更新日時）
+│   ├── StageProgressList.tsx         # Stage 名 + status バッジのリスト
+│   ├── DeliverableViewer.tsx         # react-markdown + rehype-sanitize ラッパ（XSS 対策）
+│   ├── AuditTrailList.tsx            # Gate audit_trail 時系列表示
+│   ├── GateActionForm.tsx            # approve / reject / cancel フォーム（isSubmitting 二重送信防止）
+│   ├── DirectiveForm.tsx             # Room select + テキストエリア + 送信
+│   ├── ConnectionIndicator.tsx       # WebSocket 接続状態 dot（接続済み / 切断中 / 再接続中）
+│   └── InlineError.tsx               # API エラー表示コンポーネント
+└── hooks/
+    ├── useWebSocketBus.ts            # Singleton WebSocket + exponential backoff 再接続 + QueryClient invalidate
+    ├── useTasks.ts                   # React Query: GET /api/rooms/{roomId}/tasks
+    ├── useTask.ts                    # React Query: GET /api/tasks/{taskId}
+    ├── useGate.ts                    # React Query: GET /api/gates/{gateId}
+    ├── useRooms.ts                   # React Query: GET /api/empires/{empireId}/rooms
+    ├── useGateAction.ts              # useMutation: approve / reject / cancel
+    └── useDirectiveSubmit.ts         # useMutation: POST /api/rooms/{roomId}/directives
+```
+
+Frontend SPA の規律:
+- **API 呼び出しは `api/client.ts` 経由のみ**: コンポーネント / Hooks が直接 `fetch()` を呼ぶことを禁止。`apiClient` の `ApiError` 型で統一的なエラーハンドリングを保証
+- **サーバ状態は React Query**: Task / Gate / Room の状態は React Query キャッシュが持つ。WebSocket イベント受信時は `queryClient.invalidateQueries()` で再取得
+- **クライアント UI 状態は Zustand**: WebSocket 接続状態（connected / disconnected / reconnecting）のみ Zustand ストアで管理。Redux はオーバースペックのため不採用
+- **Markdown は必ず sanitize**: `DeliverableViewer` は `rehype-sanitize` を必須とする。LLM 生成コンテンツへの XSS 対策（`threat-model.md §A3`）
+- **二重送信防止**: Gate 操作フォームは `isSubmitting` フラグでボタンを disabled に制御
+
 ## 関連
 
 - [`domain-model.md`](domain-model.md) — DDD ドメインモデルの詳細
 - [`tech-stack.md`](tech-stack.md) — 採用技術と根拠
 - [`threat-model.md`](threat-model.md) — 脅威モデル / OWASP Top 10
 - [`../requirements/system-context.md`](../requirements/system-context.md) — システムコンテキスト図（要件定義レベル、本書とは粒度が異なる）
+- [`../features/ceo-dashboard/feature-spec.md`](../features/ceo-dashboard/feature-spec.md) — CEO ダッシュボード業務仕様（M6-B）
