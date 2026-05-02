@@ -31,42 +31,50 @@ async def _uvicorn_starter() -> None:
     組み合わせることで開発時のホットリロードを実現する（tech-stack.md §開発専用オーバーライド）。
 
     .. note::
-        reload 時は ``uvicorn.run()`` を使う。
-        ``uvicorn.Server(config).serve()`` は ``config.should_reload`` を評価せず
-        ``ChangeReload`` サブプロセスを起動しないため、``reload=True`` を渡しても
-        ファイル監視が一切行われない（BUG-005）。
-        ``uvicorn.run()`` のみが ``ChangeReload.run()`` を呼び出してホットリロードを実現する。
+        reload 時は ``asyncio.create_subprocess_exec`` で uvicorn を子プロセスとして起動する。
 
-        ``uvicorn.run()`` は同期ブロッキング呼び出しのため、
-        ``asyncio.get_running_loop().run_in_executor`` でスレッド上で実行する。
+        ``uvicorn.run()`` は ``ChangeReload.run()`` 内で ``signal.signal()`` を呼ぶが、
+        Python の ``signal.signal()`` はメインスレッドのメインインタープリタでしか動作しない。
+        ``run_in_executor`` のスレッドプール上で呼ぶと
+        ``ValueError: signal only works in main thread of the main interpreter`` でクラッシュする
+        （BUG-006）。
+
+        子プロセスとして起動することで、子プロセス自身のメインスレッドで
+        ``signal.signal()`` が正常動作し、``ChangeReload`` によるファイル監視・
+        ホットリロードが実現する。
 
         通常時（reload=False）は ``uvicorn.Server.serve()`` を維持する
         （同一イベントループ上で動作し、型安全性・テスト容易性を保つ）。
     """
-    import uvicorn
-
     dev_reload = os.environ.get("BAKUFU_DEV_RELOAD", "").lower() in {"true", "1", "yes"}
     reload_dir = os.environ.get("BAKUFU_RELOAD_DIR", "/app/backend/src")
     host = os.environ.get("BAKUFU_BIND_HOST", "127.0.0.1")
     port = int(os.environ.get("BAKUFU_BIND_PORT", "8000"))
 
     if dev_reload:
-        # reload 時: uvicorn.run() 経由でのみ ChangeReload が起動する（BUG-005 対応）。
-        # uvicorn.run() は同期ブロッキングのため run_in_executor でスレッド上で実行する。
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(
-            None,
-            lambda: uvicorn.run(
-                _APP_IMPORT_STRING,
-                host=host,
-                port=port,
-                log_level="info",
-                reload=True,
-                reload_dirs=[reload_dir],
-            ),
+        # reload 時: 子プロセスとして uvicorn を起動する（BUG-006 対応）。
+        # signal.signal() はメインスレッド必須のため run_in_executor は使えない。
+        # 子プロセスは自身のメインスレッドを持つため ChangeReload が正常動作する。
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-m",
+            "uvicorn",
+            _APP_IMPORT_STRING,
+            "--host",
+            host,
+            "--port",
+            str(port),
+            "--log-level",
+            "info",
+            "--reload",
+            "--reload-dir",
+            reload_dir,
         )
+        await proc.wait()
     else:
         # 通常時: uvicorn.Server.serve() で同一イベントループ上で動作（型安全・テスト容易）
+        import uvicorn
+
         from bakufu.interfaces.http.app import app
 
         config = uvicorn.Config(
