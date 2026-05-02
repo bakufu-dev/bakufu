@@ -60,9 +60,12 @@ from bakufu.interfaces.http.routers.directives import room_directives_router
 from bakufu.interfaces.http.routers.empire import router as empire_router
 from bakufu.interfaces.http.routers.external_review_gates import gates_router, task_gates_router
 from bakufu.interfaces.http.routers.health import router as health_router
+from bakufu.interfaces.http.routers.internal_review_gates import (
+    task_internal_review_gates_router,
+)
 from bakufu.interfaces.http.routers.role_profile import router as role_profile_router
 from bakufu.interfaces.http.routers.rooms import empire_rooms_router, rooms_router
-from bakufu.interfaces.http.routers.tasks import room_tasks_router, tasks_router
+from bakufu.interfaces.http.routers.tasks import dev_tasks_router, room_tasks_router, tasks_router
 from bakufu.interfaces.http.routers.workflows import room_workflows_router, workflows_router
 from bakufu.interfaces.http.routers.ws import router as ws_router
 
@@ -260,8 +263,12 @@ def create_app() -> FastAPI:
     app.include_router(room_directives_router)
     app.include_router(room_tasks_router)
     app.include_router(tasks_router)
+    # dev/test 環境専用エンドポイント（BAKUFU_ENV=production では除外）
+    if os.environ.get("BAKUFU_ENV", "").lower() in {"development", "dev", "test"}:
+        app.include_router(dev_tasks_router)
     app.include_router(gates_router)
     app.include_router(task_gates_router)
+    app.include_router(task_internal_review_gates_router)
     app.include_router(deliverable_template_router)
     app.include_router(role_profile_router)
     # REQ-WSB-011: WebSocket エンドポイント

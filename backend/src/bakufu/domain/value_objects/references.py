@@ -100,7 +100,13 @@ type NotifyChannelKind = Literal["discord"]
 # G7: Discord Webhook URL のパス用アンカー付き正規表現。
 # id  = 1〜30 桁の数字（Discord snowflake の範囲）
 # tok = 1〜100 文字の URL 安全文字（Base64 アルファベット + '-' + '_'）
-_DISCORD_WEBHOOK_PATH_RE = re.compile(r"^/api/webhooks/[0-9]{1,30}/[A-Za-z0-9_\-]{1,100}$")
+#       または DB 永続化済みのマスク済みトークン <REDACTED:DISCORD_WEBHOOK>
+#       （§不可逆性: 保存時に MaskedJSONEncoded が token を伏字化するため、
+#       find_by_id() での再構築時も NotifyChannel.model_validate() が成功するよう許可）
+_DISCORD_WEBHOOK_PATH_RE = re.compile(
+    r"^/api/webhooks/[0-9]{1,30}/"
+    r"(?:[A-Za-z0-9_\-]{1,100}|<REDACTED:DISCORD_WEBHOOK>)$"
+)
 
 
 class NotifyChannel(BaseModel):

@@ -54,6 +54,7 @@ __all__ = [
     "RoomRepository",
     "RoomRoleOverrideService",
     "SessionDep",
+    "StageWorkerDep",
     "TaskRepository",
     "TaskServiceDep",
     "WorkflowRepository",
@@ -69,6 +70,7 @@ __all__ = [
     "get_room_role_override_service",
     "get_room_service",
     "get_session",
+    "get_stage_worker",
     "get_task_service",
     "get_workflow_service",
 ]
@@ -343,6 +345,26 @@ async def get_external_review_gate_service(
 
 
 GateServiceDep = Annotated[ExternalReviewGateService, Depends(get_external_review_gate_service)]
+
+
+def get_stage_worker(request: Request):
+    """StageWorker を app.state から取得する DI ファクトリ。
+
+    lifespan (production) または acceptance_ctx (test) で設定された
+    StageWorker を返す。未設定の場合は BakufuConfigError を raise。
+    """
+    from bakufu.infrastructure.exceptions import BakufuConfigError
+
+    worker = getattr(request.app.state, "stage_worker", None)
+    if worker is None:
+        raise BakufuConfigError(
+            msg_id="MSG-SW-001",
+            message="StageWorker is not initialized. Check lifespan startup.",
+        )
+    return worker
+
+
+StageWorkerDep = Annotated[object, Depends(get_stage_worker)]
 
 
 async def get_deliverable_template_service(session: SessionDep) -> DeliverableTemplateService:

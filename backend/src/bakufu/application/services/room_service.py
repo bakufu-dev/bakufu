@@ -86,7 +86,7 @@ class RoomService:
         empire_id: EmpireId,
         name: str,
         description: str,
-        workflow_id: WorkflowId,
+        workflow_id: WorkflowId | None,
         prompt_kit_prefix_markdown: str,
     ) -> Room:
         """Room を新規作成して永続化する (REQ-RM-HTTP-001).
@@ -102,9 +102,10 @@ class RoomService:
             if empire is None:
                 raise EmpireNotFoundError(str(empire_id))
 
-            workflow = await self._workflow_repo.find_by_id(workflow_id)
-            if workflow is None:
-                raise WorkflowNotFoundError(str(workflow_id))
+            if workflow_id is not None:
+                workflow = await self._workflow_repo.find_by_id(workflow_id)
+                if workflow is None:
+                    raise WorkflowNotFoundError(str(workflow_id))
 
             existing = await self._room_repo.find_by_name(empire_id, name)
             if existing is not None:
@@ -256,15 +257,16 @@ class RoomService:
                 raise RoomNotFoundError(str(room_id))
 
             # §確定 G: deliverable coverage チェック（業務ルール R1-11 必須）
-            workflow = await self._workflow_repo.find_by_id(room.workflow_id)
-            if workflow is None:
-                raise WorkflowNotFoundError(str(room.workflow_id))
-            effective_refs = await self._matching_svc.resolve_effective_refs(
-                room_id, empire_id, role_enum, custom_refs_domain
-            )
-            missing = self._matching_svc.validate_coverage(workflow, effective_refs)
-            if missing:
-                raise RoomDeliverableMatchingError(str(room_id), str(role_enum), missing)
+            if room.workflow_id is not None:
+                workflow = await self._workflow_repo.find_by_id(room.workflow_id)
+                if workflow is None:
+                    raise WorkflowNotFoundError(str(room.workflow_id))
+                effective_refs = await self._matching_svc.resolve_effective_refs(
+                    room_id, empire_id, role_enum, custom_refs_domain
+                )
+                missing = self._matching_svc.validate_coverage(workflow, effective_refs)
+                if missing:
+                    raise RoomDeliverableMatchingError(str(room_id), str(role_enum), missing)
 
             membership = AgentMembership(
                 agent_id=agent_id,

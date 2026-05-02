@@ -123,21 +123,87 @@ async def approve_gate(
     service: GateServiceDep,
     session: SessionDep,
 ) -> GateDetailResponse:
-    """Gate を承認する。
+    """Gate を承認する。承認後に Task の状態を更新する。
 
     reviewer_id 照合は Service 内で実施（basic-design.md §確定 UC4）。
     find_by_id_or_raise と save() の両方を同一 UoW 内で呼ぶ（detailed-design.md §確定E）。
     autobegin 問題回避: SELECT が autobegin を起動する前に begin() を呼ぶ。
+
+    Gate 承認後フロー（§暫定実装: Outbox Dispatcher 未実装のため直接処理）:
+    - Workflow の Transition を確認して承認後の次 Stage を決定する
+    - 次 Stage がなければ Task を DONE に（task.complete()）
+    - 次 Stage があれば Task を IN_PROGRESS に（task.approve_review()）
     """
+    from bakufu.domain.value_objects import TaskStatus, TransitionCondition
+    from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
+        SqliteTaskRepository,
+    )
+    from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
+        SqliteWorkflowRepository,
+    )
+
+    now = datetime.now(UTC)
     async with session.begin():
         gate = await service.find_by_id_or_raise(gate_id)
         updated_gate = await service.approve(
             gate=gate,
             reviewer_id=reviewer_owner_id,
             comment=body.comment,
-            decided_at=datetime.now(UTC),
+            decided_at=now,
         )
         await service.save(updated_gate)
+
+        # Task の状態を更新する（§暫定実装）
+        from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
+            SqliteRoomRepository,
+        )
+
+        task_repo = SqliteTaskRepository(session)
+        task = await task_repo.find_by_id(gate.task_id)
+        if task is not None and task.status == TaskStatus.AWAITING_EXTERNAL_REVIEW:
+            # Room → Workflow → Transition を辿って承認後の次 Stage を決定する
+            room_repo = SqliteRoomRepository(session)
+            room = await room_repo.find_by_id(task.room_id)
+            next_stage_id = None
+            if room is not None:
+                workflow_repo = SqliteWorkflowRepository(session)
+                workflow = await workflow_repo.find_by_id(room.workflow_id)
+                if workflow is not None:
+                    for transition in workflow.transitions:
+                        if (
+                            transition.from_stage_id == gate.stage_id
+                            and transition.condition == TransitionCondition.APPROVED
+                        ):
+                            next_stage_id = transition.to_stage_id
+                            break
+            from uuid import uuid4
+
+            if next_stage_id is None:
+                # 次 Stage なし → AWAITING_EXTERNAL_REVIEW → IN_PROGRESS → DONE
+                # gate.stage_id（EXTERNAL_REVIEW Stage）を current_stage_id として保持し、
+                # Task が最後に完了した Stage を記録する（§確定 K）。
+                in_progress_task = task.approve_review(
+                    transition_id=uuid4(),
+                    by_owner_id=reviewer_owner_id,
+                    next_stage_id=gate.stage_id,
+                    updated_at=now,
+                )
+                completed_task = in_progress_task.complete(
+                    transition_id=uuid4(),
+                    by_owner_id=reviewer_owner_id,
+                    updated_at=now,
+                )
+                await task_repo.save(completed_task)
+            else:
+                # 次 Stage あり → Task を IN_PROGRESS に（StageWorker が別途処理）
+                advanced_task = task.approve_review(
+                    transition_id=uuid4(),
+                    by_owner_id=reviewer_owner_id,
+                    next_stage_id=next_stage_id,
+                    updated_at=now,
+                )
+                await task_repo.save(advanced_task)
+
     return GateDetailResponse.model_validate(updated_gate)
 
 

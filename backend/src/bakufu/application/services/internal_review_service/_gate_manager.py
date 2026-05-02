@@ -261,6 +261,55 @@ class InternalReviewService:
 
             await task_repo.save(updated_task)
 
+            # §暫定実装: EXTERNAL_REVIEW 遷移時に ExternalReviewGate を直接生成する。
+            # 本来は Outbox Dispatcher（M6-A）が担当するが未実装のため、ここで代替する。
+            # Outbox Dispatcher 実装後に削除すること。
+            if next_stage_kind == StageKind.EXTERNAL_REVIEW:
+                from bakufu.domain.external_review_gate.gate import (
+                    ExternalReviewGate,
+                )
+                from bakufu.domain.value_objects import Deliverable
+                from bakufu.infrastructure.persistence.sqlite.repositories.external_review_gate_repository import (  # noqa: E501
+                    SqliteExternalReviewGateRepository,
+                )
+
+                deliverable = task.current_deliverable
+                if deliverable is None:
+                    agent_id = task.assigned_agent_ids[0] if task.assigned_agent_ids else uuid4()
+                    deliverable = Deliverable(
+                        stage_id=next_stage_id,
+                        body_markdown="",
+                        committed_by=agent_id,
+                        committed_at=now,
+                    )
+                # Fail Fast: assigned_agent_ids が空なら reviewer_id が決定不能 → 永久ロック防止
+                if not task.assigned_agent_ids:
+                    msg = (
+                        f"[FAIL] _handle_all_approved: task={task.id} has no assigned agents;"
+                        " cannot create ExternalReviewGate."
+                        " Next: assign an agent to the task and retry."
+                    )
+                    logger.error("%s", msg)
+                    raise ValueError(msg)
+                _reviewer_id = task.assigned_agent_ids[0]
+                ext_gate = ExternalReviewGate(
+                    id=uuid4(),
+                    task_id=task.id,
+                    stage_id=next_stage_id,
+                    deliverable_snapshot=deliverable,
+                    reviewer_id=_reviewer_id,
+                    required_deliverable_criteria=(),
+                    created_at=now,
+                )
+                ext_gate_repo = SqliteExternalReviewGateRepository(session)
+                await ext_gate_repo.save(ext_gate)
+                logger.info(
+                    "event=external_review_gate_created task_id=%s gate_id=%s stage_id=%s",
+                    task.id,
+                    ext_gate.id,
+                    next_stage_id,
+                )
+
         await self._event_bus.publish(
             TaskStateChangedEvent(
                 aggregate_id=str(task_id),

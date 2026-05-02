@@ -49,10 +49,10 @@ class RoomRow(Base):
         ForeignKey("empires.id", ondelete="CASCADE"),
         nullable=False,
     )
-    workflow_id: Mapped[UUID] = mapped_column(
+    workflow_id: Mapped[UUID | None] = mapped_column(
         UUIDStr,
         ForeignKey("workflows.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
     )
     name: Mapped[str] = mapped_column(String(80), nullable=False)
     description: Mapped[str] = mapped_column(String(500), nullable=False, default="")

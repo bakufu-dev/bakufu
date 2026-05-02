@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter
 
-from bakufu.interfaces.http.dependencies import TaskServiceDep
+from bakufu.interfaces.http.dependencies import StageWorkerDep, TaskServiceDep
 from bakufu.interfaces.http.schemas.task import (
     DeliverableCreate,
     TaskAssign,
@@ -16,6 +16,9 @@ from bakufu.interfaces.http.schemas.task import (
 
 tasks_router = APIRouter(prefix="/api/tasks", tags=["task"])
 room_tasks_router = APIRouter(prefix="/api/rooms", tags=["task"])
+
+# development / test 環境専用ルーター（BAKUFU_ENV=production では app.py で除外）
+dev_tasks_router = APIRouter(prefix="/api/tasks", tags=["task-dev"])
 
 
 @tasks_router.get(
@@ -83,6 +86,27 @@ async def unblock_task(task_id: UUID, service: TaskServiceDep) -> TaskResponse:
     return TaskResponse.model_validate(task)
 
 
+@dev_tasks_router.post(
+    "/{task_id}/dispatch",
+    response_model=TaskResponse,
+    status_code=200,
+    summary="StageWorker への Stage 実行キューイング（dev/test 環境専用）",
+)
+async def dispatch_task(
+    task_id: UUID,
+    service: TaskServiceDep,
+    stage_worker: StageWorkerDep,
+) -> TaskResponse:
+    """Task を StageWorker にキューして Stage を実行する（dev/test 専用）。
+
+    BAKUFU_ENV=production では app.py がこのルーターを除外するため公開されない。
+    実行は非同期（enqueue 後即座に 200 を返す）。
+    """
+    task = await service.find_by_id(task_id)
+    stage_worker.enqueue(task_id, task.current_stage_id)
+    return TaskResponse.model_validate(task)
+
+
 @tasks_router.post(
     "/{task_id}/deliverables/{stage_id}",
     response_model=TaskResponse,
@@ -106,4 +130,4 @@ async def commit_deliverable(
     return TaskResponse.model_validate(task)
 
 
-__all__ = ["room_tasks_router", "tasks_router"]
+__all__ = ["dev_tasks_router", "room_tasks_router", "tasks_router"]

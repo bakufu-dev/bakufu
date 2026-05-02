@@ -140,7 +140,7 @@ class _StageDispatcher:
         elif stage.kind == StageKind.INTERNAL_REVIEW:
             await self._delegate_internal_review(task, stage)
         elif stage.kind == StageKind.EXTERNAL_REVIEW:
-            await self._request_external_review(task)
+            await self._request_external_review(task, stage)
 
     async def retry_blocked_task(self, task_id: TaskId) -> None:
         """BLOCKED Task を IN_PROGRESS に戻して最後の Stage を再キューする（REQ-ME-005）。
@@ -409,14 +409,24 @@ class _StageDispatcher:
             )
             self._enqueue_fn(updated_task.id, updated_task.current_stage_id)
 
-    async def _request_external_review(self, task: Task) -> None:
+    async def _request_external_review(self, task: Task, stage: Stage) -> None:
         """EXTERNAL_REVIEW Stage 遷移（REQ-ME-003）。
 
-        Task.request_external_review() を呼び出して AWAITING_EXTERNAL_REVIEW に遷移。
-        ExternalReviewGate 生成・Discord 通知は Outbox Dispatcher が非同期処理（M6-A）。
+        Task.request_external_review() を呼び出して AWAITING_EXTERNAL_REVIEW に遷移し、
+        ExternalReviewGate を直接生成・保存する。
+
+        Note: ExternalReviewGate 生成は本来 Outbox Dispatcher（M6-A）が担当するが、
+        Outbox Dispatcher 実装まで本メソッドで直接生成する（§暫定実装）。
+        Outbox Dispatcher 実装後に ExternalReviewGate 生成部分を削除する。
 
         **Fail Fast（§確定 F）**: DB 再取得時に状態が変わっていた場合は ValueError を raise。
         """
+        # 遅延 import: infrastructure への直接依存を avoid するため（§暫定実装）
+        from bakufu.domain.external_review_gate.gate import ExternalReviewGate
+        from bakufu.infrastructure.persistence.sqlite.repositories.external_review_gate_repository import (  # noqa: E501
+            SqliteExternalReviewGateRepository,
+        )
+
         now = self._now()
         async with self._session.begin():
             current_task = await self._task_repo.find_by_id(task.id)
@@ -429,6 +439,55 @@ class _StageDispatcher:
                 raise ValueError(msg)
             updated = current_task.request_external_review(updated_at=now)
             await self._task_repo.save(updated)
+
+            # ExternalReviewGate を生成・保存（§暫定実装: Outbox Dispatcher 代替）
+            deliverable = current_task.current_deliverable
+            if deliverable is None:
+                # WORK Stage の deliverable がない場合（通常は起きないが Fail-Safe として）
+                # ダミー deliverable を生成してゲートを作成する
+                logger.warning(
+                    "[WARN] _request_external_review: no deliverable for task=%s; "
+                    "creating gate with empty deliverable",
+                    task.id,
+                )
+                agent_id = (
+                    current_task.assigned_agent_ids[0]
+                    if current_task.assigned_agent_ids
+                    else uuid4()
+                )
+                deliverable = Deliverable(
+                    stage_id=stage.id,
+                    body_markdown="",
+                    committed_by=agent_id,
+                    committed_at=now,
+                )
+            # Fail Fast: assigned_agent_ids が空なら reviewer_id が決定不能 → 永久ロック防止
+            if not current_task.assigned_agent_ids:
+                msg = (
+                    f"[FAIL] _request_external_review: task={task.id} has no assigned agents;"
+                    " cannot create ExternalReviewGate with deterministic reviewer_id."
+                    " Next: assign an agent to the task and retry."
+                )
+                logger.error("%s", msg)
+                raise ValueError(msg)
+            _reviewer_id = current_task.assigned_agent_ids[0]
+            gate = ExternalReviewGate(
+                id=uuid4(),
+                task_id=current_task.id,
+                stage_id=stage.id,
+                deliverable_snapshot=deliverable,
+                reviewer_id=_reviewer_id,
+                required_deliverable_criteria=(),
+                created_at=now,
+            )
+            gate_repo = SqliteExternalReviewGateRepository(self._session)
+            await gate_repo.save(gate)
+            logger.info(
+                "event=external_review_gate_created task_id=%s gate_id=%s stage_id=%s",
+                task.id,
+                gate.id,
+                stage.id,
+            )
 
         await self._event_bus.publish(
             TaskStateChangedEvent(
@@ -467,6 +526,13 @@ class _StageDispatcher:
                 )
                 return task, None, None, None
 
+            if room.workflow_id is None:
+                logger.error(
+                    "[FAIL] dispatch_stage: room=%s has no workflow for task=%s",
+                    room.id,
+                    task_id,
+                )
+                return task, None, None, None
             workflow = await self._workflow_repo.find_by_id(room.workflow_id)
             if workflow is None:
                 logger.error(

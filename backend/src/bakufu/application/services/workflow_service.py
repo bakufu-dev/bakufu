@@ -88,6 +88,8 @@ class WorkflowService:
         room = await self._room_repo.find_by_id(room_id)
         if room is None:
             raise RoomNotFoundError(str(room_id))
+        if room.workflow_id is None:
+            return None
         return await self._workflow_repo.find_by_id(room.workflow_id)
 
     async def find_by_id(self, workflow_id: WorkflowId) -> Workflow:
@@ -114,11 +116,21 @@ class WorkflowService:
             try:
                 workflow = await self._workflow_repo.find_by_id(workflow_id)
             except ValidationError as exc:
-                # notify_channels がマスク済みの Workflow は pydantic 再構築で失敗する。
+                # notify_channels がマスク済みの Workflow は pydantic 再構築で失敗する
+                # ことがある（フォールバック: BUG-AT-002 修正後は通常ここには来ない）。
                 # §確定 H 不可逆性コントラクトに従い 409 に写す (MSG-WF-HTTP-008)。
                 raise WorkflowIrreversibleError(str(workflow_id)) from exc
             if workflow is None:
                 raise WorkflowNotFoundError(str(workflow_id))
+            # §確定 H 不可逆性: マスク済み notify_channels を持つ Workflow は更新不可。
+            # BUG-AT-002 修正で masked URL が ValidationError を起こさなくなったため、
+            # 明示的に masked token を検出して WorkflowIrreversibleError を raise する。
+            if any(
+                "<REDACTED:DISCORD_WEBHOOK>" in ch.target
+                for stage in workflow.stages
+                for ch in stage.notify_channels
+            ):
+                raise WorkflowIrreversibleError(str(workflow_id))
             if workflow.archived:
                 raise WorkflowArchivedError(str(workflow_id), kind="update")
             # 部分更新: name のみ、または stages/transitions/entry_stage_id を全置換
@@ -202,9 +214,21 @@ class WorkflowService:
             if s.get("completion_policy") is None:
                 s["completion_policy"] = {"kind": "manual", "description": ""}
             # notify_channels: URL strings → NotifyChannel dict format
-            s["notify_channels"] = [
-                {"kind": "discord", "target": url} for url in s.get("notify_channels", [])
-            ]
+            # Finding 3: <REDACTED: トークンを作成パスで弾く（不可逆性 self-lock 防止）
+            raw_channels: list[str] = s.get("notify_channels", [])
+            for url in raw_channels:
+                if "<REDACTED:" in url:
+                    from bakufu.domain.exceptions import WorkflowInvariantViolation
+
+                    raise WorkflowInvariantViolation(
+                        kind="masked_notify_channel",
+                        message=(
+                            "[FAIL] notify_channels must not contain masked tokens"
+                            " (<REDACTED:...>). Please provide the original webhook URL."
+                        ),
+                        detail={"masked_token": url},
+                    )
+            s["notify_channels"] = [{"kind": "discord", "target": url} for url in raw_channels]
             result.append(s)
         return result
 

@@ -15,7 +15,6 @@ from uuid import uuid4
 from bakufu.application.services.admin_service import BlockedTaskSummary, DeadLetterSummary
 from bakufu.interfaces.cli import formatters
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -164,7 +163,14 @@ class TestFormatDeadLettersJson:
         event = _make_dead_letter_summary()
         output = formatters.format_dead_letters([event], json_output=True)
         item = json.loads(output)[0]
-        for field in ("event_id", "event_kind", "aggregate_id", "attempt_count", "last_error", "updated_at"):
+        for field in (
+            "event_id",
+            "event_kind",
+            "aggregate_id",
+            "attempt_count",
+            "last_error",
+            "updated_at",
+        ):
             assert field in item, f"フィールド '{field}' が JSON に存在しない"
 
 
@@ -198,7 +204,9 @@ class TestFormatSuccess:
 
     def test_json_format_contains_result_ok(self) -> None:
         """TC-UT-AC-CLI-007: json_output=True → {"result": "ok"} が含まれる。"""
-        output = formatters.format_success("Operation successful", json_output=True, command="retry-task")
+        output = formatters.format_success(
+            "Operation successful", json_output=True, command="retry-task"
+        )
         data = json.loads(output)
         assert data["result"] == "ok"
         assert data["command"] == "retry-task"

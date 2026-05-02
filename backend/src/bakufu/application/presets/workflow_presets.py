@@ -38,7 +38,7 @@ class WorkflowPresetDefinition:
 
 
 # ---------------------------------------------------------------------------
-# V-model preset (13 stages, 15 transitions)
+# V-model preset (14 stages, 16 transitions)
 # Stage IDs: "00000001-0000-4000-8000-{i:012d}"
 # Transition IDs: "00000001-0001-4000-8000-{i:012d}"
 # ---------------------------------------------------------------------------
@@ -160,10 +160,24 @@ _VMODEL_STAGES: list[dict[str, Any]] = [
         "notify_channels": [],
         "required_deliverables": [],
     },
+    {
+        "id": "00000001-0000-4000-8000-000000000014",
+        "name": "リリース前承認",
+        "kind": "EXTERNAL_REVIEW",
+        "required_role": ["LEADER"],
+        "completion_policy": {"kind": "manual", "description": ""},
+        "notify_channels": [
+            {
+                "kind": "discord",
+                "target": "https://discord.com/api/webhooks/000000000000000001/bakufu-release-approval",
+            }
+        ],
+        "required_deliverables": [],
+    },
 ]
 
-# Forward APPROVED transitions (12): stage 1→2, 2→3, 3→4, 4→5, 5→6, 6→7,
-#   7→8, 8→9, 9→10, 10→11, 11→12, 12→13
+# Forward APPROVED transitions (13): stage 1→2, 2→3, 3→4, 4→5, 5→6, 6→7,
+#   7→8, 8→9, 9→10, 10→11, 11→12, 12→13, 13→14
 # Backward REJECTED transitions (3): 2→1, 4→3, 6→5
 _VMODEL_TRANSITIONS: list[dict[str, Any]] = [
     # Forward transitions (APPROVED)
@@ -248,6 +262,13 @@ _VMODEL_TRANSITIONS: list[dict[str, Any]] = [
         "id": "00000001-0001-4000-8000-000000000012",
         "from_stage_id": "00000001-0000-4000-8000-000000000012",
         "to_stage_id": "00000001-0000-4000-8000-000000000013",
+        "condition": "APPROVED",
+        "label": "",
+    },
+    {
+        "id": "00000001-0001-4000-8000-000000000016",
+        "from_stage_id": "00000001-0000-4000-8000-000000000013",
+        "to_stage_id": "00000001-0000-4000-8000-000000000014",
         "condition": "APPROVED",
         "label": "",
     },
@@ -409,7 +430,9 @@ WORKFLOW_PRESETS: dict[str, WorkflowPresetDefinition] = {
     "v-model": WorkflowPresetDefinition(
         preset_name="v-model",
         display_name="V モデル",
-        description="要件定義からリリース承認まで V 字型プロセスを辿る 13 ステージのワークフロー。",
+        description=(
+            "要件定義からリリース前承認まで V 字型プロセスを辿る 14 ステージのワークフロー。"
+        ),
         name="V モデル開発プロセス",
         stages=_VMODEL_STAGES,
         transitions=_VMODEL_TRANSITIONS,
