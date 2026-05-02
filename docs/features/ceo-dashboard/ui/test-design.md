@@ -41,7 +41,8 @@
 | REQ-CD-UI-005 | `useWebSocketBus` / `ConnectionIndicator` | TC-IT-CD-007, TC-IT-CD-008, TC-IT-CD-009, TC-IT-CD-010, TC-IT-CD-011 | IT | 正常系 / 異常系 | feature-spec.md §9 #12, #13 |
 | REQ-CD-UI-006 | `StatusBadge` | TC-UT-CD-001〜006 | UT | 正常系 | feature-spec.md §9 #1 |
 | §確定 B | `apiClient` | TC-IT-CD-005, TC-IT-CD-006 | IT | 正常系 / 異常系 | feature-spec.md R1-5 |
-| §確定 C | `useWebSocketBus` 再接続バックオフ | TC-IT-CD-008, TC-IT-CD-009 | IT | 異常系 | feature-spec.md R1-1 |
+| §確定 C | `useWebSocketBus` 再接続バックオフ | TC-IT-CD-008, TC-IT-CD-009, TC-IT-CD-018 | IT | 異常系 / 境界値 | feature-spec.md R1-1 |
+| §確定 C（Agent / Directive invalidate）| `useWebSocketBus` イベントルーティング | TC-IT-CD-010, TC-IT-CD-011, TC-IT-CD-019, TC-IT-CD-020 | IT | 正常系 | feature-spec.md §8 #12 |
 | §確定 D | `GateActionForm` / `useGateAction` | TC-IT-CD-013, TC-IT-CD-014, TC-IT-CD-015, TC-UT-CD-010, TC-UT-CD-011, TC-UT-CD-012 | IT / UT | 正常系 / 異常系 | feature-spec.md §9 #7, #8, #9, #10 |
 | §確定 E | `DirectiveForm` / `useDirectiveSubmit` | TC-IT-CD-016, TC-IT-CD-017, TC-UT-CD-013, TC-UT-CD-014, TC-UT-CD-015 | IT / UT | 正常系 / 異常系 | feature-spec.md §9 #11 |
 | §確定 F | `DeliverableViewer` | TC-UT-CD-007, TC-UT-CD-008, TC-UT-CD-009 | UT | 正常系 / セキュリティ | — |
@@ -61,6 +62,8 @@
 **マトリクス充足の証拠**:
 - REQ-CD-UI-001 〜 REQ-CD-UI-006 全てに IT または UT テストケース（最低 1 件）
 - §確定 B / C / D / E / F 全てに IT または UT テストケース（最低 1 件）
+- §確定 C backoff 上限境界値（30000ms 固定 + 上限なし継続）が TC-IT-CD-018 で検証される
+- §確定 C `Agent` / `Directive` イベントルーティングが TC-IT-CD-019 / TC-IT-CD-020 で検証される
 - MSG-CD-UI-001 〜 006 全てに文言照合テスト
 - T1（XSS）に有効性確認テスト（TC-UT-CD-008）
 - T2（CORS）を apiClient ベース URL テスト（TC-IT-CD-005）で補完
@@ -249,6 +252,37 @@
 | 操作 | `submit("room-1", "")` を呼ぶ |
 | 期待結果 | mutation の `isError === true`。`router.state.location.pathname` は `/directives/new` から変化しない |
 
+### TC-IT-CD-018: `useWebSocketBus` — backoff 上限境界値: 6 回目以降 30000ms 固定（§確定 C 境界値）
+
+| 項目 | 内容 |
+|---|---|
+| 対象 | `useWebSocketBus` + `MockWebSocket` + `vi.useFakeTimers()` |
+| 前提 | backoff 配列 `[1000, 2000, 4000, 8000, 16000, 30000]`（`detailed-design.md §確定 C` 凍結値）|
+| 操作 | `triggerOpen()` → `triggerClose()` → `vi.advanceTimersByTime(1000)` → 新インスタンスを即 `triggerClose()` → … の繰り返しで 5 回切断・再試行。6 回目以降は `vi.advanceTimersByTime(29999)` で WebSocket コンストラクタが呼ばれないこと、`vi.advanceTimersByTime(1)` で呼ばれることを確認 |
+| 期待結果 | 5 回目再試行時の待機は 30000ms（配列末尾到達）。6 回目以降も同じく 30000ms で固定されリトライが継続する（上限なし）。合計 `vi.advanceTimersByTime(63000)` で 6 回の WebSocket コンストラクタ呼び出しが行われる（`MockWebSocket.instances.length === 7`）|
+| 根拠 | `detailed-design §確定C`: 「30000ms に到達後は 30000ms 固定でリトライを継続（上限なし）」。終端処理（`attempt >= 5` → 固定化）の実装ミスを CI で検出する |
+| 受入基準 | feature-spec.md R1-1 |
+
+### TC-IT-CD-019: `useWebSocketBus` — `AgentStateChangedEvent`（aggregate_type=Agent）受信 → `["task"]` 全件 invalidate（§確定 C）
+
+| 項目 | 内容 |
+|---|---|
+| 対象 | `useWebSocketBus` + `MockWebSocket` + `QueryClient` spy |
+| 前提 | 接続済み状態 |
+| 操作 | `{"event_type":"AgentStateChangedEvent","aggregate_type":"Agent","aggregate_id":"agent-abc","payload":{}}` を dispatch |
+| 期待結果 | `queryClient.invalidateQueries` が `["task"]`（prefix match — 全 Task キャッシュ再検証）で呼ばれる。`["gate"]` 系は呼ばれない |
+| 根拠 | `detailed-design §確定C`: 「`"Agent"` → `["task"]` 全件（Agent ステータス変化は Task 詳細に影響する可能性）」|
+
+### TC-IT-CD-020: `useWebSocketBus` — `DirectiveStateChangedEvent`（aggregate_type=Directive）受信 → `["tasks"]` invalidate（§確定 C）
+
+| 項目 | 内容 |
+|---|---|
+| 対象 | `useWebSocketBus` + `MockWebSocket` + `QueryClient` spy |
+| 前提 | 接続済み状態 |
+| 操作 | `{"event_type":"DirectiveCompletedEvent","aggregate_type":"Directive","aggregate_id":"directive-xyz","payload":{}}` を dispatch |
+| 期待結果 | `queryClient.invalidateQueries` が `["tasks"]` で呼ばれる（Task 一覧の再取得を促す）。`["task", <specific-id>]` では呼ばれない（Directive イベントは特定 Task ID を持たないため全件再取得）|
+| 根拠 | `detailed-design §確定C`: 「`"Directive"` → `["tasks"]`（Directive 完了 → Task 状態変化）」|
+
 ## ユニットテストケース（UT）
 
 テストファイル: `frontend/src/__tests__/unit/`
@@ -394,7 +428,7 @@
 |-----|------------|
 | REQ-CD-UI-001 〜 REQ-CD-UI-006 の各要件 | IT または UT テストで最低 1 件検証 |
 | §確定 B（apiClient）| IT テストで正常系・異常系（ApiError）を検証 |
-| §確定 C（WebSocket 再接続）| IT テストで connected → reconnecting → connected の状態遷移と backoff タイマーを検証 |
+| §確定 C（WebSocket 再接続）| IT テストで connected → reconnecting → connected の状態遷移・backoff タイマー・**30000ms 上限固定（TC-IT-CD-018）**・Agent/Directive イベントルーティング（TC-IT-CD-019/020）を検証 |
 | §確定 D（Gate 操作フロー）| IT（Hook）+ UT（Form）の両レベルで approve / reject / cancel と二重送信防止を検証 |
 | §確定 E（Directive 投入）| IT（Hook）+ UT（Form）の両レベルで送信成功・バリデーション・EMPIRE_ID 未設定を検証 |
 | §確定 F（Markdown sanitize）| UT で `<script>` タグが除去されることを DOM で確認（TC-UT-CD-008）|
@@ -404,7 +438,7 @@
 | 行カバレッジ目標 | `vitest --coverage` で 80% 以上（`frontend/src/` 対象）|
 | 型チェック | `tsc --noEmit` で 0 error（feature-spec.md §10）|
 
-## WebSocket テスト戦略詳細（TC-IT-CD-007〜011 共通設計）
+## WebSocket テスト戦略詳細（TC-IT-CD-007〜011 / TC-IT-CD-018〜020 共通設計）
 
 WebSocket の状態機械は `vi.useFakeTimers()` と `MockWebSocket` の組み合わせで制御する。
 
@@ -447,7 +481,7 @@ frontend/src/
     │   ├── useTask.test.ts            # TC-IT-CD-003
     │   ├── useGate.test.ts            # TC-IT-CD-004
     │   ├── apiClient.test.ts          # TC-IT-CD-005〜006
-    │   ├── useWebSocketBus.test.ts    # TC-IT-CD-007〜011
+    │   ├── useWebSocketBus.test.ts    # TC-IT-CD-007〜011, TC-IT-CD-018〜020
     │   ├── useRooms.test.ts           # TC-IT-CD-012
     │   ├── useGateAction.test.ts      # TC-IT-CD-013〜015
     │   └── useDirectiveSubmit.test.ts # TC-IT-CD-016〜017
