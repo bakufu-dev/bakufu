@@ -86,21 +86,22 @@
 | 項目 | 内容 |
 |-----|------|
 | 対象 | セキュリティ T1（MaskedText TypeDecorator 実配線）|
-| 手順 | 1) comment = `"https://discord.com/api/webhooks/secret_token"` で Verdict を含む Gate を save → 2) SQLite DB ファイルを直接 `sqlite3` CLI で開いて `internal_review_gate_verdicts.comment` カラムを確認 |
-| 期待結果 | DB 上の comment が `<REDACTED:DISCORD_WEBHOOK>` 形式（plain text で token が残っていない）|
+| 手順 | 1) comment に Discord webhook URL 形式のトークン（`"https://discord.com/api/webhooks/<id>/<token>"` 等）を含む Verdict を持つ Gate を save → 2) `sqlalchemy.text()` による raw SQL SELECT で `internal_review_gate_verdicts.comment` カラムの物理バイトを確認（`MaskedText.process_result_value` を迂回して DB に書き込まれた実データを観察） |
+| 期待結果 | DB 上の comment が `<REDACTED:DISCORD_WEBHOOK>` 形式でトークンが残っていない。生トークンは DB から復元不能（不可逆性） |
+| 注記 | room-repository `test_masking_prompt_kit.py` の `_read_persisted_prefix()` パターン踏襲。`sqlite3` CLI は不要（SQLAlchemy `text()` が同等の raw アクセスを提供）|
 
 ## ユニットテスト（UT）
 
 テストディレクトリ: `backend/tests/infrastructure/persistence/sqlite/repositories/test_internal_review_gate_repository/`
 
-### TC-UT-IRG-R101: `InternalReviewGateRepositoryPort` Protocol 充足（pyright 静的保証）
+### TC-UT-IRG-R101: `InternalReviewGateRepositoryPort` Protocol 充足（メソッドサーフェス確認）
 
 | 項目 | 内容 |
 |-----|------|
 | 対象 | `REQ-IRG-R002`（Protocol 充足）|
-| 手順 | `SqliteInternalReviewGateRepository` のインスタンスを Protocol 型にアサート（pyright strict + isinstance チェック） |
-| 期待結果 | pyright 静的エラーなし / `isinstance(repo, InternalReviewGateRepositoryPort)` が True |
-| 注記 | InternalReviewGateRepositoryPort は `@runtime_checkable` なしのため `isinstance` テストは pyright の型整合性確認のみ（実行時 isinstance は Protocol が runtime_checkable のときのみ動作）。pyright strict mode の型検査で充足を保証する |
+| 手順 | (1) Protocol クラスが 4 method (`find_by_id` / `find_by_task_and_stage` / `find_all_by_task_id` / `save`) を宣言していることを `hasattr(InternalReviewGateRepositoryPort, "<method>")` で確認する。(2) `SqliteInternalReviewGateRepository` インスタンスに対しても同 4 method の `hasattr` 確認を行う |
+| 期待結果 | Protocol・実装クラス双方で 4 method が全て存在する。pyright strict CI で型エラーゼロ |
+| 注記 | `InternalReviewGateRepositoryPort` は `@runtime_checkable` なし（`REQ-IRG-R001`）のため、実行時 `isinstance` チェックは不可（TypeError になる）。ランタイム確認は `hasattr` 確認で代替し、シグネチャ整合性は pyright strict CI が保証する（room-repository TC-UT-RR-001 踏襲パターン）|
 
 ### TC-UT-IRG-R102: `_to_rows()` — Aggregate → Row 変換の正確性
 
@@ -133,6 +134,16 @@
 | 対象 | §確定 C（required_gate_roles JSON 保持）|
 | 手順 | gate_row.required_gate_roles = `'["reviewer", "ux"]'` で `_from_rows()` を呼ぶ |
 | 期待結果 | 復元 Gate の `required_gate_roles` が `frozenset({"reviewer", "ux"})` |
+
+## 外部I/O依存マップ
+
+| 外部I/O | 種別 | テストレベル | raw fixture | factory | characterization 状態 |
+|---------|------|------------|------------|---------|----------------------|
+| SQLite（`internal_review_gates` / `internal_review_gate_verdicts`）| DB（実接続）| IT | — | `tests/factories/internal_review_gate.py`（新規作成必要）| 要起票: `InternalReviewGate` factory が未存在 |
+| `MaskedText` TypeDecorator（DB 永続化前マスキング）| 内部ライブラリ | IT | — | 上記 factory で `comment` フィールドに Discord webhook URL 等を注入 | 要起票: masking テスト用トークン定数の確認（既存 `test_masking_prompt_kit.py` パターン参照）|
+| システム時刻（`created_at` / `decided_at`）| 時刻 | IT/UT | — | factory 内で `datetime.now(UTC)` を固定値として注入 | 既存パターン充足 |
+
+**注意**: IT（結合テスト）では全て実 SQLite（`tests/factories/db.py` の `create_all_tables` + `make_test_engine`）を使用する。Mock DB は不使用。外部 API 依存なし。
 
 ## カバレッジ基準
 

@@ -43,9 +43,10 @@
 | 項目 | 内容 |
 |-----|------|
 | 対象 | `REQ-IRG-A001`（空集合チェック）|
-| 手順 | `create_gate(task_id, stage_id, frozenset())` を呼ぶ |
-| 期待結果 | `None` が返る / InternalReviewGateRepository.save() が呼ばれない |
+| 手順 | 1) `create_gate(task_id, stage_id, frozenset())` を呼ぶ → 2) `gate_repo.find_by_task_and_stage(task_id, stage_id)` で永続化有無を確認 |
+| 期待結果 | `None` が返る / `find_by_task_and_stage` も `None` を返す（Gate が永続化されていない）|
 | 受入基準 | #10（空集合 Gate 非生成）|
+| 注記 | IT では「save() が呼ばれない」という内部呼び出し確認（whitebox）は行わない。`find_by_task_and_stage` の戻り値 None で永続化されていないことを振る舞いベースで確認する |
 
 ### TC-IT-IRG-A004: `create_gate()` のべき等性 — 既存 PENDING Gate の重複生成防止
 
@@ -69,7 +70,8 @@
 |-----|------|
 | 対象 | `REQ-IRG-A002`（Executor 並列実行）|
 | 手順 | 1) mock LLMProviderPort（reviewer: "APPROVED: OK", security: "APPROVED: 問題なし"）を設定 → 2) `executor.execute(task_id, stage_id, {"reviewer","security"})` を await |
-| 期待結果 | LLMProviderPort.chat() が 2 回呼ばれる（並列）/ Gate が ALL_APPROVED に遷移 / session_id が 2 回とも異なる UUID v4 |
+| 期待結果 | LLMProviderPort.chat() が 2 回呼ばれる（並列）/ Gate が ALL_APPROVED に遷移 |
+| 注記 | 「session_id が 2 回とも異なる UUID v4」の確認は内部実装詳細（whitebox）のため IT スコープ外。TC-UT-IRG-A106 に委ねる |
 
 ### TC-IT-IRG-A007: `execute()` — REJECTED 時の LLM エラー → 例外送出
 
@@ -136,6 +138,23 @@
 | 対象 | §確定 B（return_exceptions=True）|
 | 手順 | reviewer: 正常 / ux: `LLMProviderTimeoutError` / security: 正常 の 3 GateRole で execute() |
 | 期待結果 | `LLMProviderTimeoutError` が最終的に再送出される / reviewer と security の submit_verdict が呼ばれた（ux は未呼び出し）|
+
+## 外部I/O依存マップ
+
+| 外部I/O | 種別 | テストレベル | raw fixture | factory | characterization 状態 |
+|---------|------|------------|------------|---------|----------------------|
+| `LLMProviderPort`（LLM 呼び出し）| 外部 API | IT/UT | — | `tests/factories/stub_llm_provider.py`（既存: `make_stub_llm_provider`）| 充足（M5-A で characterization 済み）|
+| `InternalReviewGateRepositoryPort`（Gate 永続化）| 内部 Port | IT | — | InMemory 実装または `tests/factories/internal_review_gate.py`（新規作成必要）| 要起票: InMemory Repository 実装が未存在 |
+| `ExternalReviewGateService`（ALL_APPROVED 後の委譲）| 内部サービス | IT | — | mock（`AsyncMock`）または InMemory 実装 | 要起票: M3 既存サービスの mock 方針を `conftest.py` で確立 |
+| `TaskRepository`（Task 差し戻し保存）| 内部 Port | IT | — | InMemory 実装または `AsyncMock` | 既存 `tests/factories/task.py` で Task 生成可能 |
+| `WorkflowRepository`（DAG traversal）| 内部 Port | IT | — | `tests/factories/workflow.py`（既存: `make_workflow`, `make_transition`）| 充足 |
+| `AgentRepository`（GateRole 権限認可）| 内部 Port | IT | — | `tests/factories/agent.py`（既存: `make_agent`）| 充足 |
+| `EventBusPort`（Gate 状態変化 Event 発行）| 内部 Port | IT | — | `InMemoryEventBus`（既存）| 充足（M5-A で使用済み）|
+
+**モック方針**:
+- IT（結合テスト）: LLMProviderPort は `make_stub_llm_provider()` でモック。DB は InMemory 実装を使用（外部 SQLite 接続不要）
+- UT（単体テスト）: 全外部依存を `AsyncMock` でモック
+- `ExternalReviewGateService` は IT では `AsyncMock` でモック（外部サービスの副作用を分離）
 
 ## カバレッジ基準
 
