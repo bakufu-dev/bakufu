@@ -38,6 +38,9 @@ async def gate_e2e_ctx(tmp_path: Path) -> AsyncIterator[GateE2ECtx]:
     from tests.factories.db import create_all_tables, make_test_engine, make_test_session_factory
 
     app = create_app()
+    from bakufu.infrastructure.security import masking as masking_mod
+
+    masking_mod.init()
     engine = make_test_engine(tmp_path / "gate_e2e_test.db")
     await create_all_tables(engine)
     session_factory = make_test_session_factory(engine)

@@ -507,3 +507,75 @@ class TestFailFast:
                 template_repo=AsyncMock(),
                 # event_bus は意図的に省略
             )
+
+
+# ---------------------------------------------------------------------------
+# §確定B（Fail Fast）: Literal event_type バリデーション
+# ---------------------------------------------------------------------------
+
+
+class TestLiteralEventTypeFailFast:
+    """TC-UT-WSB-030〜033: Literal 型 event_type 違反 → ValidationError（§確定 B）。
+
+    event_type は Literal["..."] で構築時バリデーション保証。
+    不正な event_type 文字列を渡すと pydantic.ValidationError が即座に発火する。
+    """
+
+    def test_task_state_changed_event_rejects_invalid_event_type(self) -> None:
+        """TC-UT-WSB-030: TaskStateChangedEvent + event_type="hacked.value" → ValidationError。"""
+        from bakufu.domain.events import TaskStateChangedEvent
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            TaskStateChangedEvent(
+                aggregate_id="t1",
+                directive_id="d1",
+                old_status="PENDING",
+                new_status="IN_PROGRESS",
+                room_id="r1",
+                event_type="hacked.value",  # type: ignore[arg-type]
+            )
+
+    def test_external_review_gate_event_rejects_invalid_event_type(self) -> None:
+        """TC-UT-WSB-031: ExternalReviewGateStateChangedEvent Literal 型違反。
+
+        event_type="hacked.value" → pydantic.ValidationError（§確定 B）。
+        """
+        from bakufu.domain.events import ExternalReviewGateStateChangedEvent
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            ExternalReviewGateStateChangedEvent(
+                aggregate_id="g1",
+                task_id="task-1",
+                old_status="OPEN",
+                new_status="PENDING",
+                event_type="hacked.value",  # type: ignore[arg-type]
+            )
+
+    def test_agent_status_changed_event_rejects_invalid_event_type(self) -> None:
+        """TC-UT-WSB-032: AgentStatusChangedEvent + event_type="hacked.value" → ValidationError。"""
+        from bakufu.domain.events import AgentStatusChangedEvent
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            AgentStatusChangedEvent(
+                aggregate_id="a1",
+                room_id="room-1",
+                old_status="idle",
+                new_status="running",
+                event_type="hacked.value",  # type: ignore[arg-type]
+            )
+
+    def test_directive_completed_event_rejects_invalid_event_type(self) -> None:
+        """TC-UT-WSB-033: DirectiveCompletedEvent + event_type="hacked.value" → ValidationError。"""
+        from bakufu.domain.events import DirectiveCompletedEvent
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            DirectiveCompletedEvent(
+                aggregate_id="dir-1",
+                empire_id="empire-1",
+                final_status="DONE",
+                event_type="hacked.value",  # type: ignore[arg-type]
+            )
