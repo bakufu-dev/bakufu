@@ -46,10 +46,11 @@ class ConnectionManager:
         """接続プールから WebSocket を削除する（REQ-WSB-009）。
 
         二重削除で ``ValueError`` が出ないよう存在チェック後に削除する。
+        MSG-WSB-004 は削除が実行された場合のみ記録する（削除なしの呼び出しはサイレント）。
         """
         if websocket in self._connections:
             self._connections.remove(websocket)
-        logger.info("WebSocket client disconnected: total=%d", len(self._connections))
+            logger.info("WebSocket client disconnected: total=%d", len(self._connections))
 
     async def broadcast(self, message: str) -> None:
         """全接続クライアントにメッセージを送信する（REQ-WSB-009 §確定B）。

@@ -7,6 +7,7 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.requests import HTTPConnection
 
 from bakufu.application.ports.agent_repository import AgentRepository
 from bakufu.application.ports.directive_repository import DirectiveRepository
@@ -91,19 +92,23 @@ def get_event_bus(request: Request) -> EventBusPort:
     return request.app.state.event_bus  # type: ignore[no-any-return]
 
 
-def get_connection_manager(request: Request) -> ConnectionManager:
+def get_connection_manager(conn: HTTPConnection) -> ConnectionManager:
     """ConnectionManager を app.state から取得する DI ファクトリ（REQ-WSB-012）。
 
     lifespan で生成された ``ConnectionManager`` を返す。
     ``app.state.connection_manager`` が未設定の場合は ``BakufuConfigError`` を raise
     して Fail Fast する（detailed-design.md §get_connection_manager() 参照）。
+
+    引数に ``HTTPConnection`` を使用するのは ``WebSocket`` が ``Request`` のサブクラスでは
+    なく兄弟クラスのため（両者とも ``HTTPConnection`` の派生）。
+    HTTP エンドポイントと WebSocket エンドポイント両方で DI が正常動作する。
     """
     # 遅延 import: interfaces → infrastructure の直接依存を避けるため
     # モジュールロード時の循環参照リスクを回避し、
     # 依存方向 interfaces → application → infrastructure を遵守する
     from bakufu.infrastructure.exceptions import BakufuConfigError
 
-    cm: ConnectionManager | None = getattr(request.app.state, "connection_manager", None)
+    cm: ConnectionManager | None = getattr(conn.app.state, "connection_manager", None)
     if cm is None:
         raise BakufuConfigError(
             msg_id="MSG-PF-002",
