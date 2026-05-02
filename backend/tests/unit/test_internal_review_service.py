@@ -1,7 +1,7 @@
-"""InternalReviewService ユニットテスト（TC-UT-IRG-A104〜A105）。
+"""_DagTraversal ユニットテスト（TC-UT-IRG-A104〜A105）。
 
 設計書: docs/features/internal-review-gate/application/test-design.md
-対象: §確定 G（DAG traversal: _find_prev_work_stage_id）
+対象: §確定 G（DAG traversal: _DagTraversal.find_prev_work_stage_id）
 Issue: #164 feat(M5-B): InternalReviewGate infrastructure実装
 
 前提:
@@ -23,34 +23,18 @@ pytestmark = pytest.mark.asyncio
 
 
 # ---------------------------------------------------------------------------
-# ヘルパー
-# ---------------------------------------------------------------------------
-
-
-def _make_service() -> object:
-    """InternalReviewService をテスト用設定で生成する（session_factory/event_bus は AsyncMock）。"""
-    from bakufu.application.services.internal_review_service import InternalReviewService
-
-    mock_sf = MagicMock()
-    mock_sf.return_value.__aenter__ = AsyncMock(return_value=MagicMock())
-    mock_sf.return_value.__aexit__ = AsyncMock(return_value=None)
-    mock_event_bus = AsyncMock()
-    return InternalReviewService(
-        session_factory=mock_sf,
-        event_bus=mock_event_bus,
-    )
-
-
-# ---------------------------------------------------------------------------
-# TC-UT-IRG-A104: _find_prev_work_stage_id() — DAG traversal 正常系
+# TC-UT-IRG-A104: find_prev_work_stage_id() — DAG traversal 正常系
 # ---------------------------------------------------------------------------
 
 
 class TestFindPrevWorkStageId:
-    """TC-UT-IRG-A104: _find_prev_work_stage_id() — DAG traversal の正確性（§確定 G）。"""
+    """TC-UT-IRG-A104: find_prev_work_stage_id() — DAG traversal 正確性。（§確定 G）"""
 
     async def test_returns_work_stage_id_from_dag(self) -> None:
         """TC-UT-IRG-A104: WORK_A→INTERNAL_REVIEW_B のグラフ → WORK_A.id が返る。"""
+        from bakufu.application.services.internal_review_service._dag_traversal import (
+            _DagTraversal,
+        )
         from bakufu.domain.value_objects import StageKind
 
         work_stage_id = uuid4()
@@ -78,9 +62,8 @@ class TestFindPrevWorkStageId:
         mock_room_repo.find_by_id = AsyncMock(return_value=room)
 
         task = make_in_progress_task(room_id=room_id)
-        service = _make_service()
 
-        result = await service._find_prev_work_stage_id(
+        result = await _DagTraversal.find_prev_work_stage_id(
             task,
             internal_review_stage_id,
             mock_workflow_repo,
@@ -95,6 +78,9 @@ class TestFindPrevWorkStageId:
         WORK_A → INTERNAL_REVIEW_B ← WORK_C（複数 incoming）のグラフで、
         WORK kind の前段（WORK_A or WORK_C のいずれか）が返ることを確認。
         """
+        from bakufu.application.services.internal_review_service._dag_traversal import (
+            _DagTraversal,
+        )
         from bakufu.domain.value_objects import StageKind
 
         work_a_id = uuid4()
@@ -120,9 +106,8 @@ class TestFindPrevWorkStageId:
         mock_room_repo.find_by_id = AsyncMock(return_value=room)
 
         task = make_in_progress_task()
-        service = _make_service()
 
-        result = await service._find_prev_work_stage_id(
+        result = await _DagTraversal.find_prev_work_stage_id(
             task,
             internal_review_id,
             mock_workflow_repo,
@@ -133,17 +118,20 @@ class TestFindPrevWorkStageId:
 
 
 # ---------------------------------------------------------------------------
-# TC-UT-IRG-A105: _find_prev_work_stage_id() — 前段 WORK Stage なし → IllegalWorkflowStructureError
+# TC-UT-IRG-A105: find_prev_work_stage_id() — 前段 WORK Stage なし → IllegalWorkflowStructureError
 # ---------------------------------------------------------------------------
 
 
 class TestFindPrevWorkStageIdNoWorkStage:
-    """TC-UT-IRG-A105: _find_prev_work_stage_id() — 前段 WORK Stage なし → error（§確定 G）。"""
+    """TC-UT-IRG-A105: find_prev_work_stage_id() — 前段 WORK Stage なし → error。（§確定 G）"""
 
     async def test_raises_when_no_work_predecessor(self) -> None:
         """TC-UT-IRG-A105: 前段に WORK Stage がない → IllegalWorkflowStructureError。"""
         from bakufu.application.exceptions.workflow_exceptions import (
             IllegalWorkflowStructureError,
+        )
+        from bakufu.application.services.internal_review_service._dag_traversal import (
+            _DagTraversal,
         )
         from bakufu.domain.value_objects import StageKind
 
@@ -166,10 +154,9 @@ class TestFindPrevWorkStageIdNoWorkStage:
         mock_room_repo.find_by_id = AsyncMock(return_value=room)
 
         task = make_in_progress_task()
-        service = _make_service()
 
         with pytest.raises(IllegalWorkflowStructureError) as exc_info:
-            await service._find_prev_work_stage_id(
+            await _DagTraversal.find_prev_work_stage_id(
                 task,
                 internal_review_stage_id,
                 mock_workflow_repo,
@@ -183,6 +170,9 @@ class TestFindPrevWorkStageIdNoWorkStage:
         """TC-UT-IRG-A105 変形: 前段 Stage が EXTERNAL_REVIEW → IllegalWorkflowStructureError。"""
         from bakufu.application.exceptions.workflow_exceptions import (
             IllegalWorkflowStructureError,
+        )
+        from bakufu.application.services.internal_review_service._dag_traversal import (
+            _DagTraversal,
         )
         from bakufu.domain.value_objects import StageKind
 
@@ -215,10 +205,9 @@ class TestFindPrevWorkStageIdNoWorkStage:
         mock_room_repo.find_by_id = AsyncMock(return_value=room)
 
         task = make_in_progress_task()
-        service = _make_service()
 
         with pytest.raises(IllegalWorkflowStructureError):
-            await service._find_prev_work_stage_id(
+            await _DagTraversal.find_prev_work_stage_id(
                 task,
                 internal_review_stage_id,
                 mock_workflow_repo,

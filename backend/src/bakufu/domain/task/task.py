@@ -369,6 +369,46 @@ class Task(BaseModel):
             }
         )
 
+    @property
+    def current_deliverable(self) -> Deliverable | None:
+        """直近にコミットされた成果物スナップショット（派生プロパティ）。
+
+        ``deliverables`` dict の最後のエントリ（挿入順）を返す。
+        INTERNAL_REVIEW Stage の LLM 審査プロンプト構築で使用する（§確定 E）。
+        INTERNAL_REVIEW 実行中は ``current_stage_id`` が IR stage であり、
+        直前 WORK Stage がコミットした成果物が最新エントリとなる。
+        成果物がコミットされていない場合は ``None`` を返す。
+        """
+        if not self.deliverables:
+            return None
+        return next(reversed(self.deliverables.values()))
+
+    def rollback_to_stage(
+        self,
+        prev_stage_id: StageId,
+        *,
+        updated_at: datetime,
+    ) -> Task:
+        """IN_PROGRESS 自己ループ、``current_stage_id`` を前段 Stage に差し戻す（§確定 G）。
+
+        INTERNAL_REVIEW Gate が REJECTED 確定後、Workflow DAG 逆引きで特定した
+        前段 WORK Stage に Task を差し戻す。Status は IN_PROGRESS のまま、
+        ``current_stage_id`` のみが移動する。差し戻し先 Stage の DAG 整合性検証は
+        ``InternalReviewService._find_prev_work_stage_id()`` の責務（§確定 K）。
+
+        state machine は ``advance_to_next`` アクション（IN_PROGRESS 自己ループ）を
+        共用する — 「前進」と「差し戻し」は Aggregate にとって同一の状態遷移であり、
+        意味の区別はアプリケーション層が担う（Tell, Don't Ask 境界）。
+        """
+        next_status = self._lookup_or_raise("advance_to_next")
+        return self._rebuild_with_state(
+            {
+                "status": next_status,
+                "current_stage_id": prev_stage_id,
+                "updated_at": updated_at,
+            }
+        )
+
     # ---- 内部実装 -------------------------------------------------------
     def _assert_not_terminal(self) -> None:
         """DONE / CANCELLED の Task で呼ばれた振る舞いを拒否する（MSG-TS-001）。

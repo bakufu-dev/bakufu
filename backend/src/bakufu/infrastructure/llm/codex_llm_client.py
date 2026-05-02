@@ -102,6 +102,21 @@ class CodexLLMClient:
                 provider=self.provider,
             ) from exc
 
+    async def chat_with_tools(
+        self,
+        messages: list[dict[str, str]],
+        system: str,
+        tools: list[dict[str, object]],
+        session_id: str | None = None,
+    ) -> ChatResult:
+        """ツール呼び出し対応の LLM 呼び出し（§確定 D）。
+
+        Codex は tool_use を未サポートのため、``chat()`` に委譲して
+        tool_calls が空の ChatResult を返す。
+        """
+        del tools, session_id  # Codex は tool schema を使用しない
+        return await self.chat(messages=messages, system=system)
+
     def _build_prompt(self, messages: list[dict[str, str]], system: str) -> str:
         """messages リストとシステムプロンプトからプロンプト文字列を構築する。"""
         parts: list[str] = []

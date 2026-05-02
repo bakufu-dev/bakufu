@@ -119,31 +119,44 @@ class StageWorkerBootstrap:
             return False
 
     def _launch_worker(self) -> None:
-        """StageWorker を生成して start() を呼ぶ（§確定 A: asyncio.Queue + Semaphore）。
+        """StageWorker を生成して start() を呼ぶ。
 
-        M5-B: InternalReviewGateExecutor を構築して StageWorker に注入する。
-        InternalReviewService（application 層）と InternalReviewGateExecutor
-        （infrastructure 層）を session_factory + llm_provider で接続する（§確定 G / I）。
+        InternalReviewGateExecutor を構築して StageWorker に注入する（§確定 G / I）。
+        repo factory callable を InternalReviewService に注入することで、
+        application 層が infrastructure 具象クラスを直接 import しない設計を保全する。
         """
         from uuid import uuid4
 
         from bakufu.application.services.internal_review_service import InternalReviewService
+        from bakufu.infrastructure.persistence.sqlite.repositories.internal_review_gate_repository import (  # noqa: E501
+            SqliteInternalReviewGateRepository,
+        )
+        from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
+            SqliteRoomRepository,
+        )
+        from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
+            SqliteTaskRepository,
+        )
+        from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
+            SqliteWorkflowRepository,
+        )
         from bakufu.infrastructure.reviewers.internal_review_gate_executor import (
             InternalReviewGateExecutor,
         )
         from bakufu.infrastructure.worker.stage_worker import StageWorker
 
-        assert self._event_bus is not None, "event_bus must be set before _launch_worker"
-        assert self._llm_provider is not None, "llm_provider must be set before _launch_worker"
+        assert self._event_bus is not None
+        assert self._llm_provider is not None
 
-        # InternalReviewService: Gate CRUD + downstream 連携
         review_svc = InternalReviewService(
             session_factory=self._session_factory,
+            gate_repo_factory=SqliteInternalReviewGateRepository,
+            task_repo_factory=SqliteTaskRepository,
+            workflow_repo_factory=SqliteWorkflowRepository,
+            room_repo_factory=SqliteRoomRepository,
             event_bus=self._event_bus,
         )
 
-        # InternalReviewGateExecutor: 並列 LLM 実行 + Verdict 提出（§確定 G）
-        # agent_id はプロセス起動時に一意な UUID v4 を生成（Executor 共通 ID）。
         internal_review_executor = InternalReviewGateExecutor(
             review_svc=review_svc,
             llm_provider=self._llm_provider,
@@ -155,7 +168,7 @@ class StageWorkerBootstrap:
             session_factory=self._session_factory,
             llm_provider=self._llm_provider,
             event_bus=self._event_bus,
-            internal_review_port=internal_review_executor,  # type: ignore[arg-type]
+            internal_review_port=internal_review_executor,
         )
         worker.start()
         self._worker = worker

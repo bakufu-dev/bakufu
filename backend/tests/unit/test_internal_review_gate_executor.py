@@ -7,7 +7,7 @@ Issue: #164 feat(M5-B): InternalReviewGate infrastructure実装
 前提:
 - LLM: make_stub_llm_provider_with_tools() / make_stub_llm_provider_with_tools_raises()
 - review_svc / session_factory: AsyncMock
-- _fetch_deliverable_summary: AsyncMock でパッチ（UT スコープ外）
+- SqliteTaskRepository: patch して task.current_deliverable.body_markdown を返す（UT スコープ外）
 """
 
 from __future__ import annotations
@@ -31,9 +31,29 @@ from tests.factories.stub_llm_provider import (
 
 pytestmark = pytest.mark.asyncio
 
+_TASK_REPO_PATH = (
+    "bakufu.infrastructure.persistence.sqlite.repositories.task_repository.SqliteTaskRepository"
+)
+
 # ---------------------------------------------------------------------------
 # 共通ヘルパー
 # ---------------------------------------------------------------------------
+
+
+def _stub_task_repo(deliverable_body: str = "# 成果物テキスト") -> object:
+    """SqliteTaskRepository をスタブ化するパッチコンテキストマネージャ。
+
+    _execute_single_role() が task.current_deliverable.body_markdown を参照するため、
+    SqliteTaskRepository をパッチして mock task を返す。
+    """
+    mock_task = MagicMock()
+    mock_task.current_deliverable = MagicMock()
+    mock_task.current_deliverable.body_markdown = deliverable_body
+
+    mock_repo = AsyncMock()
+    mock_repo.find_by_id = AsyncMock(return_value=mock_task)
+
+    return patch(_TASK_REPO_PATH, return_value=mock_repo)
 
 
 def _make_executor(
@@ -75,9 +95,6 @@ class TestInitialToolCallSuccess:
 
         §確定 D ステップ 1→2→3a。
         """
-        from bakufu.infrastructure.reviewers.internal_review_gate_executor import (
-            InternalReviewGateExecutor,
-        )
 
         mock_review_svc = AsyncMock()
         mock_review_svc.submit_verdict = AsyncMock(return_value=GateDecision.ALL_APPROVED)
@@ -87,11 +104,7 @@ class TestInitialToolCallSuccess:
         executor = _make_executor(llm_provider=llm, review_svc=mock_review_svc)
 
         gate_id = uuid4()
-        with patch.object(
-            InternalReviewGateExecutor,
-            "_fetch_deliverable_summary",
-            new=AsyncMock(return_value="# 成果物テキスト"),
-        ):
+        with _stub_task_repo():
             await executor._execute_single_role(gate_id, "reviewer", uuid4(), uuid4())
 
         # chat_with_tools() が 1 回呼ばれた（リトライなし）
@@ -106,9 +119,6 @@ class TestInitialToolCallSuccess:
 
         §確定 D ステップ 1→2→3a。
         """
-        from bakufu.infrastructure.reviewers.internal_review_gate_executor import (
-            InternalReviewGateExecutor,
-        )
 
         mock_review_svc = AsyncMock()
         mock_review_svc.submit_verdict = AsyncMock(return_value=GateDecision.REJECTED)
@@ -120,11 +130,7 @@ class TestInitialToolCallSuccess:
         executor = _make_executor(llm_provider=llm, review_svc=mock_review_svc)
 
         gate_id = uuid4()
-        with patch.object(
-            InternalReviewGateExecutor,
-            "_fetch_deliverable_summary",
-            new=AsyncMock(return_value="# 成果物テキスト"),
-        ):
+        with _stub_task_repo():
             await executor._execute_single_role(gate_id, "security", uuid4(), uuid4())
 
         assert llm.chat_with_tools.call_count == 1
@@ -164,9 +170,6 @@ class TestSessionIdIndependence:
 
     async def test_session_ids_are_independent_uuids(self) -> None:
         """TC-UT-IRG-A106: 3 GateRole で execute() — session_id が各々独立した UUID v4。"""
-        from bakufu.infrastructure.reviewers.internal_review_gate_executor import (
-            InternalReviewGateExecutor,
-        )
 
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux", "security"}))
         mock_review_svc = AsyncMock()
@@ -183,18 +186,11 @@ class TestSessionIdIndependence:
         )
         executor = _make_executor(llm_provider=llm, review_svc=mock_review_svc)
 
-        with patch.object(
-            InternalReviewGateExecutor,
-            "_fetch_deliverable_summary",
-            new=AsyncMock(return_value="# 成果物テキスト"),
-        ):
+        with _stub_task_repo():
             await executor.execute(uuid4(), uuid4(), frozenset({"reviewer", "ux", "security"}))
 
         # session_id を収集
-        session_ids = [
-            c.kwargs["session_id"]
-            for c in llm.chat_with_tools.call_args_list
-        ]
+        session_ids = [c.kwargs["session_id"] for c in llm.chat_with_tools.call_args_list]
         assert len(session_ids) == 3
         # 全て異なる
         assert len(set(session_ids)) == 3
@@ -215,9 +211,6 @@ class TestReturnExceptions:
     async def test_partial_error_still_reraises_non_gate_already_decided(self) -> None:
         """TC-UT-IRG-A107: ux が TimeoutError → TimeoutError 再送出（他は APPROVED で完了）。"""
         from bakufu.domain.exceptions.llm_provider import LLMProviderTimeoutError
-        from bakufu.infrastructure.reviewers.internal_review_gate_executor import (
-            InternalReviewGateExecutor,
-        )
 
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "ux", "security"}))
         mock_review_svc = AsyncMock()
@@ -251,11 +244,10 @@ class TestReturnExceptions:
 
         executor = _make_executor(llm_provider=mock_llm, review_svc=mock_review_svc)
 
-        with patch.object(
-            InternalReviewGateExecutor,
-            "_fetch_deliverable_summary",
-            new=AsyncMock(return_value="# 成果物テキスト"),
-        ), pytest.raises(LLMProviderTimeoutError):
+        with (
+            _stub_task_repo(),
+            pytest.raises(LLMProviderTimeoutError),
+        ):
             await executor.execute(uuid4(), uuid4(), frozenset({"reviewer", "ux", "security"}))
 
         # reviewer と security の submit_verdict は呼ばれた
@@ -263,9 +255,6 @@ class TestReturnExceptions:
 
     async def test_gate_already_decided_is_silently_ignored(self) -> None:
         """TC-UT-IRG-A107 補足: gate_already_decided は無視され execute() は正常終了（§確定 B）。"""
-        from bakufu.infrastructure.reviewers.internal_review_gate_executor import (
-            InternalReviewGateExecutor,
-        )
 
         gate = make_gate(required_gate_roles=frozenset({"reviewer", "security"}))
         mock_review_svc = AsyncMock()
@@ -289,11 +278,7 @@ class TestReturnExceptions:
         )
         executor = _make_executor(llm_provider=llm, review_svc=mock_review_svc)
 
-        with patch.object(
-            InternalReviewGateExecutor,
-            "_fetch_deliverable_summary",
-            new=AsyncMock(return_value="# 成果物テキスト"),
-        ):
+        with _stub_task_repo():
             # gate_already_decided は無視されるため例外なく正常終了する
             await executor.execute(uuid4(), uuid4(), frozenset({"reviewer", "security"}))
 
@@ -315,9 +300,6 @@ class TestRetryLogic:
         - prev_response_summary に初回応答テキストの先頭 200 文字が含まれる
         - "これが最終機会" は含まれない（2 回目のため）
         """
-        from bakufu.infrastructure.reviewers.internal_review_gate_executor import (
-            InternalReviewGateExecutor,
-        )
 
         mock_review_svc = AsyncMock()
         mock_review_svc.submit_verdict = AsyncMock(return_value=GateDecision.ALL_APPROVED)
@@ -332,11 +314,7 @@ class TestRetryLogic:
         executor = _make_executor(llm_provider=llm, review_svc=mock_review_svc)
 
         gate_id = uuid4()
-        with patch.object(
-            InternalReviewGateExecutor,
-            "_fetch_deliverable_summary",
-            new=AsyncMock(return_value="# 成果物テキスト"),
-        ):
+        with _stub_task_repo():
             await executor._execute_single_role(gate_id, "reviewer", uuid4(), uuid4())
 
         assert llm.chat_with_tools.call_count == 2
@@ -363,9 +341,6 @@ class TestRetryLogic:
 
         §確定 D 再指示 2 回目: "これが最終機会" + REJECTED 自動登録予告を含む。
         """
-        from bakufu.infrastructure.reviewers.internal_review_gate_executor import (
-            InternalReviewGateExecutor,
-        )
 
         mock_review_svc = AsyncMock()
         mock_review_svc.submit_verdict = AsyncMock(return_value=GateDecision.ALL_APPROVED)
@@ -374,7 +349,7 @@ class TestRetryLogic:
         second_text = "2回目のテキスト応答"
         llm = make_stub_llm_provider_with_tools(
             chat_with_tools_responses=[
-                make_text_chat_result(first_text),   # 1 回目: ツール未呼び出し
+                make_text_chat_result(first_text),  # 1 回目: ツール未呼び出し
                 make_text_chat_result(second_text),  # 2 回目: ツール未呼び出し
                 make_tool_call_chat_result("APPROVED", "OK"),  # 3 回目: 成功
             ]
@@ -382,11 +357,7 @@ class TestRetryLogic:
         executor = _make_executor(llm_provider=llm, review_svc=mock_review_svc)
 
         gate_id = uuid4()
-        with patch.object(
-            InternalReviewGateExecutor,
-            "_fetch_deliverable_summary",
-            new=AsyncMock(return_value="# 成果物テキスト"),
-        ):
+        with _stub_task_repo():
             await executor._execute_single_role(gate_id, "reviewer", uuid4(), uuid4())
 
         assert llm.chat_with_tools.call_count == 3
@@ -412,9 +383,6 @@ class TestRetryLogic:
 
         §確定 D 3 回全て未登録時の処理 + §確定 J（audit_log）。
         """
-        from bakufu.infrastructure.reviewers.internal_review_gate_executor import (
-            InternalReviewGateExecutor,
-        )
 
         mock_review_svc = AsyncMock()
         mock_review_svc.submit_verdict = AsyncMock(return_value=GateDecision.REJECTED)
@@ -429,11 +397,7 @@ class TestRetryLogic:
         executor = _make_executor(llm_provider=llm, review_svc=mock_review_svc)
 
         gate_id = uuid4()
-        with patch.object(
-            InternalReviewGateExecutor,
-            "_fetch_deliverable_summary",
-            new=AsyncMock(return_value="# 成果物テキスト"),
-        ):
+        with _stub_task_repo():
             await executor._execute_single_role(gate_id, "reviewer", uuid4(), uuid4())
 
         # chat_with_tools() が 3 回呼ばれた
@@ -450,9 +414,6 @@ class TestRetryLogic:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         """TC-UT-IRG-A110 補足: 3 回全て未登録 → WARNING ログに tool_not_called_all_retries。"""
-        from bakufu.infrastructure.reviewers.internal_review_gate_executor import (
-            InternalReviewGateExecutor,
-        )
 
         mock_review_svc = AsyncMock()
         mock_review_svc.submit_verdict = AsyncMock(return_value=GateDecision.REJECTED)
@@ -467,13 +428,12 @@ class TestRetryLogic:
         executor = _make_executor(llm_provider=llm, review_svc=mock_review_svc)
 
         gate_id = uuid4()
-        with patch.object(
-            InternalReviewGateExecutor,
-            "_fetch_deliverable_summary",
-            new=AsyncMock(return_value="# 成果物テキスト"),
-        ), caplog.at_level(
-            logging.WARNING,
-            logger="bakufu.infrastructure.reviewers.internal_review_gate_executor",
+        with (
+            _stub_task_repo(),
+            caplog.at_level(
+                logging.WARNING,
+                logger="bakufu.infrastructure.reviewers.internal_review_gate_executor",
+            ),
         ):
             await executor._execute_single_role(gate_id, "reviewer", uuid4(), uuid4())
 
@@ -486,9 +446,6 @@ class TestRetryLogic:
         §確定 D 注入変数 `{prev_response_summary}` の 200 文字上限。
         ログに raw LLM 出力全体（500 文字）は含まれない。
         """
-        from bakufu.infrastructure.reviewers.internal_review_gate_executor import (
-            InternalReviewGateExecutor,
-        )
 
         mock_review_svc = AsyncMock()
         mock_review_svc.submit_verdict = AsyncMock(return_value=GateDecision.ALL_APPROVED)
@@ -503,11 +460,7 @@ class TestRetryLogic:
         executor = _make_executor(llm_provider=llm, review_svc=mock_review_svc)
 
         gate_id = uuid4()
-        with patch.object(
-            InternalReviewGateExecutor,
-            "_fetch_deliverable_summary",
-            new=AsyncMock(return_value="# 成果物テキスト"),
-        ):
+        with _stub_task_repo():
             await executor._execute_single_role(gate_id, "reviewer", uuid4(), uuid4())
 
         # 2 回目の呼び出しのメッセージを検査

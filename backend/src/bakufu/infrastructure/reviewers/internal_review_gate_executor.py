@@ -11,13 +11,13 @@ VerdictDecision を submit_verdict ツール呼び出し経由で確定する（
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from bakufu.application.exceptions.task_exceptions import IllegalTaskStateError, TaskNotFoundError
 from bakufu.application.ports.llm_provider_port import LLMProviderPort
 from bakufu.domain.exceptions import InternalReviewGateInvariantViolation
 from bakufu.domain.value_objects import (
@@ -164,13 +164,25 @@ class InternalReviewGateExecutor:
     ) -> None:
         """1 GateRole に対して LLM を呼び出し、submit_verdict を取得する（§確定 D）。
 
-        deliverable_summary を取得するため GateRole ごとに独立した AsyncSession を
-        生成する（§確定 I）。submit_verdict 呼び出しは self._review_svc に委譲し、
-        session 管理は InternalReviewService 側で行う。
+        task.current_deliverable で成果物テキストを取得し、
+        chat_result.tool_calls で ToolCall を解析する（§確定 D / E 更新後）。
+        submit_verdict 呼び出しは self._review_svc に委譲する。
         """
+        from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
+            SqliteTaskRepository,
+        )
+
         # deliverable_summary を取得（§確定 E）
         # GateRole ごとに独立した AsyncSession で Task を取得する（§確定 I）
-        deliverable_summary = await self._fetch_deliverable_summary(task_id, stage_id)
+        async with self._session_factory() as session:
+            task_repo = SqliteTaskRepository(session)
+            task = await task_repo.find_by_id(task_id)
+        if task is None:
+            raise TaskNotFoundError(task_id)
+        current_deliverable = task.current_deliverable
+        if current_deliverable is None:
+            raise InternalReviewGateExecutor._make_illegal_state_error(task_id, stage_id)
+        deliverable_summary = current_deliverable.body_markdown
 
         system_prompt = self._build_prompt(role, deliverable_summary)
         initial_messages: list[dict[str, str]] = [
@@ -209,19 +221,25 @@ class InternalReviewGateExecutor:
                 session_id=session_id,
             )
 
-            # LLM 応答から tool_call を解析（§確定 D）
-            tool_call = self._extract_tool_call(chat_result.response)
-            if tool_call is not None:
-                decision_str, reason = tool_call
-                decision = VerdictDecision(decision_str)
-                await self._review_svc.submit_verdict(
-                    gate_id=gate_id,
-                    role=role,
-                    agent_id=self._agent_id,
-                    decision=decision,
-                    comment=reason,
-                )
-                return
+            # LLM 応答から tool_calls を解析（§確定 D 更新後）
+            submit_verdict_call = next(
+                (tc for tc in chat_result.tool_calls if tc.name == "submit_verdict"),
+                None,
+            )
+            if submit_verdict_call is not None:
+                decision_raw: object = submit_verdict_call.input.get("decision")
+                reason_raw: object = submit_verdict_call.input.get("reason", "")
+                if decision_raw in ("APPROVED", "REJECTED"):
+                    decision = VerdictDecision(str(decision_raw))
+                    reason = str(reason_raw) if reason_raw is not None else ""
+                    await self._review_svc.submit_verdict(
+                        gate_id=gate_id,
+                        role=role,
+                        agent_id=self._agent_id,
+                        decision=decision,
+                        comment=reason,
+                    )
+                    return
 
             # ツール未呼び出し → 再指示へ（§確定 D）
             # T3 対策: raw LLM 出力全体をログに記録しない。先頭 200 文字のみ保持。
@@ -253,96 +271,18 @@ class InternalReviewGateExecutor:
             comment="[SYSTEM] 全試行でツール未呼び出し——判定未登録（ambiguous 扱い）",
         )
 
-    async def _fetch_deliverable_summary(self, task_id: TaskId, stage_id: StageId) -> str:
-        """GateRole 専用の独立 AsyncSession で Task を取得し成果物テキストを返す（§確定 E・I）。
-
-        stage_id は将来の拡張（role 別 stage 対応）のために引数として保持するが、
-        現時点では task.deliverables の最新成果物を返す（WORK Stage が直前に生成した成果物）。
-
-        Args:
-            task_id: 対象 Task の識別子。
-            stage_id: INTERNAL_REVIEW Stage の識別子（将来の拡張用）。
-
-        Returns:
-            審査対象成果物テキスト（deliverable.body_markdown）。
-
-        Raises:
-            IllegalTaskStateError: Task が存在しないか current_deliverable が None の場合。
-        """
-        from bakufu.application.exceptions.task_exceptions import TaskNotFoundError
-        from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
-            SqliteTaskRepository,
-        )
-
-        async with self._session_factory() as session:
-            task_repo = SqliteTaskRepository(session)
-            task = await task_repo.find_by_id(task_id)
-
-        if task is None:
-            raise TaskNotFoundError(task_id)
-
-        # task.deliverables は {StageId: Deliverable} 形式。
-        # INTERNAL_REVIEW Stage には deliverable がないため、直前 WORK Stage の
-        # 成果物（最新エントリ）を取得する（§確定 E: task.current_deliverable に対応）。
-        if not task.deliverables:
-            raise _make_illegal_task_state_error(task_id, stage_id)
-
-        latest_deliverable = next(reversed(task.deliverables.values()))
-        return latest_deliverable.body_markdown
-
     def _build_prompt(self, role: GateRole, deliverable_summary: str) -> str:
         """§確定 E のプロンプト構造でシステムプロンプトを構築する。"""
         return default_prompt.build(role, deliverable_summary)
 
-    @staticmethod
-    def _extract_tool_call(response: str) -> tuple[str, str] | None:
-        """LLM 応答テキストから submit_verdict ツール呼び出しを抽出する（§確定 D）。
-
-        chat_with_tools() の応答形式は LLMProvider 実装に依存する。
-        Claude Code CLI の tool_use 応答は JSON 形式（type="tool_use"）で返るため、
-        JSON パースを試みる。パース失敗時は None を返し、リトライへ委ねる。
-
-        注意: 実際の応答形式は ClaudeCodeLLMClient.chat_with_tools() 実装に依存する。
-        当実装は Claude Code CLI が tool_use ブロックを JSON として埋め込む形式を前提とする。
-        LLMProvider 実装変更時はこのメソッドも更新すること。
-
-        Returns:
-            (decision, reason) のタプル。ツール呼び出しが無い場合は None。
-        """
-        try:
-            parsed: object = json.loads(response)
-            if not isinstance(parsed, dict):
-                return None
-            data: dict[str, object] = cast(dict[str, object], parsed)
-            if data.get("type") != "tool_use":
-                return None
-            tool_input_raw = data.get("input", {})
-            if not isinstance(tool_input_raw, dict):
-                return None
-            tool_input: dict[str, object] = cast(dict[str, object], tool_input_raw)
-            decision_raw = tool_input.get("decision")
-            if decision_raw not in ("APPROVED", "REJECTED"):
-                return None
-            decision: str = str(decision_raw)
-            reason_raw = tool_input.get("reason", "")
-            reason: str = str(reason_raw) if reason_raw is not None else ""
-            return (decision, reason)
-        except (json.JSONDecodeError, AttributeError, KeyError):
-            pass
-        return None
-
-
-def _make_illegal_task_state_error(task_id: TaskId, stage_id: StageId) -> Exception:
-    """INTERNAL_REVIEW 実行時に Task の成果物が存在しない場合の例外を生成する（§確定 E）。
-
-    Task に deliverable が存在しない状態で INTERNAL_REVIEW が起動されるのは
-    ワークフロー設計バグ（直前 WORK Stage が commit_deliverable を呼ばずに
-    INTERNAL_REVIEW に遷移した）であり、Fail Fast で検出する。
-    """
-    return ValueError(
-        f"Task {task_id} has no deliverable for INTERNAL_REVIEW stage {stage_id}. "
-        f"The preceding WORK Stage must commit a deliverable before INTERNAL_REVIEW."
-    )
+    @classmethod
+    def _make_illegal_state_error(cls, task_id: TaskId, stage_id: StageId) -> IllegalTaskStateError:
+        """INTERNAL_REVIEW 実行時に Task の成果物が存在しない場合の例外を生成する（§確定 E）."""
+        return IllegalTaskStateError(
+            task_id,
+            "IN_PROGRESS",
+            f"fetch_current_deliverable (stage_id={stage_id}): no deliverable found",
+        )
 
 
 __all__ = ["InternalReviewGateExecutor"]

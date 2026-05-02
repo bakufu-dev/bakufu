@@ -128,15 +128,9 @@ async def _seed_irg_context(
     ir_stage = make_stage(
         stage_id=ir_stage_id, kind=StageKind.INTERNAL_REVIEW, name="INTERNAL_REVIEW_B"
     )
-    next_work_stage = make_stage(
-        stage_id=next_work_stage_id, kind=StageKind.WORK, name="WORK_C"
-    )
-    transition_to_ir = make_transition(
-        from_stage_id=work_stage_id, to_stage_id=ir_stage_id
-    )
-    transition_to_next = make_transition(
-        from_stage_id=ir_stage_id, to_stage_id=next_work_stage_id
-    )
+    next_work_stage = make_stage(stage_id=next_work_stage_id, kind=StageKind.WORK, name="WORK_C")
+    transition_to_ir = make_transition(from_stage_id=work_stage_id, to_stage_id=ir_stage_id)
+    transition_to_next = make_transition(from_stage_id=ir_stage_id, to_stage_id=next_work_stage_id)
     workflow = make_workflow(
         stages=[work_stage, ir_stage, next_work_stage],
         transitions=[transition_to_ir, transition_to_next],
@@ -177,9 +171,25 @@ def _make_review_service(
     """InternalReviewService を InMemoryEventBus で構築する。"""
     from bakufu.application.services.internal_review_service import InternalReviewService
     from bakufu.infrastructure.event_bus import InMemoryEventBus
+    from bakufu.infrastructure.persistence.sqlite.repositories.internal_review_gate_repository import (  # noqa: E501
+        SqliteInternalReviewGateRepository,
+    )
+    from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
+        SqliteRoomRepository,
+    )
+    from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
+        SqliteTaskRepository,
+    )
+    from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
+        SqliteWorkflowRepository,
+    )
 
     return InternalReviewService(
         session_factory=session_factory,
+        gate_repo_factory=SqliteInternalReviewGateRepository,
+        task_repo_factory=SqliteTaskRepository,
+        workflow_repo_factory=SqliteWorkflowRepository,
+        room_repo_factory=SqliteRoomRepository,
         event_bus=InMemoryEventBus(),
     )
 
@@ -338,6 +348,7 @@ class TestExecutorParallelLLMAllApproved:
         gate = await _read_gate_decided(session_factory, task_id, ir_stage_id)
         assert gate is not None
         from bakufu.domain.value_objects import GateDecision
+
         assert gate.gate_decision == GateDecision.ALL_APPROVED
 
         # chat_with_tools() が 2 回呼ばれた（並列）
@@ -400,6 +411,7 @@ class TestExecutorRetrySuccess:
         gate = await _read_gate_decided(session_factory, task_id, ir_stage_id)
         assert gate is not None
         from bakufu.domain.value_objects import GateDecision
+
         assert gate.gate_decision == GateDecision.ALL_APPROVED
 
 
