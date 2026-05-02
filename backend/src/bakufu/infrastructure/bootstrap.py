@@ -399,13 +399,8 @@ class Bootstrap:
     async def _stage_6_5_stage_worker(self) -> None:
         """StageWorker を asyncio.create_task でスケジュールし Stage 6.5 として登録する。
 
-        Outbox Dispatcher（Stage 6）の起動後に配置し、FastAPI listener（Stage 8）より
-        前に起動することで、HTTP API 受付前から Stage 実行が可能になる（§確定 C）。
-
-        LLM プロバイダが未設定の場合、環境変数 ``BAKUFU_LLM_PROVIDER`` から読み込む。
-        BAKUFU_LLM_PROVIDER が未設定の場合は WARNING のみで StageWorker をスキップする
-        （LLM なしでも他機能は動作させるため）。
-        EventBus が未注入の場合は InMemoryEventBus を生成して使用する。
+        起動ロジックは StageWorkerBootstrap に委譲する（SRP）。
+        LLM プロバイダ未設定時は WARNING のみで StageWorker をスキップする。
         """
         if self._session_factory is None:  # pragma: no cover — stage ordering
             raise BakufuConfigError(
@@ -413,46 +408,18 @@ class Bootstrap:
                 message="[FAIL] Bootstrap stage 6.5/8: session_factory not ready",
             )
 
-        # EventBus が未注入の場合は InMemoryEventBus を生成（テスト・本番共通）。
-        if self._event_bus is None:
-            # 遅延 import: infrastructure 内部の循環参照リスクを回避するため。
-            from bakufu.infrastructure.event_bus import InMemoryEventBus
+        from bakufu.infrastructure.worker.stage_worker_bootstrap import StageWorkerBootstrap
 
-            self._event_bus = InMemoryEventBus()
-            logger.info("[INFO] Bootstrap stage 6.5/8: InMemoryEventBus created for StageWorker")
-
-        # LLM プロバイダが未注入の場合は環境変数から構築を試みる。
-        if self._llm_provider is None:
-            try:
-                from bakufu.infrastructure.llm.config import LLMCliConfig
-                from bakufu.infrastructure.llm.factory import llm_provider_factory
-
-                cli_config = LLMCliConfig()
-                self._llm_provider = llm_provider_factory(cli_config)
-                logger.info(
-                    "[INFO] Bootstrap stage 6.5/8: LLMProviderPort created (provider=%s)",
-                    self._llm_provider.provider,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "[WARN] Bootstrap stage 6.5/8: LLM provider initialization failed: %s; "
-                    "StageWorker will not start (LLM-dependent stages will not execute). "
-                    "Set BAKUFU_LLM_PROVIDER to enable stage execution.",
-                    exc,
-                )
-                return
-
-        # StageWorker を起動する（§確定 A: asyncio.Queue + asyncio.Semaphore）。
-        from bakufu.infrastructure.worker.stage_worker import StageWorker
-
-        worker = StageWorker(
+        stage_worker_bootstrap = StageWorkerBootstrap(
             session_factory=self._session_factory,
-            llm_provider=self._llm_provider,
             event_bus=self._event_bus,
+            llm_provider=self._llm_provider,
         )
-        worker.start()
-        self._stage_worker = worker
-        logger.info("[INFO] Bootstrap stage 6.5/8: StageWorker started")
+        await stage_worker_bootstrap.start()
+
+        self._stage_worker = stage_worker_bootstrap.worker
+        self._event_bus = stage_worker_bootstrap.event_bus
+        self._llm_provider = stage_worker_bootstrap.llm_provider
 
     # ------------------------------------------------------------------
     # Stage 7: 添付ファイル オーファン GC スケジューラ。

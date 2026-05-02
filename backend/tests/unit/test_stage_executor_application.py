@@ -393,9 +393,10 @@ class TestDispatchStageWorkBranch:
         )
 
     async def test_tc_ut_me_107_fail_fast_not_in_progress(self) -> None:
-        """TC-UT-ME-107: §確定 F — Task.status ≠ IN_PROGRESS → Fail Fast。
+        """TC-UT-ME-107: §確定 F — Task.status ≠ IN_PROGRESS → ValueError を raise。
 
-        chat() は呼ばれない。例外は送出しない（ログのみ）。
+        Option A 採用（ヘルスバーグ査読）: chat() は呼ばれない。ValueError が送出される。
+        StageWorker の _dispatch_and_release が例外を捕捉して次キューアイテムへ進む。
         """
         task_repo = AsyncMock()
         workflow_repo = AsyncMock()
@@ -433,8 +434,9 @@ class TestDispatchStageWorkBranch:
             llm_provider=llm_provider,
         )
 
-        # 例外なく完了すること（Fail Fast = return のみ）
-        await service.dispatch_stage(done_task.id, stage_id)
+        # Fail Fast: status ≠ IN_PROGRESS → ValueError（§確定 F / Option A）
+        with pytest.raises(ValueError, match="is not IN_PROGRESS"):
+            await service.dispatch_stage(done_task.id, stage_id)
 
         llm_provider.chat.assert_not_called()
         task_repo.save.assert_not_called()
@@ -766,7 +768,7 @@ class TestLLMErrorHandling:
         )
 
         with patch(
-            "bakufu.application.services.stage_executor_service.asyncio.sleep",
+            "bakufu.application.services.stage_executor_service._error_handler.asyncio.sleep",
             new_callable=AsyncMock,
         ):
             await service.dispatch_stage(task_id, stage_id)
