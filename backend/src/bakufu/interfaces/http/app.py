@@ -264,7 +264,7 @@ def create_app() -> FastAPI:
     app.include_router(room_tasks_router)
     app.include_router(tasks_router)
     # dev/test 環境専用エンドポイント（BAKUFU_ENV=production では除外）
-    if os.environ.get("BAKUFU_ENV", "development").lower() != "production":
+    if os.environ.get("BAKUFU_ENV", "").lower() in {"development", "dev", "test"}:
         app.include_router(dev_tasks_router)
     app.include_router(gates_router)
     app.include_router(task_gates_router)

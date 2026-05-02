@@ -284,14 +284,13 @@ class InternalReviewService:
                     )
                 # Fail Fast: assigned_agent_ids が空なら reviewer_id が決定不能 → 永久ロック防止
                 if not task.assigned_agent_ids:
-                    logger.error(
-                        "event=external_review_gate_no_agent"
-                        " task_id=%s stage_id=%s:"
-                        " no assigned agents, cannot create gate with deterministic reviewer_id",
-                        task.id,
-                        next_stage_id,
+                    msg = (
+                        f"[FAIL] _handle_all_approved: task={task.id} has no assigned agents;"
+                        " cannot create ExternalReviewGate."
+                        " Next: assign an agent to the task and retry."
                     )
-                    return
+                    logger.error("%s", msg)
+                    raise ValueError(msg)
                 _reviewer_id = task.assigned_agent_ids[0]
                 ext_gate = ExternalReviewGate(
                     id=uuid4(),
