@@ -313,9 +313,7 @@ class TestWorkStageIntegration:
 
         task = await _read_task(session_factory, task_id)
         assert task is not None
-        assert task.status == TaskStatus.DONE, (
-            f"終端 Stage で DONE にならなかった: {task.status}"
-        )
+        assert task.status == TaskStatus.DONE, f"終端 Stage で DONE にならなかった: {task.status}"
 
     async def test_tc_it_me_103_pid_registry_lifecycle(
         self, session_factory: async_sessionmaker[AsyncSession]
@@ -621,9 +619,7 @@ class TestRetryBlockedTaskIntegration:
             await service.retry_blocked_task(task_id)
 
         # TaskStateChangedEvent が発行されていること（retry 操作の証跡）
-        state_changed_events = [
-            e for e in spy.received if isinstance(e, TaskStateChangedEvent)
-        ]
+        state_changed_events = [e for e in spy.received if isinstance(e, TaskStateChangedEvent)]
         assert len(state_changed_events) >= 1, (
             f"retry 後に TaskStateChangedEvent が配信されていない: {spy.received}"
         )
@@ -692,9 +688,7 @@ class TestStageWorkerIntegration:
 
         await worker.stop()
 
-        assert len(execution_order) == 2, (
-            f"2 件のディスパッチが完了しなかった: {execution_order}"
-        )
+        assert len(execution_order) == 2, f"2 件のディスパッチが完了しなかった: {execution_order}"
         # Semaphore=1 なので並列ではなくシリアル実行
         # → execution_order に両方の task_id が含まれている
         assert task_id_1 in execution_order, f"task_id_1 が実行されなかった: {execution_order}"

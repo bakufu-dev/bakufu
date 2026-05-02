@@ -20,6 +20,7 @@ classDiagram
         +directive_id: DirectiveId
         +current_stage_id: StageId
         +deliverables: dict~StageId, Deliverable~
+        +current_deliverable: Deliverable | None
         +status: TaskStatus
         +assigned_agent_ids: list~AgentId~
         +created_at: datetime
@@ -47,6 +48,7 @@ classDiagram
 | `directive_id` | `DirectiveId`（UUIDv4） | 不変、参照のみ | 起点となった Directive |
 | `current_stage_id` | `StageId`（UUIDv4） | 参照のみ。Workflow 内存在検証は application 層 | 現 Stage |
 | `deliverables` | `dict[StageId, Deliverable]` | dict 型レベルで key 一意性、空 dict 既定。同 Stage への 2 回目 commit は dict 上書き（§確定 R1-E） | Stage ごとの最新成果物スナップショット |
+| `current_deliverable` | `Deliverable \| None` | **派生プロパティ**（`@property`）。`self.deliverables.get(self.current_stage_id)` の結果を返す。`current_stage_id` が `deliverables` に未登録の場合は `None`。呼び出し元は `None` チェック必須（Fail Fast: `None` 時は `IllegalTaskStateError` を送出） | Task の現在有効な成果物（`current_stage_id` に対応する最新スナップショット）。INTERNAL_REVIEW Gate が成果物内容（`body_markdown`）を取得する際に使用 |
 | `status` | `TaskStatus` | 6 値（PENDING / IN_PROGRESS / AWAITING_EXTERNAL_REVIEW / BLOCKED / DONE / CANCELLED） | 全体状態 |
 | `assigned_agent_ids` | `list[AgentId]` | 重複なし、最大 5 件 | 現 Stage に割当中の Agent（順序保持、empire の `agents` と同方針） |
 | `created_at` | `datetime` | UTC、tz-aware（naive datetime は `pydantic.ValidationError`） | 起票時刻 |

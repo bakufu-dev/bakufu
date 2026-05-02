@@ -129,8 +129,7 @@ class _StageDispatcher:
 
         if stage is None:
             msg = (
-                f"[FAIL] dispatch_stage: stage={stage_id} not found"
-                f" in workflow for task={task_id}"
+                f"[FAIL] dispatch_stage: stage={stage_id} not found in workflow for task={task_id}"
             )
             logger.error("%s", msg)
             raise ValueError(msg)
@@ -364,6 +363,11 @@ class _StageDispatcher:
 
         execute() は Gate 判定完了まで await する long-running coroutine（§確定 G）。
         エラー時は Task.block() に帰着させ MSG-ME-002 をログに出力する。
+
+        execute() 正常完了後: InternalReviewService が Task の current_stage_id を
+        更新済みのため、最新 Task を再取得して IN_PROGRESS であれば次 Stage を
+        再キューする（REJECTED→前段 WORK / ALL_APPROVED→次 Stage）。
+        AWAITING_EXTERNAL_REVIEW の場合は再キューしない（人間レビュー待ち）。
         """
         # Stage.required_role → GateRole 変換（小文字 slug へ）
         required_gate_roles: frozenset[GateRole] = frozenset(
@@ -388,6 +392,22 @@ class _StageDispatcher:
                 reason="internal_review_gate_error",
                 error_summary=masked_summary,
             )
+            return
+
+        # execute() 完了後: 最新 Task を再取得して IN_PROGRESS なら次 Stage を再キュー。
+        # InternalReviewService._handle_all_approved / _handle_rejected が
+        # current_stage_id を更新済みのため、更新後の Stage で再キューする。
+        async with self._session.begin():
+            updated_task = await self._task_repo.find_by_id(task.id)
+
+        if updated_task is not None and updated_task.status == TaskStatus.IN_PROGRESS:
+            logger.info(
+                "[INFO] _delegate_internal_review: re-enqueue task=%s at stage=%s "
+                "(after internal review gate decision)",
+                updated_task.id,
+                updated_task.current_stage_id,
+            )
+            self._enqueue_fn(updated_task.id, updated_task.current_stage_id)
 
     async def _request_external_review(self, task: Task) -> None:
         """EXTERNAL_REVIEW Stage 遷移（REQ-ME-003）。

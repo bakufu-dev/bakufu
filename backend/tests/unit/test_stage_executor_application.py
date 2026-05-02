@@ -237,9 +237,7 @@ class TestDispatchStageWorkBranch:
             f"session_id={call_kwargs['session_id']!r} != stage_id={stage_id!r}"
         )
 
-    async def test_tc_ut_me_103_deliverable_masked(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_tc_ut_me_103_deliverable_masked(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """TC-UT-ME-103: T1 — deliverable は masking gateway 通過後に commit される。
 
         シークレットパターンを含む LLM 応答の body_markdown がマスクされることを確認。
@@ -408,9 +406,7 @@ class TestDispatchStageWorkBranch:
         workflow_id = uuid4()
         room_id = uuid4()
         stage = make_stage(stage_id=stage_id, kind=StageKind.WORK)
-        workflow = make_workflow(
-            workflow_id=workflow_id, stages=[stage], entry_stage_id=stage_id
-        )
+        workflow = make_workflow(workflow_id=workflow_id, stages=[stage], entry_stage_id=stage_id)
         room = make_room(room_id=room_id, workflow_id=workflow_id)
 
         done_task = make_task(
@@ -660,9 +656,7 @@ class TestLLMErrorHandling:
         saved_task = task_repo.save.call_args[0][0]
         assert saved_task.status == TaskStatus.BLOCKED
 
-    async def test_tc_ut_me_402_msg_me_001_log_text(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    async def test_tc_ut_me_402_msg_me_001_log_text(self, caplog: pytest.LogCaptureFixture) -> None:
         """TC-UT-ME-402: MSG-ME-001 — "[FAIL] Stage execution failed:" と
         "bakufu admin retry-task" が ERROR ログに出る。"""
         task_repo = AsyncMock()
@@ -827,9 +821,7 @@ class TestLLMErrorHandling:
         saved_task = task_repo.save.call_args[0][0]
         assert saved_task.status != TaskStatus.BLOCKED
 
-    async def test_tc_ut_me_406_last_error_masked(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_tc_ut_me_406_last_error_masked(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """TC-UT-ME-406: T1 — last_error は masking gateway 通過済み。
 
         シークレットを含む AuthError メッセージが last_error に raw で保存されない。
@@ -1030,9 +1022,7 @@ class TestRetryBlockedTask:
 
         error_text = str(exc_info.value)
         assert "[FAIL] Task" in error_text, f"MSG-ME-004 '[FAIL] Task' が含まれない: {error_text}"
-        assert "not found" in error_text, (
-            f"MSG-ME-004 'not found' が含まれない: {error_text}"
-        )
+        assert "not found" in error_text, f"MSG-ME-004 'not found' が含まれない: {error_text}"
 
 
 # ---------------------------------------------------------------------------

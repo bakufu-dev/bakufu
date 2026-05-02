@@ -28,9 +28,18 @@
 
 | 項目 | 内容 |
 |---|---|
-| 入力 | `response: str`（LLM 応答テキスト）、`session_id: str \| None`（CLI セッション ID）、`compacted: bool`（コンテキスト圧縮フラグ）|
+| 入力 | `response: str`（LLM 応答テキスト）、`session_id: str \| None`（CLI セッション ID）、`compacted: bool`（コンテキスト圧縮フラグ）、`tool_calls: list[ToolCall]`（ツール呼び出し結果リスト、デフォルト空リスト）|
 | 処理 | `NamedTuple` として不変 VO を定義する |
 | 出力 | `ChatResult` インスタンス |
+| エラー時 | 該当なし |
+
+### REQ-LC-004: ToolCall VO の定義（M5-B 追加）
+
+| 項目 | 内容 |
+|---|---|
+| 入力 | `name: str`（ツール名）、`input: dict[str, object]`（ツール呼び出し引数）|
+| 処理 | `NamedTuple` として不変 VO を定義する。`chat_with_tools()` が返す `ChatResult.tool_calls` の要素型として使用する |
+| 出力 | `ToolCall` インスタンス |
 | エラー時 | 該当なし |
 
 ### REQ-LC-003: LLMProviderError 階層の定義
@@ -49,8 +58,9 @@
 | 機能 ID | モジュール | ディレクトリ | 責務 |
 |---|---|---|---|
 | REQ-LC-001 | `LLMProviderPort` | `backend/src/bakufu/application/ports/llm_provider_port.py` | LLM CLI 呼び出し契約（Port）。全 feature が依存するインターフェース |
-| REQ-LC-002 | `ChatResult` VO | `backend/src/bakufu/domain/value_objects.py`（追記）| LLM CLI 応答の値オブジェクト（NamedTuple）|
+| REQ-LC-002 | `ChatResult` VO | `backend/src/bakufu/domain/value_objects/chat_result.py` | LLM CLI 応答の値オブジェクト（NamedTuple）。`tool_calls: list[ToolCall]` フィールドを持つ（M5-B 追加）|
 | REQ-LC-003 | `LLMProviderError` 階層 | `backend/src/bakufu/domain/errors.py`（追記）| LLM CLI 呼び出し例外の基底クラスとサブクラス |
+| REQ-LC-004 | `ToolCall` VO | `backend/src/bakufu/domain/value_objects/chat_result.py`（同ファイル）| LLM ツール呼び出し結果の値オブジェクト（NamedTuple）。`name: str` / `input: dict[str, object]`（M5-B 追加）|
 
 ```
 本 sub-feature で追加・変更されるファイル:
@@ -93,13 +103,20 @@ classDiagram
     class LLMProviderPort {
         <<Protocol, application/ports>>
         +provider: str
-        +chat(messages, system, use_tools, agent_name, session_id) ChatResult
+        +chat(messages, system, session_id) ChatResult
+        +chat_with_tools(messages, tools, system, session_id) ChatResult
     }
     class ChatResult {
         <<NamedTuple, domain/value_objects>>
         +response: str
         +session_id: str | None
         +compacted: bool
+        +tool_calls: list~ToolCall~
+    }
+    class ToolCall {
+        <<NamedTuple, domain/value_objects>>
+        +name: str
+        +input: dict
     }
     class LLMProviderError {
         <<Exception, domain/errors>>
@@ -111,6 +128,7 @@ classDiagram
     class LLMProviderProcessError { <<Exception>> }
     class LLMProviderEmptyResponseError { <<Exception>> }
     LLMProviderPort ..> ChatResult : returns
+    ChatResult "1" *-- "0..*" ToolCall : tool_calls
     LLMProviderTimeoutError --|> LLMProviderError
     LLMProviderAuthError --|> LLMProviderError
     LLMProviderProcessError --|> LLMProviderError

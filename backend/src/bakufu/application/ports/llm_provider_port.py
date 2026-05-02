@@ -55,5 +55,25 @@ class LLMProviderPort(Protocol):
         """
         ...
 
+    async def chat_with_tools(
+        self,
+        messages: list[dict[str, str]],
+        system: str,
+        tools: list[dict[str, object]],
+        session_id: str | None = None,
+    ) -> ChatResult:
+        """ツール呼び出し対応のLLM呼び出し（M5-B §確定D）。
+
+        Args:
+            messages: メッセージリスト（[{"role": "user", "content": "..."}] 形式）。
+            system: システムプロンプト。
+            tools: LLMに提供するtool schemaリスト。
+            session_id: セッション継続ID（新規の場合はNone）。
+
+        Returns:
+            ChatResult — responseはLLM応答テキスト（tool_callsは呼び出し元が解析）。
+        """
+        ...
+
 
 __all__ = ["LLMProviderPort"]

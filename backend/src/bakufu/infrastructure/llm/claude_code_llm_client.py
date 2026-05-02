@@ -15,7 +15,7 @@ import json
 import logging
 import os
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from bakufu.domain.exceptions.llm_provider import (
     LLMProviderAuthError,
@@ -23,7 +23,7 @@ from bakufu.domain.exceptions.llm_provider import (
     LLMProviderProcessError,
     LLMProviderTimeoutError,
 )
-from bakufu.domain.value_objects.chat_result import ChatResult
+from bakufu.domain.value_objects.chat_result import ChatResult, ToolCall
 from bakufu.infrastructure.security.masking import mask
 
 if TYPE_CHECKING:
@@ -120,6 +120,77 @@ class ClaudeCodeLLMClient:
                 message=_MSG_LC_001_TMPL.format(timeout_seconds=self._timeout_seconds),
                 provider=self.provider,
             ) from exc
+
+    async def chat_with_tools(
+        self,
+        messages: list[dict[str, str]],
+        system: str,
+        tools: list[dict[str, object]],
+        session_id: str | None = None,
+    ) -> ChatResult:
+        """Claude Code CLI でツール呼び出し対応の LLM 実行を行う（M5-B §確定 D）。
+
+        ``tools`` パラメータは型情報として受け取るが、現行の Claude Code CLI では
+        ツールスキーマを CLI 引数で直接渡す手段がないため、応答のパースで対応する。
+        Claude CLI が tool_use 形式で応答した場合に ``tool_calls`` を返す。
+
+        Args:
+            messages: メッセージリスト。
+            system: システムプロンプト。
+            tools: tool schema リスト（将来の CLI 拡張用に受け取るが現行は参照のみ）。
+            session_id: セッション継続 ID。None の場合は新規セッション。
+
+        Returns:
+            ChatResult — ``tool_calls`` に抽出したツール呼び出し情報を含む。
+            ツール呼び出しがない場合は ``tool_calls`` が空タプルとなる。
+        """
+        del tools  # 現行実装では CLI 引数経由でスキーマを渡せないため参照のみ。
+        prompt = self._build_prompt(messages)
+        try:
+            base_result = await asyncio.wait_for(
+                self._run_claude(prompt, system, use_tools=True, session_id=session_id),
+                timeout=self._timeout_seconds,
+            )
+        except TimeoutError as exc:
+            raise LLMProviderTimeoutError(
+                message=_MSG_LC_001_TMPL.format(timeout_seconds=self._timeout_seconds),
+                provider=self.provider,
+            ) from exc
+
+        tool_calls = self._extract_tool_calls(base_result.response)
+        return ChatResult(
+            response=base_result.response,
+            session_id=base_result.session_id,
+            compacted=base_result.compacted,
+            tool_calls=tool_calls,
+        )
+
+    def _extract_tool_calls(self, response: str) -> tuple[ToolCall, ...]:
+        """LLM 応答テキストから ToolCall リストを抽出する。
+
+        Claude Code CLI が tool_use 形式（JSON 文字列）で応答した場合に ToolCall を返す。
+        パース失敗時は空タプルを返す。
+
+        Returns:
+            ToolCall のタプル。ツール呼び出しがない場合は空タプル。
+        """
+        try:
+            parsed: object = json.loads(response)
+            if not isinstance(parsed, dict):
+                return ()
+            data: dict[str, object] = cast(dict[str, object], parsed)
+            if data.get("type") != "tool_use":
+                return ()
+            name_raw: object = data.get("name", "")
+            if not isinstance(name_raw, str) or not name_raw:
+                return ()
+            input_raw: object = data.get("input", {})
+            if not isinstance(input_raw, dict):
+                return ()
+            tool_input: dict[str, object] = cast(dict[str, object], input_raw)
+            return (ToolCall(name=name_raw, input=tool_input),)
+        except (json.JSONDecodeError, AttributeError):
+            return ()
 
     def _build_prompt(self, messages: list[dict[str, str]]) -> str:
         """messages リストから最終ユーザーメッセージをプロンプト文字列に変換する。"""
@@ -226,9 +297,7 @@ class ClaudeCodeLLMClient:
 
             # psutil で実際の create_time を取得（GC の PID 衝突ガードに使用）
             try:
-                started_at = datetime.fromtimestamp(
-                    psutil.Process(pid).create_time(), UTC
-                )
+                started_at = datetime.fromtimestamp(psutil.Process(pid).create_time(), UTC)
             except Exception:
                 started_at = datetime.now(UTC)
 
@@ -264,9 +333,7 @@ class ClaudeCodeLLMClient:
             )
 
             async with self._session_factory() as session, session.begin():
-                await session.execute(
-                    delete(PidRegistryRow).where(PidRegistryRow.pid == pid)
-                )
+                await session.execute(delete(PidRegistryRow).where(PidRegistryRow.pid == pid))
         except Exception:
             logger.warning(
                 "[WARN] pid_registry DELETE failed for pid=%d; GC will clean up at next startup",
