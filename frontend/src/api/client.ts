@@ -1,18 +1,18 @@
 // API クライアント（fetch ラッパ）
 // 詳細設計書 §確定 B に従って実装。直接 fetch() の呼び出しは禁止。
+//
+// Authorization ヘッダー付与方針（§確定 B 追記）:
+//   Gate action POST（approve / reject / cancel）のみ付与。
+//   GET リクエストを含む他の全エンドポイントへは送信しない（最小権限原則）。
+//   付与が必要な呼び出し元（useGateAction）が headers? 引数で個別指定する。
 
 import type { ApiError } from "./types";
 
 const baseURL = import.meta.env.VITE_API_BASE_URL as string;
 
-// BUG-E2E-006: Gate アクション POST /api/gates/{id}/approve|reject|cancel は
-// Authorization: Bearer <reviewer-uuid> ヘッダーが必須。
-// VITE_REVIEWER_ID 環境変数からレビュアー ID を取得する（MVP 暫定実装）。
-const reviewerId = import.meta.env.VITE_REVIEWER_ID as string | undefined;
-
 const defaultHeaders: Record<string, string> = {
   "Content-Type": "application/json",
-  ...(reviewerId ? { Authorization: `Bearer ${reviewerId}` } : {}),
+  // Authorization はここに含めない。Gate action POST のみ useGateAction で個別付与する
 };
 
 async function handleResponse<T>(response: Response): Promise<T> {
@@ -48,10 +48,22 @@ export async function apiGet<T>(path: string): Promise<T> {
   return handleResponse<T>(response);
 }
 
-export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
+/**
+ * POST リクエストを送信する。
+ *
+ * @param path - API パス（baseURL に付加）
+ * @param body - リクエストボディ（省略可）
+ * @param headers - 追加ヘッダー（省略可）。defaultHeaders とマージして送信する。
+ *                  Gate action POST が Authorization を付与するためのフック。
+ */
+export async function apiPost<T>(
+  path: string,
+  body?: unknown,
+  headers?: Record<string, string>,
+): Promise<T> {
   const response = await fetch(`${baseURL}${path}`, {
     method: "POST",
-    headers: defaultHeaders,
+    headers: { ...defaultHeaders, ...headers },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   return handleResponse<T>(response);
