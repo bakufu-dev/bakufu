@@ -33,11 +33,14 @@ from bakufu.application.services.room_role_override_service import RoomRoleOverr
 from bakufu.application.services.room_service import RoomService
 from bakufu.application.services.task_service import TaskService
 from bakufu.application.services.workflow_service import WorkflowService
+from bakufu.interfaces.http.connection_manager import ConnectionManager
 
 # 未使用 import の警告抑制: 型チェック用途で再エクスポートしている。
 __all__ = [
     "AgentRepository",
     "AgentServiceDep",
+    "ConnectionManager",
+    "ConnectionManagerDep",
     "DeliverableTemplateService",
     "DirectiveRepository",
     "DirectiveServiceDep",
@@ -54,6 +57,7 @@ __all__ = [
     "TaskServiceDep",
     "WorkflowRepository",
     "get_agent_service",
+    "get_connection_manager",
     "get_deliverable_template_service",
     "get_directive_service",
     "get_empire_service",
@@ -83,9 +87,32 @@ def get_event_bus(request: Request) -> EventBusPort:
     """InMemoryEventBus を app.state から取得する DI ファクトリ（REQ-WSB-007）。
 
     lifespan で生成された ``InMemoryEventBus`` を返す。
-    Issue #159 で ConnectionManager の subscribe() が追加される。
     """
     return request.app.state.event_bus  # type: ignore[no-any-return]
+
+
+def get_connection_manager(request: Request) -> ConnectionManager:
+    """ConnectionManager を app.state から取得する DI ファクトリ（REQ-WSB-012）。
+
+    lifespan で生成された ``ConnectionManager`` を返す。
+    ``app.state.connection_manager`` が未設定の場合は ``BakufuConfigError`` を raise
+    して Fail Fast する（detailed-design.md §get_connection_manager() 参照）。
+    """
+    # 遅延 import: interfaces → infrastructure の直接依存を避けるため
+    # モジュールロード時の循環参照リスクを回避し、
+    # 依存方向 interfaces → application → infrastructure を遵守する
+    from bakufu.infrastructure.exceptions import BakufuConfigError
+
+    cm: ConnectionManager | None = getattr(request.app.state, "connection_manager", None)
+    if cm is None:
+        raise BakufuConfigError(
+            msg_id="MSG-PF-002",
+            message="ConnectionManager is not initialized. Check lifespan startup.",
+        )
+    return cm
+
+
+ConnectionManagerDep = Annotated[ConnectionManager, Depends(get_connection_manager)]
 
 
 async def get_empire_service(session: SessionDep) -> EmpireService:
