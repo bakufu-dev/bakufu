@@ -147,7 +147,7 @@ class TestCreateWorkflowPreset:
         )
         assert resp.status_code == 201
 
-    async def test_preset_stages_count_is_13(self, wf_ctx: WfTestCtx) -> None:
+    async def test_preset_stages_count_is_14(self, wf_ctx: WfTestCtx) -> None:
         empire = await _create_empire(wf_ctx.client)
         placeholder = await _seed_workflow_direct(wf_ctx.session_factory)
         room = await _create_room(wf_ctx.client, str(empire["id"]), str(placeholder.id))  # type: ignore[attr-defined]
@@ -155,9 +155,9 @@ class TestCreateWorkflowPreset:
             f"/api/rooms/{room['id']}/workflows",
             json={"preset_name": "v-model"},
         )
-        assert len(resp.json()["stages"]) == 13
+        assert len(resp.json()["stages"]) == 14
 
-    async def test_preset_transitions_count_is_15(self, wf_ctx: WfTestCtx) -> None:
+    async def test_preset_transitions_count_is_16(self, wf_ctx: WfTestCtx) -> None:
         empire = await _create_empire(wf_ctx.client)
         placeholder = await _seed_workflow_direct(wf_ctx.session_factory)
         room = await _create_room(wf_ctx.client, str(empire["id"]), str(placeholder.id))  # type: ignore[attr-defined]
@@ -165,7 +165,7 @@ class TestCreateWorkflowPreset:
             f"/api/rooms/{room['id']}/workflows",
             json={"preset_name": "v-model"},
         )
-        assert len(resp.json()["transitions"]) == 15
+        assert len(resp.json()["transitions"]) == 16
 
     async def test_preset_archived_is_false(self, wf_ctx: WfTestCtx) -> None:
         empire = await _create_empire(wf_ctx.client)
