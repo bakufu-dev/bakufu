@@ -84,8 +84,8 @@
 |---|---|---|---|---|
 | TC-UT-WSB-006 | `TaskStateChangedEvent` インスタンス化 | 正常系 | `TaskStateChangedEventFactory.build()` | インスタンスが生成される（例外なし） |
 | TC-UT-WSB-007 | `TaskStateChangedEvent.event_type` | 正常系 | `TaskStateChangedEventFactory.build()` | `event_type == "task.state_changed"` |
-| TC-UT-WSB-008 | `TaskStateChangedEvent.to_ws_message()` | 正常系 | `TaskStateChangedEventFactory.build(task_id="t1", directive_id="d1", old_status="PENDING", new_status="IN_PROGRESS", room_id="r1")` | `payload == {"task_id": "t1", "directive_id": "d1", "old_status": "PENDING", "new_status": "IN_PROGRESS", "room_id": "r1"}` |
-| TC-UT-WSB-009 | `TaskStateChangedEvent` インスタンス化 | 異常系 | `task_id` 欠落（必須フィールド省略） | `pydantic.ValidationError` が発火する |
+| TC-UT-WSB-008 | `TaskStateChangedEvent.to_ws_message()` | 正常系 | `TaskStateChangedEventFactory.build(aggregate_id="task-uuid-1", directive_id="d1", old_status="PENDING", new_status="IN_PROGRESS", room_id="r1")` | `payload == {"directive_id": "d1", "old_status": "PENDING", "new_status": "IN_PROGRESS", "room_id": "r1"}`（`task_id` フィールドは存在しない。task の識別子は base class フィールド `aggregate_id` に設定する）|
+| TC-UT-WSB-009 | `TaskStateChangedEvent` インスタンス化 | 異常系 | `directive_id` 欠落（必須フィールド省略） | `pydantic.ValidationError` が発火する |
 
 ### REQ-WSB-003: ExternalReviewGateStateChangedEvent
 

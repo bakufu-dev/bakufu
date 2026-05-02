@@ -29,8 +29,11 @@ async def empire_e2e_client(tmp_path: Path) -> AsyncClient:  # type: ignore[over
     engine = make_test_engine(tmp_path / "test.db")
     await create_all_tables(engine)
     session_factory = make_test_session_factory(engine)
+    from bakufu.infrastructure.event_bus import InMemoryEventBus
+
     app.state.engine = engine
     app.state.session_factory = session_factory
+    app.state.event_bus = InMemoryEventBus()
 
     transport = ASGITransport(app=app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -55,8 +58,11 @@ async def room_e2e_ctx(tmp_path: Path) -> AsyncIterator[object]:
     engine = make_test_engine(tmp_path / "room_e2e_test.db")
     await create_all_tables(engine)
     session_factory = make_test_session_factory(engine)
+    from bakufu.infrastructure.event_bus import InMemoryEventBus
+
     app.state.engine = engine
     app.state.session_factory = session_factory
+    app.state.event_bus = InMemoryEventBus()
 
     transport = ASGITransport(app=app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
