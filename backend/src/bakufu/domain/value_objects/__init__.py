@@ -46,6 +46,7 @@ from bakufu.domain.value_objects.helpers import (
     nfc_strip,
 )
 from bakufu.domain.value_objects.identifiers import (
+    SYSTEM_AGENT_ID,
     AgentId,
     DeliverableId,
     DeliverableRecordId,
@@ -85,6 +86,7 @@ from bakufu.domain.value_objects.verdict import (
 )
 
 __all__ = [
+    "SYSTEM_AGENT_ID",
     "_VERDICT_COMMENT_MAX_CHARS",
     "AcceptanceCriterion",
     "AgentId",

@@ -12,7 +12,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from bakufu.application.exceptions.workflow_exceptions import IllegalWorkflowStructureError
-from bakufu.domain.value_objects import StageId, StageKind
+from bakufu.domain.value_objects import StageId, StageKind, TransitionId
 
 if TYPE_CHECKING:
     from bakufu.application.ports.room_repository import RoomRepository
@@ -35,33 +35,34 @@ class _DagTraversal:
         stage_id: StageId,
         workflow_repo: WorkflowRepository,
         room_repo: RoomRepository,
-    ) -> tuple[StageId | None, StageKind | None]:
+    ) -> tuple[TransitionId | None, StageId | None, StageKind | None]:
         """Workflow DAG で INTERNAL_REVIEW Stage の次 Stage を特定する（§確定 G）。
 
         Returns:
-            (next_stage_id, next_stage_kind) のタプル。次 Stage が存在しない場合は
-            (None, None) を返す。
+            (transition_id, next_stage_id, next_stage_kind) のタプル。
+            次 Stage が存在しない場合は (None, None, None) を返す。
+            transition_id は ``advance_to_next()`` 監査引数に渡す正当な Transition ID。
         """
         room = await room_repo.find_by_id(task.room_id)
         if room is None:
-            return None, None
+            return None, None, None
         workflow = await workflow_repo.find_by_id(room.workflow_id)
         if workflow is None:
-            return None, None
+            return None, None, None
 
         next_transition = next(
             (t for t in workflow.transitions if t.from_stage_id == stage_id),
             None,
         )
         if next_transition is None:
-            return None, None
+            return None, None, None
 
         stages_by_id = {s.id: s for s in workflow.stages}
         next_stage = stages_by_id.get(next_transition.to_stage_id)
         if next_stage is None:
-            return next_transition.to_stage_id, None
+            return next_transition.id, next_transition.to_stage_id, None
 
-        return next_stage.id, next_stage.kind
+        return next_transition.id, next_stage.id, next_stage.kind
 
     @staticmethod
     async def find_prev_work_stage_id(

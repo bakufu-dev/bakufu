@@ -14,7 +14,7 @@ import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
-from uuid import UUID, uuid4
+from uuid import uuid4
 from weakref import WeakValueDictionary
 
 from bakufu.application.exceptions.gate_exceptions import (
@@ -30,6 +30,7 @@ from bakufu.application.services.internal_review_service._dag_traversal import _
 from bakufu.domain.events import TaskStateChangedEvent
 from bakufu.domain.internal_review_gate.internal_review_gate import InternalReviewGate
 from bakufu.domain.value_objects import (
+    SYSTEM_AGENT_ID,
     AgentId,
     GateDecision,
     GateRole,
@@ -232,7 +233,7 @@ class InternalReviewService:
                 )
                 return
 
-            next_stage_id, next_stage_kind = await _DagTraversal.find_next_stage(
+            transition_id, next_stage_id, next_stage_kind = await _DagTraversal.find_next_stage(
                 task, stage_id, workflow_repo, room_repo
             )
 
@@ -250,9 +251,10 @@ class InternalReviewService:
             if next_stage_kind == StageKind.EXTERNAL_REVIEW:
                 updated_task = task.request_external_review(updated_at=now)
             else:
+                assert transition_id is not None  # next_stage_id が non-None なら必ず non-None
                 updated_task = task.advance_to_next(
-                    transition_id=uuid4(),
-                    by_owner_id=UUID(int=0),
+                    transition_id=transition_id,
+                    by_owner_id=SYSTEM_AGENT_ID,
                     next_stage_id=next_stage_id,
                     updated_at=now,
                 )

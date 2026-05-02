@@ -1,4 +1,4 @@
-"""bakufu ドメインの ID 型エイリアス。
+"""bakufu ドメインの ID 型エイリアスおよびシステム定数。
 
 全ての識別子は ``UUID``（本番では UUIDv4）上の PEP 695 ``type`` エイリアス。
 呼び出し箇所が明確に読めるよう概念的に区別されており、将来 ``NewType`` への
@@ -73,8 +73,21 @@ type DeliverableRecordId = UUID
 type DeliverableId = UUID
 """Task Deliverable 識別子（Task feature の deliverables テーブル参照）。"""
 
+# ---------------------------------------------------------------------------
+# システム定数
+# ---------------------------------------------------------------------------
+
+SYSTEM_AGENT_ID: UUID = UUID(int=0)
+"""システム起点アクションで使用する by_owner_id sentinel。
+
+人間アクターが存在しないシステム自動遷移（例: INTERNAL_REVIEW Gate 全承認後の
+``advance_to_next()``）に渡す ``OwnerId``。``UUID(int=0)``（全ビットゼロ）は
+生成される UUIDv4 と衝突しないため sentinel として安全に使用できる。
+"""
+
 
 __all__ = [
+    "SYSTEM_AGENT_ID",
     "AgentId",
     "DeliverableId",
     "DeliverableRecordId",
