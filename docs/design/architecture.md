@@ -47,7 +47,8 @@ backend/src/bakufu/interfaces/
         ├── workflow.py     # Workflow CRUD（M3 後続 Issue D）
         ├── agent.py        # Agent CRUD（M3 後続 Issue E）
         ├── task.py         # Task CRUD（M3 後続 Issue F）
-        └── external_review_gate.py  # ExternalReviewGate CRUD（M3 後続 Issue G）
+        ├── external_review_gate.py  # ExternalReviewGate CRUD（M3 後続 Issue G）
+        └── ws.py           # GET /ws WebSocket endpoint（M4 websocket-broadcast Issue #159）
 ```
 
 interfaces レイヤーの規律:
@@ -55,6 +56,7 @@ interfaces レイヤーの規律:
 - **エラーハンドリングは境界のみ**: `error_handlers.py` が唯一の例外キャッチポイント。router 内で try/except を書かない
 - **エラーレスポンス形式の統一**: 全エンドポイントが `{"error": {"code": str, "message": str}}` 形式を使う（feature-spec.md §7 R1-1 で凍結）
 - **DI ファクトリ経由のセッション管理**: `get_session()` が lifespan で初期化した `async_sessionmaker` からセッションを yield し、リクエスト完了後に close する
+- **WebSocket handler の切断処理**: `ws.py` は `WebSocketDisconnect` を `ConnectionManager` に委譲し、router 内で接続管理の詳細を持たない。切断は他クライアントへのブロードキャストをブロックしない（feature-spec.md §7 R1-5）
 
 ### application レイヤー詳細（M3 http-api-foundation で骨格確定）
 
@@ -62,17 +64,28 @@ interfaces レイヤーの規律:
 
 ```
 backend/src/bakufu/application/
+├── ports/
+│   ├── empire_repository.py            # EmpireRepositoryPort
+│   ├── room_repository.py              # RoomRepositoryPort
+│   ├── workflow_repository.py          # WorkflowRepositoryPort
+│   ├── agent_repository.py             # AgentRepositoryPort
+│   ├── task_repository.py              # TaskRepositoryPort
+│   ├── directive_repository.py         # DirectiveRepositoryPort
+│   ├── external_review_gate_repository.py  # ExternalReviewGateRepositoryPort
+│   └── event_bus.py                    # EventBusPort（M4 websocket-broadcast Issue #158）
 └── services/
     ├── empire_service.py               # EmpireService（M3 骨格、M3-B で肉付け）
     ├── room_service.py                 # RoomService（M3 骨格、M3-C で肉付け）
     ├── workflow_service.py             # WorkflowService（M3 骨格、M3-D で肉付け）
     ├── agent_service.py                # AgentService（M3 骨格、M3-E で肉付け）
-    ├── task_service.py                 # TaskService（M3 骨格、M3-F で肉付け）
-    └── external_review_gate_service.py # ExternalReviewGateService（M3 骨格、M3-G で肉付け）
+    ├── task_service.py                 # TaskService（M3 骨格、M3-F で肉付け、M4 で event publish 追加）
+    ├── external_review_gate_service.py # ExternalReviewGateService（M3 骨格、M3-G で肉付け、M4 で event publish 追加）
+    └── directive_service.py            # DirectiveService（M4 で event publish 追加）
 ```
 
 application レイヤーの規律:
 - **Port パターン**: 各 Service は Repository Port（インターフェース型）を `__init__` で受け取る。`AsyncSession` を直接参照しない
+- **EventBus Port パターン**: M4 以降、状態変化操作を持つ Service は `EventBusPort` を `__init__` で受け取り、操作成功後に `await event_bus.publish(event)` を呼ぶ（[`docs/features/websocket-broadcast/domain/basic-design.md §REQ-WSB-008`](../features/websocket-broadcast/domain/basic-design.md)）
 - **audit_log 記録責務**: 各 Service が業務操作（Empire 作成・hire_agent 等）完了時に audit_log に記録する（`threat-model.md §A09` の申し送り事項）
 - **薄い変換のみ**: domain の業務ロジックを application 層で複製しない
 
@@ -100,6 +113,7 @@ bakufu の中核 Aggregate:
 | Backend | FastAPI / SQLAlchemy 2.x async / Pydantic v2 | 同上 |
 | 永続化 | SQLite (WAL mode) | 同上 |
 | LLM | Claude Code CLI (subprocess) | 同上 |
+| リアルタイム通信 | FastAPI WebSocket + InMemoryEventBus | 同上 |
 | 通知 | Discord Bot | 同上 |
 
 詳細は [`tech-stack.md`](tech-stack.md) を参照。
