@@ -34,7 +34,7 @@
 | REQ-WSB-005 | `directive_events` | `domain/events.py` | `DirectiveCompletedEvent` |
 | REQ-WSB-006 | `event_bus_port` | `application/ports/event_bus.py` | `EventBusPort` インターフェース |
 | REQ-WSB-007 | `in_memory_event_bus` | `infrastructure/event_bus.py` | `InMemoryEventBus` 実装 |
-| REQ-WSB-008 | `service_integration` | `application/services/task_service.py` 他 | 各 ApplicationService への `publish()` 統合 |
+| REQ-WSB-008 | `service_integration` | `application/services/task_service.py` / `application/services/external_review_gate_service.py` | M4: TaskService・ExternalReviewGateService への `publish()` 統合（AgentService / DirectiveService は M5 Phase 2）|
 
 ```
 backend/src/bakufu/
@@ -44,10 +44,10 @@ backend/src/bakufu/
 │   └── ports/
 │       └── event_bus.py                         # REQ-WSB-006: EventBusPort interface
 │   └── services/
-│       ├── task_service.py                      # REQ-WSB-008: TaskService.transition_state() に publish() 追加
-│       ├── external_review_gate_service.py      # REQ-WSB-008: approve()/reject() に publish() 追加
-│       ├── agent_service.py                     # REQ-WSB-008: update_status() 相当に publish() 追加
-│       └── directive_service.py                 # REQ-WSB-008: complete()/fail() に publish() 追加
+│       ├── task_service.py                      # REQ-WSB-008: cancel()/unblock_retry()/commit_deliverable() に publish() 追加（M4）
+│       ├── external_review_gate_service.py      # REQ-WSB-008: approve()/reject() に publish() 追加（M4）
+│       ├── agent_service.py                     # REQ-WSB-008: update_status() は M5 Phase 2 で追加（未実装）
+│       └── directive_service.py                 # REQ-WSB-008: complete()/fail() は M5 Phase 2 で追加（未実装）
 └── infrastructure/
     └── event_bus.py                             # REQ-WSB-007: InMemoryEventBus 実装
 ```
@@ -135,14 +135,23 @@ backend/src/bakufu/
 
 ### REQ-WSB-008: ApplicationService への event publish 統合
 
+**M4 スコープ（実装済みメソッドのみ）**:
+
+| Service | 対象メソッド（M4） | 発行 Event |
+|---|---|---|
+| `TaskService` | `cancel()` / `unblock_retry()` / `commit_deliverable()` | `TaskStateChangedEvent` |
+| `ExternalReviewGateService` | `approve()` / `reject()` | `ExternalReviewGateStateChangedEvent` |
+| `AgentService` | — M5 Phase 2: `update_status()` 未実装のため対象外 | `AgentStatusChangedEvent` |
+| `DirectiveService` | — M5 Phase 2: `complete()` / `fail()` 未実装のため対象外 | `DirectiveCompletedEvent` |
+
 | 項目 | 内容 |
 |---|---|
 | 入力 | `EventBusPort` インスタンス（`__init__` で DI 注入）/ 状態変化操作の完了 |
-| 処理 | TaskService / ExternalReviewGateService / AgentService / DirectiveService の各状態変化メソッドが操作完了後に対応する DomainEvent を生成し `event_bus.publish()` を呼ぶ。操作失敗時は publish() を呼ばない |
+| 処理 | M4 スコープの各メソッドが操作完了後に対応する DomainEvent を生成し `event_bus.publish()` を呼ぶ。操作失敗時は publish() を呼ばない。AgentService / DirectiveService は M5 で `update_status()` / `complete()` / `fail()` 実装時に本 REQ-WSB-008 を拡張して統合する |
 | 出力 | 該当なし（publish は副作用として実行）|
 | エラー時 | publish() の失敗はログ記録・業務操作の結果には影響させない（通知失敗が業務トランザクションをロールバックしない）|
 
-**紐付く UC**: UC-WSB-001〜004
+**紐付く UC**: UC-WSB-001〜004（AgentService: UC-WSB-003 は M5、DirectiveService: UC-WSB-004 は M5）
 
 ## クラス設計（概要）
 
@@ -238,6 +247,7 @@ sequenceDiagram
     Task-->>TaskSvc: updated Task
     TaskSvc->>EB: publish(TaskStateChangedEvent(task_id, old_status, new_status, ...))
     Note over TaskSvc,EB: 業務操作成功後にのみ publish() を呼ぶ
+    Note over TaskSvc,EB: status 値は DB 永続化済み（masking.py 通過後）。<br/>人間入力フィールド（reviewer_comment 等）は Service 層で masking.apply() 済みの値を渡す
     EB->>CM: handler(event) — asyncio.gather で並行実行
     CM-->>EB: broadcast 完了
     TaskSvc-->>Router: TaskResponse
@@ -248,6 +258,34 @@ sequenceDiagram
 - `app.py` lifespan で `InMemoryEventBus` を生成し `app.state.event_bus` に保持する
 - `dependencies.py` に `get_event_bus()` DI ファクトリを追加する（Issue #159 実装）
 - `dependencies.py` の `get_*_service()` ファクトリが `event_bus` を受け取り Service に注入する
+
+## セキュリティ設計
+
+### OWASP Top 10 対応マッピング
+
+| OWASP | リスク | 本設計での対応 |
+|---|---|---|
+| A01 Broken Access Control | EventBus への不正アクセス | HTTP エンドポイントなし・EventBus は application 層内部 Port → **攻撃面ゼロ** |
+| A03 Injection | DomainEvent payload へのシークレット流入 | Pydantic v2 型バリデーション（Fail Fast）; 人間入力フィールド（`reviewer_comment`）は Service 層で `masking.apply()` 適用後に DomainEvent を生成する |
+| A04 Insecure Design | publish() 失敗が業務操作をロールバックする | Fail Soft 設計は [`feature-spec.md §7 R1-4`](../feature-spec.md) で意図的に採用。WebSocket 通知失敗が業務の一貫性を崩さない |
+| A09 Security Logging | EventBus 内部エラーの追跡不能 | MSG-WSB-001（WARNING）/ MSG-WSB-002（DEBUG）をモニタリング起点として記録 |
+
+### 攻撃面（Attack Surface）
+
+本 sub-feature は **外部攻撃面ゼロ** を持つ:
+
+- HTTP エンドポイントなし（EventBus は application 層内部 Port — interfaces から直接アクセスされない）
+- 外部通信なし（DB アクセスなし・LLM 呼び出しなし）
+- EventBus は asyncio イベントループ内のみで動作し、プロセス外に露出しない
+
+### masking 責務の明示
+
+DomainEvent payload へのシークレット混入を防ぐため、masking 責務を以下の通り確定する:
+
+| フィールド種別 | masking 責務 | 根拠 |
+|---|---|---|
+| Aggregate の状態値（status enum 等）| DB 永続化時に `infrastructure/security/masking.py` を通過済みのため **再 masking 不要** | `tech-stack.md §masking gateway` — 永続化前 masking が保証されている |
+| 人間入力テキスト（`reviewer_comment` 等）| **Service 層で DomainEvent 生成前に `masking.apply()` を明示呼び出しする** | 直接ユーザー入力のため DB 経由 masking が保証されない。トークン / URL の不意の貼り込みリスク |
 
 ## エラーハンドリング方針
 

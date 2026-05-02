@@ -123,7 +123,7 @@ classDiagram
 | `task_id` | `str` | Gate が紐付く Task の ID |
 | `old_status` | `str` | 遷移前の ReviewGateStatus 文字列表現 |
 | `new_status` | `str` | 遷移後の ReviewGateStatus 文字列表現 |
-| `reviewer_comment` | `str \| None` | 承認 / 却下コメント（任意）。`None` 許容 |
+| `reviewer_comment` | `str \| None` | 承認 / 却下コメント（任意）。`None` 許容。**人間入力フィールドのため Service 層で `masking.apply()` 適用後の値を渡すこと**（§確定 F 参照）|
 
 ### AgentStatusChangedEvent（詳細）
 
@@ -133,7 +133,7 @@ classDiagram
 | `aggregate_type` | `Literal["Agent"]` | 固定値 |
 | `room_id` | `str` | Agent が所属する Room の ID |
 | `old_status` | `str` | 遷移前の AgentStatus 文字列表現 |
-| `new_status` | `str` | 遷移前の AgentStatus 文字列表現 |
+| `new_status` | `str` | 遷移後の AgentStatus 文字列表現 |
 
 ### DirectiveCompletedEvent（詳細）
 
@@ -215,6 +215,19 @@ TaskService.__init__(
 ```
 
 各 Service の状態変化メソッドで業務操作成功後に `await event_bus.publish(Event(...))` を呼ぶ。操作失敗時は `publish()` を呼ばない。
+
+### 確定 F: DomainEvent payload の masking ポリシー
+
+`basic-design.md §masking 責務の明示` の実装方針。
+
+| フィールド種別 | masking 適用タイミング | 対象フィールド |
+|---|---|---|
+| Aggregate 状態値（status enum 文字列）| DB 永続化時に `infrastructure/security/masking.py` 通過済み。DomainEvent 生成時の再 masking 不要 | `old_status` / `new_status` / `final_status` 全般 |
+| 人間入力テキスト | **Service 層で DomainEvent 生成前に `masking.apply(value)` を呼ぶ**。`None` の場合は呼ばない | `ExternalReviewGateStateChangedEvent.reviewer_comment` |
+
+**実装要件**: `ExternalReviewGateService.approve()` / `reject()` は `reviewer_comment` を受け取った際、`TaskStateChangedEvent` 生成前ではなく、`ExternalReviewGateStateChangedEvent` 生成時の引数として `masking.apply(reviewer_comment)` 適用済みの値を渡す。
+
+**理由**: `reviewer_comment` はユーザーが直接入力するテキストであり、API キー / トークン / パスワードの不意のペーストリスクがある。DB 永続化フローを経由しないため masking gateway を通過しない。WebSocket ペイロードとして全クライアントにブロードキャストされるため、シークレット露出の影響範囲が広い。
 
 ## MSG 確定文言表
 
