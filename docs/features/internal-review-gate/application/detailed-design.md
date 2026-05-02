@@ -45,9 +45,9 @@ classDiagram
         -llm_provider: LLMProviderPort
         -agent_id: AgentId
         -session_factory: AsyncSessionFactory
+        -MAX_TOOL_RETRIES: int
         +async execute(task_id: TaskId, stage_id: StageId, required_gate_roles: frozenset[GateRole]) None
         -async _execute_single_role(gate_id: InternalGateId, role: GateRole, task_id: TaskId, stage_id: StageId) None
-        -_parse_verdict_decision(llm_output: str) VerdictDecision
         -_build_prompt(role: GateRole, deliverable_summary: str) str
     }
 ```
@@ -76,9 +76,10 @@ classDiagram
 | 属性 | 型 | 意図 |
 |---|---|---|
 | `review_svc` | `InternalReviewService` | Verdict 提出 + Gate 決定 後処理 |
-| `llm_provider` | `LLMProviderPort` | GateRole 審査 LLM 呼び出し |
+| `llm_provider` | `LLMProviderPort` | GateRole 審査 LLM 呼び出し（`chat_with_tools` を使用）|
 | `agent_id` | `AgentId` | InternalReviewGateExecutor 自身のエージェント ID（各 GateRole の `agent_id` に使用）|
 | `session_factory` | `AsyncSessionFactory`（`async_sessionmaker[AsyncSession]`）| GateRole ごとの独立 DB セッション生成元（§確定 I）|
+| `MAX_TOOL_RETRIES` | `int`（定数: `2`）| `submit_verdict` ツール未呼び出し時の最大再指示回数（§確定 D）|
 
 **`execute()` のふるまい**:
 1. `review_svc.create_gate(task_id, stage_id, required_gate_roles)` で Gate を生成・保存
@@ -89,9 +90,10 @@ classDiagram
 **`_execute_single_role()` のふるまい**:
 1. `_build_prompt(role, deliverable_summary)` でプロンプトを構築（§確定 E）
 2. `session_id = uuid4()` を生成（§確定 A）
-3. `llm_provider.chat(prompt, session_id=session_id)` で LLM を呼び出す
-4. `_parse_verdict_decision(llm_output)` で `VerdictDecision` を解析（§確定 D）
-5. `review_svc.submit_verdict(gate_id, role, self.agent_id, decision, comment)` を呼ぶ
+3. `llm_provider.chat_with_tools(prompt, tools=[submit_verdict_tool_schema], session_id=session_id)` で LLM を呼び出す
+4. LLM 応答に `submit_verdict` ツール呼び出しが含まれるか確認（§確定 D）
+   - あり: ツール引数 `decision` / `reason` を取得 → `InternalReviewService.submit_verdict()` を呼ぶ
+   - なし: 再指示メッセージを追加して LLM に再送信（最大 `MAX_TOOL_RETRIES` 回）→ 超過時は `REJECTED`（§確定 D）
 
 ## 確定事項（先送り撤廃）
 
@@ -135,22 +137,53 @@ REJECTED Verdict が確定した後も、`asyncio.gather(return_exceptions=True)
 - 残り GateRole が完走して `submit_verdict()` を呼んでも、domain 層が `kind='gate_already_decided'` で拒否するため副作用がない
 - MVP スコープでは GateRole 数は最大 3〜5 程度（feature-spec.md §14 パフォーマンス）。キャンセルによる時間短縮より設計のシンプルさを優先（KISS 原則）
 
-### 確定 D: LLM 出力の `VerdictDecision` 解析ルール
+### 確定 D: LLM 判定の取得は `submit_verdict` ツール呼び出し登録方式（ジェンセン決定）
 
-`_parse_verdict_decision(llm_output: str) -> VerdictDecision` の解析ロジック:
+テキスト解析方式（正規表現パターンマッチング）を廃止し、**LLM ツール呼び出し（function calling）** で判定を受け取る。`_execute_single_role()` は LLM に `submit_verdict` ツールを提供し、LLM がそのツールを呼び出すことで `VerdictDecision` を確定する。
 
-| LLM 出力パターン | 変換結果 | 根拠 |
-|----------------|---------|------|
-| 1 行目の **行頭**（前後の空白を除く）が `APPROVED` / `LGTM` / `OK` のいずれかで始まる（大文字小文字無視、`\b` 単語境界）— `re.match(r"^\s*(APPROVED\|LGTM\|OK)\b", first_line, re.IGNORECASE)` | `VerdictDecision.APPROVED` | 明確な承認表現のみを前進許可 |
-| 上記以外の全て（`REJECTED` / "却下" / "条件付き承認" / 空文字 / parse 失敗 等）| `VerdictDecision.REJECTED` | feature-spec.md R1-F: ambiguous は REJECTED として扱う |
+**ツール定義（LLM に提供する tool schema）**:
+
+| フィールド | 値 |
+|---------|---|
+| `tool_name` | `"submit_verdict"` |
+| `description` | "審査判定を登録する。レビュー完了時に **必ず** 呼び出すこと。テキストのみの返答は無効。" |
+| `parameters.decision` | `Literal["APPROVED", "REJECTED"]`（必須）|
+| `parameters.reason` | `str`（必須、審査根拠・フィードバック、500 文字以内）|
+
+> **注意**: `submit_verdict` ツール名は LLM に提供する tool schema の名前であり、`InternalReviewService.submit_verdict()` Python メソッドとは別物。両者を区別するため、本設計書では LLM ツールを `[LLM tool] submit_verdict`、Python メソッドを `InternalReviewService.submit_verdict()` と表記する。
+
+**判定取得フロー（`_execute_single_role()` 内、リトライ含む）**:
+
+| ステップ | 操作 |
+|---------|------|
+| 1 | `LLMProviderPort.chat_with_tools(prompt, tools=[submit_verdict_tool_schema], session_id=uuid4())` を呼ぶ（§確定 A の session_id 戦略を踏襲）|
+| 2 | LLM 応答に `[LLM tool] submit_verdict` ツール呼び出しが含まれているか確認 |
+| 3a（呼び出しあり）| ツール引数 `decision: "APPROVED"\|"REJECTED"` / `reason: str` を取得 → `VerdictDecision` に変換 → `InternalReviewService.submit_verdict(gate_id, role, agent_id, decision, comment=reason)` を呼ぶ |
+| 3b（呼び出しなし）| リトライカウントをインクリメント。`"審査判定が登録されていません。必ず submit_verdict ツールを呼び出してください。"` を追加メッセージとして LLM に送信し、ステップ 1 に戻る |
+| 4 | リトライカウントが `MAX_TOOL_RETRIES`（= 2）を超えた場合: `decision=REJECTED`、`reason="[SYSTEM] ツール未呼び出しによる自動 REJECTED（ambiguous 扱い）"` で `InternalReviewService.submit_verdict()` を呼ぶ |
+
+**リトライ設計**:
+
+| 項目 | 値 |
+|-----|---|
+| `MAX_TOOL_RETRIES` 定数 | `2`（クラス定数として定義、テスト時に差し替え可能）|
+| 最大 LLM 呼び出し回数 | 3 回（初回 1 回 + 再指示 2 回）|
+| 再指示メッセージ | "審査判定が登録されていません。必ず `submit_verdict(decision, reason)` ツールを呼び出してください。" |
+| リトライ超過時の判定 | `VerdictDecision.REJECTED`（feature-spec.md R1-F: ambiguous → REJECTED として扱う）|
+| リトライ超過時のログ | `logger.warning` で `gate_id` / `role` / `retry_count` を記録（T3 対策: raw LLM 出力はログ禁止）|
+
+**`LLMProviderPort` への影響（M5-A 後方互換）**:
+
+| メソッド | 用途 | 状態 |
+|---------|------|------|
+| `chat(prompt, session_id)` | 既存 WORK Stage の LLM 実行 | M5-A 定義済み。変更なし |
+| `chat_with_tools(prompt, tools, session_id)` | GateRole 審査（本 sub-feature）| M5-B で追加。既存 `chat()` との後方互換を保つ新 overload |
 
 **根拠**:
-- 行頭マッチ（`re.match`）を使用することで `"REJECTED: 承認できない理由..."` が誤って `APPROVED` に分類されるパターンを排除する。substring 検索では "承認" を含む REJECTED 文が誤判定される脆弱性がある（ヘルスバーグ指摘 §却下5）
-- 日本語の "承認" は不採用。LLM に対してプロンプト（§確定 E）で英語キーワード（`APPROVED` / `REJECTED`）を明示的に指示するため、日本語キーワードマッチは不要であり誤検知を増やすだけ
-- `\b` 単語境界により `APPROVEDXXX` 等の誤マッチを防ぐ
-- parse に失敗した場合は安全側（`REJECTED`）に倒す Fail Safe 設計（feature-spec.md R1-F）
-
-プロンプト設計（§確定 E）で LLM に "1 行目に判定（APPROVED / REJECTED のいずれか）、2 行目以降に理由" を指示することで、パターンマッチング精度を高める。
+- 構造化ツール呼び出しはテキスト解析より解釈が安定する。LLM 出力テキストの言い回しに依存せず、型付き引数（`"APPROVED"` / `"REJECTED"` の 2 値 Literal）として確定される（まこちゃん経験知）
+- 正規表現パターンマッチングは "条件付き承認" / "事実上の承認" 等の曖昧表現を誤判定するリスクを根絶できない（ヘルスバーグ指摘 §却下5 の根本解決）
+- 最大 2 回のリトライは「ツールを提供したにもかかわらず呼び出さない」という LLM の異常動作に対する graceful fallback。3 回超えは LLM 異常と見なし Fail Safe で REJECTED
+- `_parse_verdict_decision()` メソッドは廃止。テキスト解析ロジックを排除することで解析誤り起因のバグを設計レベルで排除する
 
 ### 確定 E: GateRole プロンプトテンプレートの構造と `deliverable_summary` 取得元
 
@@ -162,8 +195,9 @@ REJECTED Verdict が確定した後も、`asyncio.gather(return_exceptions=True)
 |-----------|------|
 | システムロール | "あなたは {role} の専門家として、以下の成果物をレビューしてください。" |
 | 成果物 | "{deliverable_summary}" |
-| 審査指示 | "レビュー結果を以下の形式で出力してください: 1行目: APPROVED または REJECTED、2行目以降: 審査の根拠とフィードバック（500文字以内）" |
-| 禁止事項 | "条件付き承認や曖昧な判定は REJECTED として出力してください。" |
+| 審査指示 | "レビュー完了後、**必ず** `submit_verdict` ツールを呼び出して判定を登録してください。テキストのみの返答は無効として再指示されます。" |
+| 判定基準 | "`decision` は `APPROVED` または `REJECTED` の 2 値のみ。条件付き承認・曖昧な判定は `REJECTED` として登録してください。" |
+| フィードバック指示 | "`reason` に審査根拠とフィードバックを 500 文字以内で記述してください。" |
 
 role 別のカスタムテンプレート（`prompts/{role}.py`）が存在しない場合は `prompts/default.py` を使用する（現時点では全 role が default テンプレートを使用）。将来、特定 GateRole（例: security）に審査観点の詳細指示が必要な場合は role 別テンプレートを追加する（YAGNI: 現時点では default のみで十分）。
 

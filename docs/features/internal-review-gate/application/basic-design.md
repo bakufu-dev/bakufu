@@ -107,9 +107,9 @@ classDiagram
         -llm_provider: LLMProviderPort
         -agent_id: AgentId
         -session_factory: AsyncSessionFactory
+        -MAX_TOOL_RETRIES: int
         +async execute(task_id, stage_id, required_gate_roles) None
         -async _execute_single_role(gate_id, role, task_id, stage_id) None
-        -_parse_verdict_decision(llm_output) VerdictDecision
         -_build_prompt(role, deliverable_summary) str
     }
     class InternalReviewGateExecutorPort {
@@ -146,9 +146,9 @@ classDiagram
    - `InternalReviewService.create_gate(task_id, stage_id, required_gate_roles)` で Gate を DB に永続化
    - `asyncio.gather(*[_execute_single_role(gate.id, role, ...) for role in required_gate_roles])` で全 GateRole を並列呼び出し
 4. 各 `_execute_single_role(gate_id, role)` が:
-   - 独立した `session_id=uuid4()` で `LLMProviderPort.chat(prompt, session_id)` を呼ぶ
-   - LLM 出力を `_parse_verdict_decision()` で `VerdictDecision` に変換（APPROVED / REJECTED の 2 値、ambiguous → REJECTED、§確定 D）
-   - `InternalReviewService.submit_verdict(gate_id, role, agent_id, decision, comment)` を呼ぶ
+   - 独立した `session_id=uuid4()` で `LLMProviderPort.chat_with_tools(prompt, tools=[submit_verdict_schema], session_id)` を呼ぶ（§確定 A・D）
+   - LLM が `submit_verdict` ツールを呼び出すと `decision` / `reason` を取得 → `InternalReviewService.submit_verdict()` に渡す
+   - ツール未呼び出しの場合は再指示メッセージを送り最大 `MAX_TOOL_RETRIES`（= 2）回リトライ。超過時は ambiguous → `REJECTED`（§確定 D）
 5. `asyncio.gather()` が全完了（または REJECTED で早期終了、§確定 B）を待機
 6. `execute()` が return → `StageWorker` が Semaphore を release
 
@@ -197,16 +197,18 @@ sequenceDiagram
     ReviewSvc-->>Executor: gate.id
 
     par asyncio.gather（並列）
-        Executor->>LLM: chat(reviewer_prompt, session_id=uuid4())
-        LLM-->>Executor: "APPROVED: コード品質は問題なし..."
-        Executor->>ReviewSvc: submit_verdict(gate_id, "reviewer", APPROVED, comment)
+        Executor->>LLM: chat_with_tools(reviewer_prompt, tools=[submit_verdict], session_id=uuid4())
+        Note right of LLM: LLM が submit_verdict ツールを呼び出す
+        LLM-->>Executor: tool_call submit_verdict(decision="APPROVED", reason="コード品質は問題なし...")
+        Executor->>ReviewSvc: submit_verdict(gate_id, "reviewer", APPROVED, reason)
         ReviewSvc->>Gate: gate.submit_verdict(...)
         Gate-->>ReviewSvc: Gate(PENDING, verdicts=[reviewer:APPROVED])
         ReviewSvc->>ReviewSvc: save(gate) → gate_decision=PENDING → 継続
     and
-        Executor->>LLM: chat(security_prompt, session_id=uuid4())
-        LLM-->>Executor: "REJECTED: SQLインジェクション脆弱性を発見..."
-        Executor->>ReviewSvc: submit_verdict(gate_id, "security", REJECTED, comment)
+        Executor->>LLM: chat_with_tools(security_prompt, tools=[submit_verdict], session_id=uuid4())
+        Note right of LLM: LLM が submit_verdict ツールを呼び出す
+        LLM-->>Executor: tool_call submit_verdict(decision="REJECTED", reason="SQLインジェクション脆弱性を発見...")
+        Executor->>ReviewSvc: submit_verdict(gate_id, "security", REJECTED, reason)
         ReviewSvc->>Gate: gate.submit_verdict(...)
         Gate-->>ReviewSvc: Gate(REJECTED, verdicts=[security:REJECTED])
         ReviewSvc->>ReviewSvc: gate_decision=REJECTED → _handle_rejected()
