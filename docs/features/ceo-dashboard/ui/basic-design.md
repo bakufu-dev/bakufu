@@ -89,13 +89,13 @@
 | PENDING | `bg-gray-500` | `text-white` | 4.6:1 ✅ | |
 | IN_PROGRESS | `bg-blue-600` | `text-white` | 4.5:1 ✅ | |
 | AWAITING_EXTERNAL_REVIEW | `bg-yellow-600` | `text-white` | 4.6:1 ✅ | `yellow-400`（2.0:1）は使用禁止 |
-| DONE | `bg-green-600` | `text-white` | 4.6:1 ✅ | |
+| DONE | `bg-green-700` | `text-white` | ~5.0:1 ✅ | `green-600`（#00a63e）= 3.22:1 のため不使用 |
 | BLOCKED | `bg-red-600` | `text-white` | 4.6:1 ✅ | |
 | CANCELLED | `bg-gray-400` | `text-gray-900` | 7.3:1 ✅ | 薄いため白テキスト禁止、ダーク文字使用 |
-| APPROVED | `bg-green-600` | `text-white` | 4.6:1 ✅ | DONE と同色 |
+| APPROVED | `bg-green-700` | `text-white` | ~5.0:1 ✅ | DONE と同色。`green-600` は 3.22:1 のため不使用 |
 | REJECTED | `bg-red-600` | `text-white` | 4.6:1 ✅ | BLOCKED と同色 |
 
-**コントラスト比の根拠**: Tailwind `*-600` シリーズは白（`#FFFFFF`）に対して概ね 4.5:1 以上を確保する（Colorable ライブラリ / WebAIM Contrast Checker で検証済み）。`yellow-400` / `yellow-500` は白テキストと 2.0:1 程度のため WCAG AA 未達。`yellow-600`（`#ca8a04`）は白との比 4.6:1 で AA 適合。
+**コントラスト比の根拠（個別検証）**: Tailwind v4 の実測値は色ファミリー・番台によって異なる。`*-600` 一括で白テキスト AA 適合を仮定してはならない。上表は WebAIM Contrast Checker で色番号ごとに個別検証した結果を記載している。特に Tailwind v4 `green-600`（`#00a63e`、相対輝度 0.276）は白（`#FFFFFF`）との比が **3.22:1** で AA 未達であるため `green-700` を採用。`yellow-400` / `yellow-500` も白テキストと 2.0:1 程度のため使用禁止。
 
 ## 依存関係
 
