@@ -61,9 +61,9 @@ backend/src/bakufu/interfaces/http/
 | 項目 | 内容 |
 |---|---|
 | 入力 | `DomainEvent` インスタンス（`EventBusPort` の handler として `InMemoryEventBus` から呼ばれる）|
-| 処理 | `event.to_ws_message()` で dict を生成し JSON 文字列に変換して `ConnectionManager.broadcast()` を呼ぶ |
+| 処理 | `ConnectionManager.handle_event(event)` メソッドとして実装する。`event.to_ws_message()` で dict を生成し JSON 文字列に変換して `self.broadcast()` を呼ぶ。lifespan で `event_bus.subscribe(cm.handle_event)` と登録する（bound method が `EventBusPort.subscribe()` の handler シグネチャに適合）|
 | 出力 | None（副作用として WebSocket 配信を実行）|
-| エラー時 | `ConnectionManager.broadcast()` 内の個別クライアント例外は Fail Soft で処理済み（REQ-WSB-009）。bridge handler 自体のエラーは `InMemoryEventBus` の Fail Soft（MSG-WSB-001）で捕捉され、他ハンドラへは伝播しない |
+| エラー時 | `ConnectionManager.broadcast()` 内の個別クライアント例外は Fail Soft で処理済み（REQ-WSB-009）。`handle_event` 自体のエラーは `InMemoryEventBus` の Fail Soft（MSG-WSB-001）で捕捉され、他ハンドラへは伝播しない |
 
 **紐付く UC**: UC-WSB-001 / UC-WSB-002
 
@@ -83,9 +83,9 @@ backend/src/bakufu/interfaces/http/
 | 項目 | 内容 |
 |---|---|
 | 入力 | FastAPI アプリケーションの startup イベント |
-| 処理 | `ConnectionManager` インスタンスを生成し `app.state.connection_manager` に保持する。`make_ws_bridge_handler(cm)` で bridge handler を生成し `app.state.event_bus.subscribe(handler)` で EventBus に登録する。bridge handler は `ConnectionManager` インスタンスをキャプチャした async callable として生成される（`EventBusPort` handler シグネチャ `(event: DomainEvent) -> Awaitable[None]` に適合）|
+| 処理 | `ConnectionManager` インスタンスを生成し `app.state.connection_manager` に保持する。`app.state.event_bus.subscribe(cm.handle_event)` で bound method を EventBus に登録する。`cm.handle_event` は `EventBusPort` handler シグネチャ `(event: DomainEvent) -> Awaitable[None]` に適合する |
 | 出力 | `app.state.connection_manager` の設定完了。EventBus に bridge handler が登録済み |
-| エラー時 | 初期化は IO なしのため例外なく完了する。`get_connection_manager()` が `app.state.connection_manager` 未設定時は Fail Fast で例外発火（lifespan 起動失敗として検知）|
+| エラー時 | 初期化は IO なしのため例外なく完了する。`get_connection_manager()` が `app.state.connection_manager` 未設定時は `BakufuConfigError` を raise して Fail Fast（リクエスト処理時に明示的エラーとして検知）|
 
 **紐付く UC**: UC-WSB-001 / UC-WSB-002 / UC-WSB-005
 
@@ -98,10 +98,7 @@ classDiagram
         +connect(websocket WebSocket) Awaitable~None~
         +disconnect(websocket WebSocket) None
         +broadcast(message str) Awaitable~None~
-    }
-    class WsBridgeHandler {
-        <<async callable>>
-        +__call__(event DomainEvent) Awaitable~None~
+        +handle_event(event DomainEvent) Awaitable~None~
     }
     class EventBusPort {
         <<Protocol>>
@@ -113,8 +110,7 @@ classDiagram
         +GET /ws endpoint
     }
     WsRouter --> ConnectionManager : connect / disconnect
-    WsBridgeHandler --> ConnectionManager : broadcast
-    EventBusPort --> WsBridgeHandler : calls handler
+    EventBusPort --> ConnectionManager : calls handle_event
 ```
 
 ### 依存関係図
@@ -122,24 +118,22 @@ classDiagram
 ```mermaid
 flowchart LR
     WsEndpoint["GET /ws\n(routers/ws.py)"]
-    CM["ConnectionManager\n(interfaces/http/connection_manager.py)"]
-    Bridge["ws_bridge_handler\n(interfaces/http/connection_manager.py)"]
+    CM["ConnectionManager\n(interfaces/http/connection_manager.py)\nhandle_event() / broadcast()"]
     EvtBus["InMemoryEventBus\n(infrastructure)"]
     DomEvt["DomainEvent\n(domain/events.py)"]
     AppSvc["ApplicationService\n(application/services)"]
 
     AppSvc -->|publish| EvtBus
-    EvtBus -->|calls handler| Bridge
-    Bridge -->|broadcast| CM
+    EvtBus -->|calls cm.handle_event| CM
     WsEndpoint --> CM
-    DomEvt --> Bridge
+    DomEvt --> CM
 ```
 
 依存方向: `interfaces → application/ports（EventBusPort）→ domain ← infrastructure`（Clean Architecture 規律を維持）
 
 **interfaces レイヤー内の依存制約**:
-- `ws.py` は `ConnectionManager` を使用するが `DomainEvent` を直接 import しない（bridge handler に封じ込める）
-- `connection_manager.py` は `DomainEvent` を bridge handler のシグネチャ型注釈のみで参照する。domain 層への依存は型注釈レベルに留め、実行時の結合を最小化する
+- `ws.py` は `ConnectionManager` を使用するが `DomainEvent` を直接 import しない（`handle_event` メソッドに封じ込める）
+- `connection_manager.py` は `DomainEvent` を `handle_event` のシグネチャ型注釈のみで参照する。domain 層への依存は型注釈レベルに留め、実行時の結合を最小化する
 
 ## 処理フロー
 
@@ -169,18 +163,15 @@ sequenceDiagram
 sequenceDiagram
     participant AppSvc as ApplicationService
     participant EvtBus as InMemoryEventBus
-    participant Bridge as ws_bridge_handler
     participant CM as ConnectionManager
     participant Clients as 接続中クライアント群
 
     AppSvc->>EvtBus: publish(DomainEvent)
-    EvtBus->>Bridge: handler(event) — asyncio.gather で並行実行
-    Bridge->>Bridge: event.to_ws_message() → json.dumps()
-    Bridge->>CM: broadcast(json_str)
-    CM->>Clients: send_text(json_str) — スナップショットリスト走査
+    EvtBus->>CM: cm.handle_event(event) — asyncio.gather で並行実行
+    CM->>CM: event.to_ws_message() → json.dumps()
+    CM->>Clients: broadcast(json_str) — スナップショットリスト走査
     Note over CM,Clients: 送信失敗クライアントは disconnect() → MSG-WSB-005 ログ → 継続（Fail Soft）
-    CM-->>Bridge: 配信完了
-    Bridge-->>EvtBus: 完了
+    CM-->>EvtBus: 完了
     EvtBus-->>AppSvc: publish() 完了（broadcast 成否に依存しない）
 ```
 
@@ -191,13 +182,11 @@ sequenceDiagram
     participant Lifespan as app.py lifespan
     participant CM as ConnectionManager
     participant EvtBus as InMemoryEventBus
-    participant Bridge as ws_bridge_handler
 
     Lifespan->>CM: ConnectionManager() 生成
     Lifespan->>Lifespan: app.state.connection_manager = cm
-    Lifespan->>Bridge: make_ws_bridge_handler(cm) — cm をキャプチャした async callable を生成
-    Lifespan->>EvtBus: app.state.event_bus.subscribe(bridge_handler)
-    Note over Lifespan,EvtBus: EventBus は Issue #158 lifespan で既に生成済み
+    Lifespan->>EvtBus: app.state.event_bus.subscribe(cm.handle_event)
+    Note over Lifespan,EvtBus: EventBus は Issue #158 lifespan で既に生成済み。cm.handle_event は bound method として登録
     Lifespan-->>Lifespan: startup 完了
 ```
 
@@ -207,7 +196,7 @@ sequenceDiagram
 
 | OWASP | リスク | 本設計での対応 |
 |---|---|---|
-| A01 Broken Access Control | WebSocket 接続の不正利用 | `127.0.0.1` バインド前提（loopback 専用）。外部からの物理的接続不可（feature-spec.md R1-6 / threat-model.md §A3）。MVP でシングルユーザー（CEO）前提 |
+| A01 Broken Access Control | WebSocket 接続の不正利用 / Cross-Origin WebSocket Hijacking | `127.0.0.1` バインド前提（loopback 専用）。加えて `ws.py` エンドポイント内で `Origin` ヘッダーを `BAKUFU_ALLOWED_ORIGINS` と照合し、不一致なら `websocket.close(code=1008)` で即時拒否する（`BaseHTTPMiddleware` は WebSocket scope を処理しないため `CsrfOriginMiddleware` には委譲できない）|
 | A03 Injection | クライアントからの不正メッセージ | `ws.py` は受信メッセージを読み取るが処理しない。業務操作はすべて REST API 経由。コマンドインジェクション経路なし |
 | A04 Insecure Design | 切断クライアントへの送信でブロードキャスト全体が止まる | Fail Soft 設計（feature-spec.md R1-5）。`broadcast()` は失敗クライアントを除去して継続。1 接続の切断が他クライアントをブロックしない |
 | A09 Security Logging | 接続・切断・エラーの追跡不能 | MSG-WSB-003〜005 でログ記録（接続数・切断・送信失敗）|
@@ -219,7 +208,7 @@ sequenceDiagram
 | エンドポイント | `GET /ws` 単一エンドポイントのみ（R1-1）。認証不要（R1-6）。loopback バインド前提 |
 | 受信メッセージ処理 | MVP では無視。処理ロジックがないためコマンドインジェクション経路なし |
 | ブロードキャスト内容 | `DomainEvent.to_ws_message()` 出力のみ。masking gateway 通過済みの state data（domain sub-feature §確定F 保証）|
-| Origin 検証 | 既存 `CsrfOriginMiddleware` に委譲（`BAKUFU_ALLOWED_ORIGINS` 設定に従う）。WebSocket HTTP Upgrade リクエスト時に適用（detailed-design.md §確定E）|
+| Origin 検証 | `ws.py` エンドポイント内で明示的に実施。`websocket.headers.get("origin")` を `BAKUFU_ALLOWED_ORIGINS` と照合し、不一致なら `websocket.close(code=1008)` → return（`CsrfOriginMiddleware` は WebSocket scope を処理しないため委譲不可。detailed-design.md §確定E 参照）|
 
 ## エラーハンドリング方針
 
@@ -227,7 +216,7 @@ sequenceDiagram
 |---|---|
 | `WebSocketDisconnect` during receive loop | `ConnectionManager.disconnect()` を呼んで接続プール削除。例外を再 raise しない（切断は正常フロー）|
 | `broadcast()` 内の個別クライアント送信例外 | Fail Soft — 失敗クライアントを `disconnect()` → MSG-WSB-005 ログ → 次クライアントへ継続 |
-| `app.state.connection_manager` 未初期化 | Fail Fast — `get_connection_manager()` が `AttributeError`。lifespan 起動失敗として検知 |
+| `app.state.connection_manager` 未初期化 | Fail Fast — `get_connection_manager()` が `BakufuConfigError("ConnectionManager is not initialized. Check lifespan startup.")` を raise。リクエスト処理時に明示的エラーとして検知（detailed-design.md §get_connection_manager() 参照）|
 | bridge handler が `broadcast()` 呼び出し中に例外 | `InMemoryEventBus` の Fail Soft（MSG-WSB-001）で捕捉。他 EventBus ハンドラへは影響しない |
 
 ## ユーザー向けメッセージ一覧

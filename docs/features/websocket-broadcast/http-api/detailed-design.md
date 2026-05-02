@@ -28,12 +28,8 @@ classDiagram
         +connect(websocket: WebSocket) Awaitable~None~
         +disconnect(websocket: WebSocket) None
         +broadcast(message: str) Awaitable~None~
+        +handle_event(event: DomainEvent) Awaitable~None~
     }
-    class WsBridgeHandlerFactory {
-        <<module-level function>>
-        +make_ws_bridge_handler(cm: ConnectionManager) Callable
-    }
-    ConnectionManager <-- WsBridgeHandlerFactory : captures
 ```
 
 ### ConnectionManager（詳細）
@@ -44,21 +40,22 @@ classDiagram
 | `connect(websocket)` | `async def → None` | `await websocket.accept()` 完了後に `_connections.append(websocket)` する（§確定D）|
 | `disconnect(websocket)` | `def → None` | `if websocket in _connections` ガード後に `_connections.remove(websocket)` する。二重削除で `ValueError` が出ないよう存在チェック必須 |
 | `broadcast(message)` | `async def → None` | `list(_connections)` でスナップショットを取り走査する（§確定B）。各クライアントに `await ws.send_text(message)` を呼ぶ。例外時は `disconnect(ws)` → `logger.warning(MSG-WSB-005)` → 継続（Fail Soft）|
+| `handle_event(event)` | `async def → None` | `DomainEvent` を受け取り `json.dumps(event.to_ws_message())` で JSON 文字列を生成し `broadcast(json_str)` を呼ぶ。`EventBusPort.subscribe()` の handler シグネチャ `(event: DomainEvent) -> Awaitable[None]` に適合する bound method として lifespan で `event_bus.subscribe(cm.handle_event)` に渡す（§確定C）|
 
 **不変条件**:
 - `connect()` の `accept()` は1回のみ。重複 connect の防止は Router 側責務
 - `broadcast()` は `_connections` が空でも例外なく完了する（空リストのループは no-op）
 - `broadcast()` 走査中は `list(_connections)` スナップショットを使用し、走査対象リストへの変更による `RuntimeError` を防ぐ
 
-### make_ws_bridge_handler（詳細）
+### ConnectionManager.handle_event（詳細）
 
 | 項目 | 内容 |
 |---|---|
-| シグネチャ | `make_ws_bridge_handler(cm: ConnectionManager) -> Callable[[DomainEvent], Awaitable[None]]` |
-| 実体 | `ConnectionManager` インスタンスをクロージャでキャプチャした `async def` 関数（§確定C）|
-| 処理 | `json.dumps(event.to_ws_message())` で JSON 文字列を生成し `cm.broadcast(json_str)` を呼ぶ |
+| シグネチャ | `async def handle_event(self, event: DomainEvent) -> None` |
+| 実体 | `ConnectionManager` インスタンスのメソッド。`event_bus.subscribe(cm.handle_event)` として渡すと bound method となり `self`（`_connections` プール）を自然にキャプチャする（§確定C）|
+| 処理 | `json.dumps(event.to_ws_message())` で JSON 文字列を生成し `self.broadcast(json_str)` を呼ぶ |
 | JSON 直列化の制約 | `DomainEvent.to_ws_message()` は `event_id`（UUID）と `occurred_at`（datetime）を文字列変換済みの dict を返す（`domain/detailed-design.md §DomainEvent 基底クラス` 仕様）。`json.dumps` は標準ライブラリ `json` のみ使用。カスタムエンコーダ不要 |
-| `EventBusPort` 適合 | `make_ws_bridge_handler()` の戻り値は `Callable[[DomainEvent], Awaitable[None]]` 型（`EventBusPort.subscribe()` の handler 引数型に適合）|
+| `EventBusPort` 適合 | bound method `cm.handle_event` は `Callable[[DomainEvent], Awaitable[None]]` 型（`EventBusPort.subscribe()` の handler 引数型に適合）|
 
 ### `GET /ws` エンドポイント（詳細）
 
@@ -80,7 +77,7 @@ classDiagram
 | 配置先 | `interfaces/http/dependencies.py` |
 | シグネチャ | `(request: Request) -> ConnectionManager` |
 | 処理 | `return request.app.state.connection_manager` |
-| エラー時 | `app.state.connection_manager` 未設定 → `AttributeError` → Fail Fast（lifespan 起動失敗として検知）|
+| エラー時 | `app.state.connection_manager` 未設定 → `BakufuConfigError("ConnectionManager is not initialized. Check lifespan startup.")` を raise → Fail Fast（リクエスト処理時に明示的エラーとして検知）|
 
 ## 確定事項（先送り撤廃）
 
@@ -103,11 +100,11 @@ classDiagram
 
 **理由**: `await send_text()` で asyncio イベントループに制御が渡る可能性がある。スナップショット走査により走査中の `_connections` 変更（他コルーチンによる `disconnect()` 等）による `RuntimeError` を防ぐ。asyncio の協調的マルチタスク前提でも安全性を保つ。
 
-### 確定 C: ws_bridge_handler は `make_ws_bridge_handler(cm)` ファクトリ関数で生成する
+### 確定 C: EventBus bridge handler は `ConnectionManager.handle_event` bound method とする
 
-lifespan で `make_ws_bridge_handler(cm)` を呼び、返り値の async callable を `event_bus.subscribe()` に渡す。
+lifespan で `event_bus.subscribe(cm.handle_event)` と記述し、`cm` インスタンスの bound method を直接 EventBus に登録する。
 
-**理由**: `EventBusPort.subscribe()` の handler シグネチャは `(event: DomainEvent) -> Awaitable[None]` の 1 引数関数。`ConnectionManager` を引数として渡す設計は Port インターフェースを変更することになる。ファクトリ関数によるクロージャキャプチャが最も侵襲性が低く、Port 契約を変更しない。`make_` プレフィックスで生成関数であることを明示する。
+**理由**: `EventBusPort.subscribe()` の handler シグネチャは `(event: DomainEvent) -> Awaitable[None]` の 1 引数関数。bound method `cm.handle_event` はこのシグネチャに自然に適合し、`self`（`_connections` プール）をキャプチャする。モジュールレベル関数 `make_ws_bridge_handler(cm)` は公開関数禁止原則（Tell, Don't Ask / 責務はクラスに閉じろ）に違反する。メソッドとして `ConnectionManager` に閉じることで責務が明確になり、ファクトリ関数という間接レイヤーが不要になる。
 
 ### 確定 D: `connect()` は `accept()` 完了後に接続プールに追加する
 
@@ -115,11 +112,18 @@ lifespan で `make_ws_bridge_handler(cm)` を呼び、返り値の async callabl
 
 **理由**: `accept()` 失敗（クライアントが接続を即断した場合等）で未 accept の WebSocket が接続プールに混入しない。accept 完了を「接続有効」の条件とし、`broadcast()` 走査対象から除外する。
 
-### 確定 E: WebSocket の Origin 検証は既存 `CsrfOriginMiddleware` に委譲する
+### 確定 E: WebSocket の Origin 検証は `ws.py` エンドポイント内で明示的に実施する
 
-`ws://localhost:8000/ws` への接続は HTTP Upgrade リクエストとして `CsrfOriginMiddleware` を通過する。`BAKUFU_ALLOWED_ORIGINS`（デフォルト: `http://localhost:5173`）以外の Origin からの接続は Middleware で拒否される。WebSocket エンドポイント固有の追加 Origin チェックは実装しない。
+`GET /ws` エンドポイントは接続受け入れ前に `websocket.headers.get("origin")` を読み取り、`BAKUFU_ALLOWED_ORIGINS`（デフォルト: `http://localhost:5173`）に含まれない Origin からの接続を `await websocket.close(code=1008)` で拒否する。
 
-**理由**: feature-spec.md R1-6（MVP では認証不要・loopback バインド前提）と整合する。既存の Origin 検証機構を重複実装しない（DRY）。Phase 2 でマルチユーザー化する際は JWT 認証を `ws.py` に追加する（Q-OPEN-1 参照）。
+| 処理ステップ | 内容 |
+|---|---|
+| Origin 読み取り | `origin = websocket.headers.get("origin")` |
+| 許可リスト取得 | `settings.BAKUFU_ALLOWED_ORIGINS`（既存設定値を再利用）|
+| 検証 | `origin not in allowed_origins` → `await websocket.close(code=1008)` → return |
+| 合格時 | `await cm.connect(websocket)` に進む |
+
+**理由**: `CsrfOriginMiddleware` は `BaseHTTPMiddleware` を継承している。Starlette の `BaseHTTPMiddleware.__call__` は `scope["type"] != "http"` の場合（WebSocket は `scope["type"] == "websocket"`）に `dispatch()` を呼ばずそのまま次のミドルウェアへ通過させる。また GET は `_SAFE_METHODS` に含まれるため、仮に到達しても Origin チェックはスキップされる。結果として WebSocket 接続は `CsrfOriginMiddleware` の検証を一切受けない。Cross-Origin WebSocket Hijacking（同一マシン上のブラウザが `Origin: https://attacker.com` で接続する攻撃）を防ぐには `ws.py` での明示的な検証が必須（OWASP A01 / feature-spec.md R1-6 と整合）。WebSocket close code 1008（Policy Violation）は RFC 6455 の標準コード。
 
 ### 確定 F: `ws.py` は `receive_text()` ループで切断を検知する
 
