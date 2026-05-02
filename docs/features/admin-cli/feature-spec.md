@@ -177,7 +177,7 @@ bakufu サーバーの StageWorker が IN_PROGRESS Task を自動ピックアッ
 | # | 論点 | 起票先 |
 |---|---|---|
 | Q-OPEN-1 | `AWAITING_EXTERNAL_REVIEW` 状態の Task を cancel する場合、ExternalReviewGate を同時に無効化する必要があるか | Phase 2 検討 |
-| Q-OPEN-2 | bakufu サーバーの StageWorker が IN_PROGRESS 孤立 Task を起動時リカバリスキャンでピックアップする機構が必要か | Phase 2 or 別 Issue |
+| Q-OPEN-2 | bakufu サーバーの StageWorker が IN_PROGRESS 孤立 Task を起動時リカバリスキャンでピックアップする機構が必要か | **解決済み（2026-05-02 ジェンセン決定）**: Option A（起動時リカバリスキャン）を M5-C スコープで採用。詳細設計は `docs/features/stage-executor/application/detailed-design.md §確定J` |
 
 ## 12. Sub-issue 分割計画
 

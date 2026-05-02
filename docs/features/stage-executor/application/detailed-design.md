@@ -227,6 +227,37 @@ M5-B（InternalReviewGate application sub-feature）は `LLMProviderPort` に `c
 
 **根拠**: `LLMProviderPort` は M5-A で定義した凍結契約だが、M5-B が新機能（ツール呼び出し）を必要とするため Boy Scout Rule に従い同一 PR で設計書を更新する（ヘルスバーグ指摘 §却下4）。文字列 JSON パースを排除し構造化型を採用することで、LLM 実装の変更に対する耐性が上がる（Heisenberg 指摘 §却下6）。
 
+### 確定 J: StageWorker 起動時 IN_PROGRESS 孤立 Task リカバリスキャン（M5-C 追加、2026-05-02 ジェンセン決定）
+
+**背景**: admin-cli の `retry-task` コマンドは Task を BLOCKED → IN_PROGRESS に変更して DB に保存するが、admin-cli は別プロセスであるためサーバーの `asyncio.Queue` に Task を投入する手段を持たない。StageWorker は Queue 依存型（ポーリングなし）であるため、明示的にキューに投入されない Task は再起動前まで実行されない。`retry-task` の end-to-end を成立させるため、StageWorker 起動時に IN_PROGRESS 孤立 Task をスキャンしてキューに再投入する機構を追加する（Q-OPEN-2 解決策 Option A）。
+
+**リカバリスキャンの仕様（凍結）**:
+
+| 項目 | 内容 |
+|---|---|
+| 実行タイミング | StageWorker 起動時（`start()` メソッドの冒頭、Queue 処理ループ開始前）|
+| スキャン対象 | `TaskStatus.IN_PROGRESS` の全 Task（`TaskRepositoryPort.list_by_status(IN_PROGRESS)` で取得）|
+| 処理内容 | 該当 Task を `asyncio.Queue.put()` で逐次投入（同期的に全件投入後にループ開始）|
+| Queue 上限 | Queue `maxsize` を超える件数が存在する場合は `put()` で自然に await（backpressure 発生は正常動作）|
+| ログ出力 | `[INFO] StageWorker: 起動時リカバリスキャン — {n} 件の IN_PROGRESS Task をキューに投入しました。` |
+| 0 件の場合 | `[INFO] StageWorker: 起動時リカバリスキャン — 孤立 Task なし。` |
+
+**保証する不変条件**:
+- サーバー再起動後、IN_PROGRESS 状態の孤立 Task は StageWorker が必ず拾い直す
+- `retry-task` で BLOCKED → IN_PROGRESS にした Task は次回サーバー起動時に自動的に実行が再開される
+
+**冪等性**: 起動時は Queue が空であるため、同一 Task がキューに二重投入される状況は発生しない。
+
+**影響範囲（M5-C 実装スコープ）**:
+
+| 変更対象 | 変更内容 |
+|---|---|
+| `backend/src/bakufu/infrastructure/worker/stage_worker.py` | `start()` 冒頭に IN_PROGRESS スキャン + キュー投入ロジックを追加 |
+| `backend/src/bakufu/application/ports/task_repository.py` | `list_by_status(status: TaskStatus) -> list[Task]` メソッドを追加（未定義の場合）|
+| `backend/src/bakufu/infrastructure/persistence/sqlite/repositories/task_repository.py` | 上記 Port 追加に伴う実装追加 |
+
+**根拠**: ジェンセン決定（2026-05-02）。ヘルスバーグ指摘 PR #174 Critical 2「StageWorker に起動時リカバリスキャン機構がなく `retry-task` が機能不全」の根本解決。詳細設計の凍結は本 §で完結し、admin-cli feature-spec.md Q-OPEN-2 は本 PR でクローズ。
+
 ## 設計判断の補足
 
 ### なぜ ExternalReviewGateService に委譲し StageExecutorService が Gate を直接生成しないのか
