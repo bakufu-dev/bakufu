@@ -74,8 +74,9 @@ class DirectiveService:
 
             await self._directive_repo.save(directive)
             directive_with_task = directive.link_task(task.id)
-            await self._directive_repo.save(directive_with_task)
+            # FK 制約: directives.task_id → tasks.id のため task を先に保存する
             await self._task_repo.save(task)
+            await self._directive_repo.save(directive_with_task)
 
         return directive_with_task, task
 
