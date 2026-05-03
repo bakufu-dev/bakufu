@@ -4,11 +4,7 @@
  * TC-E2E-CD-004: Task 詳細 — Gate リンク表示（受入基準 #4）
  */
 import { expect, test } from "@playwright/test";
-import {
-  GATE_REVIEW_ID,
-  TASK_APPROVE_ID,
-  TASK_REVIEW_ID,
-} from "./helpers";
+import { GATE_REVIEW_ID, TASK_APPROVE_ID, TASK_REVIEW_ID } from "./helpers";
 
 test.describe("TC-E2E-CD-002: Task 詳細 — Stage 進行状況", () => {
   test("Task 詳細画面に Stage 情報と status バッジが表示される", async ({ page }) => {
@@ -42,9 +38,7 @@ test.describe("TC-E2E-CD-003: Task 詳細 — Deliverable 表示", () => {
     await expect(page.getByText("Deliverable スナップショット")).toBeVisible();
 
     // Markdown が HTML にレンダリングされている（h1 タグ）
-    await expect(
-      page.locator("h1").filter({ hasText: "E2E Test Deliverable" }),
-    ).toBeVisible();
+    await expect(page.locator("h1").filter({ hasText: "E2E Test Deliverable" })).toBeVisible();
 
     // Deliverable の本文テキストが含まれる
     await expect(page.getByText("E2E Test Deliverable")).toBeVisible();
@@ -59,9 +53,7 @@ test.describe("TC-E2E-CD-004: Task 詳細 — Gate リンク表示", () => {
     await page.waitForLoadState("networkidle");
 
     // Gate レビューリンクが表示される
-    await expect(
-      page.getByRole("link", { name: "Gate レビューへ →" }),
-    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "Gate レビューへ →" })).toBeVisible();
 
     // リンク先が正しい gate に向いている
     const gateLink = page.getByRole("link", { name: "Gate レビューへ →" });
@@ -80,8 +72,6 @@ test.describe("TC-E2E-CD-004: Task 詳細 — Gate リンク表示", () => {
     await page.waitForLoadState("networkidle");
 
     // Gate 詳細ページが表示される
-    await expect(
-      page.getByRole("heading", { name: "外部レビュー Gate" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "外部レビュー Gate" })).toBeVisible();
   });
 });

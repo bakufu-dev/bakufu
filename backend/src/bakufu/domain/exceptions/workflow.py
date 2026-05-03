@@ -22,6 +22,7 @@ type WorkflowViolationKind = Literal[
     "missing_notify_aggregate",
     "empty_required_role_aggregate",
     "from_dict_invalid",
+    "masked_notify_channel",
 ]
 """workflow 詳細設計 §Exception に対応する :class:`WorkflowInvariantViolation`
 の判別子。設計上の正式 11 種類に加え、MSG-WF-001 / MSG-WF-008 で表面化する

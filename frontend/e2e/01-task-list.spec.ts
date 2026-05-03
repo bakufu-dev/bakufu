@@ -13,9 +13,7 @@ import { expect, test } from "@playwright/test";
 import { TASK_DONE_ID, TASK_INPROG_ID, TASK_PENDING_ID } from "./helpers";
 
 test.describe("TC-E2E-CD-001: Task 一覧表示", () => {
-  test("Task 一覧に PENDING / IN_PROGRESS / DONE の Task カードが表示される", async ({
-    page,
-  }) => {
+  test("Task 一覧に PENDING / IN_PROGRESS / DONE の Task カードが表示される", async ({ page }) => {
     await page.goto("/");
     // ローディング完了を待つ
     await page.waitForLoadState("networkidle");

@@ -1,7 +1,7 @@
-"""_DagTraversal ユニットテスト（TC-UT-IRG-A104〜A105）。
+"""DagTraversal ユニットテスト（TC-UT-IRG-A104〜A105）。
 
 設計書: docs/features/internal-review-gate/application/test-design.md
-対象: §確定 G（DAG traversal: _DagTraversal.find_prev_work_stage_id）
+対象: §確定 G（DAG traversal: DagTraversal.find_prev_work_stage_id）
 Issue: #164 feat(M5-B): InternalReviewGate infrastructure実装
 
 前提:
@@ -33,7 +33,7 @@ class TestFindPrevWorkStageId:
     async def test_returns_work_stage_id_from_dag(self) -> None:
         """TC-UT-IRG-A104: WORK_A→INTERNAL_REVIEW_B のグラフ → WORK_A.id が返る。"""
         from bakufu.application.services.internal_review_service._dag_traversal import (
-            _DagTraversal,
+            DagTraversal,
         )
         from bakufu.domain.value_objects import StageKind
 
@@ -63,7 +63,7 @@ class TestFindPrevWorkStageId:
 
         task = make_in_progress_task(room_id=room_id)
 
-        result = await _DagTraversal.find_prev_work_stage_id(
+        result = await DagTraversal.find_prev_work_stage_id(
             task,
             internal_review_stage_id,
             mock_workflow_repo,
@@ -79,7 +79,7 @@ class TestFindPrevWorkStageId:
         WORK kind の前段（WORK_A or WORK_C のいずれか）が返ることを確認。
         """
         from bakufu.application.services.internal_review_service._dag_traversal import (
-            _DagTraversal,
+            DagTraversal,
         )
         from bakufu.domain.value_objects import StageKind
 
@@ -107,7 +107,7 @@ class TestFindPrevWorkStageId:
 
         task = make_in_progress_task()
 
-        result = await _DagTraversal.find_prev_work_stage_id(
+        result = await DagTraversal.find_prev_work_stage_id(
             task,
             internal_review_id,
             mock_workflow_repo,
@@ -131,7 +131,7 @@ class TestFindPrevWorkStageIdNoWorkStage:
             IllegalWorkflowStructureError,
         )
         from bakufu.application.services.internal_review_service._dag_traversal import (
-            _DagTraversal,
+            DagTraversal,
         )
         from bakufu.domain.value_objects import StageKind
 
@@ -156,7 +156,7 @@ class TestFindPrevWorkStageIdNoWorkStage:
         task = make_in_progress_task()
 
         with pytest.raises(IllegalWorkflowStructureError) as exc_info:
-            await _DagTraversal.find_prev_work_stage_id(
+            await DagTraversal.find_prev_work_stage_id(
                 task,
                 internal_review_stage_id,
                 mock_workflow_repo,
@@ -172,7 +172,7 @@ class TestFindPrevWorkStageIdNoWorkStage:
             IllegalWorkflowStructureError,
         )
         from bakufu.application.services.internal_review_service._dag_traversal import (
-            _DagTraversal,
+            DagTraversal,
         )
         from bakufu.domain.value_objects import StageKind
 
@@ -207,7 +207,7 @@ class TestFindPrevWorkStageIdNoWorkStage:
         task = make_in_progress_task()
 
         with pytest.raises(IllegalWorkflowStructureError):
-            await _DagTraversal.find_prev_work_stage_id(
+            await DagTraversal.find_prev_work_stage_id(
                 task,
                 internal_review_stage_id,
                 mock_workflow_repo,

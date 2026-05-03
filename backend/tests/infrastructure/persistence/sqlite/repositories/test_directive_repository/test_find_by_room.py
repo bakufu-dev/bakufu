@@ -23,7 +23,7 @@ from bakufu.infrastructure.persistence.sqlite.repositories.directive_repository 
 from sqlalchemy import event
 
 from tests.factories.directive import make_directive
-from tests.infrastructure.persistence.sqlite.repositories.test_directive_repository.conftest import (  # noqa: E501
+from tests.infrastructure.persistence.sqlite.repositories.test_directive_repository.conftest import (
     seed_room,
 )
 

@@ -30,12 +30,8 @@ test.describe("TC-E2E-CD-008: Directive 投入 (P0)", () => {
     await page.locator("#directive-text").fill(directiveText);
 
     // 送信前に Task 数を記録
-    const tasksBefore = await page.request.get(
-      `${API_BASE}/api/rooms/${ROOM_ID}/tasks`,
-    );
-    const taskCountBefore = (
-      (await tasksBefore.json()) as { total: number }
-    ).total;
+    const tasksBefore = await page.request.get(`${API_BASE}/api/rooms/${ROOM_ID}/tasks`);
+    const taskCountBefore = ((await tasksBefore.json()) as { total: number }).total;
 
     // Directive を投入する ボタンをクリック
     await page.getByRole("button", { name: "Directive を投入する" }).click();
@@ -48,12 +44,8 @@ test.describe("TC-E2E-CD-008: Directive 投入 (P0)", () => {
     await expect(page.getByRole("heading", { name: "Task 一覧" })).toBeVisible();
 
     // API で Task 数が増えているか確認
-    const tasksAfter = await page.request.get(
-      `${API_BASE}/api/rooms/${ROOM_ID}/tasks`,
-    );
-    const taskCountAfter = (
-      (await tasksAfter.json()) as { total: number }
-    ).total;
+    const tasksAfter = await page.request.get(`${API_BASE}/api/rooms/${ROOM_ID}/tasks`);
+    const taskCountAfter = ((await tasksAfter.json()) as { total: number }).total;
 
     expect(taskCountAfter).toBeGreaterThan(taskCountBefore);
   });

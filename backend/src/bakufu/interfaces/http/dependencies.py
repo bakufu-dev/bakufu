@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import HTTPConnection
+
+if TYPE_CHECKING:
+    from bakufu.infrastructure.worker.stage_worker import StageWorker
 
 from bakufu.application.ports.agent_repository import AgentRepository
 from bakufu.application.ports.directive_repository import DirectiveRepository
@@ -27,6 +30,9 @@ from bakufu.application.services.directive_service import DirectiveService
 from bakufu.application.services.empire_service import EmpireService
 from bakufu.application.services.external_review_gate_service import (
     ExternalReviewGateService,
+)
+from bakufu.application.services.internal_review_gate_query_service import (
+    InternalReviewGateQueryService,
 )
 from bakufu.application.services.role_profile_service import RoleProfileService
 from bakufu.application.services.room_matching_service import RoomMatchingService
@@ -49,6 +55,7 @@ __all__ = [
     "EventBusPort",
     "ExternalReviewGateRepository",
     "GateServiceDep",
+    "InternalReviewGateQueryServiceDep",
     "RoleProfileService",
     "RoomMatchingService",
     "RoomRepository",
@@ -334,6 +341,15 @@ async def get_external_review_gate_service(
     from bakufu.infrastructure.persistence.sqlite.repositories.external_review_gate_repository import (  # noqa: E501
         SqliteExternalReviewGateRepository,
     )
+    from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
+        SqliteRoomRepository,
+    )
+    from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
+        SqliteTaskRepository,
+    )
+    from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
+        SqliteWorkflowRepository,
+    )
 
     repo = SqliteExternalReviewGateRepository(session)
     template_repo = SqliteDeliverableTemplateRepository(session)
@@ -341,13 +357,43 @@ async def get_external_review_gate_service(
         repo=repo,
         template_repo=template_repo,
         event_bus=get_event_bus(request),
+        task_repo=SqliteTaskRepository(session),
+        room_repo=SqliteRoomRepository(session),
+        workflow_repo=SqliteWorkflowRepository(session),
     )
 
 
 GateServiceDep = Annotated[ExternalReviewGateService, Depends(get_external_review_gate_service)]
 
 
-def get_stage_worker(request: Request):
+def get_internal_review_gate_query_service(
+    session: SessionDep,
+) -> InternalReviewGateQueryService:
+    """InternalReviewGateQueryService を生成する DI ファクトリ。
+
+    SqliteInternalReviewGateRepository / SqliteTaskRepository を session 経由で
+    構築し、application 層サービスへ注入する。
+    """
+    from bakufu.infrastructure.persistence.sqlite.repositories.internal_review_gate_repository import (  # noqa: E501
+        SqliteInternalReviewGateRepository,
+    )
+    from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
+        SqliteTaskRepository,
+    )
+
+    return InternalReviewGateQueryService(
+        gate_repo=SqliteInternalReviewGateRepository(session),
+        task_repo=SqliteTaskRepository(session),
+    )
+
+
+InternalReviewGateQueryServiceDep = Annotated[
+    InternalReviewGateQueryService,
+    Depends(get_internal_review_gate_query_service),
+]
+
+
+def get_stage_worker(request: Request) -> StageWorker:
     """StageWorker を app.state から取得する DI ファクトリ。
 
     lifespan (production) または acceptance_ctx (test) で設定された
@@ -355,7 +401,7 @@ def get_stage_worker(request: Request):
     """
     from bakufu.infrastructure.exceptions import BakufuConfigError
 
-    worker = getattr(request.app.state, "stage_worker", None)
+    worker: StageWorker | None = getattr(request.app.state, "stage_worker", None)
     if worker is None:
         raise BakufuConfigError(
             msg_id="MSG-SW-001",
@@ -364,7 +410,7 @@ def get_stage_worker(request: Request):
     return worker
 
 
-StageWorkerDep = Annotated[object, Depends(get_stage_worker)]
+StageWorkerDep = Annotated["StageWorker", Depends(get_stage_worker)]
 
 
 async def get_deliverable_template_service(session: SessionDep) -> DeliverableTemplateService:

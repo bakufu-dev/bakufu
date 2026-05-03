@@ -70,10 +70,13 @@ def _make_mock_session() -> MagicMock:
 
     ``MagicMock().begin.return_value`` に ``__aenter__`` / ``__aexit__`` を設定して
     非同期コンテキストマネージャとして動作させる（test_deliverable_template_service.py 踏襲）。
+    ``execute`` は SqliteExternalReviewGateRepository.save() 等の delete-then-insert
+    パスで await されるため AsyncMock を設定する（TC-UT-ME-301）。
     """
     mock_session = MagicMock()
     mock_session.begin.return_value.__aenter__ = AsyncMock(return_value=None)
     mock_session.begin.return_value.__aexit__ = AsyncMock(return_value=False)
+    mock_session.execute = AsyncMock()
     return mock_session
 
 

@@ -29,7 +29,7 @@ from tests.factories.external_review_gate import (
     make_gate,
     make_rejected_gate,
 )
-from tests.infrastructure.persistence.sqlite.repositories.test_external_review_gate_repository.conftest import (  # noqa: E501
+from tests.infrastructure.persistence.sqlite.repositories.test_external_review_gate_repository.conftest import (
     seed_gate_context,
 )
 

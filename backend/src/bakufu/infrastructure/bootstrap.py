@@ -301,7 +301,7 @@ class Bootstrap:
             role_profile_repo_factory=SqliteRoleProfileRepository,
         )
         try:
-            upserted = await seeder._seed_global_templates(self._session_factory)
+            upserted = await seeder.seed_global_templates(self._session_factory)
         except Exception as exc:
             logger.error(
                 "[FAIL] Bootstrap stage 3b/8: template-library seed failed: %s: %s",

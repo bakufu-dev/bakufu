@@ -230,6 +230,7 @@ class TestSCMvp002RejectionRoundtrip:
         # Gate 保存と Task 更新は別セッション（Phase 2）のため、
         # Task が Stage 3 以降に遷移するまでポーリングして待機する（受入基準 #17）。
         import asyncio
+
         deadline = asyncio.get_event_loop().time() + 10.0
         task_data: dict = {}
         while asyncio.get_event_loop().time() < deadline:

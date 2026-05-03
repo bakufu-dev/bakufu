@@ -99,7 +99,7 @@ class StageWorkerBootstrap:
             from bakufu.infrastructure.llm.config import LLMCliConfig
             from bakufu.infrastructure.llm.factory import llm_provider_factory
 
-            cli_config = LLMCliConfig()
+            cli_config = LLMCliConfig.load()
             self._llm_provider = llm_provider_factory(
                 cli_config,
                 session_factory=self._session_factory,

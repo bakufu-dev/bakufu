@@ -279,7 +279,7 @@ class TestUpdateArchivedEmpire:
 # TC-IT-EM-HTTP-008: DELETE /api/empires/{id} → 204 + archived=true
 # ---------------------------------------------------------------------------
 class TestDeleteEmpire:
-    """TC-IT-EM-HTTP-008: DELETE /api/empires/{id} → 204 + GET で archived=true (REQ-EM-HTTP-005)。"""  # noqa: E501
+    """TC-IT-EM-HTTP-008: DELETE /api/empires/{id} → 204 + GET で archived=true (REQ-EM-HTTP-005)。"""
 
     async def test_delete_returns_204(self, empire_app_client: AsyncClient) -> None:
         body = await _create_empire(empire_app_client)

@@ -5,7 +5,7 @@ Application 層サービス。Repository Protocol のみに依存し、インフ
 独立する（Clean Architecture 依存規則）。UoW 境界（async with session.begin():）は
 自クラスが管理する。
 
-_seed_global_templates は Bootstrap._stage_3b_seed_template_library() からのみ呼ぶ
+seed_global_templates は Bootstrap._stage_3b_seed_template_library() からのみ呼ぶ
 （§確定 H）。seed_role_profiles_for_empire は HTTP API / CLI からも呼べる。
 
 設計書: docs/features/deliverable-template/template-library/detailed-design.md
@@ -65,7 +65,7 @@ class TemplateLibrarySeeder:
         self._template_repo_factory = template_repo_factory
         self._role_profile_repo_factory = role_profile_repo_factory
 
-    async def _seed_global_templates(
+    async def seed_global_templates(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> int:

@@ -74,7 +74,7 @@ async def acceptance_ctx(tmp_path: Path) -> AsyncIterator[AcceptanceCtx]:
     """受入テスト用 client + session_factory + StageWorker + fake LLM。"""
     from bakufu.application.services.internal_review_service import InternalReviewService
     from bakufu.infrastructure.event_bus import InMemoryEventBus
-    from bakufu.infrastructure.persistence.sqlite.repositories.internal_review_gate_repository import (  # noqa: E501
+    from bakufu.infrastructure.persistence.sqlite.repositories.internal_review_gate_repository import (
         SqliteInternalReviewGateRepository,
     )
     from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (

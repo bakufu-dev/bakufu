@@ -1,4 +1,4 @@
-"""_LLMErrorHandler — LLM エラー分類・リトライ・Task.block() 帰着（§確定 H）。
+"""LLMErrorHandler — LLM エラー分類・リトライ・Task.block() 帰着（§確定 H）。
 
 dispatch_stage から呼ばれる内部ヘルパー。Task を BLOCKED に遷移させる唯一の
 経路を集約し、LLM エラーの 5 分類戦略と RateLimited backoff リトライを提供する。
@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from bakufu.domain.task.task import Task
+    from bakufu.domain.value_objects.chat_result import ChatResult
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +39,11 @@ logger = logging.getLogger(__name__)
 _RATE_LIMIT_BACKOFFS: tuple[int, ...] = (60, 300, 900)
 
 
-class _LLMErrorHandler:
+class LLMErrorHandler:
     """LLM エラー分類・リトライ・Task.block() 帰着を担う内部ヘルパー（§確定 H）。
 
-    _StageDispatcher から合成（composition）され、Task を BLOCKED に遷移させる
-    唯一の経路となる。本クラスは _StageDispatcher からのみ使用される（公開 API 不可）。
+    StageDispatcher から合成（composition）され、Task を BLOCKED に遷移させる
+    唯一の経路となる。本クラスは StageDispatcher からのみ使用される（公開 API 不可）。
 
     **責務**:
     - ``handle_llm_error``: LLMProviderError を 5 分類し即 BLOCK に帰着（REQ-ME-004）。
@@ -85,7 +86,7 @@ class _LLMErrorHandler:
         messages: list[dict[str, str]],
         system_prompt: str,
         agent_name: str,
-    ) -> object | None:
+    ) -> ChatResult | None:
         """RateLimited: backoff 3 回リトライ（§確定 E）。
 
         成功した場合は ChatResult を返す。3 回全て失敗した場合は Task.block() を呼び出し
@@ -132,7 +133,7 @@ class _LLMErrorHandler:
     ) -> None:
         """Task を BLOCKED に遷移させ保存・イベント発行する。
 
-        _StageDispatcher からも直接呼ばれる（LLM 以外のブロック要因にも対応）。
+        StageDispatcher からも直接呼ばれる（LLM 以外のブロック要因にも対応）。
         error_summary は masking.mask() 適用済みであること（セキュリティ設計 T1）。
         """
         now = self._now()

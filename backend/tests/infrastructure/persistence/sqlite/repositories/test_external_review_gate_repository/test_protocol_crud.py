@@ -358,7 +358,7 @@ class TestLifecycle:
     ) -> None:
         """TC-IT-ERGR-LIFECYCLE: save → find_pending → find_by_task_id → find_by_id
         → count_by_decision → approve → 再 save → カウント更新の検証。"""
-        from tests.infrastructure.persistence.sqlite.repositories.test_external_review_gate_repository.conftest import (  # noqa: E501
+        from tests.infrastructure.persistence.sqlite.repositories.test_external_review_gate_repository.conftest import (
             seed_gate_context,
         )
 
