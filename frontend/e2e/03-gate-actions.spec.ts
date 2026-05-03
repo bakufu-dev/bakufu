@@ -4,7 +4,14 @@
  * TC-E2E-CD-007: 二重送信防止（受入基準 #10）
  */
 import { expect, test } from "@playwright/test";
-import { API_BASE, GATE_APPROVE_ID, GATE_REJECT_ID, GATE_REVIEW_ID, TASK_APPROVE_ID, TASK_REJECT_ID } from "./helpers";
+import {
+  API_BASE,
+  GATE_APPROVE_ID,
+  GATE_REJECT_ID,
+  GATE_REVIEW_ID,
+  TASK_APPROVE_ID,
+  TASK_REJECT_ID,
+} from "./helpers";
 
 test.describe("TC-E2E-CD-005: Gate 承認 (P0)", () => {
   test("Gate 詳細画面で承認すると decision が APPROVED になりページが遷移する", async ({
@@ -94,9 +101,7 @@ test.describe("TC-E2E-CD-006: Gate 差し戻し (P0)", () => {
 });
 
 test.describe("TC-E2E-CD-007: 二重送信防止", () => {
-  test("承認ボタンクリック後は isSubmitting=true でボタンが disabled になる", async ({
-    page,
-  }) => {
+  test("承認ボタンクリック後は isSubmitting=true でボタンが disabled になる", async ({ page }) => {
     // GATE_REVIEW_ID は PENDING のまま (005, 006 では approve/reject に使っていない)
     // navigate(-1) が機能するよう Task 詳細 → Gate リンク経由でナビゲート
     await page.goto(`/tasks/${TASK_APPROVE_ID}`);
@@ -111,7 +116,7 @@ test.describe("TC-E2E-CD-007: 二重送信防止", () => {
 
     // Actually TASK_APPROVE_ID was already used by TC-E2E-CD-005 — its gate is APPROVED.
     // Navigate to TASK_REVIEW_ID (task ...000054) which has GATE_REVIEW_ID (PENDING)
-    await page.goto(`/tasks/e2e00000-0000-0000-0000-000000000054`);
+    await page.goto("/tasks/e2e00000-0000-0000-0000-000000000054");
     await page.waitForLoadState("networkidle");
 
     // ローカル API は高速すぎて isPending=true の瞬間を捕捉できないため、

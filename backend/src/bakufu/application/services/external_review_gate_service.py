@@ -17,6 +17,9 @@ from bakufu.application.ports.event_bus import EventBusPort
 from bakufu.application.ports.external_review_gate_repository import (
     ExternalReviewGateRepository,
 )
+from bakufu.application.ports.room_repository import RoomRepository
+from bakufu.application.ports.task_repository import TaskRepository
+from bakufu.application.ports.workflow_repository import WorkflowRepository
 from bakufu.application.security import masking
 from bakufu.domain.events import ExternalReviewGateStateChangedEvent
 from bakufu.domain.exceptions import ExternalReviewGateInvariantViolation
@@ -29,6 +32,8 @@ from bakufu.domain.value_objects import (
     OwnerId,
     StageId,
     TaskId,
+    TaskStatus,
+    TransitionCondition,
 )
 
 
@@ -51,10 +56,18 @@ class ExternalReviewGateService:
         repo: ExternalReviewGateRepository,
         template_repo: DeliverableTemplateRepository,
         event_bus: EventBusPort,
+        task_repo: TaskRepository | None = None,
+        room_repo: RoomRepository | None = None,
+        workflow_repo: WorkflowRepository | None = None,
     ) -> None:
         self._repo = repo
         self._template_repo = template_repo
         self._event_bus = event_bus
+        # 後処理 (apply_post_approve_task_state_update) で利用する。HTTP 経路以外の
+        # 呼び出し元は Task 側状態遷移を行わないため Optional として注入する。
+        self._task_repo = task_repo
+        self._room_repo = room_repo
+        self._workflow_repo = workflow_repo
 
     async def create(
         self,
@@ -236,6 +249,66 @@ class ExternalReviewGateService:
                     current_decision=gate.decision,
                 ) from exc
             raise
+
+    async def apply_post_approve_task_state_update(
+        self,
+        gate: ExternalReviewGate,
+        reviewer_owner_id: OwnerId,
+        now: datetime,
+    ) -> None:
+        """Gate 承認後の Task 状態遷移を適用する（§暫定実装）。
+
+        Outbox Dispatcher 未実装のため、approve_gate router からの直接呼び出しで
+        Task の AWAITING_EXTERNAL_REVIEW → IN_PROGRESS → (DONE | 次 Stage) 遷移を
+        担う。Workflow の Transition を辿って次 Stage を決定する。
+
+        この処理に必要な ``task_repo`` / ``room_repo`` / ``workflow_repo`` が未注入
+        の場合は何もしない（HTTP 経路以外からは Task 側遷移は行わない設計）。
+        """
+        if self._task_repo is None or self._room_repo is None or self._workflow_repo is None:
+            return
+        task = await self._task_repo.find_by_id(gate.task_id)
+        if task is None or task.status != TaskStatus.AWAITING_EXTERNAL_REVIEW:
+            return
+
+        next_stage_id: StageId | None = None
+        room = await self._room_repo.find_by_id(task.room_id)
+        if room is not None and room.workflow_id is not None:
+            workflow = await self._workflow_repo.find_by_id(room.workflow_id)
+            if workflow is not None:
+                for transition in workflow.transitions:
+                    if (
+                        transition.from_stage_id == gate.stage_id
+                        and transition.condition == TransitionCondition.APPROVED
+                    ):
+                        next_stage_id = transition.to_stage_id
+                        break
+
+        if next_stage_id is None:
+            # 次 Stage なし → AWAITING_EXTERNAL_REVIEW → IN_PROGRESS → DONE
+            # gate.stage_id（EXTERNAL_REVIEW Stage）を current_stage_id として保持し、
+            # Task が最後に完了した Stage を記録する（§確定 K）。
+            in_progress_task = task.approve_review(
+                transition_id=uuid4(),
+                by_owner_id=reviewer_owner_id,
+                next_stage_id=gate.stage_id,
+                updated_at=now,
+            )
+            completed_task = in_progress_task.complete(
+                transition_id=uuid4(),
+                by_owner_id=reviewer_owner_id,
+                updated_at=now,
+            )
+            await self._task_repo.save(completed_task)
+        else:
+            # 次 Stage あり → Task を IN_PROGRESS に（StageWorker が別途処理）
+            advanced_task = task.approve_review(
+                transition_id=uuid4(),
+                by_owner_id=reviewer_owner_id,
+                next_stage_id=next_stage_id,
+                updated_at=now,
+            )
+            await self._task_repo.save(advanced_task)
 
     async def save(self, gate: ExternalReviewGate) -> None:
         """Gate を永続化する。

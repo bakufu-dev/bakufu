@@ -66,7 +66,7 @@ async def _seed_gate_with_deps(
     from bakufu.infrastructure.persistence.sqlite.repositories.empire_repository import (
         SqliteEmpireRepository,
     )
-    from bakufu.infrastructure.persistence.sqlite.repositories.external_review_gate_repository import (  # noqa: E501
+    from bakufu.infrastructure.persistence.sqlite.repositories.external_review_gate_repository import (
         SqliteExternalReviewGateRepository,
     )
     from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (

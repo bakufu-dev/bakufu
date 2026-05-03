@@ -1,8 +1,8 @@
-"""_StageDispatcher — StageKind ルーティングと実行ロジック（§確定 A〜C / §確定 F）。
+"""StageDispatcher — StageKind ルーティングと実行ロジック（§確定 A〜C / §確定 F）。
 
 WORK / INTERNAL_REVIEW / EXTERNAL_REVIEW の 3 分岐を担い、UoW を読み取りフェーズと
 書き込みフェーズに分離する（LLM 呼び出しはトランザクション外）。
-LLM エラー処理は _LLMErrorHandler に委譲する（SRP）。
+LLM エラー処理は LLMErrorHandler に委譲する（SRP）。
 
 設計書:
   docs/features/stage-executor/application/basic-design.md REQ-ME-001〜003 / REQ-ME-005
@@ -27,7 +27,7 @@ from bakufu.application.ports.room_repository import RoomRepository
 from bakufu.application.ports.task_repository import TaskRepository
 from bakufu.application.ports.workflow_repository import WorkflowRepository
 from bakufu.application.services.stage_executor_service._error_handler import (
-    _LLMErrorHandler,
+    LLMErrorHandler,
 )
 from bakufu.domain.events import TaskStateChangedEvent
 from bakufu.domain.exceptions.llm_provider import (
@@ -61,11 +61,11 @@ logger = logging.getLogger(__name__)
 _PRIMARY_AGENT_INDEX: int = 0
 
 
-class _StageDispatcher:
+class StageDispatcher:
     """StageKind ルーティングと実行ロジック（§確定 A〜C）。
 
     StageExecutorService から合成（composition）される内部クラス。
-    LLM エラー処理は _LLMErrorHandler に委譲する（SRP 遵守）。
+    LLM エラー処理は LLMErrorHandler に委譲する（SRP 遵守）。
 
     **Fail Fast（§確定 F）**:
     - dispatch_stage() 呼び出し時点で Task.status = IN_PROGRESS でなければ ValueError。
@@ -84,7 +84,7 @@ class _StageDispatcher:
         internal_review_port: InternalReviewGateExecutorPort,
         event_bus: EventBusPort,
         enqueue_fn: Callable[[TaskId, StageId], None],
-        error_handler: _LLMErrorHandler,
+        error_handler: LLMErrorHandler,
     ) -> None:
         self._task_repo = task_repo
         self._workflow_repo = workflow_repo
@@ -133,6 +133,9 @@ class _StageDispatcher:
             )
             logger.error("%s", msg)
             raise ValueError(msg)
+
+        # _load_context は stage が非 None なら workflow も必ず非 None で返す不変条件を持つ。
+        assert workflow is not None
 
         # StageKind 分岐（§確定 A〜E）
         if stage.kind == StageKind.WORK:
@@ -200,7 +203,7 @@ class _StageDispatcher:
         """WORK Stage の LLM 実行→deliverable コミット→次 Stage 進行（REQ-ME-001）。
 
         LLM 呼び出しはトランザクション外で実行し、書き込み時に短いトランザクションを開く。
-        エラー時は _LLMErrorHandler に委譲（REQ-ME-004）。
+        エラー時は LLMErrorHandler に委譲（REQ-ME-004）。
         """
         if agent is None:
             logger.error(

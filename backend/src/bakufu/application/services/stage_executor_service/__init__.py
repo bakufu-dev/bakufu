@@ -6,8 +6,8 @@ WORK / INTERNAL_REVIEW / EXTERNAL_REVIEW の 3 分岐を担い、LLMProviderErro
 DB トランザクション外で実行する。
 
 **パッケージ内部構成**:
-- ``_error_handler``: _LLMErrorHandler — LLM エラー 5 分類・リトライ・BLOCK 帰着
-- ``_dispatcher``: _StageDispatcher — StageKind ルーティングと実行ロジック
+- ``_error_handler``: LLMErrorHandler — LLM エラー 5 分類・リトライ・BLOCK 帰着
+- ``_dispatcher``: StageDispatcher — StageKind ルーティングと実行ロジック
 - ``__init__``: StageExecutorService — 公開 API シェル（合成で委譲）
 
 設計書:
@@ -30,10 +30,10 @@ from bakufu.application.ports.room_repository import RoomRepository
 from bakufu.application.ports.task_repository import TaskRepository
 from bakufu.application.ports.workflow_repository import WorkflowRepository
 from bakufu.application.services.stage_executor_service._dispatcher import (
-    _StageDispatcher,
+    StageDispatcher,
 )
 from bakufu.application.services.stage_executor_service._error_handler import (
-    _LLMErrorHandler,
+    LLMErrorHandler,
 )
 from bakufu.domain.value_objects import StageId, TaskId
 
@@ -73,13 +73,13 @@ class StageExecutorService:
         event_bus: EventBusPort,
         enqueue_fn: EnqueueFn,
     ) -> None:
-        error_handler = _LLMErrorHandler(
+        error_handler = LLMErrorHandler(
             task_repo=task_repo,
             session=session,
             llm_provider=llm_provider,
             event_bus=event_bus,
         )
-        self._dispatcher = _StageDispatcher(
+        self._dispatcher = StageDispatcher(
             task_repo=task_repo,
             workflow_repo=workflow_repo,
             agent_repo=agent_repo,

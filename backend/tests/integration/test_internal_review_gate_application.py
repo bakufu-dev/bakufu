@@ -171,7 +171,7 @@ def _make_review_service(
     """InternalReviewService を InMemoryEventBus で構築する。"""
     from bakufu.application.services.internal_review_service import InternalReviewService
     from bakufu.infrastructure.event_bus import InMemoryEventBus
-    from bakufu.infrastructure.persistence.sqlite.repositories.internal_review_gate_repository import (  # noqa: E501
+    from bakufu.infrastructure.persistence.sqlite.repositories.internal_review_gate_repository import (
         SqliteInternalReviewGateRepository,
     )
     from bakufu.infrastructure.persistence.sqlite.repositories.room_repository import (
@@ -225,7 +225,7 @@ async def _read_gate_pending(
     注意: §確定E により gate_decision='PENDING' の Gate のみを返す。
     決定済み（ALL_APPROVED / REJECTED）Gate は _read_gate_decided() を使うこと。
     """
-    from bakufu.infrastructure.persistence.sqlite.repositories.internal_review_gate_repository import (  # noqa: E501
+    from bakufu.infrastructure.persistence.sqlite.repositories.internal_review_gate_repository import (
         SqliteInternalReviewGateRepository,
     )
 
@@ -245,7 +245,7 @@ async def _read_gate_decided(
     find_by_task_and_stage は PENDING のみ返す。ALL_APPROVED / REJECTED は
     find_all_by_task_id() で取得し stage_id でフィルタする。
     """
-    from bakufu.infrastructure.persistence.sqlite.repositories.internal_review_gate_repository import (  # noqa: E501
+    from bakufu.infrastructure.persistence.sqlite.repositories.internal_review_gate_repository import (
         SqliteInternalReviewGateRepository,
     )
 

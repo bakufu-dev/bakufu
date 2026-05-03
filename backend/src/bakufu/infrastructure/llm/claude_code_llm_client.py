@@ -289,7 +289,6 @@ class ClaudeCodeLLMClient:
             return
         try:
             import psutil
-            from sqlalchemy.ext.asyncio import AsyncSession  # noqa: F401
 
             from bakufu.infrastructure.persistence.sqlite.tables.pid_registry import (
                 PidRegistryRow,

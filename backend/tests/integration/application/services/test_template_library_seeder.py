@@ -93,7 +93,7 @@ class TestSeedGlobalTemplatesFirstRun:
             SqliteDeliverableTemplateRepository,
             SqliteRoleProfileRepository,
         )
-        await seeder._seed_global_templates(tl_session_factory)
+        await seeder.seed_global_templates(tl_session_factory)
 
         templates = await _find_all_templates(tl_session_factory)
         assert len(templates) == 12
@@ -106,7 +106,7 @@ class TestSeedGlobalTemplatesFirstRun:
             SqliteDeliverableTemplateRepository,
             SqliteRoleProfileRepository,
         )
-        await seeder._seed_global_templates(tl_session_factory)
+        await seeder.seed_global_templates(tl_session_factory)
 
         templates = await _find_all_templates(tl_session_factory)
         db_ids = {t.id for t in templates}
@@ -130,8 +130,8 @@ class TestSeedGlobalTemplatesIdempotency:
             SqliteDeliverableTemplateRepository,
             SqliteRoleProfileRepository,
         )
-        await seeder._seed_global_templates(tl_session_factory)
-        await seeder._seed_global_templates(tl_session_factory)
+        await seeder.seed_global_templates(tl_session_factory)
+        await seeder.seed_global_templates(tl_session_factory)
 
         templates = await _find_all_templates(tl_session_factory)
         assert len(templates) == 12
@@ -153,7 +153,7 @@ class TestSeedGlobalTemplatesContentMatch:
             SqliteDeliverableTemplateRepository,
             SqliteRoleProfileRepository,
         )
-        await seeder._seed_global_templates(tl_session_factory)
+        await seeder.seed_global_templates(tl_session_factory)
 
         for expected in WELL_KNOWN_TEMPLATES:
             async with tl_session_factory() as session:
@@ -304,11 +304,11 @@ class TestBootstrapStage3bOrder:
 
         monkeypatch.setenv("BAKUFU_DATA_DIR", str(tmp_path))
 
-        # TemplateLibrarySeeder._seed_global_templates を AsyncMock でスタブ化
+        # TemplateLibrarySeeder.seed_global_templates を AsyncMock でスタブ化
         # 実際の DB 書き込みは本 TC の関心外
         with patch(
             "bakufu.application.services.template_library.seeder.TemplateLibrarySeeder"
-            "._seed_global_templates",
+            ".seed_global_templates",
             new_callable=AsyncMock,
             return_value=12,
         ):
@@ -387,7 +387,7 @@ class TestSeedGlobalTemplatesRollback:
                 SqliteRoleProfileRepository,
             )
             with pytest.raises(SQLAlchemyError):
-                await seeder._seed_global_templates(tl_session_factory)
+                await seeder.seed_global_templates(tl_session_factory)
 
         # Tx ロールバックにより 1〜6 件目の書き込みも全件消える
         templates = await _find_all_templates(tl_session_factory)
@@ -414,7 +414,7 @@ class TestSeedGlobalTemplatesRollback:
                 SqliteRoleProfileRepository,
             )
             with pytest.raises(SQLAlchemyError):
-                await seeder._seed_global_templates(tl_session_factory)
+                await seeder.seed_global_templates(tl_session_factory)
 
 
 # ---------------------------------------------------------------------------
@@ -435,7 +435,7 @@ class TestSeedGlobalTemplatesOverrideManualEdit:
         )
 
         # (1) 初回 seed
-        await seeder._seed_global_templates(tl_session_factory)
+        await seeder.seed_global_templates(tl_session_factory)
 
         # (2) 最初のテンプレートを手動で書き換え（CEO が直接 DB 編集した想定）
         target = WELL_KNOWN_TEMPLATES[0]
@@ -476,7 +476,7 @@ class TestSeedGlobalTemplatesOverrideManualEdit:
         assert after_edit.schema == "手動改ざんスキーマ"
 
         # (3) 再 seed（アプリ再起動模倣）
-        await seeder._seed_global_templates(tl_session_factory)
+        await seeder.seed_global_templates(tl_session_factory)
 
         # (4) definitions.py 定義に戻っていることを確認（§確定 D）
         async with tl_session_factory() as session:

@@ -9,6 +9,7 @@ from bakufu.domain.value_objects import (
     InternalGateId,
     OwnerId,
     ReviewDecision,
+    TaskId,
 )
 
 
@@ -82,10 +83,28 @@ class UnauthorizedGateRoleError(Exception):
         self.role = str(role)
 
 
+class TaskAuthorizationError(Exception):
+    """owner_id が Task の assigned_agent_ids に含まれない場合（IDOR 防御）。
+
+    Finding 2: ``GET /api/tasks/{task_id}/internal-review-gates`` 等で
+    アクセス制御を application 層に閉じ込めるための専用例外。
+    """
+
+    def __init__(self, task_id: TaskId | str, owner_id: OwnerId | str) -> None:
+        super().__init__(
+            f"[FAIL] Access denied: owner {owner_id} is not an assigned agent of"
+            f" task {task_id}.\n"
+            "Next: Verify the task_id and your Authorization token."
+        )
+        self.task_id = str(task_id)
+        self.owner_id = str(owner_id)
+
+
 __all__ = [
     "GateAlreadyDecidedError",
     "GateAuthorizationError",
     "GateNotFoundError",
     "InternalReviewGateNotFoundError",
+    "TaskAuthorizationError",
     "UnauthorizedGateRoleError",
 ]

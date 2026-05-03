@@ -9,7 +9,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
-from bakufu.interfaces.http.dependencies import SessionDep
+from bakufu.application.exceptions.gate_exceptions import TaskAuthorizationError
+from bakufu.interfaces.http.dependencies import InternalReviewGateQueryServiceDep
 
 _MSG_INVALID_AUTH_HEADER = (
     "[FAIL] Invalid or missing Authorization header.\n"
@@ -70,7 +71,7 @@ class InternalReviewGateResponse(BaseModel):
 )
 async def list_internal_review_gates_by_task(
     task_id: UUID,
-    session: SessionDep,
+    service: InternalReviewGateQueryServiceDep,
     owner_id: _OwnerIdDep,
 ) -> list[InternalReviewGateResponse]:
     """Task に紐づく全 InternalReviewGate を返す。
@@ -81,27 +82,13 @@ async def list_internal_review_gates_by_task(
     Authorization: Bearer <owner-id> ヘッダー必須（Finding 2 対応）。
     owner_id が Task の assigned_agent_ids に含まれない場合は 403 を返す（IDOR 防御）。
     """
-    from bakufu.infrastructure.persistence.sqlite.repositories.internal_review_gate_repository import (  # noqa: E501
-        SqliteInternalReviewGateRepository,
-    )
-    from bakufu.infrastructure.persistence.sqlite.repositories.task_repository import (
-        SqliteTaskRepository,
-    )
-
-    # IDOR 防御: owner_id が task の assigned_agent_ids に含まれるか確認（Finding 2 残存修正）
-    task_repo = SqliteTaskRepository(session)
-    task = await task_repo.find_by_id(task_id)
-    if task is None or owner_id not in task.assigned_agent_ids:
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                "[FAIL] Access denied: owner_id is not an assigned agent of this task.\n"
-                "Next: Verify the task_id and your Authorization token."
-            ),
+    try:
+        gates = await service.find_all_by_task_with_authorization(
+            task_id=task_id,
+            owner_id=owner_id,
         )
-
-    repo = SqliteInternalReviewGateRepository(session)
-    gates = await repo.find_all_by_task_id(task_id)
+    except TaskAuthorizationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
     return [
         InternalReviewGateResponse(

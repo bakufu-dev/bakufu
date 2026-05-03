@@ -31,7 +31,6 @@ from bakufu.domain.workflow import Workflow
 from bakufu.infrastructure.persistence.sqlite.repositories.workflow_repository import (
     SqliteWorkflowRepository,
 )
-from pydantic import ValidationError
 from sqlalchemy import text
 
 from tests.factories.workflow import make_stage, make_transition, make_workflow
@@ -164,45 +163,52 @@ class TestNotifyChannelsJsonMaskedOnDisk:
 
 
 # ---------------------------------------------------------------------------
-# TC-IT-WFR-014: §確定 H §不可逆性 — find_by_id raises after mask
+# TC-IT-WFR-014: §確定 H §不可逆性 — find_by_id returns Workflow with masked target
 # ---------------------------------------------------------------------------
-class TestFindByIdRaisesOnMaskedNotifyChannels:
-    """TC-IT-WFR-014: マスク済み Workflow の ``find_by_id`` は ``ValidationError`` を発生。
+class TestFindByIdReturnsMaskedNotifyChannels:
+    """TC-IT-WFR-014: マスク済み Workflow の ``find_by_id`` はマスク済み URL を返す。
 
-    §確定 H §不可逆性 契約： notify_channels がディスク上でマスクされると、
-    *型付き* Workflow aggregate の回復は不可能。マスク済み URL は
-    ``NotifyChannel`` G7 regex の再検証に失敗するため。
-    このテストはその動作を確定させるため、「ラウンドトリップを救出」
-    しようとする hypothetical PR (例：invalid notify_channels を
-    サイレントにスキップ) は大きく失敗する。
+    §確定 H §不可逆性 契約 (BUG-AT-002 後): notify_channels がディスク上でマスク
+    されると、再構築された Workflow aggregate の ``target`` フィールドは redaction
+    sentinel ``<REDACTED:DISCORD_WEBHOOK>`` を含む。原トークンの回復は不可能。
+
+    G7 regex は redaction sentinel を許容するよう拡張されているため
+    ``NotifyChannel.model_validate`` は成功する。不可逆性の保証は
+    ``workflow_service.update()`` 側の明示的マスク検出 (WorkflowIrreversibleError)
+    に移管された (BUG-AT-002 commit message 参照)。
     """
 
-    async def test_find_by_id_raises_validation_error(
+    async def test_find_by_id_returns_masked_target(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """TC-IT-WFR-014: マスク済み URL での save-then-find_by_id は raise しなければならない。
+        """TC-IT-WFR-014: save 後の find_by_id は masked URL を含む Workflow を返す。
 
-        契約:
+        契約 (BUG-AT-002 後):
 
-        * ``save`` は成功 (gateway は well-formed JSON を生成、
-          token は redact済み)。
-        * ``find_by_id`` は raise （``NotifyChannel.model_validate``
-          はマスク済み URL を reject — G7 regex は token
-          セグメントが ``[A-Za-z0-9_\\-]+`` にマッチを要求し
-          redaction sentinel ``<REDACTED:DISCORD_WEBHOOK>`` は
-          そのセットにない (``<`` / ``>`` / ``:`` は除外))。
-
-        Repository docstring (workflow_repository.py L44-48)
-        は「find_by_id は ``pydantic.ValidationError`` を raise
-        するかもしれない」をコミット；
-        ここで契約を確定させるため、別の exception クラスへのスワップは
-        docs update + design revisit を強制するだろう。
+        * ``save`` は成功 (gateway は well-formed JSON を生成、token は redact済み)。
+        * ``find_by_id`` は成功 — 再構築された Workflow の EXTERNAL_REVIEW Stage の
+          notify_channels[0].target は redaction sentinel を含む。
+        * 原トークンは Workflow aggregate のどこにも現れない (不可逆性の物理保証)。
         """
         workflow = _make_external_review_workflow(target_url=_REAL_SHAPE_WEBHOOK)
         async with session_factory() as session, session.begin():
             await SqliteWorkflowRepository(session).save(workflow)
 
         async with session_factory() as session:
-            with pytest.raises(ValidationError):
-                await SqliteWorkflowRepository(session).find_by_id(workflow.id)
+            reloaded = await SqliteWorkflowRepository(session).find_by_id(workflow.id)
+
+        assert reloaded is not None
+        review_stage = next(
+            (s for s in reloaded.stages if s.kind == StageKind.EXTERNAL_REVIEW),
+            None,
+        )
+        assert review_stage is not None
+        assert len(review_stage.notify_channels) == 1
+        masked_target = review_stage.notify_channels[0].target
+        assert _DISCORD_REDACT_SENTINEL in masked_target, (
+            f"[FAIL] reconstructed target に redaction sentinel が無い: {masked_target!r}"
+        )
+        assert _REAL_SHAPE_TOKEN not in masked_target, (
+            f"[FAIL] 原トークンが reconstructed target に漏洩: {masked_target!r}"
+        )

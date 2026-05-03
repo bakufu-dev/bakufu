@@ -1,4 +1,4 @@
-"""_DagTraversal — Workflow DAG traversal ヘルパ（内部モジュール）。
+"""DagTraversal — Workflow DAG traversal ヘルパ（内部モジュール）。
 
 InternalReviewService から委譲を受け、DAG 逆引き・次 Stage 探索を担う。
 application 層のポートのみに依存し、infrastructure 具象クラスを import しない。
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class _DagTraversal:
+class DagTraversal:
     """Workflow DAG traversal ヘルパ（InternalReviewService 内部クラス）。
 
     _find_next_stage / _find_prev_work_stage_id を InternalReviewService から
@@ -44,7 +44,7 @@ class _DagTraversal:
             transition_id は ``advance_to_next()`` 監査引数に渡す正当な Transition ID。
         """
         room = await room_repo.find_by_id(task.room_id)
-        if room is None:
+        if room is None or room.workflow_id is None:
             return None, None, None
         workflow = await workflow_repo.find_by_id(room.workflow_id)
         if workflow is None:
@@ -85,6 +85,12 @@ class _DagTraversal:
                 task_id=str(task.id),
                 stage_id=str(stage_id),
                 reason="Room が見つかりません",
+            )
+        if room.workflow_id is None:
+            raise IllegalWorkflowStructureError(
+                task_id=str(task.id),
+                stage_id=str(stage_id),
+                reason="Room.workflow_id が未設定です",
             )
         workflow = await workflow_repo.find_by_id(room.workflow_id)
         if workflow is None:

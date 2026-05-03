@@ -26,7 +26,7 @@ from bakufu.application.exceptions.task_exceptions import (
     TaskNotFoundError,
 )
 from bakufu.application.ports.event_bus import EventBusPort
-from bakufu.application.services.internal_review_service._dag_traversal import _DagTraversal
+from bakufu.application.services.internal_review_service._dag_traversal import DagTraversal
 from bakufu.domain.events import TaskStateChangedEvent
 from bakufu.domain.internal_review_gate.internal_review_gate import InternalReviewGate
 from bakufu.domain.value_objects import (
@@ -233,7 +233,7 @@ class InternalReviewService:
                 )
                 return
 
-            transition_id, next_stage_id, next_stage_kind = await _DagTraversal.find_next_stage(
+            transition_id, next_stage_id, next_stage_kind = await DagTraversal.find_next_stage(
                 task, stage_id, workflow_repo, room_repo
             )
 
@@ -342,7 +342,7 @@ class InternalReviewService:
                 )
                 return
 
-            prev_stage_id = await _DagTraversal.find_prev_work_stage_id(
+            prev_stage_id = await DagTraversal.find_prev_work_stage_id(
                 task, stage_id, workflow_repo, room_repo
             )
 
