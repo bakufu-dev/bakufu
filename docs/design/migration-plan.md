@@ -23,7 +23,17 @@
 | 起票時に確定すべき事項 | (a) (i) / (ii) のどちらを採用するか / (b) `workflow_transitions.from_stage_id` / `to_stage_id` も同方針か（同様に循環参照回避で MVP は FK なし、移行時に再議論） / (c) Alembic chain で SQLite → Postgres の portability をどう担保するか（dialect 依存の DDL 分岐） |
 | 担当 PR（予定） | M5+ 起票予定。本ファイルが受け皿として存在することで、ユーザーが「設計書のどこに書かれていたか」を逆引きする経路を保証する |
 
-### TODO-MIG-002〜（後続 PR で追記）
+### TODO-MIG-002: room-repository §確定 R1-M — `rooms.workflow_id` NULLABLE 化の PostgreSQL 対応
+
+| 項目 | 内容 |
+|---|---|
+| 流入元 | [`docs/features/room/repository/detailed-design.md`](../features/room/repository/detailed-design.md) §確定 R1-M |
+| 凍結内容 | Issue #183 Fix として SQLite 上で Alembic `0006_fix_room_workflow_id_nullable` を発行し `rooms.workflow_id` を NULLABLE に変更。`batch_alter_table(recreate='always')` で SQLite の ALTER TABLE 制約を回避（[SQLite ALTER TABLE](https://www.sqlite.org/lang_altertable.html)）|
+| Postgres 移行時の選択肢 | **(i) `ALTER TABLE rooms ALTER COLUMN workflow_id DROP NOT NULL`**（Postgres standard、DDL は即時実行、行ロックなし）/ **(ii) 移行先 DB を最初から `nullable=True` で構築**（データ移行 + 新規 DB の場合）|
+| 起票時に確定すべき事項 | (a) 既存 SQLite データを Postgres に移行する場合の NULL 行の取り扱い（NULL の Room は Workflow なし = Directive 投入不可として保持するか、移行前に整理するか） / (b) `workflow_id` nullable を前提にした `NOT NULL` 逆戻しの是非（将来 Workflow 必須化ポリシーに変更する際の移行コスト）|
+| 担当 PR（予定） | M5+ Postgres 移行 PR（本 TODO が存在することで逆引き可能）|
+
+### TODO-MIG-003〜（後続 PR で追記）
 
 各 Repository feature / domain feature で「Postgres / 他 DB 移行時に再議論する」内容が出た場合、本リストに追記する責務を持つ。フォーマットは TODO-MIG-001 を写経する。
 

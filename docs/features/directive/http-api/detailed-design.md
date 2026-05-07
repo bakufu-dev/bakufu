@@ -62,11 +62,13 @@
 ```
 DirectiveService.issue() 内の例外発生元 → HTTP ステータス対応表
 
-RoomNotFoundError          → 404 not_found      （既存 room ハンドラ再利用）
-RoomArchivedError          → 409 conflict        （既存 room ハンドラ再利用）
-DirectiveInvariantViolation → 422 validation_error（本 PR で error_handlers.py に追記）
-TaskInvariantViolation      → 422 validation_error（task http-api 側で error_handlers.py に追記）
-ValidationError (Pydantic)  → 422 validation_error（既存 http-api-foundation ハンドラ再利用）
+RoomNotFoundError               → 404 not_found      （既存 room ハンドラ再利用）
+RoomArchivedError               → 409 conflict        （既存 room ハンドラ再利用）
+RoomWorkflowNotAssignedError    → 422 validation_error（既存 room ハンドラ再利用、MSG-RM-HTTP-008）
+WorkflowNotFoundError           → 404 not_found      （既存 room ハンドラ再利用）
+DirectiveInvariantViolation     → 422 validation_error（本 PR で error_handlers.py に追記）
+TaskInvariantViolation          → 422 validation_error（task http-api 側で error_handlers.py に追記）
+ValidationError (Pydantic)      → 422 validation_error（既存 http-api-foundation ハンドラ再利用）
 ```
 
 ## DI ファクトリ
@@ -85,13 +87,16 @@ ValidationError (Pydantic)  → 422 validation_error（既存 http-api-foundatio
 |-------|---------|---------|------|
 | 1 | Room 存在確認（`room_repo.find_by_id` → None）| `RoomNotFoundError` | 404 |
 | 2 | Room archived 確認（`room.archived == True`）| `RoomArchivedError` | 409 |
-| 3 | Workflow 存在確認（`workflow_repo.find_by_id(room.workflow_id)` → None）| `WorkflowNotFoundError` | 404 |
-| 4 | `$` プレフィックス正規化（R1-A） | — （例外なし、補完するのみ）| — |
-| 5 | `Directive(...)` 構築・不変条件検査 | `DirectiveInvariantViolation` | 422 |
-| 6 | `Task(...)` 構築・不変条件検査 | `TaskInvariantViolation` | 422 |
-| 7 | `async with session.begin()` UoW | DB 例外 → 自動ロールバック | 500 |
+| 3 | **Workflow 未設定確認（`room.workflow_id is None`）**（**業務ルール R1-12 server-side 強制、OWASP A01 対応**）| `RoomWorkflowNotAssignedError` | 422 |
+| 4 | Workflow 存在確認（`workflow_repo.find_by_id(room.workflow_id)` → None）| `WorkflowNotFoundError` | 404 |
+| 5 | `$` プレフィックス正規化（R1-A） | — （例外なし、補完するのみ）| — |
+| 6 | `Directive(...)` 構築・不変条件検査 | `DirectiveInvariantViolation` | 422 |
+| 7 | `Task(...)` 構築・不変条件検査 | `TaskInvariantViolation` | 422 |
+| 8 | `async with session.begin()` UoW | DB 例外 → 自動ロールバック | 500 |
 
-**Room 不在は archived より先に確認する**（存在しない Room に archived 確認は無意味）。Directive 構築は Room 確認後。この順序を実装者が守らないと、テストが揺れる。
+**Room 不在は archived より先に確認する**（存在しない Room に archived 確認は無意味）。**優先順 3（workflow_id null 確認）は archived 確認の直後に行う**。`room.workflow_id is None` の確認は Workflow 存在確認（優先順 4）より先に置く理由: None を `find_by_id` に渡すと型エラーまたは全件 scan が発生し得るため、nullable guard を優先（Fail Fast 原則）。Directive 構築は全 Room 状態確認後。この順序を実装者が守らないと、テストが揺れる。
+
+**`RoomWorkflowNotAssignedError` の根拠（OWASP A01 対応）**: 業務ルール R1-12 は「Workflow 未設定 Room への Directive 投入不可」を定めている。フロントでの表示制御のみでは UI バイパス経由の直接 API 呼び出しを防げない。application 層での server-side check が必須（[`docs/features/room/http-api/detailed-design.md §確定F`](../../room/http-api/detailed-design.md) / MSG-RM-HTTP-008 参照）。
 
 ## アトミック UoW 実装契約
 
