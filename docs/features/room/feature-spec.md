@@ -242,9 +242,17 @@ E2E（受入基準 16, 17）は [`system-test-design.md`](system-test-design.md)
 
 参考: domain は `domain/room/` カバレッジ 95% 以上、repository は実装ファイル群で 90% 以上を目標としているが、これは sub-feature 側の凍結事項。
 
+### 確定 R1-12: Room 作成時の `workflow_id` は任意（後付け紐付け可）
+
+**理由（Issue #183 Fix、2026-05-07 確定）**: 新規 Empire ではまず Room を設立してから Workflow を設計・紐付けする運用ユースケースが存在する。`workflow_id` を必須にすると「Room 作成 → Workflow 作成」のブートストラップ循環が発生し、CEO が HTTP API のみでは Empire の初期設定を完了できない。Domain 層・Pydantic スキーマ・Frontend 仕様はすべて `workflow_id = None` を許容しており、DB 側もこれに揃える（DDD 原則：Domain の意図に DB を合わせる）。
+
+- `workflow_id = None` の Room は Directive 投入不可（対象 Workflow が未決定のため Task を起票できない）。フロントは Workflow 未設定 Room を「Directive 投入不可」として視覚的に明示する（将来 UI sub-feature の責務）
+- 後付けで `PATCH /api/rooms/{room_id}` を通じて `workflow_id` を設定できる（業務ルール R1-11 の Agent 割り当て検証はこの時点で実行）
+- `workflow_id` が `None` の状態での Agent 割り当ては業務上許容されない（R1-11 検証の前提 Workflow が存在しないため）。この制約は application 層で強制（後続 PR 責務）
+
 ## 11. 開放論点 (Open Questions)
 
-凍結時点で未確定の論点はなし — R1 レビューで全件凍結済み。確定 R1-1〜11 として §7 に集約。
+凍結時点で未確定の論点はなし — R1 レビューで全件凍結済み。確定 R1-1〜12 として §7 に集約。
 
 ## 12. sub-feature 一覧とマイルストーン整理
 
