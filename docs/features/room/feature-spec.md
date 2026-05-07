@@ -251,6 +251,7 @@ E2E（受入基準 16, 17）は [`system-test-design.md`](system-test-design.md)
 
 - `workflow_id = None` の Room は Directive 投入不可（対象 Workflow が未決定のため Task を起票できない）。フロントは Workflow 未設定 Room を「Directive 投入不可」として視覚的に明示する（将来 UI sub-feature の責務）
 - 後付けで `PATCH /api/rooms/{room_id}` を通じて `workflow_id` を設定できる（業務ルール R1-11 の Agent 割り当て検証はこの時点で実行）
+- **一度紐付けた Workflow の解除（`PATCH` に `"workflow_id": null` を明示送信）は業務上禁止**。Workflow を変更したい場合は Room をアーカイブして新規 Room を作成する（sentinel pattern による Workflow 入れ替えは Phase 2 検討課題、[`http-api/detailed-design.md §Q-OPEN-4`](http-api/detailed-design.md) 参照）
 - `workflow_id` が `None` の状態での Agent 割り当ては業務上許容されない（R1-11 検証の前提 Workflow が存在しないため）。この制約は application 層で強制（後続 PR 責務）
 
 ## 11. 開放論点 (Open Questions)
