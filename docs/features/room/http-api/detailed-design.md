@@ -111,8 +111,9 @@ http-api-foundation の `error_handlers.py` に以下のハンドラ関数を追
 | `workflow_not_found_handler` | `WorkflowNotFoundError` | `ErrorResponse(code="not_found", message=MSG-RM-HTTP-006)` + HTTP 404 |
 | `agent_not_found_handler` | `AgentNotFoundError` | `ErrorResponse(code="not_found", message=MSG-RM-HTTP-004)` + HTTP 404 |
 | `room_invariant_violation_handler` | `RoomInvariantViolation` | `kind='member_not_found'` → HTTP 404 (MSG-RM-HTTP-005) / その他 → HTTP 422 (MSG-RM-HTTP-007 前処理済み本文)|
+| `workflow_detachment_forbidden_handler` | `WorkflowDetachmentForbiddenError` | `ErrorResponse(code="validation_error", message=MSG-RM-HTTP-009)` + HTTP 422 |
 
-登録順は既存の `HTTPException` / `RequestValidationError` / `Exception` ハンドラより**前**（empire ハンドラ群の直後）に登録する。
+登録順は既存の `HTTPException` / `RequestValidationError` / `Exception` ハンドラより**前**（empire ハンドラ群の直後）に登録する。登録順の具体的な位置: `room_not_found_handler` → `room_name_already_exists_handler` → `room_archived_handler` → `workflow_not_found_handler` → `agent_not_found_handler` → `room_invariant_violation_handler` → **`workflow_detachment_forbidden_handler`**（末尾）。
 
 **`room_invariant_violation_handler` の処理ルール（凍結）**:
 
